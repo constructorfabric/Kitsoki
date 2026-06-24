@@ -1,0 +1,396 @@
+# references — curate the doc reference list, then confirm.
+#
+# on_enter runs the `researcher` (host.agent.decide) which reads the idea
+# and the clarification transcript and searches the working dir's
+# DOCUMENTATION — not source code; this is a PRD — for prior art,
+# constraints, and standards the PRD must honour, returning
+# { items: [{ path, sections, rationale }] }. An empty list is valid.
+#
+# The list is also persisted to {{ workdir }}/.artifacts/prd_references.md
+# (host.artifacts_dir, mode: replace for on_enter idempotency, same as the
+# brief room). The bound world.references is handed to the author in
+# drafting so the PRD is written against the cited sections.
+#
+# Two on_enter host calls, both share host.agent.decide with clarifying's
+# analyst — in flow fixtures the two decide invocations are disambiguated
+# by the per-invoke stub id (the by-id host-stub mechanism); do NOT reach
+# for a different agent verb to give the stub a distinct name.
+#
+# Two re-run actions, both self-transitions that re-fire on_enter
+# (budget-capped by references_budget): `refine` revises the CURRENT list
+# in place (references_revise=true → the researcher builds on
+# current_references per the operator's add/drop/re-scope instruction),
+# while `regenerate` searches fresh (references_revise=false). A `choice:`
+# selector is fine — this is a checkpoint room, not a free-text loop.
+
+states:
+
+  # references_seed — transient OPTIONAL semantic pre-seed, run BEFORE the
+  # references checkpoint.
+  #
+  # Embeds the idea (+ the clarification transcript) and retrieves the closest
+  # doc chunks (host.agent.search) so the researcher spends its LLM budget on
+  # JUDGMENT (which hits matter, what sections, why) rather than scanning the
+  # tree from scratch. Mirrors the golden proposal pipeline's stage split
+  # (dev-story design_materialize.yaml: a search step that feeds a separate
+  # researcher step), adapted to prd's dwell-room shape: the search lives in
+  # its OWN transient room so a search failure NEVER strands the references
+  # checkpoint.
+  #
+  # Why a separate room rather than a search step on references' on_enter: an
+  # errored invoke routes to on_error, and a self-redirect (`on_error: <self>`)
+  # SKIPS the remaining on_enter steps (host_dispatch.go) — so a failed search
+  # inside references would block the researcher from running at all. Here the
+  # search stands alone; on BOTH success and failure we advance to references
+  # via emit_intent, carrying world.reference_hits (populated, or left empty on
+  # failure — the from-scratch fallback). Requires app.routing.embedding to be
+  # configured; when it is NOT, the sentinel errors and on_error sends us
+  # forward with empty hits.
+  references_seed:
+    description: "Pre-seeding references from a semantic search…"
+    view:
+      - prose: "Pre-seeding the reference search…"
+    relevant_world: [idea, clarification_log, reference_hits]
+    on_enter:
+      # `once: true` keyed off its bind so /reload re-renders the stored hits.
+      # The refine/regenerate arcs clear reference_hits before re-entering, so
+      # the search re-runs for the next pass.
+      - invoke: host.agent.search
+        once: true
+        id: reference_search
+        with:
+          query: "{{ world.idea }} {{ world.clarification_log }}"
+          corpus:
+            - "docs/**/*.md"
+          top_k:     10
+          min_score: 0.30
+          chunk:
+            max:  1200
+            mode: heading
+        bind:
+          # host.agent.search returns { hits: [...], top }; bind the hits
+          # array directly so world.reference_hits IS the ranked list (empty
+          # when nothing matched). prompts/references.md iterates it.
+          reference_hits: hits
+        # Search succeeded → advance to the checkpoint with the hits.
+        emit_intent: "seeded"
+        # Embeddings unconfigured / search failed → advance ANYWAY with empty
+        # hits (the researcher scans from scratch). on_error routes to the
+        # no-op fallback room below, which re-emits `seeded` so the references
+        # checkpoint is entered through the SAME transition path as the success
+        # case (its on_enter researcher then runs). reference_hits stays [].
+        on_error: references_seed_fallback
+    on:
+      # Synthetic — fired by the post-bind emit_intent on a successful search.
+      seeded:
+        - target: references
+
+      look:
+        - target: .
+
+  # references_seed_fallback — the no-embeddings landing pad.
+  #
+  # Reached only when the semantic search in references_seed errors (e.g.
+  # app.routing.embedding is unconfigured). It runs NO host call — it just
+  # re-emits `seeded` on entry so the references checkpoint is entered via the
+  # ordinary transition (which reliably fires references' on_enter researcher),
+  # carrying empty reference_hits. A bare on_error: references would land in
+  # references via the redirect path WITHOUT re-running its on_enter, leaving
+  # the reference list un-curated; routing through this room avoids that.
+  references_seed_fallback:
+    description: "Semantic search unavailable — curating references directly…"
+    view:
+      - prose: "Semantic pre-seed unavailable; curating references directly…"
+    relevant_world: [reference_hits, last_error]
+    on_enter:
+      # The pre-seed is OPTIONAL — an unconfigured embedding endpoint is a
+      # benign condition, not a pipeline failure. Clear the last_error the
+      # runtime set on the search fault so the references view doesn't show a
+      # scary ⚠ for a feature the operator never asked for, then advance.
+      - set:
+          last_error: ""
+        emit_intent: "seeded"
+    on:
+      seeded:
+        - target: references
+      look:
+        - target: .
+
+  references:
+    description: "Curate the existing docs the PRD should build on; confirm to write the PRD."
+    view:
+      - banner:
+          text:     "REFERENCES"
+          subtitle: "Existing docs the PRD must build on — sections + why"
+          color:    "#F59E0B"   # amber — gathering
+      # Error surfacing — the researcher (on_enter decide) failed; on_error
+      # stepped BACK one stage to brief (the inputs are still sound, so the
+      # operator reviews the brief before re-confirming into another search)
+      # rather than dumping all the way to idle. This template renders on the
+      # rare case last_error survives into references; the brief room carries
+      # the primary warning. last_error is set by the runtime.
+      - template: "⚠ **Reference search failed** — {{ world.last_error }}."
+        when: "world.last_error != ''"
+      - prose: "cycle {{ world.cycle }} · references round {{ world.references_cycle }} · judge {{ world.judge_mode }}"
+      # The saved-file path is a kv value holding the BARE path: the web UI
+      # linkifies a kv value ending in .md into a clickable file preview
+      # (prose never linkifies — same idiom as the brief room and dev-story's
+      # design_refine Brief row). The pending placeholder stays plain text.
+      - kv:
+          pairs:
+            References: '{{ world.references_path|default:"(writing 003-references.md into the per-PRD workspace…)" }}'
+            Idea:       '{{ world.idea|default:"(none)"|truncatechars:80 }}'
+            Upstream:   '{{ world.upstream_paths|default:"(none)" }}'
+      # Echo the operator's last refine instruction back so a refine turn
+      # visibly acknowledges what was asked (the golden design_refine.yaml
+      # renders the same "You asked: …" line). A blank-feedback action skips
+      # this line via the guard.
+      - kv:
+          pairs:
+            You asked: '{{ world.refine_message }}'
+        when: "world.refine_message != ''"
+      - heading: "References found"
+      # forloop.Counter numbers the list; §sections only when present; the
+      # rationale wraps. {% empty %} covers the legitimate "nothing to cite"
+      # result so the list never renders blank.
+      - code: |
+          {% for r in world.references.items %}{{ forloop.Counter }}. {{ r.path }}{% if r.sections %} §{{ r.sections }}{% endif %}
+             why: {{ r.rationale|default:"(no rationale given)"|wordwrap:110 }}
+          {% empty %}(none found — refine to add specific docs, regenerate to search again, or restart from clarifying to sharpen the inputs){% endfor %}
+      - prose: "These are the existing documents the PRD will build on. **confirm** to write the PRD, **refine** to adjust this list (add / drop / re-scope), **regenerate** to search fresh, or **restart from clarifying** to change the inputs."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "confirm"
+              hint:   "references are right — write the PRD"
+              intent: confirm
+            - label:  "refine"
+              hint:   "adjust THIS list — add a doc, drop one, re-scope a section (e.g. drop the rate-limit doc; also cite docs/auth.md §Tokens)"
+              intent: refine
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "add / drop / re-scope a doc"
+                required:    true
+            - label:  "regenerate"
+              hint:   "discard the list and search the docs fresh (optionally steer)"
+              intent: regenerate
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what to look for"
+                required:    false
+            - label:  "clarify"
+              hint:   "answer more / refine the questions — KEEPS your answers so far"
+              intent: clarify
+            - label:  "restart from clarifying"
+              hint:   "discard the clarification record and re-question from scratch"
+              intent: restart_from
+              slots:  { stage: clarifying }
+            - label:  "quit"
+              hint:   "abandon PRD authoring"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [idea, upstream_paths, workdir, prd_workspace, references, references_path, references_cycle, references_budget, references_revise, reference_hits, clarification_log, refine_feedback, refine_message, cycle, judge_mode, last_error]
+    on_enter:
+      # Curate the reference list. working_dir pins the researcher's
+      # Read/Grep/Glob to the operator's tree; its tool calls land as
+      # agent.tool_call trace events. refine_feedback carries the
+      # operator's instruction; revise distinguishes a `refine` (revise the
+      # current list in place — current_references is the starting point)
+      # from a fresh `regenerate` search (current_references is reference
+      # only). See prompts/references.md.
+      # `once: true` for reload-safety: keyed off its own bind (references).
+      # /reload re-renders the stored list; `refine` / `regenerate` clear
+      # references (the object — its own bind) to force a fresh researcher
+      # run. On `refine` the current list is snapshotted into references_prev
+      # FIRST (so clearing references to re-arm once: doesn't lose it), and
+      # current_references reads from that snapshot — see the `refine` arc.
+      - invoke: host.agent.decide
+        once: true
+        id: references_research
+        with:
+          agent: researcher
+          prompt_path: prompts/references.md
+          schema: schemas/references.json
+          working_dir: "{{ world.workdir }}"
+          args:
+            idea:                "{{ world.idea }}"
+            clarification_log:   "{{ world.clarification_log }}"
+            upstream_paths:      "{{ world.upstream_paths }}"
+            feedback:            "{{ world.refine_feedback }}"
+            revise:              "{{ world.references_revise }}"
+            # Read the pre-refine snapshot, NOT the live references: `refine`
+            # clears references to re-arm once:, so the live key is empty
+            # mid-revise. references_prev holds the list the researcher edits.
+            current_references:  "{{ world.references_prev }}"
+            # The semantic pre-seed (step 0). Empty when embeddings are
+            # unconfigured; prompts/references.md only renders this section
+            # when non-empty, so the researcher falls back to a from-scratch
+            # search cleanly.
+            search_hits:         "{{ world.reference_hits }}"
+        bind:
+          references: submitted
+        # Step BACK one stage to brief on a failed researcher run (not all
+        # the way to idle): the inputs (idea + clarification log) are still
+        # sound, so the operator reviews the brief and re-confirms to retry
+        # the search rather than re-pitching from scratch. The runtime sets
+        # last_error; brief's view surfaces it.
+        on_error: brief
+
+      # Persist the curated list. A BARE `{{ world.references }}` resolves
+      # to the typed object, which host.artifacts_dir pretty-prints as JSON
+      # (the documented map/slice coercion) — a faithful, readable record.
+      # mode: replace keeps on_enter idempotent across re-fires.
+      # `once: true` keyed off its bind (references_path); cleared alongside
+      # references on refine/regenerate so the write re-runs with the fresh
+      # list. mode: replace keeps it idempotent even when it does re-run.
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          artifacts_root: "{{ world.workdir }}/{{ world.prd_workspace }}"
+          thread:         "003-references"
+          mode:           "replace"
+          title:          "PRD References"
+          body:           "{{ world.references }}"
+        bind:
+          references_path: "path"
+    on:
+      # Confirmed — write the PRD. Clear refine_feedback + the revise flag so
+      # a reference instruction doesn't bleed into the author as draft
+      # steering, and a later re-entry starts clean.
+      confirm:
+        - target: drafting
+          effects:
+            - set:
+                refine_feedback:   ""
+                refine_message:    ""   # don't leak the refine echo into drafting
+                references_revise: false
+                references_prev:   {}
+                # Leaving cleanly → clear any stale researcher error.
+                last_error:        ""
+
+      # Refine the CURRENT list in place: keep what applies, apply the
+      # operator's add/drop/re-scope instruction. revise=true tells the
+      # researcher (prompts/references.md) to build on current_references
+      # rather than search fresh. Budget-capped like regenerate.
+      refine:
+        - when: "world.references_cycle >= world.references_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "references_budget_exhausted"
+                status:         "abandoned"
+        - target: references
+          effects:
+            # Snapshot the current list FIRST (its OWN effect so it lands
+            # before the clear — set: keys within one effect have no ordering
+            # guarantee). The researcher revises references_prev in place.
+            - set:
+                references_prev:   "{{ world.references }}"
+            # Then clear BOTH once: binds (the object + its write-path) so the
+            # researcher (keyed off references) AND the write (keyed off
+            # references_path) re-run with revise=true.
+            - set:
+                references:        {}
+                references_path:   ""
+                # refine REVISES the current list in place — no fresh semantic
+                # search, so this stays a references self-loop and KEEPS the
+                # existing reference_hits as advisory context for the revision.
+                refine_feedback:   "{{ slots.feedback }}"
+                refine_message:    "{{ slots.feedback }}"   # echoed back in the view ("You asked: …")
+                references_revise: true
+                references_cycle:  "{{ world.references_cycle + 1 }}"
+                cycle:             "{{ world.cycle + 1 }}"
+
+      # Re-search the docs FRESH (revise=false). Routes through references_seed
+      # so the semantic pre-seed re-runs too. Budget gate bails instead of
+      # looping forever.
+      regenerate:
+        - when: "world.references_cycle >= world.references_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "references_budget_exhausted"
+                status:         "abandoned"
+        - target: references_seed
+          effects:
+            # Fresh search: clear the once: binds (object + write-path + the
+            # semantic hits) so the seed re-searches and both researcher +
+            # write re-run. revise:false ⇒ no snapshot needed; the researcher
+            # starts over rather than editing current_references.
+            - set:
+                reference_hits:    []   # re-arm the semantic pre-seed for the fresh search
+                references:        {}
+                references_path:   ""
+                refine_feedback:   "{{ slots.feedback ?? '' }}"
+                refine_message:    ""   # fresh search, not a steer — no echo
+                references_revise: false
+                references_cycle:  "{{ world.references_cycle + 1 }}"
+                cycle:             "{{ world.cycle + 1 }}"
+
+      # Extend, not redo: go back to clarifying for another round while
+      # PRESERVING clarification_log; only this round's working answer state
+      # is cleared. The non-destructive counterpart to `restart_from
+      # clarifying` below (same shape as the drafting room's `clarify`).
+      clarify:
+        - target: clarifying
+          effects:
+            # Clear clarifications (clarifying's analyst-decide bind) so its
+            # `once:` re-arms and the analyst asks a NEW round against the
+            # preserved clarification_log — without this the re-fired on_enter
+            # no-ops and re-shows the prior round's questions.
+            - set:
+                clarifications:        {}
+                refine_feedback:       ""
+                refine_message:        ""
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+                references_prev:       {}
+
+      # Inputs are wrong — go re-question (discards the clarification record).
+      restart_from:
+        - when: "slots.stage == 'idle'"
+          target: idle
+          effects:
+            - set:
+                clarifications:        {}
+                clarification_log:     ""
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+                refine_feedback:       ""
+                references_prev:       {}
+                clarifying_cycle:      0
+                references_cycle:      0
+                drafting_cycle:        0
+                cycle:                 0
+        - target: clarifying
+          effects:
+            # Clear clarifications (clarifying's analyst-decide bind) so its
+            # `once:` re-arms and re-questions fresh; references_prev for
+            # hygiene.
+            - set:
+                clarifications:        {}
+                clarification_log:     ""
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+                refine_feedback:       ""
+                references_prev:       {}
+                clarifying_cycle:      0
+                references_cycle:      0
+                cycle:                 0
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_references"
+                status:         "abandoned"
+      look:
+        - target: .

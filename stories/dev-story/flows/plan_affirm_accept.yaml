@@ -1,0 +1,65 @@
+# plan_affirm_accept — with a pending plan in world, driving the accept_plan
+# intent reaches applying → verifying PASS → plan_done.
+#
+# The Go gate (context_route_plan_test.go) proves the FREE-TEXT→accept routing
+# (i.e. typing "ok go ahead" while a plan is pending deterministically routes
+# to accept_plan without an LLM call). This flow proves the migrated landing's
+# accept arc + applying handoff + verify green path are intact end-to-end by
+# driving the intent directly — flow fixtures cannot use raw input: turns on the
+# orchestrator path.
+#
+# Mirrors plan_apply_verify_green.yaml but seeds the world directly (no work
+# turn first) to prove the migrated contextual_routing landing can accept a plan
+# that was placed in the initial world.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  landing_request: "import the issues folder in the repo to github"
+  landing_note:
+    summary: "Planned the local issue → GitHub migration."
+    plan:
+      goal: "Migrate repo-local issues/ to GitHub issues."
+      step: { kind: run, description: "Create a GitHub issue per file in issues/.", mutating: true }
+      verify:
+        mode: script
+        script: verify/issues_migrated.star
+        inputs: { expected_min: 3 }
+        reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+starlark_inspect_cassette: ../cassettes/issues_migrated.inspect.yaml
+
+host_handlers:
+  # The apply step agent — stubbed so no claude subprocess runs.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Applied the migration step."
+        details: "Created 3 GitHub issues."
+
+turns:
+  # Drive accept_plan directly. The Go gate proves the free-text→accept routing;
+  # this fixture proves the landing accept arc + applying chain + verify pass are
+  # intact after the contextual_routing migration.
+  - intent: { name: accept_plan, slots: {} }
+    expect_state: plan_done
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: apply-step }
+        times: 1
+    expect_world:
+      plan_decision: "accepted"
+      verify_ok: true
+      captured: 1
+      accepted_plan:
+        goal: "Migrate repo-local issues/ to GitHub issues."
+        step: { kind: run, description: "Create a GitHub issue per file in issues/.", mutating: true }
+        verify:
+          mode: script
+          script: verify/issues_migrated.star
+          inputs: { expected_min: 3 }
+          reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+expect_no_errors: true

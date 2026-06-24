@@ -1,5 +1,5 @@
-// Tests for [Matcher] and [Compile] (semantic-routing proposal §2.1 /
-// §10 Phase 2).
+// Tests for [Matcher] and [Compile] (band ordering / bare-string
+// matching).
 //
 // Structure:
 //   - "compile"    — happy path + template-syntax rejection + empty defs.
@@ -104,7 +104,7 @@ func TestCompile_EmptyIntents(t *testing.T) {
 // TestCompile_TemplateStructuralErrors pins the structural failure
 // modes for template synonyms. Phase 4 lifted the blanket Phase-2
 // rejection of `{`/`}` strings; what remains are the structural rules
-// the compiler enforces (proposal §4.3): every capture names a known
+// the compiler enforces (the template grammar): every capture names a known
 // slot, captures must be separated by literals, and braces must
 // balance.
 func TestCompile_TemplateStructuralErrors(t *testing.T) {
@@ -198,8 +198,8 @@ func TestCompile_EmptyAndStopwordOnlySynonyms(t *testing.T) {
 
 // ====================== match ======================
 
-// TestMatch_SingleSynonymExactWholeUtterance pins the §5.1 worked
-// example: synonym "wade" matches input "wade" exactly.
+// TestMatch_SingleSynonymExactWholeUtterance pins the bare-synonym
+// worked example: synonym "wade" matches input "wade" exactly.
 func TestMatch_SingleSynonymExactWholeUtterance(t *testing.T) {
 	t.Parallel()
 	def := mkApp(t, map[string]app.Intent{
@@ -227,7 +227,7 @@ func TestMatch_SingleSynonymExactWholeUtterance(t *testing.T) {
 	}
 }
 
-// TestMatch_SynonymInsideLongerUtterance pins the proposal §5.1
+// TestMatch_SynonymInsideLongerUtterance pins the bare-synonym
 // trace: "wade across the river" carries synonym stem {wade} ⊂
 // {wade, acros, river}.
 func TestMatch_SynonymInsideLongerUtterance(t *testing.T) {
@@ -246,7 +246,52 @@ func TestMatch_SynonymInsideLongerUtterance(t *testing.T) {
 	}
 }
 
-// TestMatch_TwoIntentsShareSynonym pins §5.3: when "leave" matches
+// TestMatch_BareSynonymRejectsLargePaste is the dogfood regression: a
+// pasted bug report that merely CONTAINS a one-word synonym ("cancel",
+// an example/synonym of quit) somewhere in a wall of prose must NOT
+// bare-match that intent. In the field this short-circuited a clarifying
+// room straight to the quit intent → @exit → "game over", because the
+// user had pasted the choice footer "… Esc cancel …". The whole-utterance
+// guard (bareMaxUncoveredDefault) rejects it; the input then falls
+// through to the LLM router. Without the guard this returns quit@0.90.
+func TestMatch_BareSynonymRejectsLargePaste(t *testing.T) {
+	t.Parallel()
+	def := mkApp(t, map[string]app.Intent{
+		"quit": {Synonyms: []string{"cancel", "quit", "abort", "bail"}},
+		"look": {Synonyms: []string{"look"}},
+	})
+	m := mustCompile(t, def)
+
+	paste := "when we resume a session the kitsoki header is shown again " +
+		"and it is highlighted as model output move enter pick tab esc cancel " +
+		strings.Repeat("filler prose describing the rendering defect in detail ", 8)
+
+	v := mustMatch(t, m, "clarifying", []string{"quit", "look"}, paste)
+	if v.Confidence != 0 {
+		t.Errorf("large paste containing 'cancel' should NOT bare-match; got intent=%q confidence=%v",
+			v.Intent, v.Confidence)
+	}
+}
+
+// TestMatch_BareSynonymShortStillMatches guards against over-correction:
+// the whole-utterance bound must not break the common case where the
+// synonym is (nearly) the entire utterance.
+func TestMatch_BareSynonymShortStillMatches(t *testing.T) {
+	t.Parallel()
+	def := mkApp(t, map[string]app.Intent{
+		"quit": {Synonyms: []string{"cancel", "quit"}},
+	})
+	m := mustCompile(t, def)
+	for _, in := range []string{"cancel", "please cancel that", "ok cancel"} {
+		v := mustMatch(t, m, "clarifying", []string{"quit"}, in)
+		if v.Intent != "quit" || v.Confidence != ConfidenceWholeSynonym {
+			t.Errorf("Match(%q): want quit@%v, got intent=%q conf=%v",
+				in, ConfidenceWholeSynonym, v.Intent, v.Confidence)
+		}
+	}
+}
+
+// TestMatch_TwoIntentsShareSynonym pins the shared-synonym tie: when "leave" matches
 // both leave_store and cancel_purchase, the verdict carries
 // Confidence=0.50 + the candidate list.
 func TestMatch_TwoIntentsShareSynonym(t *testing.T) {

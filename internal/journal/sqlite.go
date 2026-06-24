@@ -14,7 +14,8 @@ import (
 
 // sqliteWriter implements Writer backed by a *sql.DB (modernc.org/sqlite).
 // It shares the same *sql.DB as the session store so journal writes can be
-// included in the caller's transaction via AppendJournalTx (§4.9 Rule 1).
+// included in the caller's transaction via AppendJournalTx, so a journal write
+// and the matching events row commit (or roll back) together.
 type sqliteWriter struct {
 	db *sql.DB
 }
@@ -31,7 +32,8 @@ func NewSQLiteWriter(db *sql.DB) (Writer, error) {
 // Append writes a single entry to the journal inside its own transaction.
 // For doc-targeted patch entries the DocVersion is assigned by reading the
 // current MAX from the table and incrementing; this is consistent as long as
-// callers serialise writes through the session writer lock (§4.9 Rule 5).
+// callers serialise writes through the session writer lock — concurrent
+// unserialised Appends to the same (sid, doc) can race on the MAX read.
 func (w *sqliteWriter) Append(e Entry) error {
 	tx, err := w.db.Begin()
 	if err != nil {
@@ -92,8 +94,8 @@ func (w *sqliteWriter) Flush() error {
 // ---- Package-level helpers used by both Writer and the store layer ----------
 
 // AppendJournalTx inserts a batch of entries into the journal table within
-// the provided transaction. Callers that also write events rows (§4.9 Rule 1)
-// should pass their existing transaction here so both writes share atomicity.
+// the provided transaction. Callers that also write events rows should pass
+// their existing transaction here so both writes share atomicity.
 //
 // For patch entries that target a doc, DocVersion is assigned as
 // MAX(doc_version)+1 per (session_id, doc). For typed-only entries (Doc=="")
@@ -292,8 +294,9 @@ func (r *sqliteReader) LoadDocument(sid app.SessionID, doc DocID) (json.RawMessa
 
 // ReplayFrom returns an iterator over patch entries for (sid, doc) where
 // DocVersion >= from, ordered by (turn, seq). The query streams rows lazily.
-func (r *sqliteReader) ReplayFrom(sid app.SessionID, doc DocID, from Version) iter.Seq[Entry] {
-	return func(yield func(Entry) bool) {
+func (r *sqliteReader) ReplayFrom(sid app.SessionID, doc DocID, from Version) (iter.Seq[Entry], func() error) {
+	var capturedErr error
+	seq := func(yield func(Entry) bool) {
 		rows, err := r.db.Query(
 			`SELECT turn, seq, ts, kind, doc, doc_version, body_json
 			 FROM journal
@@ -303,7 +306,7 @@ func (r *sqliteReader) ReplayFrom(sid app.SessionID, doc DocID, from Version) it
 			string(sid), string(doc), int64(from),
 		)
 		if err != nil {
-			// Iterators can't return errors; callers should check for anomalies.
+			capturedErr = fmt.Errorf("journal.ReplayFrom: query: %w", err)
 			return
 		}
 		defer rows.Close()
@@ -319,6 +322,7 @@ func (r *sqliteReader) ReplayFrom(sid app.SessionID, doc DocID, from Version) it
 				body    string
 			)
 			if err := rows.Scan(&turnN, &seq, &tsMicro, &kind, &docStr, &docVer, &body); err != nil {
+				capturedErr = fmt.Errorf("journal.ReplayFrom: scan: %w", err)
 				return
 			}
 			e := Entry{
@@ -339,7 +343,11 @@ func (r *sqliteReader) ReplayFrom(sid app.SessionID, doc DocID, from Version) it
 				return
 			}
 		}
+		if err := rows.Err(); err != nil {
+			capturedErr = fmt.Errorf("journal.ReplayFrom: rows: %w", err)
+		}
 	}
+	return seq, func() error { return capturedErr }
 }
 
 // replayTypedSQL is the query for ReplayTyped: excludes the four patch kinds
@@ -359,10 +367,12 @@ ORDER BY turn ASC, seq ASC`
 
 // ReplayTyped returns an iterator over all typed (non-patch, non-checkpoint)
 // entries for sid, ordered by (turn, seq). Rows are streamed lazily.
-func (r *sqliteReader) ReplayTyped(sid app.SessionID) iter.Seq[Entry] {
-	return func(yield func(Entry) bool) {
+func (r *sqliteReader) ReplayTyped(sid app.SessionID) (iter.Seq[Entry], func() error) {
+	var capturedErr error
+	seq := func(yield func(Entry) bool) {
 		rows, err := r.db.Query(replayTypedSQL, string(sid))
 		if err != nil {
+			capturedErr = fmt.Errorf("journal.ReplayTyped: query: %w", err)
 			return
 		}
 		defer rows.Close()
@@ -378,6 +388,7 @@ func (r *sqliteReader) ReplayTyped(sid app.SessionID) iter.Seq[Entry] {
 				body    string
 			)
 			if err := rows.Scan(&turnN, &seq, &tsMicro, &kind, &docStr, &docVer, &body); err != nil {
+				capturedErr = fmt.Errorf("journal.ReplayTyped: scan: %w", err)
 				return
 			}
 			e := Entry{
@@ -398,12 +409,17 @@ func (r *sqliteReader) ReplayTyped(sid app.SessionID) iter.Seq[Entry] {
 				return
 			}
 		}
+		if err := rows.Err(); err != nil {
+			capturedErr = fmt.Errorf("journal.ReplayTyped: rows: %w", err)
+		}
 	}
+	return seq, func() error { return capturedErr }
 }
 
 // LatestCheckpoint returns the most recent checkpoint entry for (sid, doc).
-// Returns a zero Entry and false if no checkpoint exists.
-func (r *sqliteReader) LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bool) {
+// Returns (Entry{}, false, nil) if no checkpoint exists, and a non-nil error
+// (kept distinct from "not found") on a query/scan failure.
+func (r *sqliteReader) LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bool, error) {
 	var (
 		turnN   int64
 		seq     int
@@ -422,10 +438,10 @@ func (r *sqliteReader) LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bo
 		string(sid), string(doc),
 	).Scan(&turnN, &seq, &tsMicro, &kind, &docVer, &body)
 	if err == sql.ErrNoRows {
-		return Entry{}, false
+		return Entry{}, false, nil
 	}
 	if err != nil {
-		return Entry{}, false
+		return Entry{}, false, fmt.Errorf("journal.LatestCheckpoint: %w", err)
 	}
 	return Entry{
 		Ts:         time.UnixMicro(tsMicro),
@@ -436,22 +452,21 @@ func (r *sqliteReader) LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bo
 		Doc:        doc,
 		DocVersion: Version(docVer),
 		Body:       json.RawMessage(body),
-	}, true
+	}, true, nil
 }
 
-// LoadOracleCallEntries returns all KindOracleCall journal entries for sid as
+// LoadAgentCallEntries returns all KindAgentCall journal entries for sid as
 // a slice of Entry values (including timestamps). Entries are ordered by
-// (turn, seq). This is used by FromHistory to synthesise oracle trace events
-// from journal data when WithOracleJournal is supplied.
-func LoadOracleCallEntries(db *sql.DB, sid app.SessionID) ([]Entry, error) {
+// (turn, seq).
+func LoadAgentCallEntries(db *sql.DB, sid app.SessionID) ([]Entry, error) {
 	rows, err := db.Query(
 		`SELECT ts, turn, seq, body_json FROM journal
-		 WHERE session_id = ? AND kind = 'oracle.call'
+		 WHERE session_id = ? AND kind = 'agent.call'
 		 ORDER BY turn ASC, seq ASC`,
 		string(sid),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("journal.LoadOracleCallEntries: query: %w", err)
+		return nil, fmt.Errorf("journal.LoadAgentCallEntries: query: %w", err)
 	}
 	defer rows.Close()
 
@@ -471,29 +486,29 @@ func LoadOracleCallEntries(db *sql.DB, sid app.SessionID) ([]Entry, error) {
 			Session: sid,
 			Turn:    app.TurnNumber(turnN),
 			Seq:     seq,
-			Kind:    KindOracleCall,
+			Kind:    KindAgentCall,
 			Body:    json.RawMessage(bodyStr),
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("journal.LoadOracleCallEntries: scan: %w", err)
+		return nil, fmt.Errorf("journal.LoadAgentCallEntries: scan: %w", err)
 	}
 	return out, nil
 }
 
-// LoadOracleCalls returns all KindOracleCall journal entries for sid, keyed by
+// LoadAgentCalls returns all KindAgentCall journal entries for sid, keyed by
 // the call_id field in the body. Entries with no parseable call_id are skipped.
 // This is used by export-status to merge full prompt/response payloads into the
-// lean slog oracle.<verb>.complete records.
-func LoadOracleCalls(db *sql.DB, sid app.SessionID) (map[string]json.RawMessage, error) {
+// lean slog agent.<verb>.complete records.
+func LoadAgentCalls(db *sql.DB, sid app.SessionID) (map[string]json.RawMessage, error) {
 	rows, err := db.Query(
 		`SELECT body_json FROM journal
-		 WHERE session_id = ? AND kind = 'oracle.call'
+		 WHERE session_id = ? AND kind = 'agent.call'
 		 ORDER BY turn ASC, seq ASC`,
 		string(sid),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("journal.LoadOracleCalls: query: %w", err)
+		return nil, fmt.Errorf("journal.LoadAgentCalls: query: %w", err)
 	}
 	defer rows.Close()
 
@@ -513,7 +528,7 @@ func LoadOracleCalls(db *sql.DB, sid app.SessionID) (map[string]json.RawMessage,
 		out[partial.CallID] = json.RawMessage(bodyStr)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("journal.LoadOracleCalls: scan: %w", err)
+		return nil, fmt.Errorf("journal.LoadAgentCalls: scan: %w", err)
 	}
 	return out, nil
 }

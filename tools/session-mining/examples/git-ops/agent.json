@@ -1,0 +1,90 @@
+{
+  "_comment": "Committed step-B agent output for the git-ops flagship example. In a real run this is produced by intents.workflow.js (the one LLM pass); here it is frozen so the whole C->F chain runs deterministically with NO LLM and NO cost. Cites are pinned to traces/<sid>.txt line numbers; every parameter value is a substring of its cited tool arg so ground.py validates it.",
+  "records": [
+    {
+      "session": "sess-commit-happy",
+      "spans": [
+        {
+          "span": [1, 4],
+          "tags": {"action": ["commit-or-pr"], "surface": ["code"], "scope": ["single-file"]},
+          "actions": [
+            {"tool": "Bash", "signature": "git status --short", "parameters": {}, "cite": {"line": 3}},
+            {"tool": "Bash", "signature": "git commit -m <msg>", "parameters": {"message": "fix(auth): handle nil session on expiry"}, "cite": {"line": 4}}
+          ]
+        }
+      ]
+    },
+    {
+      "session": "sess-commit-amend",
+      "spans": [
+        {
+          "span": [1, 2],
+          "tags": {"action": ["commit-or-pr"], "surface": ["code"], "scope": ["cross-module"]},
+          "actions": [
+            {"tool": "Bash", "signature": "git commit -m <msg>", "parameters": {"message": "wip: cache layer"}, "cite": {"line": 2}}
+          ]
+        },
+        {
+          "span": [3, 6],
+          "tags": {"action": ["commit-or-pr"], "surface": ["code"], "scope": ["cross-module"]},
+          "actions": [
+            {"tool": "Bash", "signature": "git reset --soft <ref>", "parameters": {"ref": "HEAD~1"}, "cite": {"line": 4}},
+            {"tool": "Bash", "signature": "git restore --staged <file>", "parameters": {"file": "internal/cache/mocks_gen.go"}, "cite": {"line": 5}},
+            {"tool": "Bash", "signature": "git commit --amend -m <msg>", "parameters": {"message": "feat(cache): add read-through cache layer"}, "cite": {"line": 6}}
+          ]
+        }
+      ]
+    },
+    {
+      "session": "sess-rebase-conflict",
+      "spans": [
+        {
+          "span": [1, 6],
+          "tags": {"action": ["rebase-or-resolve-conflicts"], "surface": ["code"], "scope": ["cross-module"]},
+          "actions": [
+            {"tool": "Bash", "signature": "git rebase <branch>", "parameters": {"branch": "main"}, "cite": {"line": 2}},
+            {"tool": "Edit", "signature": "edit <file>", "parameters": {"file": "internal/auth/session.go"}, "cite": {"line": 4}},
+            {"tool": "Edit", "signature": "edit <file>", "parameters": {"file": "internal/auth/token.go"}, "cite": {"line": 5}},
+            {"tool": "Bash", "signature": "git rebase --continue", "parameters": {}, "cite": {"line": 6}}
+          ]
+        }
+      ]
+    },
+    {
+      "session": "sess-merge-direct",
+      "spans": [
+        {
+          "span": [1, 3],
+          "tags": {"action": ["rebase-or-resolve-conflicts"], "surface": ["code"], "scope": ["cross-module"]},
+          "actions": [
+            {"tool": "Bash", "signature": "git merge --no-ff <branch>", "parameters": {"branch": "feat-auth"}, "cite": {"line": 3}}
+          ]
+        }
+      ]
+    },
+    {
+      "session": "sess-worktree",
+      "spans": [
+        {
+          "span": [1, 2],
+          "tags": {"action": ["branch-or-worktree-setup"], "surface": ["infra"]},
+          "actions": [
+            {"tool": "Bash", "signature": "git worktree add <path> -b <branch>", "parameters": {"path": ".worktrees/feat-cache", "branch": "feat-cache"}, "cite": {"line": 2}}
+          ]
+        }
+      ]
+    },
+    {
+      "session": "sess-forcepush",
+      "spans": [
+        {
+          "span": [1, 2],
+          "tags": {"action": ["commit-or-pr"], "surface": ["code"]},
+          "actions": [
+            {"tool": "Bash", "signature": "git push --force-with-lease <remote> <branch>", "parameters": {"remote": "origin", "branch": "feat-auth"}, "cite": {"line": 2}}
+          ]
+        }
+      ]
+    }
+  ]
+}

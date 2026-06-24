@@ -1,0 +1,67 @@
+# e2e_mocked_maker — THE headline no-LLM proof of the delivery tail.
+#
+# The full delivery tail with the maker mocked via its worktree handoff
+# (the @exit:achieved seam: worktree_path + workspace_branch in world).
+# Asserts the deterministic host-call sequence:
+#   integrate (rebase onto current main + build-check + merge) →
+#   re-verify the IDENTICAL gate on the MERGED commit (GREEN) →
+#   cleanup (remove worktree + branch) → @exit:shipped, shipped_sha set.
+#
+# Same gate_command, two evaluation sites: the maker's branch (mocked green)
+# and the merged commit (verify-rerun, asserted here). This is the
+# trust-the-gate discipline: "passes on main", not just "passed in the
+# branch". Zero LLM.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      # integrate: rebase onto CURRENT main + build-check + merge --no-ff, clean.
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "e4f5a6b"
+            last_op_ok:     true
+            last_error:     ""
+      # re-verify: the IDENTICAL gate_command, GREEN on the merged commit.
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok  internal/ratelimit  0.012s" } }
+      # cleanup: worktree removed + branch -D.
+      cleanup_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:    cleaned
+            last_op_ok: true
+            last_error: ""
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:            shipped
+      shipped_sha:       "e4f5a6b"
+      integrated_sha:    "e4f5a6b"
+      verify_ok:         true
+      integrate_outcome: integrated
+      cleanup_outcome:   cleaned
+    # Pin the deterministic host-call sequence: integrate → re-verify → cleanup.
+    expect_host_calls:
+      - { handler: host.run }   # the chain fires all three host.run stages
+
+expect_terminal: true
+expect_no_errors: true

@@ -1,9 +1,9 @@
 // Package host — host.inbox.add — always-on local notification sink.
 //
-// Implements the bare `inbox` op from the dev-story implementation
-// contract.  `host.inbox.add` is **always-on**: even in pure-
-// autonomous mode with no TUI attached, the call must persist a
-// notification so a `--continue` reattach sees it.
+// Implements the bare `inbox` op (see docs/architecture/hosts.md).
+// `host.inbox.add` is **always-on**: even in pure-autonomous mode with
+// no TUI attached, the call must persist a notification so a
+// `--continue` reattach sees it.
 //
 // The handler accepts an `InboxAdder` injected via context.  When the
 // orchestrator wires the inbox in production it installs a real

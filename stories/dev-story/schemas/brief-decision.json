@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "brief_decision",
+  "description": "The brief sanity-check judge's verdict. continue ⇒ the brief has enough signal to proceed; clarify ⇒ it needs work, and `questions` lists the specific gaps for the operator to address in the brief on disk.",
+  "type": "object",
+  "required": ["verdict", "reason", "questions"],
+  "properties": {
+    "verdict": { "type": "string", "enum": ["continue", "clarify"], "description": "continue ⇒ proceed to the overlap check; clarify ⇒ the operator should revise 001-brief.md." },
+    "reason":  { "type": "string", "minLength": 4, "description": "One line: why this verdict." },
+    "questions": {
+      "type": "array",
+      "description": "Specific clarifying questions when verdict is clarify; empty when continue.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

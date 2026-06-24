@@ -1,0 +1,80 @@
+# product-site-localization — maintain the VitePress product site's locale
+# overlays. The agent writes only localized site copy; the story validates with
+# the deterministic site build before the operator accepts the work.
+
+app:
+  id: product-site-localization
+  version: 0.1.0
+  title: "Product site localization"
+  author: "kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.agent.task
+  - host.run
+
+agents:
+  translator:
+    system_prompt: "You localize the kitsoki product site. Preserve technical identifiers such as YAML, LLM, state machine, trace, cassette, app.yaml, and host names unless the target language naturally keeps them in English. Only edit files under tools/site/i18n/ and locale-prefixed tools/site/src/ pages for the requested locale."
+    tools: [Read, Grep, Glob, Edit, Write]
+    external_side_effect: false
+
+world:
+  locale:            { type: string, default: "" }   # th | ja | en
+  target_kind:       { type: string, default: "" }   # feature | static
+  target_id:         { type: string, default: "" }   # feature id or page path
+  source_path:       { type: string, default: "" }
+  output_path:       { type: string, default: "" }
+  notes:             { type: string, default: "" }
+  refine_feedback:   { type: string, default: "" }
+  translation_artifact: { type: object, default: {} }
+  validation_ok:     { type: bool, default: false }
+  validation_log:    { type: string, default: "" }
+  cycle:             { type: int, default: 0 }
+  last_error:        { type: string, default: "" }
+  status:            { type: string, default: "" }
+
+intents:
+  start:
+    description: "Localize or refresh one site target."
+    examples: ["translate complete-product-tour to Thai", "localize the home page to Japanese", "start"]
+    priority: 80
+    slots:
+      locale:
+        type: string
+        required: true
+        description: "Target locale: th, ja, or en."
+      target_kind:
+        type: string
+        required: true
+        description: "feature or static."
+      target_id:
+        type: string
+        required: true
+        description: "Feature id, or a static page path such as index."
+      notes:
+        type: string
+        required: false
+  accept:
+    description: "Accept the localized output."
+    examples: ["accept", "looks good", "ship it"]
+    priority: 85
+  refine:
+    description: "Revise the localized output with feedback."
+    examples: ["refine feedback=more formal", "revise this wording"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: true }
+  quit:
+    description: "Abandon the localization pass."
+    examples: ["quit", "abort"]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "refresh", "?"]
+    priority: 10
+
+root: idle
+
+include:
+  - rooms/*.yaml

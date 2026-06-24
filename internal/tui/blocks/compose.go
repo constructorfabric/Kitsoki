@@ -26,7 +26,8 @@ import "strings"
 //	footer (1-2 lines)
 //	prompt
 //
-// Block separation is one blank line, matching the proposal's sketches.
+// Block separation is one blank line, matching the chat-view layout in
+// docs/tui/README.md ("Blocks: the unit of rendering").
 func (r *Renderer) RenderChatView(f ChatFixture) string {
 	var parts []string
 	parts = append(parts, r.Header(f.Location, f.Room))

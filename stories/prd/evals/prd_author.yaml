@@ -1,0 +1,52 @@
+# Traceability:
+# - Source call site: stories/prd/rooms/drafting.yaml, host.agent.task id `prd_author`.
+# - Prompt: stories/prd/prompts/draft_prd.md.
+# - Schema: stories/prd/schemas/prd_artifact.json via acceptance loop.
+# - Purpose: generate a PRD artifact from a clarified brief and references.
+kind: agent_eval
+app: ../app.yaml
+call: prd_author
+agent: author
+
+task:
+  goal: "Draft a PRD artifact from an idea, clarifications, and references."
+  boundedness:
+    max_turns: 1
+    tool_policy: write-artifact
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.90
+    max_p95_latency_ms: 12000
+    max_avg_cost_usd: 0.004
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [sonnet, opus]
+    synthetic-claude: [syn:large:text]
+    synthetic-codex: [syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [medium]
+  repeat: 3
+
+comparator:
+  kind: field_subset
+
+examples:
+  - name: incident-handoff-prd
+    args:
+      idea: "Create a handoff dashboard for active incidents."
+      clarification_log: "Users are on-call engineers. Show severity, owner, current hypothesis, blocker, and next action."
+      references:
+        items:
+          - path: "docs/architecture/ambient-mining.md"
+            rationale: "Shows how prioritized operational signals surface."
+      output_path: ".artifacts/prd/incident-handoff/004-prd.md"
+      publish_durable_path: "docs/prd"
+    expect:
+      title: "Incident Handoff Dashboard"
+      summary_markdown: "## Problem\n\nOn-call engineers need a concise incident handoff surface that shows severity, owner, current hypothesis, blocker, and next action before they take over.\n\n## Requirements\n\nThe dashboard must show active incidents, ownership, severity, current blocker, next action, and stale handoff warnings. It must support review during shift change and avoid hiding unresolved risks."
+      file_path: ".artifacts/prd/incident-handoff/004-prd.md"
+      confidence: 0.86
+      needs_clarification: false
+      follow_up_questions: []

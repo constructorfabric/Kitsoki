@@ -1,0 +1,45 @@
+# lint_rejects_missing_dep — lint finds a dangling dep → @exit:needs-human, specific last_error.
+#
+# The decomposer returns a manifest where slice-1 references slice-0 in its deps,
+# but slice-0 does not exist. The lint script mock returns route:"fail" with a
+# specific error naming the offending brief and the unknown dep.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      decomposer:
+        data:
+          submitted:
+            briefs:
+              - id: slice-1
+                brief: "Implement slice 1 so that go test ./... passes."
+                gate_command: "go test ./..."
+                deps: [slice-0]   # dangling: slice-0 does not exist
+  host.run:
+    by_call:
+      lint:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            route: "fail"
+            error: "brief 'slice-1' has dep 'slice-0' which is not a known brief id"
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: __exit__needs-human
+    expect_world:
+      last_error: "brief 'slice-1' has dep 'slice-0' which is not a known brief id"
+
+expect_terminal: true
+expect_no_errors: true

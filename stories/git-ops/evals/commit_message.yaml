@@ -1,0 +1,58 @@
+# Traceability:
+# - Source call site: stories/git-ops/rooms/commit.yaml, host.agent.decide id `author_commit_message`.
+# - Prompt: stories/git-ops/prompts/commit_message.md.
+# - Schema: stories/git-ops/schemas/commit_verdict.json.
+# - Purpose: author conventional commit messages from staged diff summaries.
+kind: agent_eval
+app: ../app.yaml
+call: author_commit_message
+
+task:
+  goal: "Generate a conventional commit message for a staged diff."
+  boundedness:
+    max_turns: 1
+    tool_policy: none
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.98
+    max_p95_latency_ms: 4000
+    max_avg_cost_usd: 0.0008
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low]
+  repeat: 5
+
+comparator:
+  kind: field_subset
+
+examples:
+  - name: docs-update-message
+    args:
+      staged_diff_stat: "docs/architecture/harness-profiles.md | 12 +++++++++---"
+      current_branch: "docs/harness-profile-note"
+      refactor_mode: false
+      squash_mode: false
+      integration_branch: "main"
+    expect:
+      type: docs
+      scope: null
+      summary: "document harness profile selection"
+      message: "docs: document harness profile selection"
+  - name: test-update-message
+    args:
+      staged_diff_stat: "tools/session-mining/tests/test_eval_pilot_report.py | 16 ++++++++++++++++"
+      current_branch: "model-harness-pilot"
+      refactor_mode: false
+      squash_mode: false
+      integration_branch: "main"
+    expect:
+      type: test
+      scope: null
+      summary: "cover eval pilot report aggregation"
+      message: "test: cover eval pilot report aggregation"

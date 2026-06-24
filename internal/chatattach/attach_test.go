@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -278,7 +279,7 @@ func TestRun_HappyPath_SpawnsAndFlipsToBackground(t *testing.T) {
 // callback (claude crash, tmux session vanished mid-attach) is
 // returned to the caller verbatim. The row still flips to
 // pty_background — chatattach treats the row state as orthogonal to
-// the attach exit code, matching the proposal §10 recovery semantics.
+// the attach exit code, described in docs/architecture/overview.md (persistence and recovery).
 func TestRun_RunTmuxErrorPropagates(t *testing.T) {
 	setupEnv(t)
 	chatattach.HeartbeatInterval = 10 * time.Millisecond
@@ -405,6 +406,115 @@ func TestRun_ChatBusyReturnsErrChatBusy(t *testing.T) {
 	}
 	if called {
 		t.Error("runTmux must not run when the lock is busy")
+	}
+}
+
+// TestRun_HeartbeatSurvivesContextCancel is the regression for the
+// stale-lock bug: the heartbeat goroutine must NOT share the context the
+// caller passes to Run. The CLI attach path derives that context from
+// SIGINT, so an interrupted attach cancels it while runTmux is still
+// blocking inside tmux. If the heartbeat rode that context it would stop
+// the instant the user hit Ctrl-C, letting the lock's heartbeat_at go
+// stale even though the tmux session (and thus the lock) is still live.
+//
+// We hold runTmux open past a ctx cancellation and assert heartbeat_at
+// keeps advancing during the window between cancel and release.
+func TestRun_HeartbeatSurvivesContextCancel(t *testing.T) {
+	setupEnv(t)
+	chatattach.HeartbeatInterval = 5 * time.Millisecond
+	defer func() { chatattach.HeartbeatInterval = 5 * time.Second }()
+
+	// Open the DB directly so we can poll chat_locks.heartbeat_at.
+	dbPath := filepath.Join(t.TempDir(), "sessions.db")
+	s, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	cs, err := chats.NewStore(s.DB())
+	if err != nil {
+		t.Fatalf("chats.NewStore: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	chat, _ := cs.Create(context.Background(), "bugfix", "live", "", "x")
+
+	readHeartbeat := func() int64 {
+		var hb int64
+		if err := s.DB().QueryRow(
+			`SELECT heartbeat_at FROM chat_locks WHERE chat_id = ?`, chat.ID,
+		).Scan(&hb); err != nil {
+			t.Fatalf("read heartbeat_at: %v", err)
+		}
+		return hb
+	}
+
+	// runTmux signals once it's running, then blocks until released.
+	running := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+
+	var runErr error
+	done := make(chan struct{})
+	go func() {
+		runErr = chatattach.Run(ctx, chatattach.Options{
+			ChatID:    chat.ID,
+			Store:     cs,
+			Tmux:      newTmuxClient(t),
+			Workspace: t.TempDir(),
+		}, func(_ string) error {
+			once.Do(func() { close(running) })
+			<-release
+			return nil
+		})
+		close(done)
+	}()
+
+	// Wait until we're inside the lock + runTmux.
+	select {
+	case <-running:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runTmux never started")
+	}
+
+	// Simulate the interrupted CLI attach: cancel the caller's context
+	// while runTmux is still blocking.
+	cancel()
+
+	// Let several heartbeat intervals elapse post-cancel, then confirm
+	// the heartbeat is still advancing. With the bug (heartbeat on the
+	// caller's ctx) it would have stopped at cancel().
+	before := readHeartbeat()
+	deadline := time.After(500 * time.Millisecond)
+	advanced := false
+	for !advanced {
+		select {
+		case <-deadline:
+			t.Fatalf("heartbeat_at did not advance after context cancel (stuck at %d) — heartbeat stopped with the caller's ctx", before)
+		default:
+		}
+		if readHeartbeat() > before {
+			advanced = true
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Genuine release: runTmux returns, heartbeat must stop.
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after release")
+	}
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+
+	// After release the lock is gone; further heartbeats are impossible.
+	var n int
+	_ = s.DB().QueryRow(`SELECT COUNT(*) FROM chat_locks WHERE chat_id = ?`, chat.ID).Scan(&n)
+	if n != 0 {
+		t.Errorf("lock row should be released after Run returns, found %d", n)
 	}
 }
 

@@ -31,17 +31,17 @@ var storyBugReporterPrompt string
 // agreement, not enforcement); the only side effect is the markdown
 // file the CLI subcommand writes.
 //
-// The "host.bugs.create" abstraction from the meta-mode proposal §1
-// is realised as this CLI subcommand rather than a kitsoki-internal
-// MCP tool — same observable behaviour, far smaller surface to
-// wire up.
+// The bug-filing capability is realised as the `kitsoki bug create`
+// CLI subcommand rather than a kitsoki-internal MCP tool — same
+// observable behaviour, far smaller surface to wire up. The bug pile
+// format and the create command are described in docs/stories/bugs.md.
 //
 // No DefaultCwd — story bugs are filed under the running app's
 // directory, which is already the harness's cwd when this agent
 // runs (the metamode adapter chooses cwd from the app context).
 func storyBugReporter() Agent {
 	return Agent{
-		Name:         "story-bug-reporter",
+		Name:         NameStoryBugReporter,
 		SystemPrompt: storyBugReporterPrompt,
 		Model:        "",
 		Tools: []string{

@@ -1,0 +1,121 @@
+# undo — undo the last commit.
+#
+# Shows last commit summary; offers --mixed (default), --soft, --hard.
+# --hard requires explicit confirmation interstitial.
+
+states:
+
+  undo:
+    description: "Undo the last commit. Default is --mixed (unstage changes). --hard requires confirmation."
+    relevant_world: [current_branch, undo_mode, last_op_output, last_op_ok]
+    view:
+      - kv:
+          pairs:
+            Branch:        '{{ world.current_branch|default:"(unknown)" }}'
+            "Last commit": '{{ world.last_op_output|default:"(loading…)" }}'
+      - heading: "Confirm --hard reset"
+        when: "world.last_op_outcome == 'confirm_hard'"
+      - prose: "WARNING: --hard reset will discard ALL changes in the working tree and index. This cannot be undone. Type hard_reset_confirm to proceed."
+        when: "world.last_op_outcome == 'confirm_hard'"
+      - prose: "Reset failed: {{ world.last_op_output }}"
+        when: "world.last_op_ok == false && world.last_op_outcome != 'confirm_hard'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "mixed_reset"
+              hint:  "git reset HEAD~1 --mixed (unstage changes, default)"
+              intent: mixed_reset
+            - label: "soft_reset"
+              hint:  "git reset HEAD~1 --soft (keep changes staged)"
+              intent: soft_reset
+            - label: "hard_reset"
+              hint:  "git reset HEAD~1 --hard (discard ALL changes — requires confirmation)"
+              intent: hard_reset
+            - label: "hard_reset_confirm"
+              hint:  "confirm destructive --hard reset"
+              intent: hard_reset_confirm
+              when:  "world.last_op_outcome == 'confirm_hard'"
+            - label: "back"
+              hint:  "return to hub without undoing"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        once: true
+        id: last_commit_summary
+        with:
+          cmd: git
+          args:
+            - "log"
+            - "-1"
+            - "--oneline"
+            - "--no-color"
+          cwd: "{{ world.working_dir }}"
+        bind:
+          last_op_output: stdout
+        on_error: undo
+    on:
+      mixed_reset:
+        - target: .
+          effects:
+            - invoke: host.run
+              id: reset_mixed
+              with:
+                cmd: git
+                args: ["reset", "HEAD~1", "--mixed"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: undo
+            - when: "world.last_op_ok == true"
+              emit_intent: undo_done
+      soft_reset:
+        - target: .
+          effects:
+            - invoke: host.run
+              id: reset_soft
+              with:
+                cmd: git
+                args: ["reset", "HEAD~1", "--soft"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: undo
+            - when: "world.last_op_ok == true"
+              emit_intent: undo_done
+      hard_reset:
+        - target: .
+          effects:
+            - set:
+                last_op_outcome: "confirm_hard"
+      hard_reset_confirm:
+        - target: .
+          effects:
+            - invoke: host.run
+              id: reset_hard
+              with:
+                cmd: git
+                args: ["reset", "HEAD~1", "--hard"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: undo
+            - set:
+                last_op_outcome: ""
+            - when: "world.last_op_ok == true"
+              emit_intent: undo_done
+      undo_done:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

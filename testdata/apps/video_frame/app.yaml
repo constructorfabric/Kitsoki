@@ -1,0 +1,88 @@
+# video_frame — smoke app for the mockup-video-studio video frame seam (slice 1).
+#
+# A single deterministic chain proving the seam end-to-end with NO ffmpeg/LLM:
+#   intro --start--> produce
+#   produce.on_enter:
+#     host.slidey.render (STUBBED) renders the deck   → video_path
+#     host.video.frame   (STUBBED) grabs a still      → frame_path
+#     host.artifacts_dir (STUBBED) registers the still → frame_handle
+#
+# The flow fixture (flows/render_then_frame.yaml) stubs each host verb to a
+# fixed Result, so the chain runs offline and asserts the bound handle.
+app:
+  id: video-frame-smoke
+  version: 0.1.0
+  title: "Video frame seam smoke"
+  author: "Kitsoki sample"
+
+hosts:
+  - host.slidey.render
+  - host.video.frame
+  - host.artifacts_dir
+
+world:
+  video_path:   { type: string, default: "" }
+  frame_path:   { type: string, default: "" }
+  frame_handle: { type: string, default: "" }
+  flag_t_ms:    { type: int,    default: 14300 }
+
+intents:
+  start:
+    description: "Render the deck and grab a flagged frame."
+    examples: ["start", "go", "render"]
+    priority: 90
+
+root: intro
+
+states:
+
+  intro:
+    description: "Entry point. `start` kicks off render → grab → register."
+    view:
+      - prose: "Press start to render the deck and grab a frame."
+      - list:
+          items:
+            - label: "start"
+              hint:  "render the deck, then grab a flagged frame"
+    on:
+      start:
+        - target: produce
+
+  produce:
+    description: "Render (stub), grab the flagged still (stub), register it (stub)."
+    relevant_world: [video_path, frame_path, frame_handle, flag_t_ms]
+    terminal: true
+    view:
+      - kv:
+          pairs:
+            Video:  "{{ world.video_path }}"
+            Frame:  "{{ world.frame_path }}"
+            Handle: "{{ world.frame_handle }}"
+      - prose: "Done — flagged frame grabbed and registered."
+    on_enter:
+      - invoke: host.slidey.render
+        once: true
+        with:
+          spec_path: "spec/deck.json"
+          format:    mp4
+        bind:
+          video_path: path
+
+      - invoke: host.video.frame
+        once: true
+        with:
+          video: "{{ world.video_path }}"
+          t_ms:  "{{ world.flag_t_ms }}"
+        bind:
+          frame_path: path
+
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          thread:   "video-frame-smoke"
+          src_path: "{{ world.frame_path }}"
+          kind:     image
+          mime:     "image/png"
+          label:    "flagged frame"
+        bind:
+          frame_handle: handle

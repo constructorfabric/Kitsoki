@@ -13,6 +13,7 @@ routing:
   cache_trim_fraction: 0.25
   revalidate_strikes: 5
   confidence_decay: true
+  extract_llm_on_no_match: true
 
 root: start
 

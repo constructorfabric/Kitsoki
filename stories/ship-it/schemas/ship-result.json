@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ship-result",
+  "description": "The terminal read-out of a ship-it run: shipped (with the merged sha) or needs-human (with the real error).",
+  "type": "object",
+  "properties": {
+    "status":      { "type": "string", "enum": ["shipped", "needs-human"], "description": "The exit disposition." },
+    "brief":       { "type": "string", "description": "The scoped task that was delivered." },
+    "shipped_sha": { "type": "string", "description": "The merged commit on main (set only when status=shipped)." },
+    "last_error":  { "type": "string", "description": "The real failure (set only when status=needs-human) — never a swallowed false success." }
+  },
+  "required": ["status"],
+  "additionalProperties": true
+}

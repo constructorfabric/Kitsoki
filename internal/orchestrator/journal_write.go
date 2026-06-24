@@ -1,7 +1,13 @@
-// Package orchestrator — dual-write helpers for continue-mode §4.9 Rule 1.
+// Package orchestrator — dual-write helpers for continue-mode (journal +
+// event store written together so a resumed session sees both).
 //
-// Every site that calls store.AppendEvents is migrated to
-// store.AppendEventsAndJournal.  This file contains:
+// Wave 2a: every site that previously called store.AppendEventsAndJournal is
+// migrated to appendEventsAndJournal, which routes event writes through an
+// EventSink (store.NewStoreSinkAdapter for the wave-2a SQLite backend) and
+// journal writes through appendJournal (journalWriter, if wired).  This file
+// contains:
+//   - appendEventsAndJournal: the wave-2a write helper; replaces direct
+//     o.store.AppendEventsAndJournal call sites.
 //   - journalEntriesForEvents: walks a []store.Event and returns the matching
 //     []journal.Entry batch (world.patch, state.transition, host.*, typed).
 //   - standalone journal-write helpers for post-commit / no-events paths
@@ -9,19 +15,131 @@
 package orchestrator
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/intent"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/store"
+	"kitsoki/internal/trace"
 	"kitsoki/internal/world"
 )
+
+// appendEventsAndJournal is the wave-2a replacement for every
+// o.store.AppendEventsAndJournal call site.  Event writes go through a
+// StoreSinkAdapter (wrapping the SQLite store) via AppendBatch; journal
+// writes go through o.appendJournal (the journalWriter, if wired).
+//
+// Wave 3-entry dual-write: when o.eventSink is non-nil (e.g. a *store.JSONLSink
+// wired via WithEventSink), events are appended to BOTH the JSONL sink AND the
+// SQLite store.  This keeps the SQLite store current so other subcommands
+// (session show, session list, attach-session resume) continue to work against
+// it until phase B removes SQLite event storage entirely.  The JSONL sink is
+// the authoritative future path; the SQLite write is the backward-compat bridge.
+//
+// Journal writes proceed through o.appendJournal as before.
+//
+// When o.store is nil AND o.eventSink is nil (nil-store test scaffolds),
+// the call is a no-op.
+func (o *Orchestrator) appendEventsAndJournal(sid app.SessionID, events []store.Event, jEntries []journal.Entry) error {
+	if o.eventSink != nil {
+		// JSONL dual-write path: append each event to the JSONL sink.
+		// The SQLite write follows below so all subcommands stay consistent.
+		for _, ev := range events {
+			// A SinkFlushed event was already written to the sink live (before
+			// a blocking host invoke — see dispatchHostCalls). Re-appending it
+			// here would duplicate the JSONL line, so skip the sink write; it
+			// still falls through to the SQLite write below.
+			if ev.SinkFlushed {
+				continue
+			}
+			if err := o.eventSink.Append(ev); err != nil {
+				return err
+			}
+		}
+	}
+	if o.store != nil {
+		adapter := store.NewStoreSinkAdapter(o.store, sid)
+		if err := adapter.AppendBatch(events); err != nil {
+			return err
+		}
+	}
+	for _, e := range jEntries {
+		o.appendJournal(e)
+	}
+	return nil
+}
+
+// journalTurnError records a turn that aborted because o.machine.Turn
+// returned an error — e.g. an effect's `set:` / `when:` expression failed
+// to compile or evaluate. Such a fault used to propagate to the caller
+// with NO trace written: the session JSONL kept only the last good turn,
+// so a TUI bounce-to-idle was impossible to diagnose from the trace.
+//
+// It writes a self-contained TurnStarted → MachineError → TurnEnded
+// (outcome:"error") store-event sequence so the failure shows up in the
+// session trace exactly where it happened, and mirrors the error to the
+// slog trace logger (the KITSOKI_TRACE_FILE sink). Best-effort: a sink
+// append failure is logged, never returned — the original machine error
+// must still propagate to the caller unchanged.
+func (o *Orchestrator) journalTurnError(
+	ctx context.Context,
+	tl *trace.TurnLogger,
+	sid app.SessionID,
+	turnNum app.TurnNumber,
+	state app.StatePath,
+	call intent.IntentCall,
+	w world.World,
+	cause error,
+) {
+	if tl != nil {
+		tl.Warn(ctx, trace.EvTurnError,
+			slog.String("intent", call.Intent),
+			slog.String("state", string(state)),
+			slog.String("error", cause.Error()),
+		)
+	}
+
+	errEvents := []store.Event{
+		newOrchestratorEvent(store.TurnStarted, map[string]any{
+			"turn":  int64(turnNum),
+			"input": "[intent] " + call.Intent,
+		}, turnNum),
+		newOrchestratorEvent(store.MachineError, map[string]any{
+			"intent": call.Intent,
+			"slots":  slotsToMap(call.Slots),
+			"state":  string(state),
+			"error":  cause.Error(),
+		}, turnNum),
+		newOrchestratorEvent(store.TurnEnded, map[string]any{
+			"outcome": "error",
+			"error":   cause.Error(),
+		}, turnNum),
+	}
+	for i := range errEvents {
+		errEvents[i].Turn = turnNum
+	}
+	stampStatePathPerEvent(errEvents)
+	stampStatePath(errEvents, state, o.InitialState())
+
+	jEntries := journalEntriesForEvents(sid, turnNum, time.Now(), errEvents,
+		w, w, "", state, call.Intent)
+	if appendErr := o.appendEventsAndJournal(sid, errEvents, jEntries); appendErr != nil {
+		o.logger.WarnContext(ctx, "orchestrator: failed to journal turn error",
+			slog.String("session_id", string(sid)),
+			slog.String("append_error", appendErr.Error()),
+			slog.String("cause", cause.Error()),
+		)
+	}
+}
 
 // journalEntriesForEvents builds the journal.Entry batch that accompanies a
 // []store.Event batch being written via AppendEventsAndJournal.
 //
-// Rules (per continue-mode proposal §2.2 and call-sites notes):
+// Rules (which events earn a dedicated journal entry):
 //   - TurnStarted, IntentAccepted, StateExited, StateEntered, LLMToolCall,
 //     JobSubmitted, JobCompleted → no dedicated journal entry (covered by
 //     state.transition / world.patch summaries or out of scope).
@@ -94,7 +212,16 @@ func journalEntriesForEvents(
 				To     string `json:"to"`
 				Intent string `json:"intent"`
 			}
-			_ = json.Unmarshal(ev.Payload, &p)
+			if err := json.Unmarshal(ev.Payload, &p); err != nil {
+				// A malformed TransitionApplied payload would silently zero
+				// from/to/intent in the state.transition journal entry, making
+				// replay/inspection misleading. Surface it rather than discard.
+				slog.Default().Error("orchestrator: journal: unmarshal TransitionApplied payload",
+					slog.String("session_id", string(sid)),
+					slog.Int("turn", int(turnNum)),
+					slog.String("err", err.Error()),
+				)
+			}
 			e := newEntry(journal.KindStateTransition, "state", map[string]any{
 				"from":   p.From,
 				"to":     p.To,
@@ -217,10 +344,12 @@ func journalEntriesForEvents(
 		entries = append(entries, e)
 	}
 
-	// Emit view.rendered on TurnEnded.
+	// Emit view.rendered on TurnEnded. The view is recorded with presentation
+	// ANSI stripped (sentinels preserved) so the journal entry is deterministic
+	// across color profiles — see recordedView.
 	if hasTurnEnded {
 		vrBody, _ := json.Marshal(map[string]any{
-			"view_text":  viewText,
+			"view_text":  recordedView(viewText),
 			"state_path": string(currentStatePath),
 			"user_input": userInput,
 		})

@@ -1,0 +1,5 @@
+inputs:
+  severity_floor:  { type: string, required: true }
+
+outputs:
+  findings: { type: object }

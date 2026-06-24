@@ -1,0 +1,63 @@
+# Example .kitsoki.local.yaml — your personal, gitignored override.
+#
+#   cp .kitsoki.local.yaml.example .kitsoki.local.yaml
+#   export SYNTHETIC_API_KEY=sk-...      # in your shell / profile / .envrc
+#   kitsoki web --stories-dir stories    # then pick the provider in the header
+#   # …or in the TUI:  /provider synthetic-claude  ·  /model 2
+#
+# Load deep-merges this file on top of the checked-in `.kitsoki.yaml`, LOCAL
+# WINS. Keys you omit fall through to the shared baseline; keys you set override
+# it. harness_profiles merge BY NAME — a profile here is added if new, or
+# replaces the shared profile of the same name WHOLE (restate every field you
+# want; you never have to restate the OTHER profiles). story_dirs and
+# default_profile, if set here, replace the baseline's.
+#
+# Why these profiles live here and not in the shared file: their env values use
+# ${VAR} interpolation against the process environment, and an unset var is a
+# hard load error — so a teammate without your SYNTHETIC_API_KEY would be unable
+# to load a shared file that declared them. Your key is never written into this
+# file, and is never recorded in any trace.
+
+# Point new sessions at one of the profiles below by default (optional).
+# default_profile: synthetic-claude
+
+harness_profiles:
+  # claude-code pointed at synthetic.new (Anthropic-compatible endpoint).
+  # claude-code appends /v1/messages, so the base URL omits /v1.
+  # models_endpoint pulls the FULL always-on model list at selection time, so you
+  # get every synthetic model — beyond this static hf: fallback. `model` seeds the
+  # default; `models` is a static fallback if the endpoint can't be reached.
+  synthetic-claude:
+    backend: claude
+    model: hf:zai-org/GLM-5.2
+    models: [hf:zai-org/GLM-5.2]
+    models_endpoint: https://api.synthetic.new/openai/v1/models
+    env:
+      ANTHROPIC_BASE_URL: https://api.synthetic.new/anthropic
+      ANTHROPIC_AUTH_TOKEN: "${SYNTHETIC_API_KEY}"
+
+  # The codex CLI pointed at synthetic.new (OpenAI-compatible endpoint).
+  # NOTE: codex ignores OPENAI_BASE_URL/OPENAI_API_KEY when you are logged into a
+  # ChatGPT account — to actually reach synthetic you must ALSO declare a
+  # [model_providers.synthetic] block in ~/.codex/config.toml and select it.
+  # env alone is not enough. (codex-native below needs none of this.)
+  synthetic-codex:
+    backend: codex
+    model: hf:zai-org/GLM-5.2
+    models: [hf:zai-org/GLM-5.2]
+    models_endpoint: https://api.synthetic.new/openai/v1/models
+    env:
+      OPENAI_BASE_URL: https://api.synthetic.new/openai/v1
+      OPENAI_API_KEY: "${SYNTHETIC_API_KEY}"
+
+  # codex with its own config/auth (no retarget). codex has a model selector;
+  # reasoning effort for codex is not wired (it ignores --effort), so no efforts.
+  codex-native:
+    backend: codex
+    model: gpt-5-codex
+    models: [gpt-5-codex, gpt-5]
+
+  # A local llama.cpp model via the builtin plugin (no backend CLI forked).
+  llama-local:
+    plugin: builtin.local_llm
+    model: h200/gpt-oss-120b

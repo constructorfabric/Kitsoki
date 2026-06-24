@@ -1,0 +1,54 @@
+# integrate_uncommitted — the owning worktree has uncommitted/untracked work.
+# integrate REFUSES to land an empty/partial shell: outcome="uncommitted",
+# stays in integrate so the refusal view + last_error render, last_op_ok false.
+#
+# The flow stubs the integrate script; the REAL lost-work signal (git status
+# --porcelain detecting an untracked dir) is proven against a real repo by
+# stories/git-ops/tests/integrate_uncommitted_guard.sh.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feature/x
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feature/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      2
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+      integrate_exec:
+        data:
+          ok:        false
+          exit_code: 0
+          stdout_json:
+            outcome:        uncommitted
+            integrated_sha: ""
+            last_op_ok:     false
+            last_error:     "refusing to integrate: the worktree ../wt has uncommitted work — it was never committed, so integrating would land an empty or partial shell. Commit it on the branch first:\n?? stories/deliver/app.yaml"
+
+turns:
+  - intent: { name: integrate, slots: {} }
+    # Uncommitted work STAYS in integrate so the refusal view renders; it never
+    # reports integrated.
+    expect_state: integrate
+    expect_world:
+      integrate_outcome: uncommitted
+      last_op_ok:        false
+      integrated_sha:    ""
+
+expect_no_errors: true

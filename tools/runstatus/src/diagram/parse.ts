@@ -31,6 +31,15 @@ export interface Room {
   phaseId: string;
   /** Distance from Start along forward edges (Infinity if unreachable). */
   distance: number;
+  /**
+   * Declared phase banner (e.g. "INTAKE", "SEARCHING"), recovered from a
+   * `%% banner <label> <text>` comment the web viz path emits for rooms whose
+   * state declares a static banner view element. Undefined when the room has
+   * no declared banner (or its banner text is templated). This is declared
+   * graph metadata, not a trace event — render it as projection, never as
+   * traveled truth.
+   */
+  banner?: string;
 }
 
 export interface Edge {
@@ -123,6 +132,16 @@ export function parseDiagram(source: string): Diagram {
   let currentPhase: Phase | null = null;
   let startId: string | null = null;
 
+  // Pre-scan banner side-channel comments (`%% banner <state-label> <text>`)
+  // before the main loop strips comments. Keyed by the same label we set as
+  // room.label, so rooms pick theirs up by exact label match below.
+  const bannerByLabel = new Map<string, string>();
+  const BANNER_RE = /^\s*%%\s*banner\s+(\S+)\s+(.+?)\s*$/;
+  for (const rawLine of lines) {
+    const bm = rawLine.match(BANNER_RE);
+    if (bm) bannerByLabel.set(bm[1]!, bm[2]!);
+  }
+
   for (const rawLine of lines) {
     const line = rawLine.replace(/%%.*$/, ""); // strip trailing comments
     if (!line.trim()) continue;
@@ -185,6 +204,7 @@ export function parseDiagram(source: string): Diagram {
         label,
         phaseId: currentPhase.id,
         distance: Infinity,
+        banner: bannerByLabel.get(label),
       };
       currentPhase.rooms.push(room);
       roomById.set(id, room);

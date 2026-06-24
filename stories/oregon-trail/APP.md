@@ -9,7 +9,7 @@
 - Rooms: 114
 - Intents: 71
 - World variables: 100
-- Host allow-list: `host.run`, `host.jobs.answer_clarification`, `host.oracle.decide`, `host.oracle.ask`, `host.oracle.converse`, `host.chat.resolve`, `host.chat.list`, `host.chat.transcript`, `host.chat.create`, `host.chat.fork`, `host.chat.archive`, `host.chat.rename`, `host.chat.suggest_title`, `host.chat.resolve_ref`, `host.transport.post`, `host.run.announce`, `host.run.close`
+- Host allow-list: `host.run`, `host.jobs.answer_clarification`, `host.agent.decide`, `host.agent.ask`, `host.agent.converse`, `host.chat.resolve`, `host.chat.list`, `host.chat.transcript`, `host.chat.create`, `host.chat.fork`, `host.chat.archive`, `host.chat.rename`, `host.chat.suggest_title`, `host.chat.resolve_ref`, `host.transport.post`, `host.run.announce`, `host.run.close`
 
 ## State Diagram
 
@@ -1700,7 +1700,7 @@ A masked rider blocks the trail.
 
 **On enter**:
 
-1. invoke `host.run.announce` with `cmd = "true # bandit shows up, threat={{ world.frontier__bandits__threat_level }}"`, `prompt = "/home/cloud-user/code/kitsoki/.worktrees/oracle-split/stories/robbery/prompts/encounter_intro.md"`
+1. invoke `host.run.announce` with `cmd = "true # bandit shows up, threat={{ world.frontier__bandits__threat_level }}"`, `prompt = "/home/cloud-user/code/kitsoki/.worktrees/agent-split/stories/robbery/prompts/encounter_intro.md"`
 
 **Transitions**:
 
@@ -1721,7 +1721,7 @@ A scout rides ahead to look the trail over.
 
 **On enter**:
 
-1. invoke `host.run.announce` with `cmd = "true # trail-flavoured scouting"`, `prompt = "/home/cloud-user/code/kitsoki/.worktrees/oracle-split/stories/oregon-trail/prompts/scout_brief_trail.md"`
+1. invoke `host.run.announce` with `cmd = "true # trail-flavoured scouting"`, `prompt = "/home/cloud-user/code/kitsoki/.worktrees/agent-split/stories/oregon-trail/prompts/scout_brief_trail.md"`
 
 **Transitions**:
 
@@ -1946,7 +1946,7 @@ Name your wagon party of five.
 | 2 | [`continue`](#intent-continue) | `world.party_names != ''` | [`intro_summary`](#room-intro-summary) |  |
 | 3 | [`continue`](#intent-continue) | `world.party_member_1 != ''` | [`intro_summary`](#room-intro-summary) | set `party_names = "{{ world.party_member_1 }},{{ world.party_member_2 }},{{ world.party_member_3 }},{{ world.party_member_4 }},{{ world.party_member_5 }}"` |
 | 4 | [`continue`](#intent-continue) | _default_ | [`intro_party_names`](#room-intro-party-names) | _hint: Name at least the leader (member 1) before continuing._ · say "Name at least the leader (member 1) before you continue." |
-| 5 | [`generate_names`](#intent-generate-names) | `world.narration` | [`intro_party_names`](#room-intro-party-names) | invoke `host.oracle.decide` with `agent = "party_namer"`, `args = map[theme:{{ slots.theme }}]`, `prompt = "prompts/name_party.md"`, `schema = "mcp/party_names.json"`, bind `party_member_1 ← submitted.names[0]`, `party_member_2 ← submitted.names[1]`, `party_member_3 ← submitted.names[2]`, `party_member_4 ← submitted.names[3]`, `party_member_5 ← submitted.names[4]`, `party_names ← {{ join(result.submitted.names, ',') }}`, `party_names_list ← submitted.names`, on_error → `intro_party_names` · say "Named the wagon party from theme: {{ slots.theme }}." |
+| 5 | [`generate_names`](#intent-generate-names) | `world.narration` | [`intro_party_names`](#room-intro-party-names) | invoke `host.agent.decide` with `agent = "party_namer"`, `args = map[theme:{{ slots.theme }}]`, `prompt = "prompts/name_party.md"`, `schema = "mcp/party_names.json"`, bind `party_member_1 ← submitted.names[0]`, `party_member_2 ← submitted.names[1]`, `party_member_3 ← submitted.names[2]`, `party_member_4 ← submitted.names[3]`, `party_member_5 ← submitted.names[4]`, `party_names ← {{ join(result.submitted.names, ',') }}`, `party_names_list ← submitted.names`, on_error → `intro_party_names` · say "Named the wagon party from theme: {{ slots.theme }}." |
 | 6 | [`generate_names`](#intent-generate-names) | _default_ | [`intro_party_names`](#room-intro-party-names) | set `party_names = "{{ hasPrefix(lower(slots.theme), \"west\") ? \"Hank,Jesse,Mary,Ezra,Sarah\" : (hasPrefix(lower(slots.theme), \"star wars\") ? \"Luke,Leia,Han,Chewie,Yoda\" : (hasPrefix(lower(slots.theme), \"norse\") ? \"Erik,Helga,Thor,Sigrid,Bjorn\" : (hasPrefix(lower(slots.theme), \"lord of the rings\") ? \"Frodo,Sam,Merry,Pippin,Bilbo\" : \"Adam,Beth,Carol,Daniel,Edith\"))) }}"` · set `party_member_1 = "{{ trim(split(world.party_names, \",\")[0]) }}"`, `party_member_2 = "{{ trim(split(world.party_names, \",\")[1]) }}"`, `party_member_3 = "{{ trim(split(world.party_names, \",\")[2]) }}"`, `party_member_4 = "{{ trim(split(world.party_names, \",\")[3]) }}"`, `party_member_5 = "{{ trim(split(world.party_names, \",\")[4]) }}"` · say "Named the wagon party from theme: {{ slots.theme }} → {{ world.party_names }}." |
 | 7 | [`look`](#intent-look) |  | [`intro_party_names`](#room-intro-party-names) |  |
 | 8 | [`name_member`](#intent-name-member) | `slots.index == 1` | [`intro_party_names`](#room-intro-party-names) | set `party_member_1 = "{{ slots.name }}"` · say "Member 1 (leader) named {{ slots.name }}." |
@@ -1998,7 +1998,7 @@ Arrived at Kansas River Crossing (prairie).
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Kansas River Crossing** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_a_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Kansas River Crossing"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Kansas River Crossing miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Kansas River Crossing miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
@@ -2069,7 +2069,7 @@ Wagon breakdown — {{ world.breakdown_part }}.
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2094,7 +2094,7 @@ Illness has struck the party ({{ world.illness_kind }}).
 
 1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_a_error`
+3. invoke `host.agent.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_a_error`
 
 **Transitions**:
 
@@ -2118,7 +2118,7 @@ Encounter on the trail: {{ world.encounter_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2141,7 +2141,7 @@ Supplies lost on the trail.
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2160,7 +2160,7 @@ Severe weather: {{ world.weather_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2202,7 +2202,7 @@ Arrived at Fort Kearney (prairie).
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Fort Kearney** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_b_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Fort Kearney"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Fort Kearney miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Fort Kearney miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
@@ -2273,7 +2273,7 @@ Wagon breakdown — {{ world.breakdown_part }}.
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2298,7 +2298,7 @@ Illness has struck the party ({{ world.illness_kind }}).
 
 1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_b_error`
+3. invoke `host.agent.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_b_error`
 
 **Transitions**:
 
@@ -2322,7 +2322,7 @@ Encounter on the trail: {{ world.encounter_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2345,7 +2345,7 @@ Supplies lost on the trail.
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2364,7 +2364,7 @@ Severe weather: {{ world.weather_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2406,7 +2406,7 @@ Arrived at Chimney Rock (prairie).
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Chimney Rock** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_c_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Chimney Rock"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Chimney Rock miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Chimney Rock miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
@@ -2477,7 +2477,7 @@ Wagon breakdown — {{ world.breakdown_part }}.
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2502,7 +2502,7 @@ Illness has struck the party ({{ world.illness_kind }}).
 
 1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_c_error`
+3. invoke `host.agent.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_c_error`
 
 **Transitions**:
 
@@ -2526,7 +2526,7 @@ Encounter on the trail: {{ world.encounter_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2549,7 +2549,7 @@ Supplies lost on the trail.
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2568,7 +2568,7 @@ Severe weather: {{ world.weather_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2610,7 +2610,7 @@ Arrived at Fort Laramie (prairie).
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Fort Laramie** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_d_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Fort Laramie"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Fort Laramie miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Fort Laramie miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
@@ -2681,7 +2681,7 @@ Wagon breakdown — {{ world.breakdown_part }}.
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2706,7 +2706,7 @@ Illness has struck the party ({{ world.illness_kind }}).
 
 1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_d_error`
+3. invoke `host.agent.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_d_error`
 
 **Transitions**:
 
@@ -2730,7 +2730,7 @@ Encounter on the trail: {{ world.encounter_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2753,7 +2753,7 @@ Supplies lost on the trail.
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2772,7 +2772,7 @@ Severe weather: {{ world.weather_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2814,7 +2814,7 @@ Arrived at South Pass (mountain).
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **South Pass** (mountain) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_e_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: South Pass"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:South Pass miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:South Pass miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
@@ -2885,7 +2885,7 @@ Wagon breakdown — {{ world.breakdown_part }}.
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2910,7 +2910,7 @@ Illness has struck the party ({{ world.illness_kind }}).
 
 1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_e_error`
+3. invoke `host.agent.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_e_error`
 
 **Transitions**:
 
@@ -2934,7 +2934,7 @@ Encounter on the trail: {{ world.encounter_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2957,7 +2957,7 @@ Supplies lost on the trail.
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -2976,7 +2976,7 @@ Severe weather: {{ world.weather_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:mountain]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:mountain]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3018,7 +3018,7 @@ Arrived at Snake River Crossing (prairie).
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Snake River Crossing** (prairie) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_f_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Snake River Crossing"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Snake River Crossing miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Snake River Crossing miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
@@ -3089,7 +3089,7 @@ Wagon breakdown — {{ world.breakdown_part }}.
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3114,7 +3114,7 @@ Illness has struck the party ({{ world.illness_kind }}).
 
 1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_f_error`
+3. invoke `host.agent.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_f_error`
 
 **Transitions**:
 
@@ -3138,7 +3138,7 @@ Encounter on the trail: {{ world.encounter_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3161,7 +3161,7 @@ Supplies lost on the trail.
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3180,7 +3180,7 @@ Severe weather: {{ world.weather_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:prairie]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3222,7 +3222,7 @@ Arrived at Willamette Valley (mountain).
 
 1. set `last_landmark_prose = ""`
 2. invoke `host.transport.post` with `body = "Day {{ world.day }}, {{ world.month }} {{ world.year }}. We rolled into **Willamette Valley** (mountain) at last.\n\n- Food: {{ world.food_lbs }} lbs\n- Oxen: {{ world.oxen }}\n- Party: {{ world.party_alive }} alive\n- Health: {{ world.health_avg }}\n"`, `phase_id = "leg_g_arrival"`, `thread = "{{ run.id }}"`, `title = "Day {{ world.day }}: Willamette Valley"`, `transport = "tui"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Willamette Valley miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[day:{{ world.day }} food_lbs:{{ world.food_lbs }} landmark:Willamette Valley miles_traveled:{{ world.miles_traveled }} month:{{ world.month }} party_alive:{{ world.party_alive }} year:{{ world.year }}]`, `prompt_path = "prompts/landmark_arrival.md"`, bind `last_landmark_prose ← stdout`
 
 **Transitions**:
 
@@ -3293,7 +3293,7 @@ Wagon breakdown — {{ world.breakdown_part }}.
 **On enter**:
 
 1. set `breakdown_part = "{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }}"`, `current_event_attempts = 0`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} part:{{ if world.rng_last % 3 == 0 }}wheel{{ else }}{{ if world.rng_last % 3 == 1 }}axle{{ else }}tongue{{ end }}{{ end }} spares_remaining:{{ world.rng_last % 3 == 0 ? world.spare_wheels : (world.rng_last % 3 == 1 ? world.spare_axles : world.spare_tongues) }}]`, `prompt_path = "prompts/event_breakdown.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3318,7 +3318,7 @@ Illness has struck the party ({{ world.illness_kind }}).
 
 1. set `current_event_attempts = 0`, `health_avg = "{{ world.health_avg - 10 }}"`, `illness_member = "{{ split(world.party_names, ',')[world.rng_last % world.party_alive] }}"`
 2. set `illness_kind = "{{ if world.rng_last % 5 == 0 }}dysentery{{ else }}{{ if world.rng_last % 5 == 1 }}cholera{{ else }}{{ if world.rng_last % 5 == 2 }}typhoid{{ else }}{{ if world.rng_last % 5 == 3 }}measles{{ else }}exhaustion{{ end }}{{ end }}{{ end }}{{ end }}"`, `illness_severity = "{{ world.rng_last % 5 + 1 }}"`, `illness_treatment = "rest"`
-3. invoke `host.oracle.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_g_error`
+3. invoke `host.agent.decide` with `agent = "frontier_doctor"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} food_lbs:{{ world.food_lbs }} health_avg:{{ world.health_avg }} party_alive:{{ world.party_alive }} rng_last:{{ world.rng_last }}]`, `prompt = "prompts/event_disease.md"`, `schema = "mcp/illness.json"`, bind `illness_kind ← submitted.illness`, `illness_severity ← submitted.severity`, `illness_treatment ← submitted.treatment`, on_error → `leg_g_error`
 
 **Transitions**:
 
@@ -3342,7 +3342,7 @@ Encounter on the trail: {{ world.encounter_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `encounter_kind = "{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}"`, `last_event_prose = ""`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[clothing_sets:{{ world.clothing_sets }} current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} kind:{{ if world.rng_last % 3 == 0 }}trader{{ else }}{{ if world.rng_last % 3 == 1 }}hunter{{ else }}band{{ end }}{{ end }}]`, `prompt_path = "prompts/event_encounter.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3365,7 +3365,7 @@ Supplies lost on the trail.
 
 1. set `current_event_attempts = 0`, `last_event = "{{ if world.rng_last % 2 == 0 }}food_loss{{ else }}ox_loss{{ end }}"`, `last_event_prose = ""`
 2. set `food_lbs = "{{ world.rng_last % 2 == 0 ? world.food_lbs - (10 + 10 * (world.rng_last % 4)) : world.food_lbs }}"`, `oxen = "{{ world.rng_last % 2 == 0 ? world.oxen : world.oxen - 1 }}"`
-3. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
+3. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} food_lbs:{{ world.food_lbs }} oxen:{{ world.oxen }} what:{{ world.rng_last % 2 == 0 ? 'food spoiled' : 'ox lame' }}]`, `prompt_path = "prompts/event_supply_loss.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3384,7 +3384,7 @@ Severe weather: {{ world.weather_kind }}.
 **On enter**:
 
 1. set `current_event_attempts = 0`, `last_event_prose = ""`, `weather_kind = "{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }}"`
-2. invoke `host.oracle.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:mountain]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
+2. invoke `host.agent.ask` with `agent = "trail_narrator"`, `args = map[current_landmark:{{ world.current_landmark }} day:{{ world.day }} kind:{{ world.month == 'november' || world.month == 'december' || world.month == 'january' || world.month == 'february' ? 'snow' : (world.month == 'march' || world.month == 'april' || world.month == 'may' ? 'heavy_rain' : (world.month == 'june' || world.month == 'july' || world.month == 'august' ? (world.rng_last % 2 == 0 ? 'hail' : 'fog') : (world.rng_last % 2 == 0 ? 'heavy_rain' : 'fog'))) }} month:{{ world.month }} terrain:mountain]`, `prompt_path = "prompts/event_weather.md"`, bind `last_event_prose ← stdout`
 
 **Transitions**:
 
@@ -3618,14 +3618,14 @@ Wagon master — active chat. Ask another question or go back.
 
 **On enter**:
 
-1. invoke `host.oracle.converse` with `agent = "wagon_master"`, `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ world.wagon_question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id`
+1. invoke `host.agent.converse` with `agent = "wagon_master"`, `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ world.wagon_question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id`
 2. invoke `host.chat.suggest_title` with `chat_id = "{{ world.wagon_chat_id }}"`, `force = false`, bind `wagon_chat_title ← title`
 
 **Transitions**:
 
 | # | Intent | Guard | → | Effects |
 |---|---|---|---|---|
-| 1 | [`ask_question`](#intent-ask-question) |  | [`trail_guide.trail_guide_active`](#room-trail-guide-trail-guide-active) | set `wagon_answer = ""`, `wagon_question = "{{ slots.question }}"` · increment `wagon_chat_turns += 1` · invoke `host.oracle.converse` with `agent = "wagon_master"`, `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ slots.question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id` · invoke `host.chat.suggest_title` with `chat_id = "{{ world.wagon_chat_id }}"`, `force = false`, bind `wagon_chat_title ← title` |
+| 1 | [`ask_question`](#intent-ask-question) |  | [`trail_guide.trail_guide_active`](#room-trail-guide-trail-guide-active) | set `wagon_answer = ""`, `wagon_question = "{{ slots.question }}"` · increment `wagon_chat_turns += 1` · invoke `host.agent.converse` with `agent = "wagon_master"`, `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ slots.question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id` · invoke `host.chat.suggest_title` with `chat_id = "{{ world.wagon_chat_id }}"`, `force = false`, bind `wagon_chat_title ← title` |
 | 2 | [`back`](#intent-back) |  | [`trail_guide.trail_guide_list`](#room-trail-guide-trail-guide-list) |  |
 | 3 | [`look`](#intent-look) |  | `.` |  |
 
@@ -3638,7 +3638,7 @@ Wagon master — starting a fresh chat.
 **On enter**:
 
 1. invoke `host.chat.create` with `app = "oregon-trail"`, `room = "trail_guide"`, `scope_key = "{{ world.profession }}"`, `title = "Question about the trail"`, bind `wagon_chat_id ← chat_id`, `wagon_chat_title ← title`
-2. invoke `host.oracle.converse` with `agent = "wagon_master"`, `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ world.wagon_question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id`
+2. invoke `host.agent.converse` with `agent = "wagon_master"`, `chat_id = "{{ world.wagon_chat_id }}"`, `question = "{{ world.wagon_question }}"`, bind `wagon_answer ← answer`, `wagon_chat_id ← chat_id`, `wagon_session_id ← claude_session_id`
 3. invoke `host.chat.suggest_title` with `chat_id = "{{ world.wagon_chat_id }}"`, `force = false`, bind `wagon_chat_title ← title`
 
 **Transitions**:

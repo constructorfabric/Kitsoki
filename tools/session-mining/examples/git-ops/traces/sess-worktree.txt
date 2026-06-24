@@ -1,0 +1,2 @@
+USER: set up a worktree for the new cache feature
+  > Bash: git worktree add .worktrees/feat-cache -b feat-cache

@@ -16,7 +16,9 @@ import (
 	"sort"
 	"strings"
 
+	"kitsoki/internal/agent/grammar"
 	"kitsoki/internal/agents"
+	starlarkhost "kitsoki/internal/host/starlark"
 
 	goyaml "github.com/goccy/go-yaml"
 )
@@ -90,9 +92,25 @@ func Load(path string) (*AppDef, error) {
 // Intended caller: testrunner fixtures that need to rebind an iface
 // for one flow run without forking the production app.yaml. Production
 // code should use `imports.<alias>.host_bindings:` at the parent app
-// level — that's the proposal-§11.2 multi-layer compose path. This
+// level — that's the multi-layer compose path. This
 // entrypoint is the test seam below it.
 func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, error) {
+	return LoadWithResolver(path, ifaceOverrides, nil)
+}
+
+// LoadWithResolver is LoadWithOverrides plus an injected ImportResolver — the
+// DI seam (CLAUDE.md, no package globals) through which the `--kitsoki-repo`
+// override and the embedded story library reach the import system. A nil
+// resolver is identical to LoadWithOverrides: an `@kitsoki/<name>` source with
+// no on-disk kitsoki checkout errors as before. See [ImportResolver] and
+// resolveImportSource for the resolution order.
+//
+// Intended caller: cmd/kitsoki, which builds the resolver from the
+// `--kitsoki-repo` flag / KITSOKI_REPO env and basestories.Materialize, then
+// threads it into every load. The resolver is passed unchanged into recursive
+// child loads so an embedded base story can itself import siblings via
+// `@kitsoki/<name>`.
+func LoadWithResolver(path string, ifaceOverrides map[string]string, resolver ImportResolver) (*AppDef, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("load %s: %w", path, err)
@@ -107,10 +125,27 @@ func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, 
 	if len(mergeErrs) > 0 {
 		return nil, errors.Join(mergeErrs...)
 	}
+	return runLoadPipeline(merged, path, baseDir, ifaceOverrides, resolver)
+}
+
+// runLoadPipeline takes a parsed (or in-memory synthesized) AppDef and runs the
+// full import-fold → phase-expand → interface-resolve → validate chain,
+// returning the finished AppDef or the joined error set. It is the shared body
+// of LoadWithOverrides (file-backed) and SynthesizeRoot (config-synthesized) —
+// the implicit-project-root slice synthesizes a one-import AppDef and runs the
+// IDENTICAL pipeline so a malformed synthesized root is caught by the same
+// validators that catch a malformed imports: block. See
+// docs/stories/imports.md "The blank root that grows".
+//
+// path/baseDir play their usual roles: baseDir roots @kitsoki/<name> + relative
+// import resolution and is stashed on AppDef.BaseDir; path is the canonical key
+// seeded into LoadedManifests and used in error messages. A synthesized root
+// passes a synthetic path (no file on disk) with the repo root as baseDir.
+func runLoadPipeline(merged *AppDef, path, baseDir string, ifaceOverrides map[string]string, resolver ImportResolver) (*AppDef, error) {
 	// Stash the loader's base directory so downstream consumers
 	// (notably internal/render.AppRenderer, which roots its template
 	// loader at <BaseDir>/views/) don't have to recompute it from
-	// the manifest path. See view-elements proposal phase H §3.3.
+	// the manifest path. See docs/stories/story-style.md.
 	merged.BaseDir = baseDir
 
 	// Resolve imports recursively, folding each child into merged.
@@ -118,14 +153,14 @@ func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, 
 	// Seed LoadedManifests with the root manifest's canonical path; each
 	// folded import appends itself + its own transitive manifests. The
 	// metamode controller reads this list to auto-watch every file the
-	// loader actually touched (proposal §16.4).
+	// loader actually touched.
 	merged.LoadedManifests = appendUnique(merged.LoadedManifests, canonical)
-	if importErrs := resolveImports(merged, path, baseDir, []string{canonical}); len(importErrs) > 0 {
+	if importErrs := resolveImports(merged, path, baseDir, []string{canonical}, resolver); len(importErrs) > 0 {
 		return nil, errors.Join(importErrs...)
 	}
 
 	// Expand phase templates into concrete states before validation so the
-	// referential-integrity pass sees the synthesised states (proposal §5).
+	// referential-integrity pass sees the synthesised states.
 	if expandErrs := expandPhases(merged, path); len(expandErrs) > 0 {
 		return nil, errors.Join(expandErrs...)
 	}
@@ -155,8 +190,7 @@ func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, 
 	// invocation, after all imports have folded their iface declarations
 	// into def.HostInterfaces (under alias-prefixed names) and after
 	// each layer's host_bindings have had a chance to override defaults.
-	// This is the surface that makes multi-layer rebinding compose per
-	// proposal §11.2.
+	// This is the surface that makes multi-layer rebinding compose.
 	if ifaceErrs := resolveAllInterfaces(merged, path); len(ifaceErrs) > 0 {
 		return nil, errors.Join(ifaceErrs...)
 	}
@@ -167,6 +201,19 @@ func LoadWithOverrides(path string, ifaceOverrides map[string]string) (*AppDef, 
 	// state per exit and rewrite refs accordingly.
 	if exitErrs := materialiseStandaloneExits(merged, path); len(exitErrs) > 0 {
 		return nil, errors.Join(exitErrs...)
+	}
+
+	// Resolve agent plugin declarations from agent_plugins: block. This
+	// validates plugin names, performs ${VAR} substitution in env/headers, and
+	// injects the default agent.claude entry when absent.
+	if pluginErrs := resolveAgentPlugins(merged, path); len(pluginErrs) > 0 {
+		return nil, errors.Join(pluginErrs...)
+	}
+
+	// Resolve provider declarations from the providers: block (validate +
+	// ${VAR} substitution in env). Reference validation runs inside validateDef.
+	if provErrs := resolveProviders(merged, path); len(provErrs) > 0 {
+		return nil, errors.Join(provErrs...)
 	}
 
 	// Now fully validate the merged definition.
@@ -259,7 +306,10 @@ func parseAndMerge(b []byte, file, baseDir string) (*AppDef, []error) {
 		var yamlErr *goyaml.SyntaxError
 		ve := &ValidationError{File: file, Message: err.Error()}
 		if errors.As(err, &yamlErr) {
-			_ = yamlErr
+			if yamlErr.Token != nil && yamlErr.Token.Position != nil {
+				ve.Line = yamlErr.Token.Position.Line
+				ve.Column = yamlErr.Token.Position.Column
+			}
 		}
 		return nil, []error{ve}
 	}
@@ -318,7 +368,7 @@ func parseAndMerge(b []byte, file, baseDir string) (*AppDef, []error) {
 
 // mergeInto merges src into dst. States, proposals, hosts, intents, world keys,
 // phase_templates, phases, and checkpoint_intents from src are merged into dst.
-// Collisions are errors (§9.1).
+// Collisions are errors.
 func mergeInto(dst, src *AppDef, srcFile string) []error {
 	var errs []error
 	addErr := func(msg string) {
@@ -444,6 +494,19 @@ func mergeInto(dst, src *AppDef, srcFile string) []error {
 		dst.Agents[k] = v
 	}
 
+	// Merge provider declarations. Collision on key is an error, mirroring the
+	// agents merge above.
+	for k, v := range src.Providers {
+		if _, exists := dst.Providers[k]; exists {
+			addErr(fmt.Sprintf("include: provider %q is already declared", k))
+			continue
+		}
+		if dst.Providers == nil {
+			dst.Providers = make(map[string]*ProviderDecl)
+		}
+		dst.Providers[k] = v
+	}
+
 	return errs
 }
 
@@ -465,6 +528,10 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 	addErr := func(msg string) {
 		errs = append(errs, &ValidationError{File: file, Message: msg})
 	}
+
+	// Set of agents referenced by a read-only agent verb (ask/decide), where
+	// Bash must run under a bash_profile. Drives the bash_profile cross-check.
+	askDecideAgents := collectAskDecideAgents(def)
 
 	for _, name := range sortedKeys(def.Agents) {
 		decl := def.Agents[name]
@@ -515,6 +582,12 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 			decl.Cwd = expanded
 		}
 
+		// Validate the effort enum (empty is fine — leaves the CLI default).
+		if msg := validateEffort(fmt.Sprintf("agent %q", name), decl.Effort); msg != "" {
+			addErr(msg)
+			continue
+		}
+
 		// Normalise tools to fully-qualified form. Logic duplicates
 		// metamode.NormaliseToolName here because internal/metamode imports
 		// internal/app already; importing back would create a cycle.
@@ -526,30 +599,20 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 			decl.Tools = out
 		}
 
-		// bash_profile validation: if Bash is in the tool surface,
-		// bash_profile is required when the agent is used with
-		// host.oracle.ask or host.oracle.decide. The cross-check against
-		// which verbs actually reference this agent is deferred to a TODO
-		// once those handlers exist (Phase 2 / Phase 3). For now we record
-		// the structural fact — presence of Bash without a profile — so
-		// the stub infrastructure is exercisable.
-		//
-		// TODO(oracle-split Phase 2/3): cross-check: if this agent is
-		// referenced by a host.oracle.ask or host.oracle.decide effect and
-		// has Bash in tools but no bash_profile, reject with:
-		//   "agent %q declares Bash but no bash_profile; required for ask/decide use"
-		// The cross-check needs the full effect graph, built after validateDef
-		// runs in the normal validateAgentRef pass.
-		if hasTool(decl.Tools, "host.Bash") && decl.BashProfile == nil {
-			// Warn only — not yet an error since we can't statically know
-			// whether this agent is used with ask/decide at Phase 1.
-			slog.Warn("agent declares Bash without bash_profile; required when agent is used with host.oracle.ask or host.oracle.decide",
-				"agent", name, "file", file)
+		// bash_profile validation: Bash in the tool surface requires a
+		// bash_profile *only* when the agent is actually referenced by a
+		// read-only agent verb (host.agent.ask / host.agent.decide), where
+		// every Bash invocation must pass through ApplyBashProfile. Agents used
+		// solely with host.agent.task get full, unprofiled Bash by design, so
+		// the bare presence of Bash is not a problem there. Cross-check the
+		// effect graph rather than warning unconditionally.
+		if hasTool(decl.Tools, "host.Bash") && decl.BashProfile == nil && askDecideAgents[name] {
+			addErr(fmt.Sprintf("agent %q declares Bash but no bash_profile; required when the agent is referenced by host.agent.ask or host.agent.decide (those verbs run every Bash command through a profile allowlist)", name))
 		}
 
 		// external_side_effect inference: infer from the tool surface when
 		// the field is absent, and warn when declared value disagrees with
-		// the inferred value (oracle-split proposal §3.3, D3).
+		// the inferred value.
 		inferred := inferExternalSideEffect(decl.Tools)
 		if decl.ExternalSideEffect == nil {
 			// No explicit declaration — store the inferred value.
@@ -589,6 +652,50 @@ func inferExternalSideEffect(tools []string) bool {
 	return false
 }
 
+// collectAskDecideAgents walks the full effect graph and returns the set of
+// agent names referenced by a read-only agent verb (host.agent.ask or
+// host.agent.decide) via the effect's `with.agent` argument. Those verbs run
+// every Bash command through a bash_profile allowlist, so a referenced agent
+// that declares Bash without a profile is a load error (see resolveAgentDecls).
+// Effects reached only through host.agent.task — which grants full Bash by
+// design — are intentionally not collected.
+func collectAskDecideAgents(def *AppDef) map[string]bool {
+	out := map[string]bool{}
+	if def == nil {
+		return out
+	}
+	var walkEffects func(effs []Effect)
+	walkEffects = func(effs []Effect) {
+		for _, e := range effs {
+			if e.Invoke == "host.agent.ask" || e.Invoke == "host.agent.decide" {
+				if a, ok := e.With["agent"].(string); ok && a != "" {
+					out[a] = true
+				}
+			}
+			walkEffects(e.OnComplete)
+		}
+	}
+	var walkState func(s *State)
+	walkState = func(s *State) {
+		if s == nil {
+			return
+		}
+		walkEffects(s.OnEnter)
+		for _, transitions := range s.On {
+			for _, t := range transitions {
+				walkEffects(t.Effects)
+			}
+		}
+		for _, child := range s.States {
+			walkState(child)
+		}
+	}
+	for _, s := range def.States {
+		walkState(s)
+	}
+	return out
+}
+
 // normaliseAgentTool maps a YAML-author-friendly tool name into the
 // fully-qualified host.x.y form. Empty strings pass through; names already
 // prefixed with "host." are returned unchanged. Logic mirrors
@@ -624,12 +731,9 @@ func loadAndValidate(b []byte, file string) (*AppDef, []error) {
 		// Wrap as a ValidationError preserving any line/col info.
 		var yamlErr *goyaml.SyntaxError
 		ve := &ValidationError{File: file, Message: err.Error()}
-		if errors.As(err, &yamlErr) {
-			// goccy/go-yaml's LexError / SyntaxError expose Token field.
-			// The best we can do without exporting internal fields is to
-			// inspect the error message; the token position appears in the
-			// formatted string from goccy when present.
-			_ = yamlErr
+		if errors.As(err, &yamlErr) && yamlErr.Token != nil && yamlErr.Token.Position != nil {
+			ve.Line = yamlErr.Token.Position.Line
+			ve.Column = yamlErr.Token.Position.Column
 		}
 		return nil, []error{ve}
 	}
@@ -646,6 +750,16 @@ func loadAndValidate(b []byte, file string) (*AppDef, []error) {
 		return nil, agentErrs
 	}
 
+	// Resolve agent plugin declarations from agent_plugins: block.
+	if pluginErrs := resolveAgentPlugins(&def, file); len(pluginErrs) > 0 {
+		return nil, pluginErrs
+	}
+
+	// Resolve provider declarations from the providers: block.
+	if provErrs := resolveProviders(&def, file); len(provErrs) > 0 {
+		return nil, provErrs
+	}
+
 	return validateDef(&def, file)
 }
 
@@ -660,10 +774,22 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	if def.App.ID == "" {
 		addErr("app.id is required")
 	}
+	// Layer-2 project context: at most one source. (Both empty is fine — the
+	// prompts/_project.md convention may still supply it at render time.)
+	if def.App.Context != "" && def.App.ContextPath != "" {
+		addErr("app.context and app.context_path are mutually exclusive; set only one")
+	}
 
 	// ── 2. world schema ──────────────────────────────────────────────────────
-	worldKeys := make(map[string]struct{}, len(def.World))
+	worldKeys := make(map[string]struct{}, len(def.World)+len(ReservedWorldKeys))
 	for k := range def.World {
+		worldKeys[k] = struct{}{}
+	}
+	// Reserved engine-owned globals (last_error/host_error) are always valid
+	// targets for world.<key> references and relevant_world lists, whether or
+	// not the story declares them — the runtime writes them on on_error
+	// redirects. See ReservedWorldKeys in imports.go.
+	for k := range ReservedWorldKeys {
 		worldKeys[k] = struct{}{}
 	}
 
@@ -673,7 +799,7 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	case string:
 		rootName = v
 	case map[string]interface{}:
-		// Inline compound/parallel root — §3.3. For PoC we only validate that
+		// Inline compound/parallel root. For PoC we only validate that
 		// "type" is present; deeper validation is a Stage-3 concern.
 	default:
 		addErr(fmt.Sprintf("root: unsupported value type %T; expected a state name string", def.Root))
@@ -682,6 +808,11 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// ── 4. collect all declared state paths ──────────────────────────────────
 	allStatePaths := make(map[string]struct{})
 	collectStatePaths("", def.States, allStatePaths)
+
+	// App-level free-form fallback: inject the configured work-intake arc into
+	// strict/menu rooms before collecting on: keys and running referential
+	// validation, so every downstream surface sees the same graph.
+	applyFreeFormFallback(def)
 
 	// Collect per-state-path the set of intent names declared in that
 	// state's `on:` block. Used by validateBackgroundEffectAware to
@@ -711,20 +842,70 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 		allowedHosts[h] = struct{}{}
 	}
 	// Build the declared-agents set so effect-level `agent: <name>` refs in
-	// host.oracle.* with: blocks can be statically resolved.
+	// host.agent.* with: blocks can be statically resolved.
 	declaredAgents := make(map[string]struct{}, len(def.Agents))
 	for name := range def.Agents {
 		declaredAgents[name] = struct{}{}
 	}
 	validateStates(file, "", def.States, globalIntents, def.Intents, nil, worldKeys, allStatePaths, stateOnKeys, allowedHosts, declaredAgents, &errs)
 
-	// ── 7a. Semantic-routing schema checks (semantic-routing proposal Phase 0).
+	// Agent off-ramp: normalize an explicit `false` to a nil pointer and
+	// enforce the terminal/conversational placement invariants. Runs before
+	// validateAgentReferences (step 9b) so the agent check sees the
+	// normalized pointers. See docs/stories/meta-mode.md.
+	normalizeAndValidateOffRamps(file, def, &errs)
+
+	// write_mode: posture (agent-write-mode-opt-in proposal). Validates the
+	// field value, that read_only is only on an agent-dispatch room, the
+	// static-write contradiction, and that no story `set:`s the engine-reserved
+	// write_mode_scope world key. Walks the full state tree once with def in
+	// scope (it needs AgentDef.ExternalSideEffect, which validateStates does not
+	// carry).
+	validateWriteMode(file, def, &errs)
+
+	// intercept_drive: multi-turn drive flag (conflict-capable intercept). The
+	// only valid value is "rest"; only meaningful on a top-level room.
+	validateInterceptDrive(file, def, &errs)
+
+	// ── 7a'. static expression compile-check ──────────────────────────────────
+	// Compile (never evaluate) every effect value and guard expression so a
+	// malformed expr-lang expression — e.g. a pongo-only `|default:` filter
+	// written into an effect value — fails the load with a precise diagnostic
+	// instead of exploding mid-turn the first time its transition fires. See
+	// validate_exprs.go.
+	validateExprs(file, def, &errs)
+
+	// ── 7a''. view ↔ on_enter bind-target fallback advisory ───────────────────
+	// Emit a NON-FATAL warning when a state's inline view reads a world key that
+	// is only filled by an on_enter invoke/bind host call without an explicit
+	// fallback (`?? …` / `| default(…)`). The runtime now defends the first
+	// frame (machine.Turn skips the pre-bind render when host calls will bind),
+	// but a fallback-less template is still fragile — this restores the
+	// authoring-time signal. Does NOT append to errs. See validate_exprs.go.
+	validateViewBindFallbacks(file, def, &errs)
+
+	// Validate the engine-driven decider config (execution-modes proposal).
+	if d := def.Decider; d != nil {
+		if strings.TrimSpace(d.Agent) == "" {
+			errs = append(errs, fmt.Errorf("%s: decider.agent is required", file))
+		} else if _, ok := declaredAgents[d.Agent]; !ok && len(declaredAgents) > 0 {
+			errs = append(errs, fmt.Errorf("%s: decider.agent %q is not declared in agents", file, d.Agent))
+		}
+		if strings.TrimSpace(d.Schema) == "" {
+			errs = append(errs, fmt.Errorf("%s: decider.schema is required", file))
+		}
+		if d.Threshold < 0 || d.Threshold > 1 {
+			errs = append(errs, fmt.Errorf("%s: decider.threshold %.2f out of range [0,1]", file, d.Threshold))
+		}
+	}
+
+	// ── 7a. Semantic-routing schema checks (see docs/architecture/semantic-routing.md).
 	// Validates Intent.Synonyms / Slot.Synonyms / AppDef.Routing against the
-	// rules in proposal §4 and §6. Errors here share the same shape as the
+	// routing rules. Errors here share the same shape as the
 	// surrounding validators (ValidationError via the errs slice).
 	validateRouting(file, def, &errs)
 
-	// ── 7b. (removed) off-path agent reference: superseded by §9b
+	// ── 7b. (removed) off-path agent reference: superseded by step 9b
 	// validateAgentReferences which also recognises builtin agent names
 	// like `story-author`.
 
@@ -738,7 +919,12 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// AppDef must resolve in AppDef.Agents or agents.BuiltinNames().
 	validateAgentReferences(file, def, &errs)
 
-	// ── 9c. reach-into-child guard (story-imports proposal §8 / §16.7).
+	// ── 9c. cross-reference: every provider name referenced by an agent's
+	// provider: field or an effect's with.provider must resolve in
+	// AppDef.Providers.
+	validateProviderReferences(file, def, &errs)
+
+	// ── 9c. reach-into-child guard (see docs/stories/imports.md).
 	// Reject parent transitions that target a deep state inside an
 	// imported child (any path of the form `<alias>.<X>` where <X> is
 	// not the import's declared entry). The import alias itself
@@ -752,11 +938,25 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// authored absolute paths at the parent level.
 	validateNoReachIntoChild(file, def, &errs)
 
-	// ── 9d. oracle-split verb × agent.Tools cross-checks (oracle-split
+	// ── 9d. agent-split verb × agent.Tools cross-checks (agent-split
 	// proposal invariant 1 / M6 / M3).
 	// Enforces: ask/decide/extract → no mutation tools; task → acceptance.schema
 	// required; task + external_side_effect:false + WebFetch/WebSearch → error.
-	validateOracleVerbCrossChecks(file, def, &errs)
+	validateAgentVerbCrossChecks(file, def, &errs)
+
+	// ── 9e. grammar-subset check for builtin.local_llm grammar:true effects.
+	// Every decide effect whose `agent:` alias resolves to a builtin.local_llm
+	// plugin with grammar: true must point at a schema inside llama.cpp's
+	// translatable grammar subset; otherwise grammar would silently fail open at
+	// runtime. Reject out-of-subset schemas at load time.
+	validateLocalLLMGrammarSubset(file, def, &errs)
+
+	// ── 9f. host.starlark.run effect validation. Every such effect must name a
+	// script that — together with its .star.yaml sidecar — exists on disk inside
+	// the app root, and whose sidecar parses. Catching this at load time turns a
+	// typo'd script path or a malformed sidecar into an actionable boot error
+	// rather than a runtime on_error: bounce on the first turn that hits the room.
+	validateStarlarkEffects(file, def, &errs)
 
 	// ── 10. proposal execute effect validation ────────────────────────────────
 	// ProposalExecute.Background and ProposalExecute.OnComplete are not covered
@@ -841,6 +1041,160 @@ func collectStateOnKeys(prefix string, states map[string]*State, out map[string]
 	}
 }
 
+func applyFreeFormFallback(def *AppDef) {
+	cfg, ok := effectiveFreeFormFallback(def)
+	if !ok {
+		return
+	}
+	statePath := strings.TrimSpace(cfg.State)
+	intentName := strings.TrimSpace(cfg.Intent)
+	if statePath == "" || intentName == "" {
+		return
+	}
+	src, ok := lookupStateInMap(statePath, def.States)
+	if !ok || src == nil || len(src.On[intentName]) == 0 {
+		return
+	}
+	fallbackParent := parentStatePath(statePath)
+	fallback := cloneTransitions(src.On[intentName])
+	walkStates(def.States, "", func(path string, s *State) {
+		if s == nil || path == statePath || s.Terminal {
+			return
+		}
+		if parentStatePath(path) != fallbackParent {
+			return
+		}
+		if s.DefaultIntent != "" || s.AgentOffRamp != nil {
+			return
+		}
+		if s.On == nil {
+			s.On = map[string][]Transition{}
+		}
+		if _, exists := s.On[intentName]; exists {
+			return
+		}
+		s.On[intentName] = cloneTransitions(fallback)
+	})
+}
+
+func effectiveFreeFormFallback(def *AppDef) (FreeFormFallbackConfig, bool) {
+	if def == nil {
+		return FreeFormFallbackConfig{}, false
+	}
+	if def.Routing != nil && def.Routing.FreeFormFallback != nil {
+		cfg := *def.Routing.FreeFormFallback
+		return cfg, strings.TrimSpace(cfg.State) != "" || strings.TrimSpace(cfg.Intent) != ""
+	}
+	type candidate struct {
+		path   string
+		intent string
+	}
+	var candidates []candidate
+	walkStates(def.States, "", func(path string, s *State) {
+		if s == nil || baseStateName(path) != "landing" {
+			return
+		}
+		if _, ok := s.On["work"]; ok {
+			candidates = append(candidates, candidate{path: path, intent: "work"})
+			return
+		}
+		for intentName := range s.On {
+			if strings.HasSuffix(intentName, "__work") {
+				candidates = append(candidates, candidate{path: path, intent: intentName})
+			}
+		}
+	})
+	if len(candidates) == 0 {
+		return FreeFormFallbackConfig{}, false
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].path == candidates[j].path {
+			return candidates[i].intent < candidates[j].intent
+		}
+		return candidates[i].path < candidates[j].path
+	})
+	return FreeFormFallbackConfig{State: candidates[0].path, Intent: candidates[0].intent}, true
+}
+
+func baseStateName(path string) string {
+	if i := strings.LastIndexByte(path, '.'); i >= 0 {
+		return path[i+1:]
+	}
+	return path
+}
+
+func parentStatePath(path string) string {
+	if i := strings.LastIndexByte(path, '.'); i >= 0 {
+		return path[:i]
+	}
+	return ""
+}
+
+func walkStates(states map[string]*State, prefix string, fn func(path string, s *State)) {
+	for name, s := range states {
+		path := joinPath(prefix, name)
+		fn(path, s)
+		if s != nil && len(s.States) > 0 {
+			walkStates(s.States, path, fn)
+		}
+	}
+}
+
+func cloneTransitions(in []Transition) []Transition {
+	out := make([]Transition, len(in))
+	for i := range in {
+		out[i] = in[i]
+		out[i].Effects = cloneEffects(in[i].Effects)
+		out[i].Emit = append([]string(nil), in[i].Emit...)
+	}
+	return out
+}
+
+func cloneEffects(in []Effect) []Effect {
+	out := make([]Effect, len(in))
+	for i := range in {
+		out[i] = in[i]
+		out[i].Set = cloneAnyMap(in[i].Set)
+		out[i].Increment = cloneIntMap(in[i].Increment)
+		out[i].With = cloneAnyMap(in[i].With)
+		out[i].Bind = cloneStringMap(in[i].Bind)
+	}
+	return out
+}
+
+func cloneAnyMap(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneIntMap(in map[string]int) map[string]int {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
 // intentReachable returns true when `name` appears on `statePath`'s
 // declared `on:` arcs, or on any ancestor compound's `on:`. The
 // wildcard `*` arc is intentionally NOT treated as a match for an
@@ -868,7 +1222,7 @@ func intentReachable(statePath, name string, stateOnKeys map[string]map[string]s
 }
 
 // joinPath combines an optional parent prefix and a child name using dot separator.
-// The design uses "bar.dark" style (§3.1); YAML authors write "../../foyer" for
+// The design uses "bar.dark" style; YAML authors write "../../foyer" for
 // relative refs but we validate using the canonical dotted form.
 func joinPath(prefix, name string) string {
 	if prefix == "" {
@@ -883,7 +1237,7 @@ func joinPath(prefix, name string) string {
 //   - Valid world key references in relevant_world.
 //   - compound states: initial child must exist.
 //   - invoke: host.* effects reference only declared hosts.
-//   - `with.agent:` on host.oracle.* effects resolves to a declared agent.
+//   - `with.agent:` on host.agent.* effects resolves to a declared agent.
 //
 // stateOnKeys maps each state path to the set of intent names declared
 // in that state's `on:` block. It is used to statically validate
@@ -952,6 +1306,79 @@ func validateStates(
 			}
 		}
 
+		// Validate default_intent (the free-text sink): it must be reachable
+		// from this state (have an on: arc) and declare exactly one required
+		// string slot, since the engine fills that slot with the whole
+		// unmatched utterance. Both On keys and DefaultIntent are import-
+		// rewritten consistently, so they match here regardless of fold depth.
+		if di := s.DefaultIntent; di != "" {
+			if _, ok := s.On[di]; !ok {
+				addErr(fmt.Sprintf("state %q: default_intent %q has no matching on: arc in this state", statePath, di))
+			}
+			idef, found := inScopeIntents[di]
+			if !found {
+				idef, found = globalIntentDefs[di]
+			}
+			switch {
+			case !found:
+				addErr(fmt.Sprintf("state %q: default_intent %q is not a declared intent", statePath, di))
+			default:
+				reqCount, reqString := 0, true
+				for _, sl := range idef.Slots {
+					if !sl.Required {
+						continue
+					}
+					reqCount++
+					if sl.Type != "" && sl.Type != "string" {
+						reqString = false
+					}
+				}
+				if reqCount != 1 || !reqString {
+					addErr(fmt.Sprintf("state %q: default_intent %q must declare exactly one required string slot to receive the free-text utterance", statePath, di))
+				}
+			}
+		}
+
+		// Validate contextual_routing: when enabled, each declared lane must
+		// have a backing intent with a reachable on: arc (room_chat), or a
+		// declared name (help_chat, meta_chat — full cross-reference is group 2).
+		// Mirrors the default_intent cross-reference at loader.go:1300.
+		if cr := s.ContextualRouting; cr != nil && cr.Enabled {
+			if cr.RoomChat == "" && cr.HelpChat == "" && cr.MetaChat == "" {
+				addErr(fmt.Sprintf("state %q: contextual_routing.enabled requires at least one lane (room_chat, help_chat, or meta_chat)", statePath))
+			}
+			if cr.RoomChat != "" {
+				if _, hasArc := s.On[cr.RoomChat]; !hasArc {
+					addErr(fmt.Sprintf("state %q: contextual_routing.room_chat %q has no matching on: arc in this state", statePath, cr.RoomChat))
+				}
+				_, inScope := inScopeIntents[cr.RoomChat]
+				_, inGlobal := globalIntentDefs[cr.RoomChat]
+				if !inScope && !inGlobal {
+					addErr(fmt.Sprintf("state %q: contextual_routing.room_chat %q is not a declared intent", statePath, cr.RoomChat))
+				}
+			}
+			if cr.PlanAcceptIntent != "" {
+				if _, hasArc := s.On[cr.PlanAcceptIntent]; !hasArc {
+					addErr(fmt.Sprintf("state %q: contextual_routing.plan_accept_intent %q has no matching on: arc in this state", statePath, cr.PlanAcceptIntent))
+				}
+				_, inScope := inScopeIntents[cr.PlanAcceptIntent]
+				_, inGlobal := globalIntentDefs[cr.PlanAcceptIntent]
+				if !inScope && !inGlobal {
+					addErr(fmt.Sprintf("state %q: contextual_routing.plan_accept_intent %q is not a declared intent", statePath, cr.PlanAcceptIntent))
+				}
+			}
+			if cr.PlanRefineIntent != "" {
+				if _, hasArc := s.On[cr.PlanRefineIntent]; !hasArc {
+					addErr(fmt.Sprintf("state %q: contextual_routing.plan_refine_intent %q has no matching on: arc in this state", statePath, cr.PlanRefineIntent))
+				}
+				_, inScope := inScopeIntents[cr.PlanRefineIntent]
+				_, inGlobal := globalIntentDefs[cr.PlanRefineIntent]
+				if !inScope && !inGlobal {
+					addErr(fmt.Sprintf("state %q: contextual_routing.plan_refine_intent %q is not a declared intent", statePath, cr.PlanRefineIntent))
+				}
+			}
+		}
+
 		// Validate the typed view payload (Phase A of the view-elements
 		// proposal). Catches unknown element kinds, missing required
 		// element fields, and non-string kv values at load time so authors
@@ -977,8 +1404,7 @@ func validateStates(
 		// Validate transcript/theme: only allowed on top-level (room)
 		// states. prefix is empty exactly at the top of def.States; any
 		// nested level carries the parent's dotted path. See the
-		// single-pane-tui proposal §"Per-room transcript buffers" and
-		// §"Per-room theme swap".
+		// top-level (room) states only.
 		if prefix != "" {
 			if s.Transcript != "" {
 				addErr(fmt.Sprintf("state %q: transcript: only allowed on top-level (room) states", statePath))
@@ -998,7 +1424,7 @@ func validateStates(
 		// Validate on: intent names, transition targets, and effect hosts.
 		intentNames := sortedKeys(s.On)
 		for _, intentName := range intentNames {
-			// Wildcard "*" is always allowed (§3.1).
+			// Wildcard "*" is always allowed.
 			if intentName != "*" {
 				_, isGlobal := globalIntents[intentName]
 				_, isLocal := localIntents[intentName]
@@ -1014,7 +1440,7 @@ func validateStates(
 					addErr(fmt.Sprintf("state %q intent %q: transition view: %v", statePath, intentName, err))
 				} else {
 					// Cross-reference choice elements in transition views
-					// against the same intents map. (choice-widget proposal §4.4.)
+					// against the same intents map (see docs/stories/choice-widget.md).
 					for vi, el := range tr.View.Elements {
 						if el.Kind != "choice" {
 							continue
@@ -1047,6 +1473,13 @@ func validateStates(
 			validateBackgroundEffect(file, fmt.Sprintf("state %q on_enter[%d]", statePath, i), statePath, eff, allowedHosts, declaredAgents, allPaths, stateOnKeys, errs)
 		}
 
+		// Validate the gate decider override (execution-modes proposal).
+		switch s.Decider {
+		case "", "human", "llm":
+		default:
+			addErr(fmt.Sprintf("state %q: decider %q is invalid (want \"\", \"human\", or \"llm\")", statePath, s.Decider))
+		}
+
 		// Validate Timeout: parse the duration and resolve the target.
 		if s.Timeout != nil {
 			if s.Timeout.After == "" {
@@ -1076,7 +1509,7 @@ func validateStates(
 			}
 		}
 
-		// Validate parallel state shape (proposal §9.4): each parallel state
+		// Validate parallel state shape: each parallel state
 		// must declare ≥2 child regions and must not declare an `initial:`
 		// field on the parent (each region picks its own initial).
 		if s.Type == "parallel" {
@@ -1123,7 +1556,7 @@ func validateTransitionTarget(file, statePath, target string, allPaths map[strin
 }
 
 // resolveTarget resolves a YAML transition target relative to a state path.
-// The design uses slash-separated relative refs (§3.1) like "../../foyer" but
+// The design uses slash-separated relative refs like "../../foyer" but
 // the internal state paths use dots. We accept both slash-based relative refs
 // and direct dotted absolute references.
 func resolveTarget(statePath, target string) string {
@@ -1187,6 +1620,11 @@ func validateBackgroundEffectAware(file, location, originStatePath string, eff E
 	}
 	if eff.Background && eff.Invoke == "" {
 		addErr(fmt.Sprintf("%s: background: true requires invoke: to be set", location))
+	}
+	// once: caches the invoke's bind targets — with nothing to cache it is
+	// meaningless. Fail fast, mirroring the background: invariant above.
+	if eff.Once && len(eff.Bind) == 0 {
+		addErr(fmt.Sprintf("%s: once: true requires a non-empty bind: (the bind target is the cache that arms the skip)", location))
 	}
 	// target: is only meaningful inside on_complete: blocks. The async
 	// terminal context is the only place where a synthetic transition
@@ -1264,10 +1702,202 @@ func validateBackgroundEffectAware(file, location, originStatePath string, eff E
 	}
 }
 
-// validateAgentRef checks that, when a host.oracle.* effect declares
+// validateWriteMode enforces the write_mode: room-posture invariants
+// (agent-write-mode-opt-in proposal). It walks the full state tree (def in
+// scope so it can read AgentDef.ExternalSideEffect, which validateStates does
+// not carry) and on every state:
+//
+//   - rejects a write_mode value other than "", "open", or "read_only";
+//   - for write_mode: read_only, requires the room to actually dispatch an agent
+//     (mode: conversational, an agent_off_ramp, or a host.agent.task /
+//     host.agent.converse effect) — declaring it on a non-agent room is rejected
+//     because it would silently do nothing (principle of least surprise);
+//   - for write_mode: read_only, rejects a contradiction with a statically
+//     write-capable agent (an effect's agent declaring external_side_effect: true):
+//     the static and runtime postures must agree at the read-only floor;
+//   - on every state, rejects any effect that `set:`s the engine-reserved
+//     write_mode_scope world key (a story must not be able to self-grant write mode).
+func validateWriteMode(file string, def *AppDef, errs *[]error) {
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+	var walk func(prefix string, states map[string]*State)
+	walk = func(prefix string, states map[string]*State) {
+		for _, name := range sortedKeys(states) {
+			s := states[name]
+			if s == nil {
+				continue
+			}
+			statePath := joinPath(prefix, name)
+
+			// The reserved-key `set:` guard applies to EVERY state regardless of
+			// its own write_mode (any room could try to forge a grant).
+			for _, eff := range s.OnEnter {
+				checkReservedScopeSet(file, fmt.Sprintf("state %q on_enter", statePath), eff, errs)
+			}
+			for _, intentName := range sortedKeys(s.On) {
+				for _, tr := range s.On[intentName] {
+					for _, eff := range tr.Effects {
+						checkReservedScopeSet(file, fmt.Sprintf("state %q intent %q", statePath, intentName), eff, errs)
+					}
+				}
+			}
+
+			switch s.WriteMode {
+			case "", WriteModeOpen, WriteModeReadOnly:
+			default:
+				addErr(fmt.Sprintf("state %q: write_mode %q is invalid (want \"\", %q, or %q)",
+					statePath, s.WriteMode, WriteModeOpen, WriteModeReadOnly))
+			}
+
+			if s.WriteMode == WriteModeReadOnly {
+				if !roomDispatchesAgent(s) {
+					addErr(fmt.Sprintf("state %q: write_mode: read_only is only meaningful on a room that dispatches an agent "+
+						"(mode: conversational, an agent_off_ramp, or a host.agent.task / host.agent.converse effect); "+
+						"it would silently do nothing here", statePath))
+				}
+				for _, agentName := range roomDispatchedAgents(s) {
+					ad, ok := def.Agents[agentName]
+					if !ok || ad.ExternalSideEffect == nil {
+						continue
+					}
+					if *ad.ExternalSideEffect {
+						addErr(fmt.Sprintf("state %q: write_mode: read_only contradicts agent %q which declares external_side_effect: true "+
+							"(statically write-capable); the static and runtime postures must agree — drop write_mode: read_only or set the agent read-only",
+							statePath, agentName))
+					}
+				}
+			}
+
+			if len(s.States) > 0 {
+				walk(statePath, s.States)
+			}
+		}
+	}
+	walk("", def.States)
+}
+
+// InterceptDriveRest is the only valid value of a state's intercept_drive flag:
+// it marks a room whose entry begins a multi-turn sub-flow the pre-LLM intercept
+// gate must drive to rest. See State.InterceptDrive and
+// docs/architecture/prompt-intercept.md §"Multi-turn commands".
+const InterceptDriveRest = "rest"
+
+// validateInterceptDrive enforces the intercept_drive flag's contract: the only
+// valid value is "rest". An invalid value is a load error so a typo can't
+// silently disable the multi-turn drive at runtime. The flag is NOT restricted
+// to top-level rooms: import-folding legitimately nests a source story's
+// top-level room under an alias (e.g. git-ops's `conflict` becomes
+// `gitops.conflict` when dev-story imports it), and the gate's reachability
+// walk (Orchestrator.HasInterceptDriveRoom / isInterceptDriveRoom) descends into
+// nested states, so a flagged room remains fully functional after folding.
+func validateInterceptDrive(file string, def *AppDef, errs *[]error) {
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+	var walk func(prefix string, states map[string]*State)
+	walk = func(prefix string, states map[string]*State) {
+		for _, name := range sortedKeys(states) {
+			s := states[name]
+			if s == nil {
+				continue
+			}
+			statePath := joinPath(prefix, name)
+			if s.InterceptDrive != "" && s.InterceptDrive != InterceptDriveRest {
+				addErr(fmt.Sprintf("state %q: intercept_drive %q is invalid (the only valid value is %q)",
+					statePath, s.InterceptDrive, InterceptDriveRest))
+			}
+			if len(s.States) > 0 {
+				walk(statePath, s.States)
+			}
+		}
+	}
+	walk("", def.States)
+}
+
+// checkReservedScopeSet rejects an effect that `set:`s the engine-reserved
+// write_mode_scope world key. The runtime owns that key (the write-mode gate sets
+// and clears it on grant / turn / session boundary); a story `set:`-ing it would
+// be a self-granted write mode, defeating the gate. location prefixes the error.
+func checkReservedScopeSet(file, location string, eff Effect, errs *[]error) {
+	if eff.Set == nil {
+		return
+	}
+	if _, ok := eff.Set[WriteModeScopeWorldKey]; ok {
+		*errs = append(*errs, &ValidationError{
+			File: file,
+			Message: fmt.Sprintf("%s: set: %q is engine-reserved — a story may not self-grant write mode by writing the scope key; "+
+				"it is set only by the write-mode gate on an operator grant", location, WriteModeScopeWorldKey),
+		})
+	}
+}
+
+// roomDispatchesAgent reports whether a state runs a dispatched agent — the
+// precondition for write_mode: read_only to be meaningful. True when the state
+// is a conversational room, declares an agent off-ramp, or has any on_enter /
+// transition effect invoking host.agent.task or host.agent.converse.
+func roomDispatchesAgent(s *State) bool {
+	if s.Mode == "conversational" || s.AgentOffRamp != nil {
+		return true
+	}
+	dispatch := func(eff Effect) bool {
+		return eff.Invoke == "host.agent.task" || eff.Invoke == "host.agent.converse"
+	}
+	for _, eff := range s.OnEnter {
+		if dispatch(eff) {
+			return true
+		}
+	}
+	for _, trs := range s.On {
+		for _, tr := range trs {
+			for _, eff := range tr.Effects {
+				if dispatch(eff) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// roomDispatchedAgents returns the set of statically-named agents this room
+// dispatches via host.agent.task / host.agent.converse effects (the with.agent
+// arg, when a literal string). Templated agent names are skipped — they cannot
+// be resolved at load time. Used by the write_mode static-contradiction check.
+func roomDispatchedAgents(s *State) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	collect := func(eff Effect) {
+		if eff.Invoke != "host.agent.task" && eff.Invoke != "host.agent.converse" {
+			return
+		}
+		name, _ := eff.With["agent"].(string)
+		if name == "" || strings.Contains(name, "{{") {
+			return
+		}
+		if _, dup := seen[name]; dup {
+			return
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	for _, eff := range s.OnEnter {
+		collect(eff)
+	}
+	for _, trs := range s.On {
+		for _, tr := range trs {
+			for _, eff := range tr.Effects {
+				collect(eff)
+			}
+		}
+	}
+	return out
+}
+
+// validateAgentRef checks that, when a host.agent.* effect declares
 // `with: { agent: <name> }`, the name resolves to an entry in
 // AppDef.Agents. Effects that omit `agent:` (or whose Invoke is not a
-// host.oracle.* handler) are silently ignored — agent: is host-handler-
+// host.agent.* handler) are silently ignored — agent: is host-handler-
 // specific metadata, not a global field. Templated values (containing
 // "{{") are skipped because they cannot be resolved statically.
 func validateAgentRef(file, location string, eff Effect, declaredAgents map[string]struct{}, errs *[]error) {
@@ -1286,12 +1916,12 @@ func validateAgentRef(file, location string, eff Effect, declaredAgents map[stri
 		// Template — evaluated at runtime; cannot validate statically.
 		return
 	}
-	// Only host.oracle.* handlers consume agent:; flag misuse on others as
+	// Only host.agent.* handlers consume agent:; flag misuse on others as
 	// a useful authoring error rather than a silent typo.
-	if eff.Invoke != "" && !strings.HasPrefix(eff.Invoke, "host.oracle.") {
+	if eff.Invoke != "" && !strings.HasPrefix(eff.Invoke, "host.agent.") {
 		*errs = append(*errs, &ValidationError{
 			File:    file,
-			Message: fmt.Sprintf("%s: with.agent is only meaningful on host.oracle.* invocations (got invoke %q)", location, eff.Invoke),
+			Message: fmt.Sprintf("%s: with.agent is only meaningful on host.agent.* invocations (got invoke %q)", location, eff.Invoke),
 		})
 		return
 	}
@@ -1303,11 +1933,11 @@ func validateAgentRef(file, location string, eff Effect, declaredAgents map[stri
 	}
 }
 
-// oracleMutationTools is the set of tools that are forbidden for
-// host.oracle.ask, host.oracle.decide, and host.oracle.extract (read-only
-// verbs). This mirrors the runtime check in oracle_decide.go and
-// oracle_ask.go. The loader check here is the primary enforcement point.
-var oracleMutationTools = map[string]bool{
+// agentMutationTools is the set of tools that are forbidden for
+// host.agent.ask, host.agent.decide, and host.agent.extract (read-only
+// verbs). This mirrors the runtime check in agent_decide.go and
+// agent_ask.go. The loader check here is the primary enforcement point.
+var agentMutationTools = map[string]bool{
 	"host.Edit":         true,
 	"host.Write":        true,
 	"host.NotebookEdit": true,
@@ -1326,9 +1956,9 @@ var readOnlyArgv0s = map[string]bool{
 	"file": true, "which": true, "type": true,
 }
 
-// validateOracleVerbCrossChecks walks every host.oracle.* effect across the
+// validateAgentVerbCrossChecks walks every host.agent.* effect across the
 // entire AppDef (states + proposals) and enforces three rules from the
-// oracle-split proposal:
+// agent-split proposal:
 //
 //  1. (M6a) ask/decide/extract agents must not declare Edit/Write/NotebookEdit.
 //  2. (M6b) task effects must have acceptance.schema set in their with: block.
@@ -1341,13 +1971,13 @@ var readOnlyArgv0s = map[string]bool{
 // declare a validator.post_cmd whose argv0 is not on the known-read-only
 // allowlist — the runtime sandbox catches actual mutations, but the warning
 // surfaces the potential problem at app-load.
-func validateOracleVerbCrossChecks(file string, def *AppDef, errs *[]error) {
+func validateAgentVerbCrossChecks(file string, def *AppDef, errs *[]error) {
 	if def == nil {
 		return
 	}
 	// Walk all effects in the state tree.
 	walkAllEffects(def.States, func(loc string, eff Effect) {
-		checkOracleEffect(file, loc, eff, def.Agents, errs)
+		checkAgentEffect(file, loc, eff, def.Agents, errs)
 	})
 	// Walk proposal execute effects.
 	for pname, pk := range def.Proposals {
@@ -1355,12 +1985,12 @@ func validateOracleVerbCrossChecks(file string, def *AppDef, errs *[]error) {
 			continue
 		}
 		loc := fmt.Sprintf("proposal %q execute", pname)
-		checkOracleEffect(file, loc, Effect{
+		checkAgentEffect(file, loc, Effect{
 			Invoke: pk.Execute.Invoke,
 			With:   pk.Execute.With,
 		}, def.Agents, errs)
 		for i, child := range pk.Execute.OnComplete {
-			checkOracleEffect(file, fmt.Sprintf("%s on_complete[%d]", loc, i), child, def.Agents, errs)
+			checkAgentEffect(file, fmt.Sprintf("%s on_complete[%d]", loc, i), child, def.Agents, errs)
 		}
 	}
 }
@@ -1400,16 +2030,16 @@ func walkAllEffectsPrefix(prefix string, states map[string]*State, fn func(loc s
 	}
 }
 
-// checkOracleEffect enforces M6 and M3 rules on one effect.
-func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDecl, errs *[]error) {
+// checkAgentEffect enforces M6 and M3 rules on one effect.
+func checkAgentEffect(file, loc string, eff Effect, agents map[string]*AgentDecl, errs *[]error) {
 	if eff.With == nil {
 		return
 	}
 	verb := eff.Invoke
-	if !strings.HasPrefix(verb, "host.oracle.") {
+	if !strings.HasPrefix(verb, "host.agent.") {
 		return
 	}
-	shortVerb := strings.TrimPrefix(verb, "host.oracle.")
+	shortVerb := strings.TrimPrefix(verb, "host.agent.")
 
 	agentName, _ := eff.With["agent"].(string)
 	if strings.Contains(agentName, "{{") {
@@ -1430,9 +2060,9 @@ func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDec
 		// M6a: reject mutation tools.
 		if decl != nil {
 			for _, t := range decl.Tools {
-				if oracleMutationTools[t] {
+				if agentMutationTools[t] {
 					addErr(fmt.Sprintf(
-						"%s: agent %q declares mutation tool %q — not permitted for host.oracle.%s (read-only verb); use host.oracle.task for agentic work",
+						"%s: agent %q declares mutation tool %q — not permitted for host.agent.%s (read-only verb); use host.agent.task for agentic work",
 						loc, agentName, t, shortVerb,
 					))
 				}
@@ -1446,7 +2076,7 @@ func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDec
 					if len(parts) > 0 {
 						argv0 := filepath.Base(parts[0])
 						if !readOnlyArgv0s[argv0] {
-							slog.Warn("oracle verb cross-check: decide/extract validator.post_cmd argv0 is not on the read-only allowlist; runtime sandbox enforces isolation",
+							slog.Warn("agent verb cross-check: decide/extract validator.post_cmd argv0 is not on the read-only allowlist; runtime sandbox enforces isolation",
 								"location", loc, "argv0", argv0, "file", file)
 						}
 					}
@@ -1463,7 +2093,7 @@ func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDec
 			}
 			if strings.TrimSpace(schemaVal) == "" {
 				addErr(fmt.Sprintf(
-					"%s: host.oracle.task requires acceptance.schema to be set in the with: block",
+					"%s: host.agent.task requires acceptance.schema to be set in the with: block",
 					loc,
 				))
 			}
@@ -1483,6 +2113,140 @@ func checkOracleEffect(file, loc string, eff Effect, agents map[string]*AgentDec
 			}
 		}
 	}
+}
+
+// validateLocalLLMGrammarSubset enforces, at load time, that every decide
+// effect whose `agent:` alias resolves to a builtin.local_llm plugin with
+// grammar: true points at a schema inside llama.cpp's translatable grammar
+// subset. Without this, an out-of-subset schema would fail open silently at
+// runtime (llama.cpp decodes unconstrained yet returns 200), defeating the
+// predictability the grammar tier exists to buy.
+//
+// Scope: the check covers the decide verb only — its schema is a string path in
+// the effect's with.schema. extract (with.schema_path) and ask source differently
+// and are deferred as a follow-up. An empty `agent:` alias resolves to
+// agent.claude (not local_llm) and is unaffected. Schema paths resolve relative
+// to def.BaseDir (matching the runtime app-dir resolution); absolute paths are
+// read as-is. A schema that cannot be read is reported here too, since the gate
+// cannot vouch for a schema it never saw.
+func validateLocalLLMGrammarSubset(file string, def *AppDef, errs *[]error) {
+	if def == nil || len(def.AgentPlugins) == 0 {
+		return
+	}
+	// Collect aliases that are builtin.local_llm with grammar: true.
+	grammarLocalLLM := make(map[string]bool)
+	for alias, decl := range def.AgentPlugins {
+		if decl != nil && decl.Plugin == "builtin.local_llm" && decl.Grammar {
+			grammarLocalLLM[alias] = true
+		}
+	}
+	if len(grammarLocalLLM) == 0 {
+		return
+	}
+
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+
+	walkAllEffects(def.States, func(loc string, eff Effect) {
+		if eff.Invoke != "host.agent.decide" {
+			return
+		}
+		if !grammarLocalLLM[eff.AgentPlugin] {
+			return
+		}
+		schemaPath, _ := eff.With["schema"].(string)
+		schemaPath = strings.TrimSpace(schemaPath)
+		if schemaPath == "" {
+			// Missing schema is reported by the decide handler's own contract;
+			// the grammar gate has nothing to inspect.
+			return
+		}
+		if strings.Contains(schemaPath, "{{") {
+			// Templated schema path — cannot resolve statically; skip.
+			return
+		}
+		resolved := schemaPath
+		if !filepath.IsAbs(resolved) && def.BaseDir != "" {
+			resolved = filepath.Join(def.BaseDir, resolved)
+		}
+		raw, readErr := os.ReadFile(resolved)
+		if readErr != nil {
+			addErr(fmt.Sprintf(
+				"%s: agent %q is builtin.local_llm with grammar: true but its decide schema %q could not be read: %v",
+				loc, eff.AgentPlugin, schemaPath, readErr,
+			))
+			return
+		}
+		if subErr := grammar.SubsetOK(raw); subErr != nil {
+			addErr(fmt.Sprintf(
+				"%s: agent %q is builtin.local_llm with grammar: true but its decide schema %q is outside the llama.cpp grammar subset: %v",
+				loc, eff.AgentPlugin, schemaPath, subErr,
+			))
+		}
+	})
+}
+
+// validateStarlarkEffects enforces the load-time contract for every
+// host.starlark.run effect: with.script must be a non-empty string, resolve to
+// a path inside the app root (no `../` escape), and BOTH the .star file and its
+// .star.yaml sidecar must exist and the sidecar must parse. This is the
+// fail-fast counterpart to the runtime sandbox — an app with a missing script
+// or malformed sidecar refuses to load rather than bouncing through on_error:
+// on the first turn that reaches the room.
+func validateStarlarkEffects(file string, def *AppDef, errs *[]error) {
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+
+	walkAllEffects(def.States, func(loc string, eff Effect) {
+		if eff.Invoke != "host.starlark.run" {
+			return
+		}
+		rawScript, _ := eff.With["script"].(string)
+		rawScript = strings.TrimSpace(rawScript)
+		if rawScript == "" {
+			addErr(fmt.Sprintf("%s: host.starlark.run requires a non-empty with.script", loc))
+			return
+		}
+		// Templated paths cannot be resolved statically; skip (the runtime
+		// adapter + sandbox validate them once rendered).
+		if strings.Contains(rawScript, "{{") {
+			return
+		}
+
+		// Resolve against the app root and reject any path that escapes it via
+		// `../`. Both story-root and app-level scripts/ dirs are fine — only an
+		// escape outside BaseDir is rejected.
+		resolved := rawScript
+		if !filepath.IsAbs(resolved) && def.BaseDir != "" {
+			resolved = filepath.Join(def.BaseDir, resolved)
+		}
+		if def.BaseDir != "" {
+			rel, relErr := filepath.Rel(def.BaseDir, filepath.Clean(resolved))
+			if relErr != nil || strings.HasPrefix(rel, "..") {
+				addErr(fmt.Sprintf("%s: host.starlark.run script %q resolves outside the app root", loc, rawScript))
+				return
+			}
+		}
+
+		if _, statErr := os.Stat(resolved); statErr != nil {
+			addErr(fmt.Sprintf("%s: host.starlark.run script %q not found (resolved to %q)", loc, rawScript, resolved))
+			return
+		}
+
+		// The sidecar is mandatory: it is authoritative over the script's
+		// inputs/outputs. A missing or malformed sidecar is a load error.
+		sidecarPath := resolved + ".yaml"
+		raw, readErr := os.ReadFile(sidecarPath)
+		if readErr != nil {
+			addErr(fmt.Sprintf("%s: host.starlark.run script %q has no sidecar (expected %q): %v", loc, rawScript, sidecarPath, readErr))
+			return
+		}
+		if _, parseErr := starlarkhost.ParseSidecar(raw); parseErr != nil {
+			addErr(fmt.Sprintf("%s: host.starlark.run sidecar %q is malformed: %v", loc, sidecarPath, parseErr))
+		}
+	})
 }
 
 // metaEnvVarRE matches `$NAME` and `${NAME}` tokens in a cwd: string.
@@ -1644,6 +2408,79 @@ func validateMetaModes(file string, def *AppDef, errs *[]error) {
 	}
 }
 
+// normalizeAndValidateOffRamps walks every state in the tree and enforces the
+// agent off-ramp's load-time invariants (see docs/stories/meta-mode.md and
+// the OffRampDef doc):
+//
+//   - An explicit `agent_off_ramp: false` is normalized to a nil pointer so
+//     every downstream reader can treat `State.AgentOffRamp != nil` as "the
+//     off-ramp fires." (goccy allocates the pointer even for `false`; the
+//     def's enabled flag is the discriminant.)
+//   - An off-ramp on a `terminal: true` state is rejected: a terminal state
+//     ends the journey and never routes free text, so the flag is meaningless.
+//   - An off-ramp on a `mode: conversational` state is rejected: that harness
+//     is already free-form, so the flag is redundant and would shadow it.
+//
+// The off-ramp's agent: reference is validated separately in
+// validateAgentReferences (the single agent-resolution site), so this pass
+// only owns the placement invariants. Agent names are also collected here for
+// that pass to consume.
+func normalizeAndValidateOffRamps(file string, def *AppDef, errs *[]error) {
+	if def == nil {
+		return
+	}
+	var walk func(prefix string, states map[string]*State)
+	walk = func(prefix string, states map[string]*State) {
+		// Iterate in sorted name order for deterministic error ordering.
+		for _, name := range sortedStateNames(states) {
+			s := states[name]
+			if s == nil {
+				continue
+			}
+			path := joinPath(prefix, name)
+			if s.AgentOffRamp != nil {
+				if !s.AgentOffRamp.Enabled() {
+					// Explicit `false`: drop the def so the runtime sees no
+					// off-ramp. No further checks apply.
+					s.AgentOffRamp = nil
+				} else {
+					if s.Terminal {
+						*errs = append(*errs, &ValidationError{
+							File: file,
+							Message: fmt.Sprintf(
+								"state %q declares agent_off_ramp on a terminal: true state; a terminal state never routes free text",
+								path),
+						})
+					}
+					if s.Mode == "conversational" {
+						*errs = append(*errs, &ValidationError{
+							File: file,
+							Message: fmt.Sprintf(
+								"state %q declares agent_off_ramp on a mode: conversational state; that harness is already free-form, so the flag is meaningless there",
+								path),
+						})
+					}
+				}
+			}
+			if len(s.States) > 0 {
+				walk(path, s.States)
+			}
+		}
+	}
+	walk("", def.States)
+}
+
+// sortedStateNames returns the keys of a state map in lexical order so callers
+// that emit per-state diagnostics produce deterministic output.
+func sortedStateNames(states map[string]*State) []string {
+	names := make([]string, 0, len(states))
+	for name := range states {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // validateAgentReferences walks every site in the AppDef where an agent name
 // can be selected (meta_modes[*].agent, off_path.agent) and asserts the
 // referenced name resolves either in def.Agents or in
@@ -1706,13 +2543,37 @@ func validateAgentReferences(file string, def *AppDef, errs *[]error) {
 		}
 	}
 
+	// states.<path>.agent_off_ramp.agent — one site per off-ramp room. Walk
+	// the full state tree (off-ramps may sit on nested states) in sorted path
+	// order for stable error ordering. Mirrors the off_path.agent check.
+	var walkOffRampAgents func(prefix string, states map[string]*State)
+	walkOffRampAgents = func(prefix string, states map[string]*State) {
+		for _, name := range sortedStateNames(states) {
+			s := states[name]
+			if s == nil {
+				continue
+			}
+			path := joinPath(prefix, name)
+			if s.AgentOffRamp != nil && s.AgentOffRamp.Agent != "" {
+				if _, ok := known[s.AgentOffRamp.Agent]; !ok {
+					addUnknown(s.AgentOffRamp.Agent, fmt.Sprintf("states.%s.agent_off_ramp.agent", path))
+				}
+			}
+			if len(s.States) > 0 {
+				walkOffRampAgents(path, s.States)
+			}
+		}
+	}
+	walkOffRampAgents("", def.States)
+
 	// background_jobs.<name>.agent is intentionally absent: no first-class
 	// background_jobs YAML type exists today. Once it lands, walk it here.
 }
 
-// validateNoReachIntoChild implements story-imports proposal §8/§16.7.
+// validateNoReachIntoChild implements the reach-into-child guard (see
+// docs/stories/imports.md).
 // A parent transition targeting `<alias>.<deeper>` couples the parent
-// to the child's internals, which the proposal forbids. The canonical
+// to the child's internals, which the import contract forbids. The canonical
 // way to invoke a child is `target: <alias>` (the wrapper itself);
 // `target: <alias>.<entry>` is also allowed since it's equivalent.
 // Anything deeper is rejected with a clear message naming both the
@@ -1790,7 +2651,7 @@ func checkStateTargetsAgainstWrappers(statePath string, s *State, wrappers map[s
 		*errs = append(*errs, &ValidationError{
 			File: file,
 			Message: fmt.Sprintf(
-				"state %q %s targets %q which reaches into the imported child %q past its entry %q; use target: %q to invoke the child or have the child expose a new exit (proposal §8/§16.7)",
+				"state %q %s targets %q which reaches into the imported child %q past its entry %q; use target: %q to invoke the child or have the child expose a new exit",
 				statePath, where, target, alias, wrapper.Entry, alias,
 			),
 		})
@@ -1876,7 +2737,68 @@ func validateRouting(file string, def *AppDef, errs *[]error) {
 		if r.SemanticHighBar > 0 && r.SemanticMidBar > 0 && !(r.SemanticHighBar > r.SemanticMidBar) {
 			addErr(fmt.Sprintf("routing.semantic_high_bar (%.4f) must be greater than routing.semantic_mid_bar (%.4f)", r.SemanticHighBar, r.SemanticMidBar))
 		}
+		if r.FreeFormFallback != nil {
+			validateFreeFormFallback(file, def, errs)
+		}
 	}
+}
+
+func validateFreeFormFallback(file string, def *AppDef, errs *[]error) {
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+	cfg := def.Routing.FreeFormFallback
+	statePath := strings.TrimSpace(cfg.State)
+	intentName := strings.TrimSpace(cfg.Intent)
+	if statePath == "" {
+		addErr("routing.free_form_fallback.state is required")
+		return
+	}
+	if intentName == "" {
+		addErr("routing.free_form_fallback.intent is required")
+		return
+	}
+	st, ok := lookupStateInMap(statePath, def.States)
+	if !ok || st == nil {
+		addErr(fmt.Sprintf("routing.free_form_fallback.state %q is not declared in states", statePath))
+		return
+	}
+	if _, ok := st.On[intentName]; !ok {
+		addErr(fmt.Sprintf("routing.free_form_fallback.intent %q has no matching on: arc in state %q", intentName, statePath))
+		return
+	}
+	idef, found := intentDefInScope(def, statePath, intentName)
+	if !found {
+		addErr(fmt.Sprintf("routing.free_form_fallback.intent %q is not a declared intent", intentName))
+		return
+	}
+	reqCount, reqString := 0, true
+	for _, sl := range idef.Slots {
+		if !sl.Required {
+			continue
+		}
+		reqCount++
+		if sl.Type != "" && sl.Type != "string" {
+			reqString = false
+		}
+	}
+	if reqCount != 1 || !reqString {
+		addErr(fmt.Sprintf("routing.free_form_fallback.intent %q must declare exactly one required string slot to receive the free-text utterance", intentName))
+	}
+}
+
+func intentDefInScope(def *AppDef, statePath, intentName string) (Intent, bool) {
+	parts := strings.Split(statePath, ".")
+	for i := len(parts); i >= 1; i-- {
+		p := strings.Join(parts[:i], ".")
+		if st, ok := lookupStateInMap(p, def.States); ok && st != nil {
+			if ix, found := st.Intents[intentName]; found {
+				return ix, true
+			}
+		}
+	}
+	ix, ok := def.Intents[intentName]
+	return ix, ok
 }
 
 // validateIntentSynonyms checks one intent's Synonyms list and its slot
@@ -2008,7 +2930,7 @@ func lookupStateInMap(path string, states map[string]*State) (*State, bool) {
 }
 
 // LookupIntent resolves an intent by name, checking the state's local intents
-// first and then the global intent library (§3.4).
+// first and then the global intent library.
 func (a *appImpl) LookupIntent(ctx StatePath, name string) (Intent, bool) {
 	if s, ok := a.LookupState(ctx); ok && s != nil {
 		if intent, ok := s.Intents[name]; ok {
@@ -2022,3 +2944,17 @@ func (a *appImpl) LookupIntent(ctx StatePath, name string) (Intent, bool) {
 }
 
 func (a *appImpl) WorldSchema() WorldSchema { return WorldSchema(a.def.World) }
+
+// TopLevelStateIDs returns every declared top-level state id (room id),
+// including states unreachable from the initial state. The order is
+// unspecified. This is the enumeration the story-graph tooling
+// (internal/app/graph) needs to surface orphaned rooms the App interface's
+// path-based LookupState cannot discover on its own. It is additive — callers
+// type-assert for it via an optional interface.
+func (a *appImpl) TopLevelStateIDs() []string {
+	out := make([]string, 0, len(a.def.States))
+	for id := range a.def.States {
+		out = append(out, id)
+	}
+	return out
+}

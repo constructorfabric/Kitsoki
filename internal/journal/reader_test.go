@@ -56,8 +56,12 @@ func TestReader_OrderedByTurnSeq(t *testing.T) {
 	appendPatch(t, w, sid, 1, 1, "world", journal.KindWorldPatch)
 
 	var entries []journal.Entry
-	for e := range r.ReplayFrom(sid, "world", 1) {
+	seq, errFn := r.ReplayFrom(sid, "world", 1)
+	for e := range seq {
 		entries = append(entries, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayFrom: %v", err)
 	}
 
 	if len(entries) != 4 {
@@ -88,8 +92,12 @@ func TestReader_ReplayFrom_FiltersVersion(t *testing.T) {
 	}
 
 	var entries []journal.Entry
-	for e := range r.ReplayFrom(sid, "world", 3) {
+	seq, errFn := r.ReplayFrom(sid, "world", 3)
+	for e := range seq {
 		entries = append(entries, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayFrom: %v", err)
 	}
 	// Versions 3, 4, 5 should be included.
 	if len(entries) != 3 {
@@ -125,7 +133,10 @@ func TestReader_CheckpointPrecedence(t *testing.T) {
 	appendPatch(t, w, sid, 5, 0, "world", journal.KindWorldPatch)
 	appendPatch(t, w, sid, 6, 0, "world", journal.KindWorldPatch)
 
-	cp, ok := r.LatestCheckpoint(sid, "world")
+	cp, ok, err := r.LatestCheckpoint(sid, "world")
+	if err != nil {
+		t.Fatalf("LatestCheckpoint: %v", err)
+	}
 	if !ok {
 		t.Fatal("LatestCheckpoint: not found")
 	}
@@ -135,8 +146,12 @@ func TestReader_CheckpointPrecedence(t *testing.T) {
 
 	// ReplayFrom at checkpoint+1 should return only the 2 post-checkpoint patches.
 	var afterCp []journal.Entry
-	for e := range r.ReplayFrom(sid, "world", cp.DocVersion+1) {
+	seq, errFn := r.ReplayFrom(sid, "world", cp.DocVersion+1)
+	for e := range seq {
 		afterCp = append(afterCp, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayFrom: %v", err)
 	}
 	if len(afterCp) != 2 {
 		t.Errorf("patches after checkpoint = %d, want 2", len(afterCp))
@@ -171,8 +186,12 @@ func TestReader_ReplayTyped(t *testing.T) {
 	appendTyped(t, w, sid, 3, 1, journal.KindClarifyAnswered)
 
 	var typed []journal.Entry
-	for e := range r.ReplayTyped(sid) {
+	seq, errFn := r.ReplayTyped(sid)
+	for e := range seq {
 		typed = append(typed, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayTyped: %v", err)
 	}
 
 	if len(typed) != 3 {
@@ -217,6 +236,37 @@ func TestReader_ListLiveDocs(t *testing.T) {
 	}
 }
 
+// TestReader_ErrAccessorsAlwaysNil confirms the in-memory reader honors the
+// same (seq, err) / (Entry, bool, error) contract as the SQLite reader: it
+// never fails, so its accessors report nil. This keeps the two implementations
+// aligned against the Reader interface.
+func TestReader_ErrAccessorsAlwaysNil(t *testing.T) {
+	t.Parallel()
+
+	store := journal.NewMemStore()
+	r := journal.NewMemReader(store)
+
+	sid := app.SessionID("nil-err")
+
+	fromSeq, fromErr := r.ReplayFrom(sid, "world", 1)
+	for range fromSeq {
+	}
+	if err := fromErr(); err != nil {
+		t.Errorf("ReplayFrom err() = %v, want nil", err)
+	}
+
+	typedSeq, typedErr := r.ReplayTyped(sid)
+	for range typedSeq {
+	}
+	if err := typedErr(); err != nil {
+		t.Errorf("ReplayTyped err() = %v, want nil", err)
+	}
+
+	if _, _, err := r.LatestCheckpoint(sid, "world"); err != nil {
+		t.Errorf("LatestCheckpoint err = %v, want nil", err)
+	}
+}
+
 // TestReader_MultiSession checks isolation between sessions.
 func TestReader_MultiSession(t *testing.T) {
 	t.Parallel()
@@ -233,16 +283,24 @@ func TestReader_MultiSession(t *testing.T) {
 	appendPatch(t, w, s2, 2, 0, "world", journal.KindWorldPatch)
 
 	var s1Entries []journal.Entry
-	for e := range r.ReplayFrom(s1, "world", 1) {
+	s1Seq, s1Err := r.ReplayFrom(s1, "world", 1)
+	for e := range s1Seq {
 		s1Entries = append(s1Entries, e)
+	}
+	if err := s1Err(); err != nil {
+		t.Fatalf("ReplayFrom(s1): %v", err)
 	}
 	if len(s1Entries) != 1 {
 		t.Errorf("session A entries = %d, want 1", len(s1Entries))
 	}
 
 	var s2Entries []journal.Entry
-	for e := range r.ReplayFrom(s2, "world", 1) {
+	s2Seq, s2Err := r.ReplayFrom(s2, "world", 1)
+	for e := range s2Seq {
 		s2Entries = append(s2Entries, e)
+	}
+	if err := s2Err(); err != nil {
+		t.Fatalf("ReplayFrom(s2): %v", err)
 	}
 	if len(s2Entries) != 2 {
 		t.Errorf("session B entries = %d, want 2", len(s2Entries))

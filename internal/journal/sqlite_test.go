@@ -127,8 +127,12 @@ func TestSQLite_RoundTrip_PatchEntries(t *testing.T) {
 	appendSQLitePatch(t, w, sid, 1, 0, "world", journal.KindWorldPatch)
 
 	var got []journal.Entry
-	for e := range r.ReplayFrom(sid, "world", 1) {
+	seq, errFn := r.ReplayFrom(sid, "world", 1)
+	for e := range seq {
 		got = append(got, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayFrom: %v", err)
 	}
 
 	if len(got) != 4 {
@@ -159,8 +163,12 @@ func TestSQLite_ReplayFrom_FiltersVersion(t *testing.T) {
 	}
 
 	var got []journal.Entry
-	for e := range r.ReplayFrom(sid, "world", 3) {
+	seq, errFn := r.ReplayFrom(sid, "world", 3)
+	for e := range seq {
 		got = append(got, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayFrom: %v", err)
 	}
 	if len(got) != 3 {
 		t.Fatalf("ReplayFrom(3) len = %d, want 3", len(got))
@@ -194,7 +202,10 @@ func TestSQLite_CheckpointPrecedence(t *testing.T) {
 	appendSQLitePatch(t, w, sid, 5, 0, "world", journal.KindWorldPatch)
 	appendSQLitePatch(t, w, sid, 6, 0, "world", journal.KindWorldPatch)
 
-	cp, ok := r.LatestCheckpoint(sid, "world")
+	cp, ok, err := r.LatestCheckpoint(sid, "world")
+	if err != nil {
+		t.Fatalf("LatestCheckpoint: %v", err)
+	}
 	if !ok {
 		t.Fatal("LatestCheckpoint: not found")
 	}
@@ -204,8 +215,12 @@ func TestSQLite_CheckpointPrecedence(t *testing.T) {
 
 	// Patches after checkpoint.
 	var afterCp []journal.Entry
-	for e := range r.ReplayFrom(sid, "world", cp.DocVersion+1) {
+	seq, errFn := r.ReplayFrom(sid, "world", cp.DocVersion+1)
+	for e := range seq {
 		afterCp = append(afterCp, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayFrom: %v", err)
 	}
 	if len(afterCp) != 2 {
 		t.Errorf("patches after checkpoint = %d, want 2", len(afterCp))
@@ -359,8 +374,12 @@ func TestSQLite_AppendJournalTx_CommitSucceeds(t *testing.T) {
 
 	r := makeReader(t, db)
 	var got []journal.Entry
-	for e := range r.ReplayFrom(sid, "world", 1) {
+	seq, errFn := r.ReplayFrom(sid, "world", 1)
+	for e := range seq {
 		got = append(got, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayFrom: %v", err)
 	}
 	if len(got) != 1 {
 		t.Errorf("after commit: entries = %d, want 1", len(got))
@@ -401,8 +420,12 @@ func TestSQLite_AppendJournalTx_RollbackYieldsNoRows(t *testing.T) {
 	// No rows should be visible.
 	r := makeReader(t, db)
 	var got []journal.Entry
-	for e := range r.ReplayTyped(sid) {
+	seq, errFn := r.ReplayTyped(sid)
+	for e := range seq {
 		got = append(got, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayTyped: %v", err)
 	}
 	if len(got) != 0 {
 		t.Errorf("after rollback: typed entries = %d, want 0", len(got))
@@ -430,8 +453,12 @@ func TestSQLite_ReplayTyped_FiltersCorrectly(t *testing.T) {
 	appendSQLiteTyped(t, w, sid, 3, 1, journal.KindClarifyAnswered)
 
 	var typed []journal.Entry
-	for e := range r.ReplayTyped(sid) {
+	seq, errFn := r.ReplayTyped(sid)
+	for e := range seq {
 		typed = append(typed, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayTyped: %v", err)
 	}
 	if len(typed) != 3 {
 		t.Fatalf("ReplayTyped len = %d, want 3", len(typed))
@@ -488,16 +515,24 @@ func TestSQLite_MultiSession(t *testing.T) {
 	appendSQLitePatch(t, w, s2, 2, 0, "world", journal.KindWorldPatch)
 
 	var s1E []journal.Entry
-	for e := range r.ReplayFrom(s1, "world", 1) {
+	s1Seq, s1Err := r.ReplayFrom(s1, "world", 1)
+	for e := range s1Seq {
 		s1E = append(s1E, e)
+	}
+	if err := s1Err(); err != nil {
+		t.Fatalf("ReplayFrom(s1): %v", err)
 	}
 	if len(s1E) != 1 {
 		t.Errorf("session A entries = %d, want 1", len(s1E))
 	}
 
 	var s2E []journal.Entry
-	for e := range r.ReplayFrom(s2, "world", 1) {
+	s2Seq, s2Err := r.ReplayFrom(s2, "world", 1)
+	for e := range s2Seq {
 		s2E = append(s2E, e)
+	}
+	if err := s2Err(); err != nil {
+		t.Fatalf("ReplayFrom(s2): %v", err)
 	}
 	if len(s2E) != 2 {
 		t.Errorf("session B entries = %d, want 2", len(s2E))
@@ -530,7 +565,10 @@ func TestSQLite_AppendCheckpoint_VersionContinuesFromPatches(t *testing.T) {
 		t.Fatalf("AppendCheckpoint: %v", err)
 	}
 
-	cp, ok := r.LatestCheckpoint(sid, "world")
+	cp, ok, err := r.LatestCheckpoint(sid, "world")
+	if err != nil {
+		t.Fatalf("LatestCheckpoint: %v", err)
+	}
 	if !ok {
 		t.Fatal("no checkpoint found")
 	}
@@ -585,8 +623,12 @@ func TestSQLite_AppendJournalTx_TypedEntryNoDocVersion(t *testing.T) {
 
 	r := makeReader(t, db)
 	var got []journal.Entry
-	for e := range r.ReplayTyped(sid) {
+	seq, errFn := r.ReplayTyped(sid)
+	for e := range seq {
 		got = append(got, e)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayTyped: %v", err)
 	}
 	if len(got) != 1 {
 		t.Fatalf("typed entries = %d, want 1", len(got))
@@ -596,3 +638,149 @@ func TestSQLite_AppendJournalTx_TypedEntryNoDocVersion(t *testing.T) {
 	}
 }
 
+// ----- Error-surfacing tests --------------------------------------------------
+//
+// These cover the contract that scan/query failures are no longer silently
+// swallowed: the iterators expose them via their err() accessor and
+// LatestCheckpoint returns a non-nil error kept distinct from "not found".
+// Each asserts a condition the pre-fix code (which returned silently / collapsed
+// errors to false) could not satisfy.
+
+// TestSQLite_ReplayFrom_SurfacesQueryError drops the journal table out from
+// under an open reader so the underlying Query fails, and asserts the err()
+// accessor reports it rather than the stream ending clean.
+func TestSQLite_ReplayFrom_SurfacesQueryError(t *testing.T) {
+	t.Parallel()
+	db := openTestDB(t)
+	w := makeWriter(t, db)
+	r := makeReader(t, db)
+
+	sid := app.SessionID("query-err")
+	appendSQLitePatch(t, w, sid, 1, 0, "world", journal.KindWorldPatch)
+
+	if _, err := db.Exec("DROP TABLE journal"); err != nil {
+		t.Fatalf("DROP TABLE: %v", err)
+	}
+
+	seq, errFn := r.ReplayFrom(sid, "world", 1)
+	var n int
+	for range seq {
+		n++
+	}
+	if n != 0 {
+		t.Fatalf("yielded %d entries after table drop, want 0", n)
+	}
+	if errFn() == nil {
+		t.Fatal("ReplayFrom err() = nil after query failure, want non-nil")
+	}
+}
+
+// TestSQLite_ReplayTyped_SurfacesQueryError mirrors the above for ReplayTyped.
+func TestSQLite_ReplayTyped_SurfacesQueryError(t *testing.T) {
+	t.Parallel()
+	db := openTestDB(t)
+	w := makeWriter(t, db)
+	r := makeReader(t, db)
+
+	sid := app.SessionID("query-err-typed")
+	appendSQLiteTyped(t, w, sid, 1, 0, journal.KindHostInvoked)
+
+	if _, err := db.Exec("DROP TABLE journal"); err != nil {
+		t.Fatalf("DROP TABLE: %v", err)
+	}
+
+	seq, errFn := r.ReplayTyped(sid)
+	var n int
+	for range seq {
+		n++
+	}
+	if n != 0 {
+		t.Fatalf("yielded %d entries after table drop, want 0", n)
+	}
+	if errFn() == nil {
+		t.Fatal("ReplayTyped err() = nil after query failure, want non-nil")
+	}
+}
+
+// TestSQLite_ReplayTyped_SurfacesScanError replaces the journal table with one
+// whose turn column holds non-numeric text, forcing rows.Scan to fail
+// mid-stream. This is the subtler case: the query succeeds, but a row can't be
+// decoded, and the pre-fix code returned silently on it.
+func TestSQLite_ReplayTyped_SurfacesScanError(t *testing.T) {
+	t.Parallel()
+	db := openTestDB(t)
+	r := makeReader(t, db)
+
+	sid := app.SessionID("scan-err")
+
+	// Swap in a non-STRICT table so we can store text in the turn column, then
+	// insert a row that passes ReplayTyped's WHERE filter but cannot scan into
+	// the int64 turn field.
+	if _, err := db.Exec("DROP TABLE journal"); err != nil {
+		t.Fatalf("DROP TABLE: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE journal (
+		session_id  TEXT,
+		turn        TEXT,
+		seq         INTEGER,
+		ts          INTEGER,
+		kind        TEXT,
+		doc         TEXT,
+		doc_version INTEGER,
+		body_json   TEXT
+	)`); err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO journal (session_id, turn, seq, ts, kind, doc, doc_version, body_json)
+		 VALUES (?, 'not-a-number', 0, 0, ?, NULL, NULL, '{}')`,
+		string(sid), journal.KindHostInvoked,
+	); err != nil {
+		t.Fatalf("INSERT: %v", err)
+	}
+
+	seq, errFn := r.ReplayTyped(sid)
+	for range seq { //nolint:revive // draining the (truncated) sequence
+	}
+	if errFn() == nil {
+		t.Fatal("ReplayTyped err() = nil after scan failure, want non-nil")
+	}
+}
+
+// TestSQLite_LatestCheckpoint_ErrorVsNotFound asserts the third return value
+// distinguishes a query failure (non-nil error) from a clean "no checkpoint"
+// (false, nil error) — the distinction the old (Entry, bool) signature lost.
+func TestSQLite_LatestCheckpoint_ErrorVsNotFound(t *testing.T) {
+	t.Parallel()
+
+	// Not-found: intact table, no checkpoint rows.
+	t.Run("not_found", func(t *testing.T) {
+		t.Parallel()
+		db := openTestDB(t)
+		r := makeReader(t, db)
+		_, ok, err := r.LatestCheckpoint(app.SessionID("absent"), "world")
+		if err != nil {
+			t.Fatalf("err = %v, want nil for not-found", err)
+		}
+		if ok {
+			t.Fatal("ok = true, want false for not-found")
+		}
+	})
+
+	// Error: table dropped so the query fails.
+	t.Run("query_error", func(t *testing.T) {
+		t.Parallel()
+		db := openTestDB(t)
+		r := makeReader(t, db)
+		if _, err := db.Exec("DROP TABLE journal"); err != nil {
+			t.Fatalf("DROP TABLE: %v", err)
+		}
+		_, ok, err := r.LatestCheckpoint(app.SessionID("any"), "world")
+		if err == nil {
+			t.Fatal("err = nil after query failure, want non-nil")
+		}
+		if ok {
+			t.Fatal("ok = true on error, want false")
+		}
+	})
+}

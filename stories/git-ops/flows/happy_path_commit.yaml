@@ -1,0 +1,93 @@
+# happy_path_commit — branch_ops → staging (add_all) → back → commit (agent stub) → accept → branch_ops.
+# Free-text trigger: "commit" (bare imperative).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  has_uncommitted:    true
+  commits_ahead:      1
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      1
+            commits_behind:     0
+            has_uncommitted:    true
+            no_common_ancestor: false
+      classify_staging:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            staged:     ""
+            modified:   internal/foo.go
+            untracked:  ""
+            suspicious: ""
+      git_add_all:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    ""
+      # Single-script diff_stat returns staged_diff_stat + route
+      diff_stat:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            staged_diff_stat: " internal/foo.go | 5 +++++\n 1 file changed, 5 insertions(+)"
+            route:            "look"
+            squash_mode:      false
+      git_commit:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "[feat/x abc1234] feat: add foo"
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        type:    feat
+        scope:   null
+        summary: "add foo"
+        body:    null
+        message: "feat: add foo"
+
+turns:
+  - intent: { name: stage, slots: {} }
+    expect_state: staging
+
+  - intent: { name: add_all, slots: {} }
+    expect_state: staging
+    expect_world:
+      last_op_ok: true
+
+  - intent: { name: back, slots: {} }
+    expect_state: branch_ops
+
+  - intent: { name: commit, slots: {} }
+    expect_state: commit
+    expect_world:
+      staged_diff_stat: " internal/foo.go | 5 +++++\n 1 file changed, 5 insertions(+)"
+      commit_message:   "feat: add foo"
+      route:            "look"
+
+  - intent: { name: accept, slots: {} }
+    expect_state: branch_ops
+    expect_world:
+      commit_message:   ""
+      staged_diff_stat: ""
+
+expect_no_errors: true

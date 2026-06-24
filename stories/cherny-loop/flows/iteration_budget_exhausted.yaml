@@ -1,0 +1,38 @@
+# Gate keeps failing → @exit:exhausted (iteration_budget). launch runs the loop
+# autonomously; every gate fails, so it iterates to the ceiling (budget 3) and
+# stops rather than running forever. One launch drives the whole run.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:           { data: { ok: false, exit_code: 1, stdout: "FAIL: still red" } }
+  host.agent.task:   { data: { submitted: { summary: "another change" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal:             "Make the unit tests pass"
+        gate_command:     "go test ./..."
+        gate_mode:        "script"
+        iteration_budget: 3
+    expect_state: configuring
+  - intent: { name: launch, slots: {} }
+    expect_state: __exit__exhausted
+    expect_world:
+      terminal_reason: "iteration_budget"
+      iteration:       3
+    expect_host_calls:
+      - handler: host.run
+        times: 4
+      - handler: host.agent.task
+        times: 3
+      - handler: host.artifacts_dir
+        times: 3
+
+expect_terminal: true
+expect_no_errors: true

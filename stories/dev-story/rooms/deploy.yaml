@@ -1,27 +1,451 @@
-# deploy — STUB. Wave 3 / Phase 6 (proposal §3.x) wires the
-# `deploy` sub-story with real iface.{vcs,ci}.* dispatch.
+# deploy — ship a release to a target with a preflight gate + verify/rollback.
+#
+# Wave 3 fills the former STUB with a real select → preflight → go/no-go gate →
+# ship → verify | rollback loop. This is dev-story's release surface: the
+# engineer picks a deploy target, the loop runs preflight checks (host.run), an
+# agent gates the result (go/no-go via host.agent.decide), and on ship it
+# deploys (host.run), verifies the new release (host.run + host.agent.decide),
+# and routes deterministically — succeeded, or rolled back.
+#
+#   deploy (intake) ── start_deploy ──▶ deploy_preflighting
+#                                         │ on_enter: host.run preflight
+#                                         │ + host.agent.decide gate (go|no_go)
+#                                         ▼
+#                                     deploy_gated  (the verdict)
+#                                         ├─ ship   ▶ deploy_shipping ─▶ deploy_verifying
+#                                         └─ cancel ▶ deploy (parked)
+#                                     deploy_verifying
+#                                         │ on_enter: host.run verify
+#                                         │ + host.agent.decide health (healthy?)
+#                                         ├─ healthy   ▶ deploy_succeeded ─▶ landing
+#                                         └─ unhealthy ▶ deploy_rolling_back ─▶ landing
+#
+# Every host this loop touches is ALREADY in dev-story's allow-list
+# (host.run, host.agent.decide). So the loop is fully no-LLM-gateable: flow
+# fixtures stub the two decide calls + the host.run steps and assert the
+# DETERMINISTIC routing — the preflight gate, the recorded ship action, the
+# health-based succeed/rollback split — with no real LLM. See flows/deploy_*.yaml.
+#
+# Decision-emit discipline (the cherny pattern): deploy_gate.verdict and
+# deploy_health.healthy are unset until the decides bind, so the post-bind
+# guarded emits in the preflighting / verifying rooms defer to the post-bind
+# pass — exactly one fires once each verdict settles. The decision rooms are
+# `decider: llm`-pinned so STAGED mode (kitsoki web) auto-fires the deterministic
+# route instead of stalling for a human (the operator already decided by picking
+# the target + reading the gate).
 
 states:
 
+  # ── Intake ────────────────────────────────────────────────────────
+  # The resting floor of the deploy loop. The operator names a deploy target
+  # (an environment / service) and start_deploy enters preflight. Reachable
+  # from landing via go_deploy; re-entered (parked) when the operator cancels
+  # a no-go gate.
   deploy:
-    description: "Deploy — ship changes (Wave 3 stub)."
-    # Flattened view (no extends/blocks) — `choice:` cannot live inside a
-    # `blocks:` map (typed metadata is lost through the inheritance
-    # pipeline; see docs/choice-widget.md §3.1).
+    description: "Deploy — name a target to ship a release."
+    relevant_world: [deploy_target, deploy_status, last_error]
+
     view:
-      - prose: "Deploy (Wave 3 stub)."
+      - banner:
+          text:     "DEPLOY"
+          subtitle: "name a target environment to ship a release"
+          color:    "#0EA5E9"   # blue — the release surface
+      - prose: "Parked — the last gate said no-go. Fix the blocker and re-run, or pick a different target."
+        when: "world.deploy_status == 'cancelled'"
+      - prose: "Name a deploy target (e.g. `staging`, `prod-us-east`). The release loop runs preflight checks, gates the result, then ships and verifies — rolling back automatically if the new release is unhealthy."
+        when: "world.deploy_status != 'cancelled'"
+      - kv:
+          pairs:
+            "Last target": '{{ world.deploy_target|default:"(none)" }}'
+            "Status":      '{{ world.deploy_status|default:"(none)" }}'
+        when: "world.deploy_target != ''"
+      - prose: "⚠ {{ world.last_error }}"
+        when: "world.last_error != ''"
       - choice:
           mode: single
           prompt: "Actions"
           items:
+            - label:  "start_deploy"
+              intent: start_deploy
+              hint:   "preflight + ship to a target"
+              param:
+                slot:        target
+                type:        string
+                placeholder: "target environment (e.g. staging)…"
+                required:    true
             - { label: "go_back", intent: go_back, hint: "return to the previous room" }
             - { label: "go_main", intent: go_main, hint: "back to the engineer's day landing" }
             - { label: "look",    intent: look,    hint: "re-render" }
-    relevant_world: []
+
     on:
+      start_deploy:
+        - target: deploy_preflighting
+          effects:
+            # Capture the target; clear the prior gate/health so the once:
+            # guards re-arm (a fresh target gets a fresh preflight + verdict),
+            # and reset the disposition + error.
+            - set:
+                deploy_target:  "{{ slots.target }}"
+                deploy_gate:    {}
+                deploy_health:  {}
+                deploy_status:  ""
+                last_error:     ""
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
-        - target: main
+        - target: landing
       look:
         - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Name a deploy target with `start_deploy` to run preflight."
+
+  # ── Preflighting ──────────────────────────────────────────────────
+  # Runs the recorded preflight check (host.run) then the go/no-go gate
+  # (host.agent.decide) against the preflight output, binds the structured
+  # verdict, and AUTO-ROUTES on it via post-bind guarded emits.
+  deploy_preflighting:
+    description: "Preflighting — checking the target is safe to ship."
+    relevant_world: [deploy_target, deploy_preflight, deploy_gate]
+    # decider: llm — the route is DETERMINISTIC once the verdict binds (the
+    # post-bind emits read deploy_gate.verdict directly). Without this pin the
+    # globally-available navigation intents make this room look like a decision
+    # gate, so STAGED mode (kitsoki web) would stall awaiting a human. Mirrors
+    # incident_triaging.
+    decider: llm
+
+    view:
+      - banner:
+          text:     "PREFLIGHT"
+          subtitle: "checking {{ world.deploy_target }}"
+          color:    "#F59E0B"
+      - prose: "Running preflight checks for {{ world.deploy_target }}…"
+
+    on_enter:
+      # Recorded preflight check. host.run in argv mode so the target (from
+      # world) is passed as data, never interpolated into a shell string.
+      # once: keyed off the bind so /reload re-renders the recorded result
+      # instead of re-running. An instance rebinds this to a real preflight
+      # (test suite + working-tree + migration checks).
+      - invoke: host.run
+        id: preflight
+        once: true
+        with:
+          cmd: "printf"
+          args: ["preflight ok for %s: tests green, tree clean", "{{ world.deploy_target }}"]
+        bind:
+          deploy_preflight: stdout
+        on_error: deploy
+
+      # The go/no-go gate. once: re-render the cached verdict on /reload
+      # instead of re-spending the LLM; start_deploy clears deploy_gate to
+      # re-arm.
+      - invoke: host.agent.decide
+        id: gate
+        once: true
+        with:
+          prompt: prompts/deploy_gate.md
+          schema: schemas/deploy-gate.json
+          agent: gate_reviewer
+          args:
+            target:    "{{ world.deploy_target }}"
+            preflight: "{{ world.deploy_preflight }}"
+        bind:
+          deploy_gate: submitted
+        on_error: deploy
+
+      - say: "Gate → {{ world.deploy_gate.verdict }} · {{ world.deploy_gate.summary }}"
+
+      # Post-bind guarded emits (the cherny decision-emit discipline). Each
+      # reads deploy_gate.verdict, which is unset pre-bind — so none fires until
+      # the verdict settles, then exactly one does.
+      - when: "world.deploy_gate.verdict == 'go'"
+        emit_intent: gate_go
+      - when: "world.deploy_gate.verdict == 'no_go'"
+        emit_intent: gate_block
+
+    on:
+      gate_go:
+        - target: deploy_gated
+      gate_block:
+        - target: deploy_gated
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Preflighting…"
+
+  # ── Gated — the verdict + ship/cancel choice ──────────────────────
+  # The verdict read-out. On `go` the operator can ship; on `no_go` shipping
+  # is hidden (only cancel + look). The operator can always cancel to park
+  # the deploy back at intake.
+  deploy_gated:
+    description: "Preflight verdict — ship or cancel."
+    relevant_world: [deploy_target, deploy_gate]
+
+    view:
+      - banner:
+          text:     "GATE — {{ world.deploy_gate.verdict|upper }}"
+          subtitle: "{{ world.deploy_gate.summary }}"
+          color:    "#F59E0B"
+      - kv:
+          pairs:
+            Target:   "{{ world.deploy_target }}"
+            Verdict:  "{{ world.deploy_gate.verdict }}"
+            Blocking: '{{ world.deploy_gate.blocking|join:", "|default:"(none)" }}'
+      - prose: "Preflight is clean — safe to ship."
+        when: "world.deploy_gate.verdict == 'go'"
+      - prose: "Preflight is blocked — fix the findings before shipping."
+        when: "world.deploy_gate.verdict == 'no_go'"
+      - heading: "Disposition"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "ship"
+              intent: ship
+              hint:   "deploy to the target now"
+              when:   "world.deploy_gate.verdict == 'go'"
+            - label:  "cancel"
+              intent: cancel_deploy
+              hint:   "park the deploy"
+            - label:  "go_main"
+              intent: go_main
+              hint:   "back to the workbench"
+            - label:  "look"
+              intent: look
+              hint:   "re-render"
+
+    on:
+      ship:
+        - target: deploy_shipping
+      cancel_deploy:
+        - target: deploy
+          effects:
+            - set: { deploy_status: "cancelled" }
+            - say: "Parked — deploy cancelled."
+      go_main:
+        - target: landing
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Pick a disposition: ship (if go) or cancel."
+
+  # ── Shipping — run the deploy action ──────────────────────────────
+  # Runs the recorded deploy action (host.run — a recordable, deterministic
+  # shell step; an instance rebinds this to a real deploy executor). Binds
+  # deploy_action, sets the disposition, and advances to verification.
+  deploy_shipping:
+    description: "Shipping — deploying to the target."
+    relevant_world: [deploy_target, deploy_action, deploy_status]
+
+    view:
+      - banner:
+          text:     "SHIPPING"
+          subtitle: "deploying to {{ world.deploy_target }}"
+          color:    "#0EA5E9"
+      - prose: "Deploying…"
+
+    on_enter:
+      # Recorded deploy action. host.run in argv mode; once: keyed off the bind
+      # so /reload re-renders the recorded result instead of re-deploying.
+      - invoke: host.run
+        id: ship
+        once: true
+        with:
+          cmd: "printf"
+          args: ["deployed to %s", "{{ world.deploy_target }}"]
+        bind:
+          deploy_action: stdout
+        on_error: deploy_gated
+
+      - set: { deploy_status: "shipped" }
+      - emit_intent: run_verify_deploy
+
+    on:
+      run_verify_deploy:
+        - target: deploy_verifying
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Deploying…"
+
+  # ── Verifying — confirm the new release is healthy ────────────────
+  # Runs the recorded verification probe (host.run) then the health gate
+  # (host.agent.decide) and routes on the verdict: healthy → succeeded;
+  # unhealthy → rolling back. The red-after-green discipline for releases:
+  # prove the deploy is good, don't assume.
+  deploy_verifying:
+    description: "Verifying — confirming the new release is healthy."
+    relevant_world: [deploy_target, deploy_probe, deploy_health]
+    # decider: llm — the route is DETERMINISTIC once deploy_health binds.
+    # Mirrors verifying.yaml.
+    decider: llm
+
+    view:
+      - banner:
+          text:     "VERIFYING"
+          subtitle: "checking {{ world.deploy_target }} is healthy"
+          color:    "#F59E0B"
+      - prose: "Verifying the new release…"
+
+    on_enter:
+      # Recorded verification probe. host.run argv mode; once: keyed off the
+      # bind. An instance rebinds this to a real health probe (smoke tests,
+      # error-rate read, health endpoint).
+      - invoke: host.run
+        id: verify-probe
+        once: true
+        with:
+          cmd: "printf"
+          args: ["probe %s: health 200, error-rate 0.1%%", "{{ world.deploy_target }}"]
+        bind:
+          deploy_probe: stdout
+        on_error: deploy_gated
+
+      # The health gate. once: re-render the cached verdict on /reload.
+      - invoke: host.agent.decide
+        id: health
+        once: true
+        with:
+          prompt: prompts/deploy_health.md
+          schema: schemas/deploy-health.json
+          agent: gate_reviewer
+          args:
+            target: "{{ world.deploy_target }}"
+            probe:  "{{ world.deploy_probe }}"
+        bind:
+          deploy_health: submitted
+        on_error: deploy_gated
+
+      - say: "Health → {{ world.deploy_health.verdict }}"
+
+      # Post-bind guarded emits (the cherny decision-emit discipline). Each reads
+      # deploy_health.verdict — a string enum, unset pre-bind — so none fires
+      # until the verdict settles, then exactly one does. (Routing on a string
+      # verdict, like deploy_gate / incident_triage, not a bool: a fresh
+      # {}-default object's nested bool doesn't carry the pre-bind sentinel the
+      # compare-emits need.)
+      - when: "world.deploy_health.verdict == 'healthy'"
+        emit_intent: deploy_healthy
+      - when: "world.deploy_health.verdict == 'unhealthy'"
+        emit_intent: deploy_unhealthy
+
+    on:
+      deploy_healthy:
+        - target: deploy_succeeded
+          effects:
+            - set: { deploy_status: "succeeded" }
+      deploy_unhealthy:
+        - target: deploy_rolling_back
+          effects:
+            # Clear deploy_action (the ship step already bound it) so the
+            # rollback step's once: guard — which keys off its bind target
+            # being set — re-arms and the rollback printf actually runs.
+            - set: { deploy_action: "" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Verifying…"
+
+  # ── Rolling back — the new release is unhealthy ───────────────────
+  # The verification probe was red. Run the recorded rollback action
+  # (host.run) and land in the succeeded/rolled-back read-out. No second
+  # verify — the rollback restores the last-known-good release.
+  deploy_rolling_back:
+    description: "Rolling back — the new release is unhealthy."
+    relevant_world: [deploy_target, deploy_action, deploy_status]
+
+    view:
+      - banner:
+          text:     "ROLLING BACK"
+          subtitle: "{{ world.deploy_target }} is unhealthy"
+          color:    "#DC2626"
+      - kv:
+          pairs:
+            Reason: "{{ world.deploy_health.summary }}"
+      - prose: "Rolling back…"
+
+    on_enter:
+      # Recorded rollback action. host.run argv mode; once: keyed off the bind.
+      - invoke: host.run
+        id: rollback
+        once: true
+        with:
+          cmd: "printf"
+          args: ["rolled back %s to last-known-good", "{{ world.deploy_target }}"]
+        bind:
+          deploy_action: stdout
+        on_error: deploy_succeeded
+
+      - set: { deploy_status: "rolled_back" }
+      - emit_intent: rollback_done
+
+    on:
+      rollback_done:
+        - target: deploy_succeeded
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Rolling back…"
+
+  # ── Done — the deploy read-out ────────────────────────────────────
+  # Terminal read-out for both the succeeded and rolled-back dispositions.
+  # Offers a fresh deploy or a return to the workbench.
+  deploy_succeeded:
+    description: "Deploy complete — succeeded or rolled back."
+    relevant_world: [deploy_target, deploy_action, deploy_status]
+
+    view:
+      - banner:
+          text:     "{{ world.deploy_status|upper }} ✓"
+          subtitle: "{{ world.deploy_target }}"
+          color:    "{% if world.deploy_status == 'succeeded' %}#10B981{% else %}#DC2626{% endif %}"
+      - kv:
+          pairs:
+            Target:      "{{ world.deploy_target }}"
+            Disposition: "{{ world.deploy_status }}"
+            Action:      '{{ world.deploy_action|default:"(none)" }}'
+      - heading: "Next"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "go_deploy"
+              intent: go_deploy
+              hint:   "deploy another target"
+            - label:  "go_main"
+              intent: go_main
+              hint:   "back to the workbench"
+            - label:  "look"
+              intent: look
+              hint:   "re-render"
+
+    on:
+      go_deploy:
+        - target: deploy
+          effects:
+            - set: { deploy_status: "", deploy_target: "", last_error: "" }
+      go_main:
+        - target: landing
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: landing

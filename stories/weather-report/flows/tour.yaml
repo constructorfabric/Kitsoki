@@ -1,0 +1,59 @@
+# Guided-tour flow — the walkthrough the web-UI tour video records.
+#
+# Unlike forecast.yaml / climate.yaml (one mode each), this drives the full
+# operator arc the video shows: a forecast, then a SECOND look-up at a new place
+# in the other mode WITHOUT returning to the lobby (the report room's own
+# forecast/climate re-query intents), then back. It doubles as CI coverage for
+# that report-room self-transition re-query path.
+#
+# All HTTP (geocode + forecast + geocode + archive) is replayed from
+# cassettes/tour.http.yaml; no LLM, no network. The same fixture backs
+# `kitsoki web --flow` for the recording (see tools/runstatus tour spec), where
+# the browser submits these intents explicitly.
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+starlark_http_cassette: ../cassettes/tour.http.yaml
+
+turns:
+  # 1. forecast Tokyo (lobby → report): geocode + 5-day forecast.
+  - intent: { name: forecast, slots: { location: "Tokyo" } }
+    expect_state: report
+    expect_world:
+      mode: "forecast"
+      place: "Tokyo, Japan"
+    expect_host_calls:
+      - handler: host.starlark.run
+    expect_view_matches: "5-day forecast"
+
+  # 2. climate Oslo (report → report): the report room's own climate intent
+  #    re-queries a new place in the other mode (clears outputs, re-runs on_enter).
+  - intent: { name: climate, slots: { location: "Oslo" } }
+    expect_state: report
+    expect_world:
+      mode: "climate"
+      place: "Oslo, Norway"
+    expect_host_calls:
+      - handler: host.starlark.run
+    expect_view_matches: "climate profile"
+
+  # 3. forecast Zzqxville (report → failed): an unknown place. Geocoding returns
+  #    no results, the script fail()s, and on_error: failed routes here — the
+  #    "fails cleanly on a bad place" path the tour shows.
+  - intent: { name: forecast, slots: { location: "Zzqxville" } }
+    expect_state: failed
+    expect_view_matches: "no place found matching"
+    expect_host_calls:
+      - handler: host.starlark.run
+
+  # 4. back → lobby.
+  - intent: { name: back, slots: {} }
+    expect_state: lobby
+
+  # 5. quit → ended.
+  - intent: { name: quit, slots: {} }
+    expect_state: ended
+
+expect_terminal: true
+expect_no_errors: true

@@ -1,0 +1,56 @@
+# restart_from_idle — re-pitch from scratch. From the drafting checkpoint,
+# `restart_from` with stage=idle returns to the discovery conversation and
+# resets the FULL pipeline: clarification record, every cycle counter, and
+# refine_feedback. The heaviest reset (clarifying's restart_from idle does
+# the same, plus references/drafting cycles here). Lands back in idle, whose
+# on_enter resolves the discovery chat.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  idea:              "A CLI for X"
+  workdir:           "."
+  output_path:       ".artifacts/prd.md"
+  judge_mode:        "human"
+  clarification_log: "── Round 1 ──\nQuestions: {...}\nAnswers: Q1: devs\n\n"
+  clarifying_cycle:  2
+  references_cycle:  1
+  drafting_cycle:    1
+  cycle:             3
+  refine_feedback:   "earlier draft feedback"
+  prd_artifact:
+    title:               "PRD: Example CLI"
+    summary_markdown:    "## PRD\n\nbody"
+    file_path:           ".artifacts/prd.md"
+    confidence:          0.8
+    needs_clarification: false
+    follow_up_questions: []
+
+host_handlers:
+  # idle's on_enter resolves the discovery chat; drafting's on_enter may
+  # fire defensively on initial entry (author task).
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: false }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  - intent: { name: restart_from, slots: { stage: idle } }
+    expect_state: idle
+    expect_world:
+      clarification_log: ""
+      clarifying_cycle:  0
+      drafting_cycle:    0
+      cycle:             0
+      refine_feedback:   ""
+
+expect_no_errors: true

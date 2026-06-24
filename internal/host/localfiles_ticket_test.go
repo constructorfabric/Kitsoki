@@ -38,7 +38,7 @@ The CI check stays "pending" indefinitely.
 
 ## Comment 2026-05-14T10:32:05Z by brad
 
-I think this is the same as PROJ-89912.
+I think this is the same as PLTFRM-89912.
 `
 
 // seed creates a bugs root with one or more files under issues/bugs/.

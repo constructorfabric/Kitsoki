@@ -29,7 +29,7 @@ host_handlers:
       diff:     "diff --git a/billing.go b/billing.go"
   host.local_files.ticket:
     data: { ok: true, tickets: "" }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -47,7 +47,7 @@ host_handlers:
         verdict:    "pass"
         intent:     "accept"
         reason:     "Stub."
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       stdout: "LGTM. One nit on the decimal precision."

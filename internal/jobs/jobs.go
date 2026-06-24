@@ -1,26 +1,3 @@
-// Package jobs implements the background job scheduler (§4).
-//
-// # Overview
-//
-// The Scheduler interface accepts JobSpecs and runs them as goroutines, one
-// per job. Each job runs a host.Handler (with context for cancellation).
-//
-// # Storage
-//
-// Jobs and notifications are persisted in two new SQLite tables introduced via
-// a migration applied on Open(). The store is session-scoped (all rows carry
-// session_id); no FK constraints.
-//
-// When a *JobStore is supplied to NewScheduler, the scheduler performs
-// SQLite write-through: Submit persists the initial job row, Heartbeat
-// debounces flushes to ≤ 2/s per job (§4.3), and terminal transitions
-// (done / failed / cancelled) are committed immediately.
-//
-// # Determinism / replay
-//
-// Host invocation inputs and outputs are written to the event log (via the
-// existing store) so replay can substitute recorded results. The job row is
-// materialized current-state; the event log is authoritative.
 package jobs
 
 import (
@@ -103,18 +80,35 @@ type Job struct {
 	ClarificationAnswer any
 }
 
-// Scheduler is the interface for submitting and managing background jobs (§4.1).
+// Scheduler is the interface for submitting and managing background jobs.
+//
+// Safe for concurrent use: every method holds the appropriate internal lock,
+// so callers may submit, subscribe, heartbeat, and wait from many goroutines.
+// There is no useful zero value — always construct via [NewScheduler] or
+// [NewInMemoryScheduler]. Unknown job IDs are reported, never panicked on:
+// [Scheduler.Cancel], [Scheduler.Heartbeat], [Scheduler.Awaiting], and
+// [Scheduler.Resumed] return [ErrJobNotFound]; [Scheduler.Get] returns ok=false;
+// [Scheduler.Subscribe] returns an already-closed channel.
 type Scheduler interface {
 	// Submit queues a new job and starts executing it immediately.
 	// Returns the JobID on success.
 	Submit(ctx context.Context, spec JobSpec) (JobID, error)
 	// Cancel requests cancellation of a running job.
 	Cancel(ctx context.Context, id JobID) error
-	// Subscribe returns a channel that receives events for the given job,
-	// and an unsubscribe function. The channel is closed when the job terminates.
+	// Subscribe returns a channel that receives events for the given job, and an
+	// unsubscribe function. Safe for concurrent calls. The channel is closed
+	// when the job terminates.
+	//
+	// Terminal and unknown jobs are handled without ever leaking a live channel:
+	// subscribing to an already-terminal job returns a buffered channel
+	// pre-loaded with the single terminal event and already closed; subscribing
+	// to an unknown id returns an already-closed empty channel. In both cases
+	// the unsubscribe function is a no-op but is still safe to call.
 	Subscribe(id JobID) (<-chan JobEvent, func())
-	// Heartbeat updates the job's progress and updated_at timestamp.
-	// Returns ErrJobNotFound if the job doesn't exist.
+	// Heartbeat updates the job's progress and updated_at timestamp and fans the
+	// progress out to subscribers. Safe for concurrent calls. When write-through
+	// is enabled it debounces the persisted flush (see heartbeatFlushInterval).
+	// Returns ErrJobNotFound if the job is unknown.
 	Heartbeat(id JobID, progress any) error
 	// SubscribeSession returns a buffered channel that receives terminal
 	// JobEvents for every job belonging to sessionID, an ack callback that the
@@ -174,8 +168,10 @@ type Scheduler interface {
 	// Returns ctx.Err() if the context is cancelled before the scheduler drains.
 	WaitIdle(ctx context.Context) error
 	// Get returns a snapshot of the job identified by id.  Returns (Job{}, false)
-	// when id is unknown.  The returned Job is a copy and is safe to read; callers
-	// must not mutate it.
+	// when id is unknown.  Safe for concurrent calls. The returned Job is a copy
+	// taken under the scheduler lock, so it is safe to read after Get returns;
+	// callers must not mutate it (mutation does not affect the live job but is
+	// pointless).
 	Get(id JobID) (Job, bool)
 }
 
@@ -183,7 +179,9 @@ type Scheduler interface {
 var ErrJobNotFound = fmt.Errorf("jobs: job not found")
 
 // heartbeatFlushInterval is the minimum gap between persisted Heartbeat writes
-// per job (§4.3 — debounce to ≤ 2/s).
+// per job. At 500ms this debounces progress flushes to at most two per second,
+// keeping a chatty handler from hammering SQLite while still surfacing progress
+// promptly.
 //
 // Ordering invariant: lastFlush is both checked and updated inside the s.mu
 // critical section in Heartbeat, so two concurrent heartbeat calls can never
@@ -344,7 +342,16 @@ func (s *inMemoryScheduler) Submit(ctx context.Context, spec JobSpec) (JobID, er
 		done: make(chan struct{}),
 	}
 
-	jobCtx, cancel := context.WithCancel(ctx)
+	// Detach from the caller's cancellation: a background job is meant to
+	// outlive the turn that submitted it (the submitting room transitions to a
+	// "…executing" state and the view refreshes when the job finishes). In web
+	// mode the caller's ctx is the per-turn HTTP request context, which is
+	// cancelled the instant the turn handler returns — without WithoutCancel
+	// that would kill the in-flight handler (e.g. an agent exec) with
+	// "context canceled" ~immediately. We keep WithoutCancel so trace/observability
+	// values still propagate, then wrap in our own WithCancel so the scheduler's
+	// explicit Cancel(id) (stored below) remains the sole way to abort the job.
+	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 
 	s.mu.Lock()
 	s.jobs[id] = rj
@@ -494,15 +501,24 @@ func (s *inMemoryScheduler) Subscribe(id JobID) (<-chan JobEvent, func()) {
 	// Check if the job is already terminal before registering the channel.
 	// If we registered first and then found it terminal, a concurrent fanout
 	// (e.g. Heartbeat calling fanoutLocked) could send on a channel we are
-	// about to close, causing a panic. By checking first under the write lock
-	// we avoid ever putting ch into rj.subs for a terminal job.
+	// about to close, causing a panic.
+	//
+	// The status read and the rj.subs registration must be atomic: a previous
+	// version released the RLock between the two, so a concurrent terminal
+	// transition (Submit's goroutine flipping status and fanning out under
+	// s.mu) could land in that window — we'd observe non-terminal status, then
+	// register ch AFTER the terminal fanout had already run, leaving ch
+	// registered on a terminal job with no event ever delivered (and no close).
+	// We therefore hold s.mu across both the check and the append. Lock
+	// ordering is s.mu -> rj.subMu, consistent with fanoutLocked, so this does
+	// not deadlock.
 	s.mu.RLock()
 	status := rj.job.Status
 	result := rj.job.Result
 	errStr := rj.job.Error
-	s.mu.RUnlock()
 
 	if status == JobDone || status == JobFailed || status == JobCancelled {
+		s.mu.RUnlock()
 		// Job is already terminal: send one event and close immediately.
 		// Do NOT register ch in rj.subs — a concurrent fanout would panic on
 		// the closed channel.
@@ -518,6 +534,7 @@ func (s *inMemoryScheduler) Subscribe(id JobID) (<-chan JobEvent, func()) {
 	rj.subMu.Lock()
 	rj.subs = append(rj.subs, ch)
 	rj.subMu.Unlock()
+	s.mu.RUnlock()
 
 	unsub := func() {
 		rj.subMu.Lock()
@@ -795,10 +812,16 @@ func (s *inMemoryScheduler) WaitSessionDrained(ctx context.Context, sid app.Sess
 	s.mu.RUnlock()
 
 	for _, sub := range subs {
+		// cancelled is read/written under sub.mu and lets the waiting goroutine
+		// break out of the cond loop even if pending never reaches zero, so it
+		// cannot leak when ctx is cancelled mid-wait. Mirrors the WaitIdle
+		// pattern above. A plain broadcast is racy: pending may still be >0 when
+		// the goroutine re-checks, so it would re-park and leak.
+		cancelled := false
 		done := make(chan struct{})
 		go func(sub *sessionSub) {
 			sub.mu.Lock()
-			for sub.pending > 0 {
+			for sub.pending > 0 && !cancelled {
 				sub.cond.Wait()
 			}
 			sub.mu.Unlock()
@@ -808,10 +831,13 @@ func (s *inMemoryScheduler) WaitSessionDrained(ctx context.Context, sid app.Sess
 		select {
 		case <-done:
 		case <-ctx.Done():
-			// Wake the cond goroutine so it can exit.
+			// Set the cancel flag and broadcast so the waiting goroutine exits,
+			// then wait for it to return before we do (no leak).
 			sub.mu.Lock()
+			cancelled = true
 			sub.cond.Broadcast()
 			sub.mu.Unlock()
+			<-done
 			return ctx.Err()
 		}
 	}

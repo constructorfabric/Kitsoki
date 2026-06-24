@@ -1,0 +1,68 @@
+# decompose_happy — 3-brief manifest → lint passes → routes into fleet.load.
+#
+# The decomposer agent and lint script are both mocked (no LLM, no shell).
+# fleet_load is also mocked so fleet.load ends up with fleet_briefs populated.
+# We assert the story reaches fleet.load (the fleet import entry) and stop —
+# fleet's own flows test the fan-out; this test covers the deliver pipeline only.
+#
+# Full path: configure → start → decompose (agent mocked) → lint (script mocked)
+#            → fleet.load (fleet_load mocked)
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      decomposer:
+        data:
+          submitted:
+            briefs:
+              - id: health-model
+                brief: "Add HealthStatus struct in internal/health/ with Status and Version fields. Gate: go test ./internal/health/..."
+                gate_command: "go test ./internal/health/..."
+                deps: []
+              - id: health-handler
+                brief: "Add GET /health handler serialising HealthStatus to JSON. Gate: go test ./internal/handler/..."
+                gate_command: "go test ./internal/handler/..."
+                deps: [health-model]
+              - id: health-route
+                brief: "Register the health handler in the router and smoke-test /health. Gate: go test ./internal/router/..."
+                gate_command: "go test ./internal/router/..."
+                deps: [health-handler]
+  host.run:
+    by_call:
+      lint:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            route: "ok"
+            error: ""
+      fleet_load:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            fleet_briefs:
+              - { id: health-model,   brief: "Add HealthStatus struct...", gate_command: "go test ./internal/health/...",  status: pending, last_error: "" }
+              - { id: health-handler, brief: "Add GET /health handler...", gate_command: "go test ./internal/handler/...", status: pending, last_error: "" }
+              - { id: health-route,   brief: "Register the health handler...", gate_command: "go test ./internal/router/...", status: pending, last_error: "" }
+            fleet_state_path: "/tmp/fleet-deliver-test.json"
+            error: ""
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: fleet.load
+    expect_world:
+      epic_path:          "stories/deliver/testdata/fixture_epic.md"
+      decomposition_path: ".artifacts/deliver/decomposition.yaml"
+
+expect_no_errors: true

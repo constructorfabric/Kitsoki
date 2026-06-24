@@ -1,0 +1,81 @@
+# bugfix_repro_red_then_proceed — the repro RED-gate happy path (no LLM).
+#
+# bugfix-repro-gate slice. A ticket carries a `repro_command:` (projected into
+# world.gate_command at ticket-load). The `reproducing` room runs it RED-first
+# on the unchanged (pre-fix) worktree BEFORE the LLM reproducer:
+#
+#   start  → reproducing.on_enter runs repro_gate_exec → NON-ZERO exit (RED,
+#            bug reproduces): regression_red_pre_fix=true, repro_checked=true.
+#            The GREEN emit does NOT fire; the LLM reproducer runs as usual.
+#   accept → proposing.
+#
+# This proves the gate is evidence the bug is currently reproducible BEFORE we
+# spend maker budget — the RED half of the cherny baseline pattern applied to
+# the bugfix pipeline. The GREEN trap is covered by
+# bugfix_repro_green_not_reproducible.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-RP-1"
+  ticket_title:     "Allow() admits one extra burst token"
+  thread:           "TKT-RP-1"
+  workspace_id:     "rp-fix"
+  workdir:          ".worktrees/rp-fix"
+  feature_branch:   "rp-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "open-PR"
+  # The ticket's repro_command, projected into gate_command at ticket-load.
+  gate_command:     "go test ./internal/ratelimit/ -run TestAllow_Burst"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/rp-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Burst bug reproduced"
+        summary_markdown: "TestAllow_Burst fails on the unchanged worktree."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        files_changed:    []
+  host.agent.ask:
+    data: { ok: true, submitted: { summary_title: "p", summary_markdown: "p", fix_description: "x", root_cause: "y", affected_files: [] } }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # The repro RED-gate: NON-ZERO exit on the unchanged worktree — the bug
+      # reproduces (RED). Proceed to the LLM reproducer, then proposing.
+      repro_gate_exec:
+        data:
+          ok: false
+          exit_code: 1
+          stdout_json:
+            red:     true
+            checked: true
+            log:     "--- FAIL: TestAllow_Burst (0.00s)   (bug reproduces on the unchanged worktree)"
+
+turns:
+  # start → reproducing. The repro gate ran RED on the pre-fix worktree, so the
+  # GREEN branch does NOT fire and we stay in reproducing for the LLM reproducer.
+  - intent: { name: start, slots: {} }
+    expect_state: reproducing
+    expect_world:
+      regression_red_pre_fix:  true
+      repro_checked:           true
+  # accept advances to proposing — RED proven, maker budget justified.
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+
+expect_no_errors: true

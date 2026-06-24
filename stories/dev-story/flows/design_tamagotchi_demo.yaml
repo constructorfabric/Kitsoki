@@ -1,0 +1,102 @@
+# design_tamagotchi_demo — full pipeline walk using the tamagotchi-pets idea.
+#
+# Same structure as design_happy_path but with tamagotchi-themed stubs so
+# the recording shows realistic content. Used by the proposal-walkthrough
+# Playwright spec.
+#
+# Pipeline: intake → design_search → confirm (no overlap) →
+# design_materialize → design_refine → ready → design_draft → accept →
+# design_done → go_main → main.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design
+initial_world:
+  judge_mode: "human"
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.agent.decide:
+    by_call:
+      name_slug:
+        data:
+          ok: true
+          submitted: { slug: "tamagotchi-pet-ui", rationale: "a persistent virtual-pet widget embedded in the session header" }
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "No existing pet-ui work in the queue; fits Wave 4 UX polish." }
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/proposals/process-design.md", sections: "§2.1", rationale: "covers session-lifetime UX affordances" }
+              - { path: "docs/web/README.md", sections: "§overview", rationale: "SPA component model the widget must plug into" }
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "continue", reason: "Clear why, scoped change, kind is story.", questions: [] }
+  host.agent.search:
+    data: { hits: [], top: null }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/tamagotchi-pet-ui/001-brief.md", message_id: "out#1" }
+  host.agent.task:
+    by_call:
+      refine_brief:
+        data:
+          ok: true
+          submitted:
+            summary: "Brief is directionally clear. Specify the widget's lifetime (session vs global) and how pet state persists across reloads."
+            gaps:
+              - "Does pet state live in world vars or browser localStorage?"
+              - "Which UI surface hosts the widget (header bar, sidebar, floating)?"
+    data:
+      ok: true
+      submitted:
+        title:               "Story: tamagotchi pet widget"
+        kind:                "story"
+        summary_markdown:    "## Story: tamagotchi pet widget\n\nAdd a persistent virtual-pet widget to the session header. The pet's mood reflects the current story phase; it can be fed (intent), and its state persists in world vars for the session lifetime."
+        file_path:           "docs/proposals/.workspace/tamagotchi-pet-ui/004-proposal.md"
+        confidence:          0.88
+        needs_clarification: false
+        follow_up_questions: []
+  host.run:
+    by_call:
+      uniquify:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"slug":"tamagotchi-pet-ui","workspace":"docs/proposals/.workspace/tamagotchi-pet-ui"}'
+          stdout_json: { slug: "tamagotchi-pet-ui", workspace: "docs/proposals/.workspace/tamagotchi-pet-ui" }
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"design_file":"docs/proposals/tamagotchi-pet-ui.md","ticket_id":"F-2026-06-11T120000Z-tamagotchi-pet-ui","ticket_path":"issues/features/F-2026-06-11T120000Z-tamagotchi-pet-ui.md","ticket_title":"Tamagotchi pet UI"}'
+          stdout_json:
+            design_file: "docs/proposals/tamagotchi-pet-ui.md"
+            ticket_id:     "F-2026-06-11T120000Z-tamagotchi-pet-ui"
+            ticket_path:   "issues/features/F-2026-06-11T120000Z-tamagotchi-pet-ui.md"
+            ticket_title:  "Tamagotchi pet UI"
+
+turns:
+  - intent: { name: discuss, slots: { message: "I want to add tamagotchi-style virtual pets to the session UI" } }
+    expect_state: design_search
+    expect_world:
+      design_slug: "tamagotchi-pet-ui"
+
+  - intent: { name: confirm, slots: {} }
+    expect_state: design_refine
+
+  - intent: { name: ready, slots: {} }
+    expect_state: design_draft
+
+  - intent: { name: accept, slots: {} }
+    expect_state: design_done
+
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

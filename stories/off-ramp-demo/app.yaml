@@ -1,0 +1,70 @@
+# Off-Ramp Demo — the smallest complete showcase of the agent off-ramp.
+#
+# The off-ramp is the *no-match door* into a free-form converse answer: in a
+# room that opts in with `agent_off_ramp:`, a free-text utterance the router
+# can't map to any declared intent is handed to a voiced host.agent.converse
+# turn instead of bouncing back to the menu. The room stays put — no state
+# advance, no world mutation — and the same menu is there next turn.
+#
+# This story is a single non-conversational discovery room (the "Welcome Desk")
+# with a real menu (browse / status / about) AND the implicit free-text
+# composer. Pick a menu item and you transition normally; ask a question the
+# menu can't answer and the off-ramp voices a helpful reply in-place.
+#
+# Deterministic, no-LLM posture (see README.md):
+#   kitsoki web --harness replay --recording assets/recording.yaml \
+#               --host-cassette assets/converse-cassette.yaml
+# The recording maps the menu-free question to a CLARIFY (no-match) that fires
+# the off-ramp; the cassette stubs the converse answer so frames are stable.
+
+app:
+  id: off-ramp-demo
+  version: 0.1.0
+  title: "Off-Ramp Demo — the no-match door"
+  author: "kitsoki"
+  license: "CC0"
+
+# host.agent.converse is the off-ramp's voice. It is invoked by the engine
+# (orchestrator.AskOffPath), not by an `invoke:` in a room, but it must still be
+# in the allow-list so the off-ramp call is permitted.
+hosts:
+  - host.agent.converse
+
+world:
+  # Where the menu intents land you. Purely cosmetic state so the menu picks
+  # visibly transition — the off-ramp never touches these.
+  visited: { type: string, default: "(nowhere yet)" }
+
+intents:
+  browse:
+    title: "Browse the catalogue"
+    description: "See what stories ship with kitsoki."
+    examples: ["browse", "catalogue", "what stories are there", "show me the catalogue"]
+    priority: 80
+  status:
+    title: "Check system status"
+    description: "Is everything running?"
+    examples: ["status", "health", "is it up", "system status"]
+    priority: 80
+  about:
+    title: "About this desk"
+    description: "What is the Welcome Desk?"
+    examples: ["about", "what is this", "tell me about the desk"]
+    priority: 80
+  back:
+    title: "Back to the desk"
+    examples: ["back", "desk", "home", "menu"]
+    priority: 60
+  quit:
+    title: "Quit"
+    examples: ["quit", "exit", "leave"]
+    priority: 10
+  look:
+    title: "Look"
+    examples: ["look", "where am i"]
+    priority: 10
+
+root: desk
+
+include:
+  - rooms/*.yaml

@@ -3,7 +3,7 @@
 Empty by design until Wave 3 / Phase 5 lands `stories/cypilot/`.
 
 cypilot's artifact pipeline reads files from this directory (matching
-the `issues/README.md` schema with `target: kitsoki` and a
+the bug format in `docs/stories/bugs.md` with `target: kitsoki` and a
 `feature: true` frontmatter flag, or one of the planned subtypes
 `spec` / `prd` / `design`). The pipeline produces PRD + DESIGN +
 DECOMPOSITION artifacts and either commits them back here or hands

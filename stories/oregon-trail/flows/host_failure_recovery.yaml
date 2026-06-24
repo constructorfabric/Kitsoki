@@ -1,12 +1,12 @@
 # host_failure_recovery — exercises the on_error: arc in the event-roll chain.
 #
 # Phase C/H wired the narrated branch of event_disease.on_enter to use
-# host.oracle.decide with `on_error: {{ tpl.id }}_error` (per
+# host.agent.decide with `on_error: {{ tpl.id }}_error` (per
 # proposal §6.2.1 / §9.6). When the host call fails with an infra
 # error, the orchestrator's on_error redirect lands us in the leg's
 # `_error` state instead of the disease substate.
 #
-# The fixture stubs host.oracle.decide with `infra_error:` so the
+# The fixture stubs host.agent.decide with `infra_error:` so the
 # handler returns (Result{}, error). The orchestrator's host-call
 # dispatcher catches the error and walks the on_error: target, emitting
 # a TransitionApplied with intent: "on_error".
@@ -52,7 +52,7 @@ host_handlers:
   # Simulate an infrastructure failure (e.g. Claude unreachable, validator
   # process crash). The orchestrator surfaces this as an on_error redirect
   # to the leg's _error state.
-  host.oracle.decide:
+  host.agent.decide:
     infra_error: "transient infra failure — validator unreachable"
 
 turns:

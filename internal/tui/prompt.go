@@ -80,7 +80,7 @@ const (
 // SetWidth and SetHeight before the first View().
 func newPromptTextarea() textarea.Model {
 	ta := textarea.New()
-	ta.Placeholder = "what now?"
+	ta.Placeholder = "describe what you want, or /help"
 	ta.CharLimit = promptCharLimit
 	ta.ShowLineNumbers = false
 	ta.MaxHeight = promptMaxHeight
@@ -194,24 +194,6 @@ func promptVisualHeight(value string, innerWidth int) int {
 		total = promptMaxHeight
 	}
 	return total
-}
-
-// promptIsMultiLine reports whether the current prompt occupies more
-// than one visible row, either because the user inserted a literal
-// newline (alt+enter / ctrl+j / \<Enter>) or because the value has
-// wrapped past the textarea's inner width. Drives the Up/Down arrow
-// routing: single-row prompts walk input history, multi-row prompts
-// let the textarea move the cursor between rows.
-//
-// Uses promptVisualHeight against the textarea's reported inner width
-// so wrap-driven multi-line is detected even when the value contains
-// no \n characters.
-func promptIsMultiLine(m textarea.Model) bool {
-	value := m.Value()
-	if strings.Contains(value, "\n") {
-		return true
-	}
-	return promptVisualHeight(value, m.Width()) > 1
 }
 
 // shouldSubmitOnEnter reports whether a bare Enter should submit the

@@ -15,7 +15,7 @@ turns:
   - intent: { name: go, slots: { direction: west } }
     expect_state: cloakroom
     expect_events:
-      - kind: TransitionApplied
+      - kind: machine.transition
         from: foyer
         to: cloakroom
 
@@ -25,7 +25,7 @@ turns:
     expect_world:
       wearing_cloak: false
     expect_events:
-      - kind: EffectApplied
+      - kind: world.update
         effect: { set: { wearing_cloak: false } }
 
   # Turn 3: use recording-backed free text to go back east.

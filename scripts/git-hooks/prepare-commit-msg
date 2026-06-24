@@ -1,0 +1,29 @@
+#!/bin/sh
+# prepare-commit-msg — auto-append a DCO Signed-off-by trailer.
+#
+# The upstream repo gates every PR on the cncf/dco2 check, which requires each
+# commit to carry a `Signed-off-by:` trailer whose name+email match the commit
+# author. Relying on humans (or headless agents committing via claude/codex) to
+# remember `git commit -s` guarantees a perpetually-red DCO check. This hook
+# makes the sign-off automatic for every commit in this clone (and every linked
+# worktree, since .git/hooks is shared) — installed by scripts/setup.sh.
+#
+# Idempotent: `git interpret-trailers --if-exists addIfDifferent` adds the
+# author's sign-off only when that exact trailer is not already present, so
+# `git commit -s`, amends, and rebases never produce duplicate lines.
+#
+# Args: $1 = path to the commit message file (always present).
+set -e
+
+msg_file="$1"
+[ -n "$msg_file" ] || exit 0
+
+name="$(git config user.name)"
+email="$(git config user.email)"
+# Without an identity git itself will refuse the commit; nothing to sign.
+[ -n "$name" ] && [ -n "$email" ] || exit 0
+
+git interpret-trailers \
+	--if-exists addIfDifferent \
+	--trailer "Signed-off-by: $name <$email>" \
+	--in-place "$msg_file"

@@ -1,0 +1,27 @@
+# RED today / GREEN after the on_error banner engine fix.
+#
+# Drive do_thing → host.run fails (injected domain error) → on_error: bounced.
+# The `bounced` room view does NOT render last_error, so today the rendered view
+# is just "Back at the lobby." and expect_view_matches "Action failed" FAILS.
+# After the engine appends its banner, the view contains
+# "Action failed: simulated host failure" and the assertion PASSES.
+#
+# To run:
+#   go run ./cmd/kitsoki test flows testdata/apps/error_banner/app.yaml
+
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+host_handlers:
+  host.run:
+    error: "simulated host failure"
+
+turns:
+  - intent: { name: do_thing, slots: {} }
+    expect_state: bounced
+    expect_world:
+      last_error: "simulated host failure"
+    expect_view_matches: "Action failed: simulated host failure"
+
+expect_terminal: true

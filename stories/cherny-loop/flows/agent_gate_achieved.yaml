@@ -1,0 +1,52 @@
+# Agent gate mode: the checker is host.agent.decide (adversarial review) rather
+# than a script — for goals no test can encode. launch runs the loop
+# autonomously: the baseline agent review (gate-0) fails the artifact, iteration
+# 1's maker revises it, and the next review (gate-1) passes → @exit:achieved.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.agent.decide:
+    by_call:
+      gate-0: { data: { submitted: { pass: false, reason: "Eviction section is missing failure modes.", fixes: ["cover eviction failure modes"] } } }
+      gate-1: { data: { submitted: { pass: true,  reason: "Covers eviction, sizing, and failure modes with examples.", fixes: [] } } }
+  host.agent.task:
+    by_call:
+      maker-1: { data: { submitted: { summary: "Added the eviction failure-mode subsection" } } }
+  host.artifacts_dir: { data: { ok: true } }
+  # iface.vcs.commit → host.git: commit the maker's work before @exit:achieved.
+  host.git: { data: { ok: true, sha: "abc1234" } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal:      "Write a clear one-page design doc for the cache layer"
+        artifact:  "docs/cache-design.md"
+        gate_mode: "agent"
+    expect_state: configuring
+  - intent: { name: launch, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      goal_achieved:   true
+      terminal_reason: "achieved"
+      iteration:       1
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-1 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-1 }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: gate-1 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

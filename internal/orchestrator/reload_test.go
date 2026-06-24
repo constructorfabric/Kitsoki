@@ -1,8 +1,10 @@
 package orchestrator_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -163,6 +165,76 @@ states:
 		"repeated RerunOnEnter should keep advancing the counter")
 }
 
+// TestRerunOnEnter_OnceSkipsCachedInvoke is the `once:` reload-safety
+// contract: a state whose on_enter has an `invoke: … once: true` binding an
+// already-populated world key must fire ZERO host calls on /reload
+// (RerunOnEnter) — the cached bind target re-renders instead of recomputing.
+// The handler counts its invocations; the assertion is the count stays 0.
+// Clearing the bind target re-arms the call (proven by a second pass that
+// DOES fire after a reset).
+func TestRerunOnEnter_OnceSkipsCachedInvoke(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "once-reload-test", Title: "once-reload-test"},
+		Root:  "start",
+		Hosts: []string{"host.expensive"},
+		World: map[string]app.VarDef{
+			// Pre-populated default: the bind target is "already cached".
+			"result": {Type: "object", Default: map[string]any{"verdict": "continue"}},
+		},
+		Intents: map[string]app.Intent{"look": {Title: "Look"}},
+		States: map[string]*app.State{
+			"start": {
+				View: app.LegacyView("result={{ world.result.verdict }}"),
+				OnEnter: []app.Effect{
+					{
+						Invoke: "host.expensive",
+						Once:   true,
+						Bind:   map[string]string{"result": "submitted"},
+					},
+				},
+				On: map[string][]app.Transition{"look": {{Target: "."}}},
+			},
+		},
+	}
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	var calls atomic.Int64
+	reg := host.NewRegistry()
+	reg.Register("host.expensive", func(_ context.Context, _ map[string]any) (host.Result, error) {
+		calls.Add(1)
+		return host.Result{Data: map[string]any{"submitted": map[string]any{"verdict": "fresh"}}}, nil
+	})
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(reg))
+
+	ctx := t.Context()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+	require.NoError(t, orch.RunInitialOnEnter(ctx, sid))
+
+	// Initial entry: result is already set (the schema default) ⇒ once: skips.
+	require.Equal(t, int64(0), calls.Load(),
+		"once: must skip the expensive call when the bind target is pre-populated")
+
+	// /reload twice — still zero calls; the cached verdict re-renders.
+	_, err = orch.RerunOnEnter(ctx, sid)
+	require.NoError(t, err)
+	_, err = orch.RerunOnEnter(ctx, sid)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), calls.Load(),
+		"RerunOnEnter on a once: room must fire zero agent/host calls")
+
+	w := orch.CurrentWorld(sid)
+	require.Equal(t, "continue", w.Vars["result"].(map[string]any)["verdict"],
+		"the cached verdict must survive reload (never overwritten by the stub's 'fresh')")
+}
+
 // TestRerunOnEnter_NoOnEnter_StillRenders covers the "edited a view
 // template only" path: a state without on_enter should still produce a
 // rendered view so callers don't need a separate render-only branch.
@@ -245,4 +317,52 @@ func TestReload_RejectsHostsNotInRegistry(t *testing.T) {
 	assert.Contains(t, err.Error(), "validate hosts")
 	assert.Same(t, prevDef, orch.AppDef(),
 		"failed reload must leave orchestrator's def untouched")
+}
+
+// TestReload_LoadFailureKeepsPreviousDef pins the contract the operator
+// relies on: when an edit makes the manifest fail to load (here, an
+// `on:` arc referencing an undeclared intent — the exact shape that
+// stranded a meta-mode /reload), Reload must keep the previous
+// definition in memory rather than swapping in (or nil-ing out) the
+// broken one. The running session keeps working on the last-good graph;
+// only a manifest that *loads successfully* ever replaces it.
+//
+// This is the load-failure sibling of TestReload_RejectsHostsNotInRegistry:
+// that one fails in host validation (after app.Load succeeds); this one
+// fails inside app.Load itself, the earliest gate.
+func TestReload_LoadFailureKeepsPreviousDef(t *testing.T) {
+	src := filepath.Join("..", "..", "testdata", "apps", "cloak", "app.yaml")
+	body, err := os.ReadFile(src)
+	require.NoError(t, err)
+	dst := filepath.Join(t.TempDir(), "app.yaml")
+	require.NoError(t, os.WriteFile(dst, body, 0o644))
+
+	def, err := app.Load(dst)
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	hostReg := host.NewRegistry()
+	host.RegisterBuiltins(hostReg)
+	prevDef := def
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(hostReg),
+	)
+
+	// Wire an `on:` arc on the entry state to an intent that isn't
+	// declared anywhere — app.Load rejects this at validation time.
+	broken := append(body,
+		[]byte("\n# --- broken edit appended by test ---\nstates:\n  foyer:\n    on:\n      restart:\n        - target: foyer\n")...)
+	require.NoError(t, os.WriteFile(dst, broken, 0o644))
+
+	res, err := orch.Reload(dst, app.StatePath("foyer"))
+	require.Error(t, err, "a manifest that fails to load must error the reload")
+	assert.Nil(t, res, "no ReloadResult on a failed load")
+	assert.Contains(t, err.Error(), "load")
+	assert.Same(t, prevDef, orch.AppDef(),
+		"failed load must keep the previous def in memory — never swap in a broken one")
+	assert.NotNil(t, orch.Machine(),
+		"the previous machine must remain usable after a failed reload")
 }

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "brief_refine",
+  "description": "The refiner's analysis of the brief it has just shaped. summary is a one-line assessment; gaps lists the specific open questions the operator should address before running the quality check.",
+  "type": "object",
+  "required": ["summary", "gaps"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 4,
+      "description": "One-line assessment of where the brief stands."
+    },
+    "gaps": {
+      "type": "array",
+      "description": "Specific open questions or gaps the operator should address.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

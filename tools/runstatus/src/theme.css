@@ -1,0 +1,131 @@
+/*
+ * theme.css — the single semantic token layer for the Kitsoki SPA.
+ *
+ * STRATEGY: dual-context tokens via var(--vscode-*, <fallback>) chains.
+ *
+ *   --k-<token>: var(--vscode-<name>, <current-kitsoki-hex>);
+ *
+ * One token set serves BOTH runtimes:
+ *   - Inside a VS Code webview, VS Code injects --vscode-* CSS variables (and a
+ *     vscode-light / vscode-dark / vscode-high-contrast body class), re-applied
+ *     live on every theme switch. The --vscode-* value resolves, so the SPA
+ *     tracks the active editor theme natively.
+ *   - In a plain browser those --vscode-* variables are ABSENT, so each token
+ *     falls back to the CURRENT Kitsoki hex. The browser is therefore visually
+ *     UNCHANGED — fallbacks ARE today's colors.
+ *
+ * This lets us retire the webview-only THEME_SHIM: theming becomes a property of
+ * the SPA, not an injected band-aid.
+ *
+ * LIGHT/DARK BEHAVIOR
+ *   The Kitsoki browser baseline is a dark slate "desk" (#0f172a / #e2e8f0).
+ *   The agent room view ("paper card") is a deliberate LIGHT sheet on that dark
+ *   desk (#f7f8fa / #1f2430) — a sheet of paper on a desk. We preserve that in
+ *   the browser via the --k-paper-* fallbacks. Inside VS Code the paper card
+ *   instead follows the editor surface (--vscode-editorWidget-background), so it
+ *   darkens with a dark theme and reads as a native panel rather than a glaring
+ *   white card.
+ *
+ * MIGRATING A COMPONENT (recipe — see .context/theme-tokens.md for the contract)
+ *   1. Replace a hardcoded hex with the matching --k-* token via var().
+ *   2. The token's fallback equals the current hex, so the look is preserved.
+ *   3. For the agent room-view paper card use --k-paper-bg / --k-paper-fg.
+ *   4. For high-contrast affordances prefer --k-border-contrast.
+ */
+
+/*
+ * COMPACT SCALING (VS Code embed only)
+ *   Inside the VS Code webview the SPA reads one step LARGER than the rest of the
+ *   UI. We scale the whole embed down one step with `zoom` rather than a root
+ *   font-size: components mix rem AND hardcoded px (font sizes, padding, gaps),
+ *   and zoom uniformly shrinks BOTH — type and spacing — so everything compacts
+ *   together with no per-component edits. The webview is Chromium, where `zoom`
+ *   is supported. The attribute is set in main.ts when isEmbedded()
+ *   (acquireVsCodeApi present, or ?embed=1); the plain browser never gets it, so
+ *   its sizing is UNCHANGED.
+ */
+:root[data-embedded="true"] {
+  zoom: 0.9;
+}
+
+:root {
+  /* ── Surfaces / backgrounds ─────────────────────────────────────────────── */
+  /* Editor / app background — the dark slate "desk". */
+  --k-bg: var(--vscode-editor-background, #0f172a);
+  /* Slightly raised editor surface (deep app chrome, e.g. trace/graph desks). */
+  --k-bg-deep: var(--vscode-editor-background, #0a1120);
+  /* Widget / panel surface (bars, headers, raised chrome). */
+  --k-bg-widget: var(--vscode-editorWidget-background, #0f172a);
+  /* Inset surface (chat pane background). */
+  --k-bg-inset: var(--vscode-editor-background, #0f1115);
+  /* Input control background. */
+  --k-bg-input: var(--vscode-input-background, #1e293b);
+  /* Hover background. */
+  --k-bg-hover: var(--vscode-list-hoverBackground, #1e293b);
+  /* Selection background. */
+  --k-bg-selection: var(--vscode-editor-selectionBackground, #1d4ed8);
+
+  /* ── Foreground / text ──────────────────────────────────────────────────── */
+  /* Default foreground. */
+  --k-fg: var(--vscode-editor-foreground, #e2e8f0);
+  /* Muted / description / secondary foreground. */
+  --k-fg-muted: var(--vscode-descriptionForeground, #64748b);
+  /* Subtle / faint foreground (placeholders, "no diagram" notes). */
+  --k-fg-subtle: var(--vscode-disabledForeground, #475569);
+  /* Link / accent foreground. */
+  --k-fg-accent: var(--vscode-textLink-foreground, #7dd3fc);
+  /* Code / preformatted foreground. */
+  --k-fg-code: var(--vscode-textPreformat-foreground, #7dd3fc);
+
+  /* ── Borders ────────────────────────────────────────────────────────────── */
+  /* Panel / divider border. */
+  --k-border: var(--vscode-panel-border, #1e293b);
+  /* Subtle border (paper-card outline, soft dividers). */
+  --k-border-subtle: var(--vscode-widget-border, #2a2f3a);
+  /* Focus ring border. */
+  --k-border-focus: var(--vscode-focusBorder, #2563eb);
+  /* Contrast border — only set under high-contrast themes; falls back to none. */
+  --k-border-contrast: var(--vscode-contrastBorder, transparent);
+
+  /* ── Semantic (status) ──────────────────────────────────────────────────── */
+  /* Error foreground. */
+  --k-error: var(--vscode-editorError-foreground, #fca5a5);
+  /* Warning foreground. */
+  --k-warning: var(--vscode-editorWarning-foreground, #fbbf24);
+  /* Success foreground (maps to git "added" decoration). */
+  --k-success: var(--vscode-gitDecoration-addedResourceForeground, #86efac);
+  /* Success background (live badge fill). */
+  --k-success-bg: var(--vscode-editorGutter-addedBackground, #14532d);
+  /* Info foreground. */
+  --k-info: var(--vscode-editorInfo-foreground, #7dd3fc);
+
+  /* ── Buttons ────────────────────────────────────────────────────────────── */
+  /* Primary button background. */
+  --k-button-bg: var(--vscode-button-background, #1d4ed8);
+  /* Primary button foreground. */
+  --k-button-fg: var(--vscode-button-foreground, #e2e8f0);
+  /* Primary button hover background. */
+  --k-button-hover-bg: var(--vscode-button-hoverBackground, #2563eb);
+
+  /* ── Agent room-view "paper card" ───────────────────────────────────────── */
+  /* The report card must read as an ELEVATED sheet, not blend into the desk.
+   * In several VS Code dark themes (e.g. Default Dark Modern) editorWidget-
+   * background (#252526) is nearly identical to editor-background (#1f1f1f), so a
+   * raw widget surface makes the card invisible — its trailing space (where short
+   * room-view lines don't fill the card) then reads as a dead "gray gutter".
+   * Mixing a little of the editor FOREGROUND into the widget surface lifts the
+   * card off the desk in BOTH directions: lighter on a dark theme, marginally
+   * deeper on a light one — so it always reads as a card. The browser keeps its
+   * deliberate light sheet via the fallbacks. */
+  --k-paper-bg: color-mix(
+    in srgb,
+    var(--vscode-editorWidget-background, #f7f8fa) 90%,
+    var(--vscode-editor-foreground, #1f2430) 10%
+  );
+  --k-paper-fg: var(--vscode-editor-foreground, #1f2430);
+  --k-paper-border: color-mix(
+    in srgb,
+    var(--vscode-panel-border, #d8dbe2) 60%,
+    var(--vscode-editor-foreground, #1f2430) 40%
+  );
+}

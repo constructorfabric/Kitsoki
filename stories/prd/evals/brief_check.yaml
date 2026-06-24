@@ -1,0 +1,52 @@
+# Traceability:
+# - Source call site: stories/prd/rooms/brief.yaml, host.agent.decide id `brief_check`.
+# - Prompt: stories/prd/prompts/brief_check.md.
+# - Schema: stories/prd/schemas/brief-check.json.
+# - Purpose: early PRD brief gate that decides continue vs clarify.
+kind: agent_eval
+app: ../app.yaml
+call: brief_check
+agent: brief_judge
+
+task:
+  goal: "Decide whether a PRD brief has enough information to proceed."
+  boundedness:
+    max_turns: 1
+    tool_policy: read-only
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.95
+    max_p95_latency_ms: 6000
+    max_avg_cost_usd: 0.0015
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low, medium]
+  repeat: 5
+
+comparator:
+  kind: enum
+  field: verdict
+
+examples:
+  - name: complete-brief-continues
+    args:
+      brief_path: ".artifacts/prd/sample/001-brief.md"
+      idea: "A team incident handoff dashboard with owner, severity, current blocker, and next action."
+    expect:
+      verdict: continue
+      reason: "Brief states the user, problem, workflow, and expected output clearly enough to proceed."
+      questions: []
+  - name: vague-brief-clarifies
+    args:
+      brief_path: ".artifacts/prd/sample/001-brief.md"
+      idea: "Make the app better."
+    expect:
+      verdict: clarify
+      reason: "The brief lacks target user, concrete problem, and success criteria."
+      questions: ["Who is the target user?", "What workflow should improve?", "What outcome counts as success?"]

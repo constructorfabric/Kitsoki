@@ -19,10 +19,10 @@ states:
           pairs:
             Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary:    '{{ world.code_artifact.summary_title|default:"(pending)" }}'
-            Files:      '{{ world.code_artifact.affected_files|default:"(pending)" }}'
-            Confidence: '{{ world.code_artifact.confidence|default:"(pending)" }}'
+            Files:      '{{ world.code_artifact.affected_files|join:", "|default:"(pending)" }}'
+            Confidence: '{% if world.code_artifact.confidence %}{{ world.code_artifact.confidence|floatformat:2 }}{% else %}(pending){% endif %}'
       - heading: "Artifact"
-      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -39,7 +39,11 @@ states:
             - { label: "look", intent: look, hint: "re-render" }
     relevant_world: [ticket_id, ticket_title, code_artifact, task_summary_artifact, cycle, refine_feedback]
     on_enter:
-      - invoke: host.oracle.decide
+      # once: skip the regenerate when code_artifact is already bound
+      # (reload / self-re-entry safe). Every arc that re-enters
+      # write_code_executing for a FRESH run clears the bind below.
+      - invoke: host.agent.decide
+        once: true
         with:
           prompt: prompts/write_code_executing.md
           schema: schemas/code_artifact.json
@@ -57,11 +61,16 @@ states:
       # Commit the change so subsequent rooms (test / review) see it
       # in the workspace. iface.vcs.commit binds the sha but we don't
       # need it here — the test room re-binds the diff via iface.vcs.diff.
+      # `stage_all: true` runs `git add -A` so files the agent CREATED
+      # that aren't enumerated in affected_files (a new test, a helper)
+      # are captured too — a named `files:` list misses untracked work,
+      # which is the lost-work split. stage_all takes precedence; the
+      # handoff room's clean-tree guard is the backstop.
       - invoke: iface.vcs.commit
         with:
-          workdir: "{{ world.workdir }}"
-          message: "{{ world.code_artifact.summary_title }}"
-          files:   "{{ world.code_artifact.affected_files }}"
+          workdir:   "{{ world.workdir }}"
+          message:   "{{ world.code_artifact.summary_title }}"
+          stage_all: true
         on_error: idle
     on:
       proceed:
@@ -72,6 +81,9 @@ states:
             - set:
                 restart_from_stage: "{{ slots.stage ?? 'review_task' }}"
                 cycle: 0
+                # Re-entering review_task_executing for a fresh run — clear
+                # its once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:
@@ -86,11 +98,14 @@ states:
       - kv:
           pairs:
             Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
-            Verdict:    '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
-            Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
-            Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
+      - when: "(world.llm_verdict.verdict ?? '') != ''"
+        kv:
+          pairs:
+            Verdict:    '{{ world.llm_verdict.verdict }}'
+            Confidence: '{{ world.llm_verdict.confidence|floatformat:2 }}'
+            Reason:     '{{ world.llm_verdict.reason }}'
       - heading: "Artifact"
-      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -128,7 +143,7 @@ states:
           state:   write_code_awaiting_reply
           body:    "{{ world.code_artifact.summary_markdown }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           prompt: prompts/judge_write_code.md
           schema: schemas/judge_verdict.json
@@ -154,18 +169,26 @@ states:
                 last_reply_author: "{{ slots.author ?? 'human' }}"
                 refine_feedback:   ""
                 cycle:             0
+                # Advancing to test_executing for a fresh run — clear its
+                # once: cache so the test artifact regenerates.
+                test_artifact:     {}
       refine:
         - target: write_code_executing
           effects:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: cache so the code artifact regenerates.
+                code_artifact:   {}
       restart_from:
         - target: review_task_executing
           effects:
             - set:
                 restart_from_stage: "{{ slots.stage ?? 'review_task' }}"
                 cycle:              0
+                # Re-entering review_task_executing for a fresh run — clear
+                # its once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:

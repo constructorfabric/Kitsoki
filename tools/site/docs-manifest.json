@@ -1,0 +1,43 @@
+{
+  "$comment": "ALLOWLIST of repo docs published on the site. Source path (repo-relative) -> site path under src/ (gitignored staging; see scripts/stage-docs.mjs). Anything NOT listed never reaches the site; links pointing outside the allowlist are rewritten to GitHub blob URLs.",
+  "repo": "https://github.com/bsacrobatix/Kitsoki",
+  "branch": "main",
+  "sections": [
+    {
+      "title": "Getting started",
+      "items": [
+        { "from": "docs/getting-started.md", "to": "guide/getting-started.md" }
+      ]
+    },
+    {
+      "title": "Authoring stories",
+      "items": [
+        { "from": "docs/stories/authoring.md", "to": "guide/stories/authoring.md" },
+        { "from": "docs/stories/state-machine.md", "to": "guide/stories/state-machine.md" },
+        { "from": "docs/stories/prompts.md", "to": "guide/stories/prompts.md" },
+        { "from": "docs/stories/imports.md", "to": "guide/stories/imports.md" },
+        { "from": "docs/stories/story-style.md", "to": "guide/stories/story-style.md" }
+      ]
+    },
+    {
+      "title": "Recipes",
+      "items": [
+        { "from": "docs/recipes/*.md", "to": "guide/recipes/" }
+      ]
+    },
+    {
+      "title": "Architecture",
+      "items": [
+        { "from": "docs/architecture/concept.md", "to": "guide/architecture/concept.md" },
+        { "from": "docs/architecture/overview.md", "to": "guide/architecture/overview.md" },
+        { "from": "docs/architecture/semantic-routing.md", "to": "guide/architecture/semantic-routing.md" }
+      ]
+    },
+    {
+      "title": "The web UI",
+      "items": [
+        { "from": "docs/web/README.md", "to": "guide/web/index.md" }
+      ]
+    }
+  ]
+}

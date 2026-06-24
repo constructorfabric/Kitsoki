@@ -1,0 +1,170 @@
+# branch_ops — hub for feature branches.
+#
+# on_enter refreshes context on every return. merge_into_main is greyed
+# when rebase_done is false — the operator must rebase first.
+
+states:
+
+  branch_ops:
+    description: "Feature-branch hub. Rebase, commit, squash, and merge to integration."
+    relevant_world: [current_branch, integration_branch, rebase_done, commits_ahead,
+                     commits_behind, has_uncommitted, on_integration]
+    view:
+      - kv:
+          pairs:
+            Branch:        '{{ world.current_branch|default:"(detecting…)" }}'
+            Integration:   '{{ world.integration_branch }}'
+            Uncommitted:   '{% if world.has_uncommitted %}yes{% else %}clean{% endif %}'
+            Ahead:         '{{ world.commits_ahead }} commits ahead'
+            Behind:        '{{ world.commits_behind }} commits behind'
+            "Rebase done": '{% if world.rebase_done %}yes{% else %}no — rebase before merging{% endif %}'
+      - prose: "Last operation failed: {{ world.last_op_output|default:'(no output)' }}"
+        when: "world.last_op_ok == false"
+      - prose: "WARNING: no common ancestor with {{ world.integration_branch }}. Rebase and merge unavailable."
+        when: "world.no_common_ancestor == true"
+      - prose: "Pre-rebase backup tag: {{ world.pre_rebase_tag }}"
+        when: "world.pre_rebase_tag != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "rebase"
+              hint:  "rebase onto {{ world.integration_branch }} (local ref — pull main first if needed)"
+              intent: rebase
+            - label: "merge_into_main"
+              hint:  "merge feature branch into {{ world.integration_branch }}"
+              intent: merge_into_main
+              when:  "world.rebase_done == true"
+            - label: "✗ merge_into_main — rebase first"
+              hint:  "rebase_done is false; run rebase first"
+              intent: look
+              when:  "world.rebase_done == false"
+            - label: "squash"
+              hint:  "squash all branch commits into one"
+              intent: squash
+            - label: "stage"
+              hint:  "classify and stage working-tree changes"
+              intent: stage
+            - label: "commit"
+              hint:  "agent-authored commit message"
+              intent: commit
+            - label: "undo"
+              hint:  "undo the last commit"
+              intent: undo
+            - label: "worktree_list"
+              hint:  "list and classify existing worktrees"
+              intent: worktree_list
+            - label: "cleanup"
+              hint:  "remove worktree and branch"
+              intent: cleanup
+            - label: "checkpoint label=…"
+              hint:  "save a restorable snapshot before trying something risky"
+              intent: checkpoint
+            - label: "restore label=…"
+              hint:  "roll back to a saved checkpoint"
+              intent: restore
+            - label: "quit"
+              hint:  "exit git-ops"
+              intent: quit
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: refresh_branch
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              git update-index -q --refresh 2>/dev/null || true
+              BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+              INTEGRATION="{{ world.integration_branch }}"
+              AHEAD=$(git rev-list --count "${INTEGRATION}..HEAD" 2>/dev/null || echo 0)
+              BEHIND=$(git rev-list --count "HEAD..${INTEGRATION}" 2>/dev/null || echo 0)
+              UNCOMMITTED=$(git status --porcelain 2>/dev/null | grep -c . || true)
+              if [ "$UNCOMMITTED" -gt 0 ]; then HAS_UNCOMMITTED=true; else HAS_UNCOMMITTED=false; fi
+              MAIN_WT=$(git worktree list --porcelain 2>/dev/null \
+                | awk '/^worktree / {wt=$2} /^branch refs\/heads\/'"$INTEGRATION"'$/ {print wt}')
+              [ -z "$MAIN_WT" ] && MAIN_WT="{{ world.working_dir }}"
+              WORKTREES=$(git worktree list --porcelain 2>/dev/null \
+                | awk 'BEGIN{RS=""; FS="\n"} {wt=""; br=""; for(i=1;i<=NF;i++){if($i~/^worktree /)wt=substr($i,10); if($i~/^branch /)br=substr($i,8);} if(wt!="")printf "%s|%s\n",wt,br}' \
+                | head -20)
+              NO_COMMON=false
+              if ! git merge-base HEAD "$INTEGRATION" >/dev/null 2>&1; then NO_COMMON=true; fi
+              jq -n \
+                --arg branch "$BRANCH" \
+                --arg main_wt "$MAIN_WT" \
+                --arg worktrees "$WORKTREES" \
+                --argjson ahead "$AHEAD" \
+                --argjson behind "$BEHIND" \
+                --argjson has_uncommitted "$HAS_UNCOMMITTED" \
+                --argjson no_common "$NO_COMMON" \
+                '{branch:$branch, main_worktree_path:$main_wt,
+                  worktree_list:{raw:$worktrees}, commits_ahead:$ahead,
+                  commits_behind:$behind, has_uncommitted:$has_uncommitted,
+                  no_common_ancestor:$no_common}'
+          cwd: "{{ world.working_dir }}"
+        bind:
+          current_branch:     "stdout_json.branch"
+          main_worktree_path: "stdout_json.main_worktree_path"
+          worktree_list:      "stdout_json.worktree_list"
+          commits_ahead:      "stdout_json.commits_ahead"
+          commits_behind:     "stdout_json.commits_behind"
+          has_uncommitted:    "stdout_json.has_uncommitted"
+          no_common_ancestor: "stdout_json.no_common_ancestor"
+        on_error: branch_ops
+    on:
+      rebase:
+        - target: rebase
+          effects:
+            - set:
+                rebase_done: false
+      merge_into_main:
+        - when: "world.rebase_done == true"
+          target: merge_into_main
+        - target: branch_ops
+          effects:
+            - say: "Rebase first — rebase_done is false."
+      squash:
+        - target: squash
+      stage:
+        - target: staging
+      commit:
+        - target: commit
+          effects:
+            - set:
+                amend_mode:  false
+                squash_mode: false
+      undo:
+        - target: undo
+      worktree_list:
+        - target: worktree_list
+      cleanup:
+        - target: cleanup
+      checkpoint:
+        - target: checkpoint
+          effects:
+            - set:
+                checkpoint_label:   "{{ slots.label }}"
+                checkpoint_outcome: ""
+                checkpoint_sha:     ""
+      restore:
+        - target: restore
+          effects:
+            - set:
+                restore_label:   "{{ slots.label }}"
+                restore_outcome: ""
+      integrate:
+        - target: integrate
+          effects:
+            - set:
+                integrate_branch: '{{ slots.branch ?? world.current_branch }}'
+                force_cleanup:    "{{ slots.force }}"
+                integrate_outcome: ""
+                last_error:        ""
+      quit:
+        - target: done
+      look:
+        - target: .

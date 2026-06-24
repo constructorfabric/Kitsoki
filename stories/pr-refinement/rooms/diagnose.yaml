@@ -1,6 +1,6 @@
 # diagnose — CI failure analysis. Two substates:
 #
-#   diagnose_executing       — runs host.oracle.decide with the
+#   diagnose_executing       — runs host.agent.decide with the
 #                              ci_log + failed_checks; binds the
 #                              diagnose_artifact (root cause + fix
 #                              proposal).
@@ -13,7 +13,7 @@
 states:
 
   diagnose_executing:
-    description: "Diagnosing the CI failure via the oracle."
+    description: "Diagnosing the CI failure via the agent."
     # Flattened view (choice-widget proposal §4.5).
     view:
       - kv:
@@ -24,7 +24,7 @@ states:
             Diagnosis:         '{{ world.diagnose_artifact.summary_title|default:"(pending)" }}'
             Confidence:        '{{ world.diagnose_artifact.confidence|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.diagnose_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.diagnose_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -44,7 +44,10 @@ states:
               intent: quit
     relevant_world: [pr_id, pr_title, ci_failed_checks, ci_log, diagnose_artifact, cycle]
     on_enter:
-      - invoke: host.oracle.decide
+      # once: true — the diagnoser LLM re-fires on /reload otherwise. Skipped
+      # once diagnose_artifact is bound; both `refine` arcs clear it to re-run.
+      - invoke: host.agent.decide
+        once: true
         with:
           agent: diagnoser
           prompt: prompts/diagnose_executing.md
@@ -66,6 +69,7 @@ states:
         - target: diagnose_executing
           effects:
             - set:
+                diagnose_artifact: {}   # clear the once: cache so the diagnoser re-runs
                 refine_feedback: "{{ slots.feedback }}"
                 cycle:           "{{ world.cycle + 1 }}"
       quit:
@@ -82,9 +86,12 @@ states:
           pairs:
             PR:           "{{ world.pr_id }}"
             Diagnosis:    '{{ world.diagnose_artifact.summary_title|default:"(pending)" }}'
-            Verdict:      '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
-            Confidence:   '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
-            Reason:       '{{ world.llm_verdict.reason|default:"(none)" }}'
+      - when: "(world.llm_verdict.verdict ?? '') != ''"
+        kv:
+          pairs:
+            Verdict:      '{{ world.llm_verdict.verdict }}'
+            Confidence:   '{{ world.llm_verdict.confidence|floatformat:2 }}'
+            Reason:       '{{ world.llm_verdict.reason }}'
       - heading: "Artifact"
       - code: '{{ world.diagnose_artifact.summary_markdown|default:"(artifact pending)" }}'
       - choice:
@@ -125,7 +132,7 @@ states:
 
       # 3. Conditionally: ask an LLM-judge.
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_diagnose.md
@@ -158,6 +165,7 @@ states:
         - target: diagnose_executing
           effects:
             - set:
+                diagnose_artifact: {}   # clear the once: cache so the diagnoser re-runs
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
       quit:

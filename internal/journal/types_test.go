@@ -61,6 +61,7 @@ func TestKindConstants_RoundTrip(t *testing.T) {
 		journal.KindInboxItemDismissed,
 		journal.KindValidationRejected,
 		journal.KindGuardRejected,
+		journal.KindIDEContextCaptured,
 	}
 	for _, k := range typedKinds {
 		if journal.IsPatchKind(k) {

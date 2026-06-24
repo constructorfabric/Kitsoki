@@ -10,7 +10,7 @@
 # silent-drop gap in the expander.
 #
 # Use case for hand-writing `_executing`: a script-driven phase that
-# wants to override the on_enter (host.run vs host.oracle) AND keep a
+# wants to override the on_enter (host.run vs host.agent) AND keep a
 # bespoke `on:` arc that the template can't model.  Today that author
 # loses cycle-budget protection silently.
 #

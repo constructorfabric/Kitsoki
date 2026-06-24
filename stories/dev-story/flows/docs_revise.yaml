@@ -1,0 +1,64 @@
+# docs_revise — the revise edge: target → draft → review → revise (park back
+# at intake) → a fresh draft_doc re-arms the writer → review again.
+#
+# The branch where the first draft needs work. The writer task binds a draft,
+# the operator reviews it and takes `revise_doc` — which loops back to the
+# intake room (status=revising) and clears the prior draft. Then a SECOND
+# draft_doc is issued from the parked room, re-arming the once: writer task
+# (docs_draft cleared) — proving the revise is not a dead end: the loop
+# re-drafts cleanly.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: docs
+initial_world: {}
+
+host_handlers:
+  # The writer close-out note. Serves both the first draft and the re-draft
+  # after the revise (same handler/call id, both the `draft` call site).
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Drafted the deploy runbook — preflight, ship, verify, rollback."
+        file_path: "docs/runbooks/deploy.md"
+        headings: ["Preflight", "Ship", "Verify", "Rollback"]
+
+turns:
+  # First draft → review.
+  - intent: { name: draft_doc, slots: { target: "the deploy runbook" } }
+    expect_state: docs_review
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: draft }
+        times: 1
+    expect_world:
+      docs_target: "the deploy runbook"
+      docs_status: "drafted"
+
+  # Revise — `revise_doc` loops back to intake, records revising. The prior
+  # draft is retained (it clears on the NEXT draft_doc, so the operator sees
+  # what they're revising). No publish.
+  - intent: { name: revise_doc, slots: {} }
+    expect_state: docs
+    expect_world:
+      docs_status: "revising"
+      docs_draft:
+        summary: "Drafted the deploy runbook — preflight, ship, verify, rollback."
+        file_path: "docs/runbooks/deploy.md"
+        headings: ["Preflight", "Ship", "Verify", "Rollback"]
+
+  # A fresh draft from the parked room — draft_doc clears the prior draft +
+  # status (re-arming the once: writer task), enters drafting, the task
+  # re-fires, and the post-bind emit advances to review again. Proves the
+  # revise is not a dead end.
+  - intent: { name: draft_doc, slots: { target: "the deploy runbook (with rollback detail)" } }
+    expect_state: docs_review
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: draft }
+        times: 1
+    expect_world:
+      docs_target: "the deploy runbook (with rollback detail)"
+
+expect_no_errors: true

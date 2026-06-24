@@ -1,0 +1,73 @@
+{
+  "_comment": "Routing benchmark case study with real before/after Haiku, Opus, and Synthetic small results.",
+  "meta": {
+    "mode": "pitch",
+    "title": "Room Routing Benchmarks",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "title": "Room Routing Benchmarks",
+      "subtitle": "Using live intent fixtures to find cheaper passing routers",
+      "hold": 220
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Case Study",
+      "lede": "The first live result was bad for a useful reason.",
+      "body": "The Oregon Trail general_store.reviewing fixture started at Haiku 2/7, Opus 2/7, and Synthetic small 1/7. The failures exposed a harness/schema contract bug rather than just weak models.",
+      "hold": 360
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Root Cause",
+      "lede": "Kitsoki int slots were being advertised as strings.",
+      "body": "Stories author numeric slots as type: int, but the transition schema only mapped JSON Schema integer. Live routers emitted values like oxen:\"12\" because the tool schema told them that was valid.",
+      "hold": 360
+    },
+    {
+      "type": "table",
+      "title": "Before and After",
+      "columns": ["Candidate", "Before", "After", "Elapsed after", "Cost after"],
+      "rows": [
+        ["Claude Haiku", "2/7", "7/7", "134.501s", "$0.243895"],
+        ["Synthetic small", "1/7", "7/7", "30.043s", "not emitted"],
+        ["Claude Opus", "2/7", "5/7", "300.645s", "$1.684418"],
+        ["Codex default", "1/7", "not rerun", "n/a", "n/a"]
+      ],
+      "hold": 420
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Fix",
+      "lede": "Make the contract precise, then rerun the same room.",
+      "body": "The harness now maps int/float/bool shorthand to JSON Schema integer/number/boolean, emits typed examples, and the refine_purchase story distinguishes explicit numeric replacements from vague feedback.",
+      "hold": 360
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Result",
+      "lede": "Cheap room-local routers became viable after the contract fix.",
+      "body": "Haiku and Synthetic small passed the validated 7-input fixture. Opus did not: two post-fix attempts both landed at 5/7 with transient 529s and a stable over-conservative bullets slot choice.",
+      "hold": 380
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Mechanism",
+      "lede": "Promote per room, not globally.",
+      "body": "Use kitsoki test intents as the gate: deterministic path first, then the cheapest passing room-local model, then fallback. Score the full validated intent call, not just the label.",
+      "hold": 380
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Next",
+      "lede": "Turn the loop into an operating practice.",
+      "body": "Add per-fixture reruns, capture Synthetic cost from SDK usage, run 3-5 repetitions per input, and expand the corpus across rooms before promoting models broadly.",
+      "hold": 400
+    }
+  ]
+}

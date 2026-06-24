@@ -1,0 +1,67 @@
+# bug_gate_string_collision (FIXED) — proves the integrate room ROUTES a
+# quote-bearing gate_command through to a clean ship.
+#
+# Before the fix, the build-check pasted the gate into a shell-parsed assignment
+# (`BUILD_CMD="{{ world.gate_command }}"`), so a gate with load-bearing inner
+# quotes (e.g. `make test ARGS="--filter=ratelimit"`) was corrupted on assignment
+# → a DIFFERENT command ran than verify.yaml runs → a false build_fail to
+# @exit:needs-human. The fix passes the gate as a POSITIONAL parameter to
+# `bash -c` (never interpolated into the script text), so it runs VERBATIM,
+# exactly as verify.yaml runs it.
+#
+# This flow MOCKS integrate_exec, so it proves the ROUTING contract: a
+# quote-bearing gate_command now integrates cleanly and ships. The bash mechanism
+# itself (positional gate, no quote-stripping) is guarded by the real-bash test
+# stories/delivery-tail/tests/integrate_room_hardening.sh.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  # gate_command with load-bearing inner double-quotes — the case that the old
+  # assignment-paste corrupted; the positional-arg fix runs it verbatim.
+  gate_command:       'make test ARGS="--filter=ratelimit"'
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      # The fixed room runs the quote-bearing gate verbatim → integrated.
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "e4f5a6b"
+            last_op_ok:     true
+            last_error:     ""
+      # The IDENTICAL quote-bearing gate, re-run GREEN on the merged commit.
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok  make test ARGS=--filter=ratelimit  0.012s" } }
+      cleanup_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:    cleaned
+            last_op_ok: true
+            last_error: ""
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:            shipped
+      shipped_sha:       "e4f5a6b"
+      integrated_sha:    "e4f5a6b"
+      verify_ok:         true
+      integrate_outcome: integrated
+      cleanup_outcome:   cleaned
+
+expect_terminal: true
+expect_no_errors: true

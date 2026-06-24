@@ -1,15 +1,15 @@
 # implementing — phase 3 of the bugfix pipeline (apply the proposed fix).
 #
-# Runs an oracle that reads the propose_fix_artifact and APPLIES the
+# Runs an agent that reads the propose_fix_artifact and APPLIES the
 # edits to the worktree, then commits whatever's dirty. `continue`
 # advances to testing for the run-and-review pass.
 #
-# Pre-2026-05-19 this room did NOT invoke an oracle — it ran
+# Pre-2026-05-19 this room did NOT invoke an agent — it ran
 # workspace.sync + vcs.commit + a misleading `say "Fix applied"` and
 # advanced. The actual edits were never made; testing.on_enter then
 # ran the repro tests against unchanged code and reported "Fix not
 # applied" every time. The user-visible symptom was a happy pipeline
-# that produced zero diff. The oracle invocation below is the missing
+# that produced zero diff. The agent invocation below is the missing
 # piece that makes implementing do its job.
 
 states:
@@ -27,13 +27,13 @@ states:
       - kv:
           pairs:
             Ticket:           "{{ world.ticket_id }} — {{ world.ticket_title }}"
-            Workspace:        '{{ world.workspace_id|default:"(none)" }} ({{ world.workdir|default:"(no path)" }})'
-            "Feature branch": '{{ world.feature_branch|default:"(none)" }}'
-            Applied:          '{{ world.implement_artifact.summary_title|default:"(pending — oracle has not returned yet)" }}'
+            Workspace:        '{{ world.workspace_id|default:"—" }}{% if world.workdir %}  ·  {{ world.workdir }}{% endif %}'
+            "Feature branch": '{{ world.feature_branch|default:"—" }}'
+            Applied:          '{{ world.implement_artifact.summary_title|default:"(pending — agent has not returned yet)" }}'
             Status:           '{% if world.implement_artifact.applied == false %}blocked{% elif world.implement_artifact.summary_title %}applied{% else %}(pending){% endif %}'
-            Files:            '{{ world.implement_artifact.files_changed|default:"(none recorded)" }}'
+            Files:            '{{ world.implement_artifact.files_changed|join:", "|default:"(none recorded)" }}'
       - heading: "Artifact"
-      - code: '{{ world.implement_artifact.summary_markdown|default:"(no implementation body — oracle pending or failed)" }}'
+      - code: '{{ world.implement_artifact.summary_markdown|default:"(no implementation body — agent pending or failed)" }}'
       - heading: "Blockers"
         when:  "world.implement_artifact.blockers"
       - code: |
@@ -92,14 +92,24 @@ states:
           id: "{{ world.workspace_id }}"
         on_error: idle
 
-      # Apply the proposed fix. The oracle runs with cwd=workdir
+      # Apply the proposed fix. The agent runs with cwd=workdir
       # (the bugfix worktree), reads the proposal artifact, and uses
       # Edit/Write to make the actual code changes. Without this
       # step the room is a no-op and testing observes "fix not
       # applied". See the file header above for the regression
       # history.
+      # `once: true` for reload-safety: keyed off its own bind
+      # (implement_artifact). This agent MUTATES FILES, so re-running it
+      # on every /reload / self-transition / on_error re-entry would
+      # re-apply edits against an already-patched tree. Skipping when the
+      # artifact is already bound makes the apply idempotent. Every arc
+      # that re-enters implementing for a FRESH apply — testing's
+      # failed/blocked accept arms, validating's fail_short arm, and the
+      # restart_from-to-implementing arms — clears implement_artifact to
+      # re-arm the apply.
       - when: "world.workdir != ''"
-        invoke: host.oracle.task
+        invoke: host.agent.task
+        once: true
         with:
           agent: implementer
           working_dir: "{{ world.workdir }}"
@@ -113,7 +123,11 @@ states:
               workdir:          "{{ world.workdir }}"
               fix_description:  "{{ world.propose_fix_artifact.fix_description }}"
               root_cause:       "{{ world.propose_fix_artifact.root_cause }}"
-              affected_files:   "{{ world.propose_fix_artifact.affected_files }}"
+              # join the list into a readable string — args are expr-lang
+              # (not pongo2), so use join(arr, glue); `?? []` keeps it
+              # nil-safe when no proposal artifact has bound yet (raw
+              # interpolation stringified the []interface{} as a Go type dump).
+              affected_files:   '{{ join(world.propose_fix_artifact.affected_files ?? [], ", ") }}'
               refine_feedback:  "{{ world.refine_feedback }}"
               cycle:            "{{ world.cycle }}"
         bind:
@@ -125,17 +139,21 @@ states:
         with:
           workdir: "{{ world.workdir }}"
           message: "{{ world.propose_fix_artifact.summary_title }}"
-          # Stage the oracle's files explicitly. `git commit -a`
+          # Stage the agent's files explicitly. `git commit -a`
           # picks up modifications to tracked files but does NOT
-          # stage new files — so a `Write`-based edit (oracle
+          # stage new files — so a `Write`-based edit (agent
           # creating a helper) would silently vanish without this
           # explicit add. files_changed comes from the
-          # implementing artifact and is the oracle's record of
+          # implementing artifact and is the agent's record of
           # everything it touched.
           files: "{{ world.implement_artifact.files_changed }}"
         on_error: idle
 
-      - say: "Fix applied — {{ world.implement_artifact.summary_title|default:world.propose_fix_artifact.summary_title }}"
+      # Guard on a title being bound: during the autonomous auto-advance
+      # cascade this say fires before either artifact binds, which would emit a
+      # bare "Fix applied — " with a dangling em-dash. Truthiness skips nil/empty.
+      - when: "(world.implement_artifact.summary_title ?? '') != '' || (world.propose_fix_artifact.summary_title ?? '') != ''"
+        say: "Fix applied — {{ world.implement_artifact.summary_title|default:world.propose_fix_artifact.summary_title }}"
     on:
       accept:
         - target: testing
@@ -145,25 +163,31 @@ states:
           target: reproducing
           effects:
             - set:
-                restart_from_stage: "reproducing"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "reproducing"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear reproducing's once: bind so it re-runs fresh.
+                reproduction_artifact: {}
         - when: "slots.stage == 'proposing' || slots.stage == 'propose_fix'"
           target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
         - target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage ?? 'proposing' }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage ?? 'proposing' }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
 
       quit:
         - target: "@exit:abandoned"

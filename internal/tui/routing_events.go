@@ -16,7 +16,6 @@
 package tui
 
 import (
-	"os"
 	"time"
 )
 
@@ -52,6 +51,10 @@ const (
 // turn.semantic_miss / equivalent slog events.
 type RoutingTierMissMsg struct {
 	Tier RoutingTier
+	// Reason carries tier detail — for a TierLLM miss it is the backend that
+	// missed (e.g. "agent.local"), so the pipeline marks the local-LLM layer
+	// rather than the main-LLM one.
+	Reason string
 }
 
 // RoutingTierHitMsg finalises the inline routing block at a tier with
@@ -83,17 +86,3 @@ type RoutingAmbiguousMsg struct {
 // RoutingCancelMsg drops the live routing block when the user
 // cancels mid-flight.
 type RoutingCancelMsg struct{}
-
-// noColourEnabled returns true when NO_COLOR or KITSOKI_NO_COLOR is
-// set to a non-empty value in the environment. Preserved here because
-// a few legacy call sites still consult it; new code should use
-// blocks.Renderer.NoColor instead.
-func noColourEnabled() bool {
-	if v := os.Getenv("NO_COLOR"); v != "" && v != "0" {
-		return true
-	}
-	if v := os.Getenv("KITSOKI_NO_COLOR"); v != "" && v != "0" {
-		return true
-	}
-	return false
-}

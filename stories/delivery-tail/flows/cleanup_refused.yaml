@@ -1,0 +1,48 @@
+# cleanup_refused — integrate clean, re-verify green, but cleanup fails (the
+# worktree remove is refused) → @exit:needs-human with last_error. No false
+# "shipped" on a refused cleanup (no-swallowed-failure discipline).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "e4f5a6b"
+            last_op_ok:     true
+            last_error:     ""
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok" } }
+      cleanup_exec:
+        data:
+          ok: false
+          exit_code: 0
+          stdout_json:
+            outcome:    refused
+            last_op_ok: false
+            last_error: "worktree remove refused: .worktrees/burst-fix contains modified or untracked files, use --force to delete it"
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:          needs-human
+      cleanup_outcome: refused
+      last_error:      "worktree remove refused: .worktrees/burst-fix contains modified or untracked files, use --force to delete it"
+
+expect_terminal: true
+expect_no_errors: true

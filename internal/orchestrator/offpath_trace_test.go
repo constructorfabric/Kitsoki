@@ -24,7 +24,7 @@ import (
 // that rely on its exact return-shape.
 func setupOffPathOrchWithLogger(t *testing.T) (*orchestrator.Orchestrator, *capturingHandler, app.SessionID) {
 	t.Helper()
-	t.Setenv(host.OracleBinEnv, fakeOraclePath(t))
+	t.Setenv(host.AgentBinEnv, fakeAgentPath(t))
 
 	def := minimalOffPathApp()
 

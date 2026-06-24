@@ -421,7 +421,7 @@ func TestParallelEmitDropped_DispatchPostBindEmits(t *testing.T) {
 	parallelPath := app.StatePath("shell#shell.a.leaf|shell.b.leaf")
 
 	finalState, finalWorld, hostCalls, sayText, events, err := m.DispatchPostBindEmits(
-		context.Background(), parallelPath, world.New(),
+		context.Background(), parallelPath, world.New(), false, nil,
 	)
 	require.NoError(t, err, "DispatchPostBindEmits on parallel state must NOT error")
 	// Inputs returned unchanged (modulo the no-op invariant).

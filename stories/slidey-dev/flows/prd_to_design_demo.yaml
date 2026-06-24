@@ -1,0 +1,247 @@
+# prd_to_design_demo (slidey-dev) — the WHOLE PRD → Design walk on the slidey
+# repo, one session, no LLM.
+#
+# A sibling of stories/dev-story/flows/prd_to_design_full.yaml, retargeted onto
+# the slidey checkout (a Node/Vue narrated-deck renderer). slidey-dev imports
+# @kitsoki/dev-story as `core` (root: core), so this flow drives the SAME rooms
+# as the dev-story walk but through the `core.` / `core__` projection (exactly
+# like the gears-rust stories/gears-rust/flows/prd_to_design_demo.yaml).
+#
+# Themed content = the seam. Every agent call (host.agent.decide / task /
+# converse / search, host.chat.resolve, host.run) is stubbed with slidey-themed
+# content about ONE real, small slidey feature:
+#
+#   "speaker-notes export" — a `slidey deck.json --notes out.md` flag that emits
+#   a printable per-scene handout (eyebrow + body + narration) from the SAME
+#   spec the video/PDF/web outputs share, no LLM, deterministic. It is a
+#   net-new CLI seam + a tiny renderer-side notes collector, which is why the
+#   design naturally yields an epic, slices, and ADRs.
+#
+# Two deterministic rrweb tour clips are sliced out of this one walk:
+#   * slidey-pm-idea       — landing → prd → … → prd_published  (PM/PRD half)
+#   * slidey-architect-design — prd_published → continue → design → design_done
+#
+# workdir is "." (self-contained .artifacts), like the gears IDE-variant — the
+# real writes land in the slidey checkout's gitignored .artifacts.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world:
+  judge_mode: "human"
+  core__workdir:               "."
+  core__publish_durable_path:  "docs/prd"
+  core__prd_doc_filename:      ""
+  core__design_durable_path:   "docs/proposals"
+  core__design_doc_filename:   ""
+  core__design_template_dir:   "docs/proposals/templates"
+  core__design_ticket_dir:     "issues/features"
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: false }
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "Speaker-notes export idea", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "A printable per-scene handout exported straight from the deck spec.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  host.agent.search:
+    data: { hits: [], top: null }
+  host.agent.decide:
+    # prd clarifying question generation (the un-id'd decide).
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary actor and where do they use the handout?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+    by_call:
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q1: presenters reviewing a deck before a talk\nQ2: decks-exported-to-notes-without-rendering-video\n"
+            answered_ids_append: "|1||2|"
+            matched_count:       2
+      name_slug:
+        data:
+          ok: true
+          submitted: { slug: "speaker-notes-export", rationale: "the slidey feature the design is authored for" }
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "A net-new spec-derived output alongside video/PDF/web; no overlap with existing outputs." }
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/prd/speaker-notes-export.md", sections: "§5", rationale: "the PRD this design realizes" }
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "continue", reason: "Crisp why, clear metric, components named.", questions: [] }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/speaker-notes-export/001-brief.md", message_id: "out#1" }
+  host.agent.task:
+    by_call:
+      # PRD author (prd drafting) — id: prd_author. The full PRD body about the
+      # slidey speaker-notes feature.
+      prd_author:
+        data:
+          ok: true
+          submitted:
+            title:            "PRD: Speaker-Notes Export"
+            summary_markdown: |
+              # PRD: Speaker-Notes Export
+
+              ## Problem & Context
+              A slidey deck is one JSON spec that renders to video, PDF, and an
+              interactive web player — but a presenter rehearsing a talk has no
+              printable, per-scene handout of what each scene says. They scrub
+              the video or click through the web player just to read narration.
+
+              ## Target Users
+              Presenters and deck authors reviewing a deck before a talk, who
+              already author the deck spec but want a text handout without
+              rendering a full MP4.
+
+              ## Goals
+              - A `slidey deck.json --notes out.md` flag that emits a per-scene
+                handout (eyebrow + body + narration) from the same spec.
+              - Deterministic and LLM-free: same spec in, same notes out.
+
+              ## Requirements
+              - Functional: one Markdown section per scene, in spec order, with
+                the scene's eyebrow/title, body, and narration text.
+              - Non-functional: headline metric is
+                decks-exported-to-notes-without-rendering-video.
+
+              ## Open Questions
+              - Should scenes with no narration be skipped or emitted empty?
+            file_path:           ".artifacts/prd/speaker-notes-export/004-prd.md"
+            confidence:          0.84
+            needs_clarification: false
+            follow_up_questions: []
+      # DESIGN author (design_draft) — id: design_author. The slidey design with
+      # mermaid + the component/seam model.
+      design_author:
+        data:
+          ok: true
+          submitted:
+            title:            "Runtime: slidey --notes speaker-notes export"
+            kind:             "runtime"
+            summary_markdown: |
+              ## Runtime: slidey `--notes` speaker-notes export
+
+              Realizes the speaker-notes-export PRD as a deterministic,
+              spec-derived output alongside video/PDF/web.
+
+              ### Epic
+              Emit a per-scene Markdown handout from a deck spec, reusing the
+              same scene model the renderers share so it can never drift.
+
+              ### Slices
+              1. `collectNotes(spec)` — a pure spec→notes collector in
+                 `src/notes.js` that walks `spec.scenes` and pulls eyebrow/title,
+                 body, and narration per scene.
+              2. CLI seam — `slidey deck.json --notes out.md` in `src/index.js`,
+                 routed like the existing `--pdf` / video output branches.
+              3. Markdown emitter — `renderNotesMarkdown(notes)` writing one
+                 `## NN — <title>` section per scene, narration as a blockquote.
+
+              ### Data flow
+
+              ```mermaid
+              flowchart LR
+                spec[deck.json spec] --> collect[collectNotes]
+                collect --> notes[scene notes]
+                notes --> md[renderNotesMarkdown]
+                md --> out[out.md handout]
+              ```
+
+              ### ADRs
+              - ADR-1: Derive notes from the SAME `spec.scenes` model the Vue
+                scene components consume — no parallel notes schema — so the
+                handout can never drift from what renders.
+              - ADR-2: Notes export is a pure, LLM-free transform (no narration
+                synthesis, no network), matching slidey's deterministic
+                same-input-same-output contract.
+            file_path:           "docs/proposals/.workspace/speaker-notes-export/004-proposal.md"
+            confidence:          0.82
+            needs_clarification: false
+            follow_up_questions: []
+      refine_brief:
+        data:
+          ok: true
+          submitted:
+            summary: "Idea is clear; the design sections need the component model and the CLI seam."
+            gaps:    ["Name the notes collector and its seam in src/index.js", "Specify the per-scene Markdown shape"]
+      refine_brief_update:
+        data:
+          ok: true
+          submitted:
+            summary: "Folded in the operator's note — the collector/CLI seam and Markdown shape are now scoped."
+            gaps:    ["Specify the per-scene Markdown shape"]
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "speaker-notes-export", workspace: ".artifacts/prd/speaker-notes-export" }
+      uniquify:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "speaker-notes-export", workspace: "docs/proposals/.workspace/speaker-notes-export" }
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            prd_file:     "docs/prd/speaker-notes-export.md"
+            design_file:  "docs/proposals/speaker-notes-export.md"
+            ticket_id:    "F-2026-06-23T120000Z-speaker-notes-export"
+            ticket_path:  "issues/features/F-2026-06-23T120000Z-speaker-notes-export.md"
+            ticket_title: "slidey speaker-notes export"
+
+turns:
+  # ── PRD half (slidey-pm-idea clip) ──────────────────────────────────────────
+  - intent: { name: core__go_prd, slots: {} }
+    expect_state: core.prd.idle
+  - intent: { name: core__prd__discuss, slots: { message: "I want a slidey --notes speaker-notes export" } }
+    expect_state: core.prd.idle
+  - intent: { name: core__prd__start, slots: {} }
+    expect_state: core.prd.search
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.clarifying
+  - intent: { name: core__prd__answer, slots: { text: "presenters rehearsing a talk; metric is decks-exported-to-notes-without-rendering-video" } }
+    expect_state: core.prd.clarifying
+  - intent: { name: core__prd__submit_answers, slots: {} }
+    expect_state: core.prd.brief
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.references
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.drafting
+  - intent: { name: core__prd__accept, slots: {} }
+    expect_state: core.prd_published
+
+  # ── PRD → Design handoff ────────────────────────────────────────────────────
+  - intent: { name: core__continue, slots: {} }
+    expect_state: core.design
+
+  # ── Design half (slidey-architect-design clip) ──────────────────────────────
+  - intent: { name: core__discuss, slots: { message: "realize the speaker-notes-export PRD as a slidey runtime design" } }
+    expect_state: core.design_search
+  - intent: { name: core__confirm, slots: {} }
+    expect_state: core.design_refine
+  - intent: { name: core__discuss, slots: { message: "name the notes collector and the CLI seam, and the per-scene Markdown shape" } }
+    expect_state: core.design_refine
+  - intent: { name: core__ready, slots: {} }
+    expect_state: core.design_draft
+  - intent: { name: core__accept, slots: {} }
+    expect_state: core.design_done
+  - intent: { name: core__go_main, slots: {} }
+    expect_state: core.landing
+
+expect_no_errors: true

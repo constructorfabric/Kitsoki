@@ -1,0 +1,142 @@
+# design_to_implementation — the publish → implement bridge.
+#
+# After a proposal is published, the accept arc mints a feature ticket and
+# pins the routing keys (ticket_id, ticket_type=feature, ticket_url, thread),
+# so the design_done room's `implement` action drives straight into the
+# impl import compound — no detour through ticket_search.
+#
+# This flow starts at design_done with ONLY the keys the accept arc actually
+# leaves behind (ticket_id, ticket_type=feature, ticket_url, thread,
+# design_*) — see design_happy_path.yaml for the publish call that sets
+# them. Crucially it does NOT seed a workspace (workdir / workspace_id /
+# feature_branch): the proposal pipeline never creates one. That's the whole
+# point — impl.idle.on_enter must self-provision the worktree on entry (the
+# same way bf.idle does), so the implementation pipeline runs against a real
+# branch instead of the repo root. This flow proves:
+#   design_done → go_implementation → impl.idle (world_in: projects the
+#   ticket keys; impl.idle.on_enter derives + creates the worktree) →
+#   walk to @exit:done → main.
+#
+# An earlier version of this fixture seeded workdir/workspace_id/feature_branch
+# directly, which papered over the missing provisioning — the pipeline "passed"
+# while a live run drove impl with workdir="". See stories/CLAUDE.md.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design_done
+initial_world:
+  design_file:        "docs/proposals/per-session-working-folder.md"
+  design_ticket_path: "issues/features/F-2026-06-11T120000Z-per-session-working-folder.md"
+  design_workspace:   "docs/proposals/.workspace/per-session-working-folder"
+  ticket_id:      "F-2026-06-11T120000Z-per-session-working-folder"
+  ticket_title:   "Per-session working folder"
+  ticket_type:    "feature"
+  ticket_url:     "docs/proposals/per-session-working-folder.md"
+  thread:         "F-2026-06-11T120000Z-per-session-working-folder"
+  base_branch:    "main"
+  judge_mode:     "human"
+  judge_confidence_threshold: 0.8
+  merge_strategy: "squash"
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git:
+    data:
+      ok:       true
+      sha:      "abc123"
+      diff:     "diff --git a/x b/x"
+      url:      "https://example/pr/PSW"
+      pr_id:    "PSW"
+      state:    "success"
+      checks:   ""
+      comments: ""
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.local:
+    data: { ok: true, log: "PASS", state: "success", passed: 1, failed: 0 }
+  host.local_files.ticket:
+    data:
+      ok:    true
+      id:    "F-2026-06-11T120000Z-per-session-working-folder"
+      title: "Per-session working folder"
+      body:  "Implement the accepted proposal."
+      url:   "docs/proposals/per-session-working-folder.md"
+      tickets: "F-2026-06-11T120000Z-per-session-working-folder: Per-session working folder"
+  host.agent.decide:
+    data:
+      ok: true
+      submitted: &impl_artifact
+        summary_title:    "Per-session working folder"
+        summary_markdown: "Stub implementation artifact."
+        scope:            "single primitive."
+        acceptance_criteria: ["folder is created per session."]
+        affected_files:   ["internal/runtime/workdir.go"]
+        confidence:       0.85
+        reasoning:        "Mechanical."
+        status:           "passed"
+        tests_run:        { passed: 1, failed: 0, log: "PASS" }
+        nits:             []
+        blockers:         []
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Stub."
+  host.agent.task:
+    data:
+      ok: true
+      submitted: *impl_artifact
+  host.agent.ask:
+    data:
+      ok: true
+      submitted: *impl_artifact
+
+turns:
+  # The done room's `implement` action → go_implementation → impl.idle.
+  # world_in: projects the proposal's ticket keys into impl__<key>, then
+  # impl.idle.on_enter derives the workspace identity from the ticket and
+  # creates the worktree — so impl__workdir / impl__workspace_id /
+  # impl__feature_branch are PROVISIONED here, not seeded.
+  - intent: { name: go_implementation, slots: {} }
+    expect_state: impl.idle
+    expect_world:
+      impl__ticket_id:      "F-2026-06-11T120000Z-per-session-working-folder"
+      impl__ticket_url:     "docs/proposals/per-session-working-folder.md"
+      impl__workspace_id:   "impl-F-2026-06-11T120000Z-per-session-working-folder"
+      impl__feature_branch: "feature/F-2026-06-11T120000Z-per-session-working-folder"
+      impl__workdir:        ".worktrees/impl-F-2026-06-11T120000Z-per-session-working-folder"
+      impl__impl_provision_attempted: true
+
+  - intent: { name: impl__start, slots: {} }
+    expect_state: impl.review_task_executing
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.review_task_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.write_code_executing
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.write_code_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.test_executing
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.test_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.review_executing
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.review_awaiting_reply
+  - intent: { name: impl__accept, slots: {} }
+    expect_state: impl.handoff
+  - intent: { name: impl__proceed, slots: {} }
+    expect_state: impl.pr.open_pr
+  - intent: { name: impl__pr__proceed, slots: {} }
+    expect_state: impl.pr.ci_monitoring
+  - intent: { name: impl__pr__proceed, slots: {} }
+    expect_state: impl.pr.merge_executing
+  - intent: { name: impl__pr__proceed, slots: {} }
+    expect_state: impl.pr.merge_awaiting_reply
+  - intent: { name: impl__pr__accept, slots: {} }
+    expect_state: landing
+    expect_world:
+      status: "merged"
+
+expect_no_errors: true

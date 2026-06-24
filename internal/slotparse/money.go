@@ -19,8 +19,8 @@ var moneyUnitWords = map[string]string{
 	"bucks":   "unit-bucks",
 }
 
-// ParseMoney recognises the dialect of money phrases the
-// semantic-routing proposal's Oregon-Trail corpus actually uses:
+// ParseMoney recognises the dialect of money phrases the routing
+// stack's Oregon-Trail corpus actually uses:
 //
 //   - "$120", "$120.50"           — Reason "bare-int" (see note below)
 //   - "120 dollars", "5 dollar"   — Reason "unit-dollars"
@@ -42,10 +42,10 @@ var moneyUnitWords = map[string]string{
 // "$120.49" → 120 and "$120.50" → 121 — [math.Round] uses
 // round-half-away-from-zero, which is what a user reading "$120.50
 // means 121 dollars" expects. We lose cents intentionally; we are
-// routing intents, not running a general ledger (proposal §B.3 —
-// "we only parse, not arithmetic").
+// routing intents, not running a general ledger — slotparse only
+// parses, it never does arithmetic.
 //
-// Note on the dollar-sign branch. The proposal §2.4 sketch assumed
+// Note on the dollar-sign branch. An early sketch assumed
 // "$" survives lex as its own UAX#29 segment, but the live
 // internal/lex drops pure-punctuation tokens before they reach this
 // function. As a result "$120" tokenises to one IsNum token (Surface
@@ -124,7 +124,7 @@ func ParseMoney(tokens []lex.Token) Result {
 			continue
 		}
 		end := start
-		for end < len(tokens) && end-start < 16 && isAlphaSurface(tokens[end].Surface) {
+		for end < len(tokens) && end-start < maxSpelledWindow && isAlphaSurface(tokens[end].Surface) {
 			end++
 		}
 		for hi := end; hi > start; hi-- {
@@ -157,7 +157,7 @@ func ParseMoney(tokens []lex.Token) Result {
 	// documented behaviour. Scans the whole stream so embedded
 	// "buy 6 oxen for $240" inputs (where "$" has been dropped by
 	// the lex layer) pick up "240". A short stream wins by taking
-	// the FIRST IsNum token; in longer phrases the proposal's
+	// the FIRST IsNum token; in longer phrases the routing
 	// dialect ("buy 6 oxen for $240") deliberately puts the money
 	// last, but we still need to skip the "6" — see the comment
 	// in TestParseMoney_AcceptedSurfaces' "embedded_money_phrase"

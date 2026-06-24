@@ -1,16 +1,3 @@
-// Package harness — ClaudeCLIHarness implementation (§10.5).
-// Shells out to the `claude -p` CLI to route a user utterance to an IntentCall.
-// This avoids requiring ANTHROPIC_API_KEY: it picks up the user's existing
-// Claude Code login instead.
-//
-// Slot extraction goes through MCP tool-calling: the harness spawns the
-// kitsoki binary itself as a `mcp-validator` subprocess, attaches it via
-// `--mcp-config`, and tells the LLM to call `mcp__kitsoki-validator__submit`
-// with the routed payload. The validator captures the schema-validated
-// JSON to a side-channel file so we never have to scrape stdout for fences
-// or beg the model to "respond with raw JSON". Semantic formats declared
-// on slots (e.g. `format: jql`) are enforced by the validator, the same
-// way `host.oracle.ask_with_mcp` does it.
 package harness
 
 import (
@@ -28,6 +15,7 @@ import (
 
 	"kitsoki/internal/app"
 	kitsokimcp "kitsoki/internal/mcp"
+	"kitsoki/internal/sysprompt"
 	"kitsoki/internal/trace"
 )
 
@@ -50,6 +38,22 @@ const validatorServerName = "kitsoki-validator"
 // validatorServerName + the validator server's default `submit` tool.
 const validatorToolName = "mcp__" + validatorServerName + "__submit"
 
+// ClaudeExec runs the `claude` binary one-shot. It receives the resolved
+// binary path, the CLI args, and the prompt to pipe on stdin, and returns
+// claude's stdout. It is the single seam through which the routing harness
+// forks claude: the harness no longer execs claude itself.
+//
+// Production wires host.RunClaudeOneShotForHarness so intent routing shares the
+// agent's invocation engine — stream/usage capture, the ClaudeRunner test
+// seam, IDE-link scrub, and env handling all apply uniformly. Tests inject the
+// same adapter (to exercise the real path) or a stub.
+//
+// The signature mirrors host.RunClaudeOneShotForHarness exactly so that bare
+// function is directly assignable to this named type without host importing
+// harness. workingDir is unused by routing (always "") but kept so the
+// contract matches the canonical runner.
+type ClaudeExec func(ctx context.Context, bin string, args []string, stdin, workingDir string) (stdout string, err error)
+
 // ClaudeCLIConfig holds optional knobs for ClaudeCLIHarness.
 type ClaudeCLIConfig struct {
 	// Model is passed as --model to claude. If empty, DefaultClaudeModel is used.
@@ -61,17 +65,44 @@ type ClaudeCLIConfig struct {
 	// validator MCP server. If empty, os.Executable() is used. Tests set
 	// this to a stub that mimics the validator's capture behavior.
 	KitsokiBin string
+	// Exec forks the claude binary. Required for routing: when nil, RunTurn
+	// returns an error rather than forking claude through a private path.
+	// Production wires host.RunClaudeOneShotForHarness at construction so all
+	// claude invocations flow through the one canonical engine.
+	Exec ClaudeExec
+	// ValidatorTool overrides the MCP tool name the model is told to call in
+	// the output contract. Empty uses validatorToolName (the claude
+	// "mcp__<server>__submit" form). The copilot backend sets this to
+	// "kitsoki-validator-submit" because copilot namespaces MCP tools as
+	// "<server>-<tool>".
+	ValidatorTool string
+}
+
+// validatorTool returns the configured submit-tool name, defaulting to the
+// claude form when unset.
+func (c ClaudeCLIConfig) validatorTool() string {
+	if c.ValidatorTool != "" {
+		return c.ValidatorTool
+	}
+	return validatorToolName
 }
 
 // ClaudeCLIHarness shells out to `claude -p` to route user text → IntentCall.
-// Prompt composition reuses buildStablePrefix and buildDynamicSuffix from prompt.go
-// so the prompt shape is identical to LiveHarness.
+// It exists so kitsoki can route without an ANTHROPIC_API_KEY: the subprocess
+// reuses the user's existing Claude Code login. Prompt composition reuses the
+// same builders as LiveHarness so the prompt shape is identical across the two.
 //
-// Invocation: the complete prompt is piped to claude via stdin (avoids argv
-// size limits). A per-turn JSON Schema is written to a tempdir alongside
-// an --mcp-config file that points claude at `kitsoki mcp-validator`. The
-// validator captures the LLM's submit() payload to a file we read after
-// claude exits.
+// Slot extraction rides on MCP rather than stdout scraping: the harness spawns
+// the kitsoki binary itself as a validator subprocess (attached via
+// --mcp-config) and instructs the model to call mcp__kitsoki-validator__submit.
+// The validator writes the schema-validated payload to a side-channel file via
+// atomic rename, so we never have to parse fences out of free-form output or
+// beg the model for "raw JSON". Semantic slot formats (e.g. `format: jql`) are
+// enforced by that validator, the same way the Agent host call enforces them.
+//
+// Invocation detail: the complete prompt is piped via stdin to avoid argv size
+// limits; the per-turn JSON Schema, the --mcp-config document, and the capture
+// file all live in one tempdir removed on return.
 type ClaudeCLIHarness struct {
 	appDef       *app.AppDef
 	cfg          ClaudeCLIConfig
@@ -148,16 +179,19 @@ type claudeJSONEnvelope struct {
 	IsError bool   `json:"is_error"`
 }
 
-// submitInstruction is appended to every prompt. It tells the LLM the only
-// way to "respond" is to call the validator's submit tool with a payload
-// that matches the schema attached to that tool.
-const submitInstruction = `
+// buildSubmitInstruction returns the output-contract block appended to every
+// routing prompt. It tells the LLM the only way to "respond" is to call the
+// validator's submit tool (named toolName, which differs per backend:
+// "mcp__kitsoki-validator__submit" for claude, "kitsoki-validator-submit" for
+// copilot) with a payload that matches the schema attached to that tool.
+func buildSubmitInstruction(toolName string) string {
+	return `
 
 ---
 
 ## Output Contract
 
-You must call the tool ` + "`" + validatorToolName + "`" + ` exactly once with an object of shape:
+You must call the tool ` + "`" + toolName + "`" + ` exactly once with an object of shape:
 
   {"intent": "<one of the allowed intent names>",
    "slots":  {"<slot>": <value>, ...},
@@ -170,6 +204,7 @@ intent values, the slot shape per intent, and any semantic format checks
 Once submit returns OK, your turn is done — write at most a one-line
 acknowledgement; do not repeat the JSON.
 `
+}
 
 // RunTurn pipes the user utterance and app context to `claude -p` and extracts
 // the resulting IntentCall via the MCP validator's side-channel capture file.
@@ -233,14 +268,29 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 	}
 
 	dynamic := buildDynamicSuffix(h.appDef, in)
-	prompt := h.stablePrefix + dynamic + submitInstruction +
-		"\n## User Input\n\n" + in.UserText + "\n"
+	// The stable router prefix + output contract are turn-invariant, so they
+	// become claude's system prompt (via --system-prompt, which *replaces*
+	// Claude Code's own default system prompt — see buildClaudeArgs). Only the
+	// per-turn context and the user utterance ride on stdin as the user message.
+	//
+	// Routing composes through the same layered builder as every agent verb
+	// (internal/sysprompt): the kitsoki grounding (Layer 1) and any project
+	// context (Layer 2) are prepended to the routing prefix + output contract
+	// (Layer 3), so the router is grounded identically to the rest of the system.
+	composed := sysprompt.Compose(sysprompt.Spec{
+		Verb:    sysprompt.Route,
+		Project: projectLayer(h.appDef),
+		Task:    h.stablePrefix + buildSubmitInstruction(h.cfg.validatorTool()),
+	})
+	systemPrompt := composed.SystemPrompt
+	userMessage := dynamic + "\n## User Input\n\n" + in.UserText + "\n"
 
-	args := buildClaudeArgs(h.cfg, configPath)
+	args := buildClaudeArgs(h.cfg, configPath, systemPrompt)
 	if l.Enabled(ctx, slog.LevelDebug) {
 		l.DebugContext(ctx, trace.EvHarnessRequest,
-			slog.Int("prompt_bytes", len(prompt)),
-			slog.String("prompt_head", trace.Truncate(prompt, trace.TruncateCap)),
+			slog.Int("system_prompt_bytes", len(systemPrompt)),
+			slog.Int("user_message_bytes", len(userMessage)),
+			slog.String("prompt_head", trace.Truncate(systemPrompt, trace.TruncateCap)),
 		)
 		l.DebugContext(ctx, trace.EvHarnessExec,
 			slog.String("bin", claudeBin),
@@ -248,7 +298,11 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 		)
 	}
 
-	raw, runErr := h.invoke(ctx, claudeBin, args, prompt)
+	if h.cfg.Exec == nil {
+		return mcp.CallToolParams{}, errors.New("harness/claude-cli: no ClaudeExec injected; wire host.RunClaudeOneShotForHarness at construction")
+	}
+	stdout, runErr := h.cfg.Exec(ctx, claudeBin, args, userMessage, "")
+	raw := []byte(stdout)
 	if runErr != nil {
 		l.DebugContext(ctx, trace.EvHarnessError, slog.String("error", runErr.Error()))
 		return mcp.CallToolParams{}, runErr
@@ -270,8 +324,8 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 		_ = json.Unmarshal(raw, &env)
 		message := strings.TrimSpace(env.Result)
 		underlying := fmt.Errorf(
-			"harness/claude-cli: LLM did not call %s (no validated payload captured); claude said: %q",
-			validatorToolName, truncate(message, 200),
+			"harness/claude-cli: LLM did not call %s (no validated payload captured); model said: %q",
+			h.cfg.validatorTool(), truncate(message, 200),
 		)
 		return mcp.CallToolParams{}, &ClarifyResponse{
 			Message:    message,
@@ -294,8 +348,18 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 }
 
 // buildClaudeArgs returns the CLI argument list for `claude -p`. configPath
-// is the --mcp-config file path. The model is always included.
-func buildClaudeArgs(cfg ClaudeCLIConfig, configPath string) []string {
+// is the --mcp-config file path; systemPrompt, when non-empty, is passed as
+// claude's system prompt. The model is always included.
+//
+// systemPrompt is passed via --system-prompt, which *replaces* Claude Code's
+// built-in default system prompt rather than stacking on top of it (the
+// append-mode flag is --append-system-prompt, which we deliberately do not
+// use). --exclude-dynamic-system-prompt-sections additionally strips the
+// per-machine sections claude would otherwise inject (cwd, env info, memory
+// paths, git status) — all irrelevant to intent routing. The net effect is
+// that the only system prompt claude sees for a routing turn is kitsoki's own
+// lean router prefix.
+func buildClaudeArgs(cfg ClaudeCLIConfig, configPath, systemPrompt string) []string {
 	model := cfg.Model
 	if model == "" {
 		model = DefaultClaudeModel
@@ -307,32 +371,16 @@ func buildClaudeArgs(cfg ClaudeCLIConfig, configPath string) []string {
 		"--permission-mode", "bypassPermissions",
 		"--model", model,
 	}
+	if systemPrompt != "" {
+		args = append(args,
+			"--system-prompt", systemPrompt,
+			"--exclude-dynamic-system-prompt-sections",
+		)
+	}
 	if configPath != "" {
 		args = append(args, "--mcp-config", configPath)
 	}
 	return args
-}
-
-// invoke runs `claude -p ...` with the prompt piped via stdin. Returns raw stdout.
-func (h *ClaudeCLIHarness) invoke(ctx context.Context, claudeBin string, args []string, prompt string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, claudeBin, args...)
-	cmd.Stdin = strings.NewReader(prompt)
-
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		stderrText := strings.TrimSpace(stderr.String())
-		if stderrText != "" {
-			return nil, fmt.Errorf("harness/claude-cli: claude exited with error: %w\nstderr: %s", err, stderrText)
-		}
-		return nil, fmt.Errorf("harness/claude-cli: claude exited with error: %w", err)
-	}
-	return []byte(stdout.String()), nil
 }
 
 // parseValidatedPayload decodes the JSON written by the MCP validator on a
@@ -397,6 +445,38 @@ func (h *ClaudeCLIHarness) resolveKitsokiBin() (string, error) {
 		return "", fmt.Errorf("harness/claude-cli: locate kitsoki binary: %w", err)
 	}
 	return exe, nil
+}
+
+// projectLayer resolves the app's Layer-2 project grounding for the router
+// (sysprompt Layer 2). It reads app.context (inline) or app.context_path (a file
+// relative to KITSOKI_APP_DIR) as raw text. Unlike the agent path
+// (internal/host/sysprompt.go), routing does not render the project context
+// through the overlay/@shared template machinery or honour the
+// prompts/_project.md convention — the harness has no prompt renderer wired —
+// so routing supports the inline/file forms only. Returns "" when neither is
+// set or the file is unreadable.
+func projectLayer(appDef *app.AppDef) string {
+	if appDef == nil {
+		return ""
+	}
+	if c := strings.TrimSpace(appDef.App.Context); c != "" {
+		return c
+	}
+	p := strings.TrimSpace(appDef.App.ContextPath)
+	if p == "" {
+		return ""
+	}
+	abs := p
+	if !filepath.IsAbs(abs) {
+		if dir := os.Getenv("KITSOKI_APP_DIR"); dir != "" {
+			abs = filepath.Join(dir, p)
+		}
+	}
+	body, err := os.ReadFile(abs)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(body))
 }
 
 // Close is a no-op for ClaudeCLIHarness (no persistent resources).

@@ -154,20 +154,20 @@ func TestRenderChatViewContainsAllBlocks(t *testing.T) {
 	r := newTestRenderer(80)
 	out := r.RenderChatView(DefaultChatFixture())
 	for _, want := range []string{
-		"proposing · cypilot",                   // header
-		"session resumed",                       // system notice
-		"> back to the proposal",                // user turn 1
-		"→ nav: back",                           // resolved
-		"> use the backup branch instead",       // user turn 2
-		"→ in-room: pick_branch",                // resolved LLM
-		"CI run for PR #4821",                   // inbox
-		"✓ review_pr",                           // background complete
-		"actions:",                              // menu header
-		"1. Open review",                        // menu row 1
-		"3. Approve",                            // menu row 3
-		"CI not yet green",                      // guard hint
-		"proposing · cypilot · 2 queued",        // footer line 1 (mode moved off line 1 — see footerFrameworkLine)
-		"PR #4821 · CI: failing (3) · PROJ-90014", // footer line 2
+		"proposing · cypilot",                       // header
+		"session resumed",                           // system notice
+		"> back to the proposal",                    // user turn 1
+		"→ nav: back",                               // resolved
+		"> use the backup branch instead",           // user turn 2
+		"→ in-room: pick_branch",                    // resolved LLM
+		"CI run for PR #4821",                       // inbox
+		"✓ review_pr",                               // background complete
+		"actions:",                                  // menu header
+		"1. Open review",                            // menu row 1
+		"3. Approve",                                // menu row 3
+		"CI not yet green",                          // guard hint
+		"proposing · cypilot · 2 queued",            // footer line 1 (mode moved off line 1 — see footerFrameworkLine)
+		"PR #4821 · CI: failing (3) · PLTFRM-90014", // footer line 2
 		"> _", // prompt
 	} {
 		if !strings.Contains(out, want) {

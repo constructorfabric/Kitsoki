@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "maker_output",
+  "description": "What the maker reports after one iteration toward the goal.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One-line summary of the change made this iteration."
+    },
+    "files_changed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths the maker created or edited."
+    }
+  },
+  "required": ["summary"]
+}

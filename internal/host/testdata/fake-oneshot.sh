@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# fake-oneshot.sh — emulates `claude -p` for host.oracle.ask handler tests.
+# fake-oneshot.sh — emulates `claude -p` for host.agent.ask handler tests.
 # Reads the templated prompt from stdin and echoes it back verbatim.
 # If stdin contains the sentinel token "FAIL", exits non-zero with a stderr
 # message so the non-zero-exit path can be tested.
 #
 # When --append-system-prompt is supplied, the system prompt text is appended
 # to the echoed stdout as `system=[...]` so tests covering the named-agent
-# threading on host.oracle.ask can assert the round-trip. --model is echoed
+# threading on host.agent.ask can assert the round-trip. --model is echoed
 # the same way. Both are optional to keep backward compat with existing
 # tests that only inspect the templated prompt body.
 set -euo pipefail

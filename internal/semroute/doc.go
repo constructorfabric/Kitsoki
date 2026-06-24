@@ -1,16 +1,14 @@
-// Package semroute implements the semantic-routing tier (Phase 2 +
-// Phase 4 of the semantic-routing design).  It sits in the
-// orchestrator between
-// [orchestrator.Orchestrator.TryDeterministic] and
+// Package semroute implements the semantic-routing tier. It sits in the
+// orchestrator between [orchestrator.Orchestrator.TryDeterministic] and
 // [orchestrator.Orchestrator.Turn]: when the deterministic menu-display
 // match misses, the orchestrator consults the per-app [Matcher] before
 // calling the LLM harness.
 //
 // Two compiled-synonym shapes share one Matcher:
 //
-//   - Bare-string synonyms — Phase 2, stem-bag containment, band 0.90.
-//   - Template synonyms — Phase 4, positional `{slot_name}` capture
-//     feeding typed slot parsers, bands 0.80 / 0.65.
+//   - Bare-string synonyms — stem-bag containment, band 0.90.
+//   - Template synonyms — positional `{slot_name}` capture feeding typed
+//     slot parsers, bands 0.80 / 0.65.
 //
 // # Algorithm
 //
@@ -37,7 +35,7 @@
 //
 // # Confidence bands
 //
-// Match emits four non-zero bands plus a tie band, all from §2.1:
+// Match emits four non-zero bands plus a tie band:
 //
 //   - 0.90 — exactly one allowed intent matched by bare-string
 //     synonym or example.
@@ -50,14 +48,15 @@
 //     every match landed on a non-allowed intent.
 //
 // Band 1.00 is owned by the deterministic tier (display/example exact
-// match) and is never emitted from semroute.
+// match) and is never emitted from semroute. The bands are fixed
+// constants, not learned — see [ConfidenceWholeSynonym] and siblings.
 //
 // # Templates
 //
 // A template synonym contains one or more `{slot_name}` captures
 // alongside literal anchor tokens. The compiler parses each template
 // into an alternating sequence of literal runs and captures and
-// validates the §4.3 invariants:
+// validates the template invariants:
 //
 //   - Every {slot_name} must reference a declared slot on the owning
 //     [app.Intent.Slots] map; otherwise [Compile] returns a
@@ -82,17 +81,15 @@
 //  4. After the last literal, any remaining tokens form the trailing
 //     capture's range (if the last segment is a capture).
 //  5. Each captured range is handed to [slotparse.For](slot).Parse.
-//     A string slot with no parser specialisation (proposal §4.4)
-//     gets the captured raw text (joined surfaces). A parser
-//     OK=false outcome lists the slot in MissingSlots and drops the
-//     band from 0.80 to 0.65.
+//     A string slot with no parser specialisation gets the captured
+//     raw text (joined surfaces). A parser OK=false outcome lists the
+//     slot in MissingSlots and drops the band from 0.80 to 0.65.
 //
-// "Greedy to the right" (§4.3) means: when two literals could anchor
-// at multiple positions, each literal lands at its EARLIEST
-// occurrence at or after the previous anchor. Equivalently, each
-// preceding capture takes the SHORTEST run that satisfies the next
-// literal. Authors who want a longer capture write more literal
-// context.
+// "Greedy to the right" means: when two literals could anchor at
+// multiple positions, each literal lands at its EARLIEST occurrence at
+// or after the previous anchor. Equivalently, each preceding capture
+// takes the SHORTEST run that satisfies the next literal. Authors who
+// want a longer capture write more literal context.
 //
 // Stopwords that appear BETWEEN the stems of a single literal segment
 // (e.g. "the" sitting inside the input run that matches the literal
@@ -101,7 +98,7 @@
 // into either the preceding or trailing capture. Stopwords that
 // appear INSIDE a capture range (e.g. between the last literal and
 // a trailing {slot}) are preserved verbatim in the slot's surface
-// text via joinSurfaces (§4.4).
+// text via joinSurfaces.
 //
 // Most-specific-wins: when multiple templates from the SAME intent
 // match an input, the matcher keeps the one with the most filled
@@ -113,9 +110,9 @@
 //
 // # Worked example
 //
-// Given the proposal §5.1 fixture (state river_crossing.scouting,
-// allowed intents ford / caulk / ferry / wait) and the synonym list
-// on `ford: [wade, walk it, drive through the water]`:
+// Given a river-crossing state (allowed intents ford / caulk / ferry /
+// wait) and the synonym list on `ford: [wade, walk it, drive through
+// the water]`:
 //
 //	in:  "wade across the river"
 //	tok: wade, acros, river       (stopwords let, the dropped)
@@ -125,6 +122,8 @@
 //	matched intents:              [ford]
 //	verdict: { Intent:"ford", Confidence:0.90,
 //	           MatchReason:"synonym:wade", Slots:{}, Candidates:[] }
+//
+// A runnable form of this trace lives in [ExampleMatcher_Match].
 //
 // # Lifecycle
 //
@@ -137,15 +136,23 @@
 //
 // # Non-goals
 //
-//   - No alternation, regex, or optional segments in templates. The
-//     proposal §4.3 commits to "more templates over more DSL features."
+//   - No alternation, regex, or optional segments in templates — the
+//     design commits to "more templates over more DSL features."
 //   - No partial-utterance bag-style match for templates; bag-style
 //     matching is what bare-string synonyms are for.
-//   - No learned ranking. Bands are constants from §2.1.
+//   - No learned ranking. The bands are constants.
 //   - No state-scoped synonyms. Allowed-intents come from the caller;
 //     declared synonyms live on the intent and apply uniformly.
 //
 // All four restrictions are deliberate. The matcher is meant to be
 // auditable and explainable in well under 1k LoC of mental model;
 // future phases pay for additional expressivity with additional spec.
+//
+// # Reference
+//
+// The user-facing reference for the routing stack — the four tiers,
+// growing the synonym library, and the turn cache — is
+// docs/architecture/semantic-routing.md. The typed slot parsers each
+// template capture is handed to are documented in
+// [kitsoki/internal/slotparse].
 package semroute

@@ -1,0 +1,27 @@
+{
+  "server": "",
+  "viewports": ["desktop", "mobile", "tablet"],
+  "steps": [],
+  "captures": [],
+  "summary": { "total": 2, "error": 1, "warn": 1, "info": 0 },
+  "findings": [
+    {
+      "source":   "geometry",
+      "check":    "tap-target",
+      "severity": "error",
+      "selector": ".trace-filter-chip",
+      "viewport": "mobile",
+      "step":     "trace-view",
+      "frame":    "01-trace@mobile.png"
+    },
+    {
+      "source":   "a11y",
+      "check":    "select-name",
+      "severity": "warn",
+      "selector": "select.trace-filter-select",
+      "viewport": "desktop",
+      "step":     "trace-view",
+      "frame":    "01-trace@desktop.png"
+    }
+  ]
+}

@@ -1,12 +1,11 @@
 // Package testrunner implements the Mode 2 (deterministic flow tests) and
-// Mode 1 (input→intent pass-rate tests) runners described in §10.
+// Mode 1 (input→intent pass-rate tests) runners. See docs/stories/state-machine.md.
 package testrunner
 
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +23,7 @@ import (
 	"kitsoki/internal/expr"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
+	starlarkhost "kitsoki/internal/host/starlark"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
@@ -52,7 +52,7 @@ func publishAppDirForTestrunner(appPath string) {
 	}
 }
 
-// ─── Flow fixture YAML format (§10.3.1) ──────────────────────────────────────
+// ─── Flow fixture YAML format ────────────────────────────────────────────────
 
 // FlowFixture is the top-level flow fixture document.
 type FlowFixture struct {
@@ -62,6 +62,13 @@ type FlowFixture struct {
 	InitialState string         `yaml:"initial_state"`
 	InitialWorld map[string]any `yaml:"initial_world,omitempty"`
 	Turns        []FlowTurn     `yaml:"turns"`
+
+	// Mode selects the orchestrator's execution mode for this fixture
+	// (execution-modes proposal): "" / "one-shot" (default — synthetic
+	// emit chains auto-advance through gates) or "staged" (a multi-way
+	// decision gate ends the turn). Only meaningful on the
+	// orchestrator-backed runner.
+	Mode string `yaml:"mode,omitempty"`
 
 	// HostHandlers declares stub host.* handlers used by this flow.
 	// Keys are the handler name (e.g. "host.run", "host.workspace_manager.get").
@@ -81,6 +88,29 @@ type FlowFixture struct {
 	// host_cassette: is set. Default false preserves backward compatibility —
 	// fixtures that reuse a shared cassette for a subset of turns won't fail.
 	StrictCassetteCoverage bool `yaml:"strict_cassette_coverage,omitempty"`
+
+	// StarlarkHTTPCassette is the path to an HTTP cassette (kind: http_cassette)
+	// that serves ctx.http.* calls made by host.starlark.run scripts. Unlike
+	// HostCassette (which replaces a whole handler with a canned Result), this
+	// lets the REAL host.starlark.run handler run — reading the script + sidecar
+	// from disk and validating inputs/outputs — and only replays its HTTP from
+	// disk. The testrunner injects a starlark.ReplayClient via WithHTTP; the
+	// adapter leaves it in place because HasHTTPClient(ctx) is then true.
+	// Relative paths resolve against the fixture file's directory. Setting this
+	// field opts the fixture into the orchestrator-backed runner.
+	StarlarkHTTPCassette string `yaml:"starlark_http_cassette,omitempty"`
+
+	// StarlarkInspectCassette is the path to an inspect cassette (kind:
+	// inspect_cassette) that serves ctx.fs.* and ctx.probe calls made by
+	// host.starlark.run scripts. It is the filesystem/probe sibling of
+	// StarlarkHTTPCassette: the REAL host.starlark.run handler runs — reading the
+	// script + sidecar from disk and validating inputs/outputs — and only its
+	// fs/probe I/O is served from disk. The testrunner injects a
+	// starlark.ReplayInspector via WithInspector; the adapter leaves it in place
+	// because HasInspector(ctx) is then true, so no file is read and no process is
+	// run. Relative paths resolve against the fixture file's directory. Setting
+	// this field opts the fixture into the orchestrator-backed runner.
+	StarlarkInspectCassette string `yaml:"starlark_inspect_cassette,omitempty"`
 
 	// HostBindings rebinds named ifaces to alternative handlers for
 	// this fixture only. Mirrors the production `imports.<alias>.
@@ -175,6 +205,16 @@ type HostStub struct {
 	// falls through to the top-level envelope. Delay and RequestClarification
 	// stay at the top level.
 	ByOp map[string]HostStubEnvelope `yaml:"by_op,omitempty"`
+	// ByCall lets one stub serve multiple call sites that share a handler name
+	// (the common case: two `host.agent.decide` invokes in one room) with
+	// distinct envelopes per call. Keys are the author-assigned `id:` on the
+	// invoke effect, threaded into args under the reserved `call` key. Values
+	// are the per-call envelope (Data + Error + InfraError). Resolution order:
+	// ByCall is tried before ByOp; when neither matches, the stub falls through
+	// to the top-level envelope. This is what makes agent calls addressable
+	// without distorting the story (picking a different verb) or splitting the
+	// phase. Delay and RequestClarification stay at the top level.
+	ByCall map[string]HostStubEnvelope `yaml:"by_call,omitempty"`
 }
 
 // HostStubEnvelope is one per-op canned response under HostStub.ByOp.
@@ -193,7 +233,17 @@ type FlowTurn struct {
 	Intent *FlowIntent `yaml:"intent,omitempty"`
 	Input  string      `yaml:"input,omitempty"`
 
-	// WorldOverride mutates world before guard evaluation on this turn (§7.19).
+	// DisplayInput, when set on an intent: turn, overrides the synthetic
+	// "[intent] <name>" string the RunIntent path stamps onto the emitted
+	// turn.input / turn.start events with the operator's actual free-text
+	// utterance. It does NOT affect routing — intent + slots still drive the
+	// transition deterministically; only the recorded input STRING changes. Set
+	// by the trace→flow converter (fromtrace.go) so a reconstructed trace's user
+	// bubbles read the operator's real words. Empty preserves the synthetic
+	// default, leaving existing fixtures and tests unaffected.
+	DisplayInput string `yaml:"display_input,omitempty"`
+
+	// WorldOverride mutates world before guard evaluation on this turn.
 	// Lets fixtures probe arcs that would otherwise require a long preceding
 	// flow (e.g. the L2 cycle-budget feedback arcs).
 	WorldOverride map[string]any `yaml:"world_override,omitempty"`
@@ -226,7 +276,7 @@ type FlowTurn struct {
 	// fails the suite.
 	ExpectJobs []ExpectJob `yaml:"expect_jobs,omitempty"`
 
-	// Assertions (§10.3.2).
+	// Assertions.
 	ExpectState          string         `yaml:"expect_state,omitempty"`
 	ExpectNotState       string         `yaml:"expect_not_state,omitempty"`
 	ExpectStateIn        []string       `yaml:"expect_state_in,omitempty"`
@@ -259,7 +309,7 @@ type FlowTurn struct {
 // the standard subsequence check.
 type ExpectHostCall struct {
 	// Handler is the dispatched handler name (e.g. "iface.vcs.branch"
-	// or "host.oracle.ask_with_mcp"). Required.
+	// or "host.agent.ask_with_mcp"). Required.
 	Handler string `yaml:"handler"`
 	// Args is an optional partial-match against the dispatched effect's
 	// args payload. Missing keys are tolerated; mismatched keys fail.
@@ -380,7 +430,27 @@ type FlowOptions struct {
 	// is closed. Intended for fixture-export tools that need the raw event log
 	// the flow produced (the store goes away once the function returns). The
 	// store and session id passed in are still live.
-	OnRigClose func(filePath string, st store.Store, sid app.SessionID) error
+	//
+	// sink is the authoritative JSONL trace for the run. Exporters should read
+	// from it (runstatus.FromSink) rather than from st.LoadHistory: the SQLite
+	// events table is lossy (no state_path / call_id / parent_turn columns) and
+	// omits cassette agent events, whereas the JSONL sink is faithful.
+	OnRigClose func(filePath string, st store.Store, sid app.SessionID, sink *store.JSONLSink) error
+
+	// TracePath, when non-empty, fixes the path of the run's authoritative JSONL
+	// event sink (and, by extension, the sibling agent-prompts/ directory where
+	// large agent prompts are stored). Fixture exporters set this to a path in
+	// the output directory so the prompt/response side-files end up next to the
+	// generated snapshot, where the runstatus SPA fetches them. When empty (the
+	// default), the rig uses a temp file that cleanup removes.
+	TracePath string
+
+	// ImportResolver is the injected ImportResolver (DI) through which an
+	// `@kitsoki/<name>` import in the app under test resolves against the
+	// `--kitsoki-repo` override or the embedded story library — letting
+	// `kitsoki test flows` run a vendored instance in a foreign repo with no
+	// on-disk kitsoki checkout. nil keeps the legacy error-on-missing behaviour.
+	ImportResolver app.ImportResolver
 }
 
 // ─── orchRig holds all resources for an orchestrator-backed flow run ─────────
@@ -403,15 +473,34 @@ type orchRig struct {
 
 	// journalWriter is the in-memory journal writer wired by buildOrchestratorRig
 	// when a host_cassette is configured. It is exposed here so the cassette
-	// dispatcher can write KindOracleCall entries on replay (Phase 2) and so
+	// dispatcher can write KindAgentCall entries on replay (Phase 2) and so
 	// downstream callers (e.g. fromflow) can pass the journal to runstatus.FromHistory.
 	journalWriter journal.Writer
+
+	// deferredAgentSink is the deferred sink used by cassette dispatchers to write
+	// agent events. It's created before session creation and updated after NewSession
+	// when the real sink is available.
+	deferredAgentSink *store.DeferredSink
+
+	// eventSink is the authoritative JSONL trace for this flow run. The
+	// orchestrator dual-writes every turn event here (in addition to SQLite),
+	// and cassette agent events are routed here too. It is the faithful trace
+	// — unlike the SQLite events table, JSONL records state_path / call_id /
+	// parent_turn — so fixture exporters (fromflow) read from it rather than
+	// from store.LoadHistory. Backed by a temp file removed by cleanup.
+	eventSink *store.JSONLSink
 
 	// cassette holds the loaded host cassette when host_cassette: is set and
 	// strict_cassette_coverage: true is declared on the fixture. nil otherwise.
 	// Retained so runOneFlowOrchestrator can check for unmatched (orphan)
 	// episodes after all turns complete.
 	cassette *Cassette
+
+	// httpCassetteFlush persists newly recorded Starlark HTTP exchanges back to
+	// the starlark_http_cassette: file after all turns complete. nil unless the
+	// effective HTTP record mode is non-none. Called from runOneFlowOrchestrator
+	// before cleanup so a record run leaves the cassette on disk.
+	httpCassetteFlush func() error
 }
 
 // buildOrchestratorRig constructs a fully wired orchestrator rig for one flow
@@ -423,7 +512,7 @@ type orchRig struct {
 //
 // filePath is the fixture file's absolute path; it is used to resolve
 // host_cassette: relative paths.
-func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machine, fixture *FlowFixture, filePath string) (*orchRig, error) {
+func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machine, fixture *FlowFixture, filePath string, tracePath string) (*orchRig, error) {
 	// Deterministic epoch.
 	clk := clock.NewFake(time.Unix(0, 0))
 
@@ -469,54 +558,9 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			reg.Register("host.jobs.answer_clarification", host.AnswerClarificationHandler)
 		}
 	}
-	for name, stub := range fixture.HostHandlers {
-		stub := stub // capture for closure
-		// Replace (not Register) so a stub overwrites any builtin
-		// previously registered. With host_bindings: this is the
-		// expected path — pre-registered builtins + a few stubs on
-		// top. Without host_bindings: there are no builtins so
-		// Replace behaves identically to Register.
-		reg.Replace(name, func(hctx context.Context, args map[string]any) (host.Result, error) {
-			// 1. Simulated delay using the fake clock injected by the scheduler.
-			if stub.Delay != "" {
-				d, parseErr := app.ParseDuration(stub.Delay)
-				if parseErr != nil {
-					return host.Result{}, fmt.Errorf("stub %q: parse delay: %w", name, parseErr)
-				}
-				if d > 0 {
-					host.ClockFromContext(hctx).Sleep(d)
-				}
-			}
-			// 2. Mid-flight clarification: pause until the user answers.
-			if stub.RequestClarification != "" {
-				_, cErr := host.RequestClarification(hctx, jobs.ClarificationSchema{
-					Prompt: stub.RequestClarification,
-					Fields: map[string]string{"answer": "string"},
-				})
-				if cErr != nil {
-					return host.Result{Error: cErr.Error()}, nil
-				}
-			}
-			// 3. Per-op envelope (HostStub.ByOp) — when set, the stub
-			// dispatches on args["op"] and returns the matching envelope.
-			// Falls through to the top-level Data/Error when no key matches.
-			if len(stub.ByOp) > 0 {
-				op, _ := args["op"].(string)
-				if env, ok := stub.ByOp[op]; ok {
-					if env.InfraError != "" {
-						return host.Result{}, errors.New(env.InfraError)
-					}
-					return host.Result{Data: env.Data, Error: env.Error}, nil
-				}
-			}
-			// 4. Infrastructure error (indistinguishable from a real failure).
-			if stub.InfraError != "" {
-				return host.Result{}, errors.New(stub.InfraError)
-			}
-			// 5. Domain-level error or success.
-			return host.Result{Data: stub.Data, Error: stub.Error}, nil
-		})
-	}
+	// Register host_handlers: stubs via the shared registration path so the
+	// flow-test runner and `kitsoki web --flow` resolve a stub identically.
+	RegisterHostStubs(reg, fixture.HostHandlers)
 
 	// Allocate the rig pointer early so the cassette dispatcher's stateOf closure
 	// can hold a reference to &rig.currentStatePath that the turn loop updates
@@ -549,7 +593,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		}
 
 		// Create an in-memory journal writer backed by the same SQLite DB so
-		// cassette replay can write KindOracleCall entries (Phase 2) and record
+		// cassette replay can write KindAgentCall entries (Phase 2) and record
 		// mode can read them back (Phase 3).
 		jw, jwErr := journal.NewSQLiteWriter(st.DB())
 		if jwErr != nil {
@@ -559,13 +603,13 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		rig.journalWriter = jw
 
 		// Build a journal lookup function for Phase 3 (record mode): given the
-		// oracle context and verb, read back the most recently written
-		// KindOracleCall entry for that session and verb. The oracle handlers do
+		// agent context and verb, read back the most recently written
+		// KindAgentCall entry for that session and verb. The agent handlers do
 		// not return call_id in result.Data, so we identify the entry by
 		// session ID + verb + max rowid (latest write).
-		journalLookup := func(ctx context.Context, verb string) (*host.OracleCallBody, bool) {
-			oc := host.OracleCallCtxFrom(ctx)
-			return lookupOracleCallByVerb(st.DB(), oc.SessionID, verb)
+		journalLookup := func(ctx context.Context, verb string) (*host.AgentCallBody, bool) {
+			oc := host.AgentCallCtxFrom(ctx)
+			return lookupAgentCallByVerb(st.DB(), oc.SessionID, verb)
 		}
 
 		// stateOf reads the shared currentStatePath pointer updated by the turn loop.
@@ -581,6 +625,11 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			}
 		}
 
+		// Create a deferred agent event sink for cassette dispatchers.
+		// The real sink will be set after session creation when the session ID is known.
+		deferredAgentSink := store.NewDeferredSink()
+		rig.deferredAgentSink = deferredAgentSink
+
 		// Collect unique handler names from the cassette's episodes.
 		seen := map[string]bool{}
 		for _, ep := range cas.Episodes {
@@ -593,32 +642,33 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			}
 			seen[h] = true
 			handlerName := h
-			// Capture any existing (real) handler as fallback. Per proposal §3.2:
-			// when host_bindings: is set, builtins are pre-registered and act as
-			// the fallback for cassette misses. Without host_bindings: there are
-			// no pre-registered builtins, so fallback is nil (miss is a hard error).
+			// Capture any existing (real) handler as fallback. When host_bindings:
+			// is set, builtins are pre-registered and act as the fallback for
+			// cassette misses; without host_bindings: there are no pre-registered
+			// builtins, so fallback is nil (miss is a hard error). See
+			// docs/architecture/hosts.md (host_bindings) for the binding model.
 			var fallback host.Handler
 			if len(fixture.HostBindings) > 0 {
 				fallback, _ = reg.Get(handlerName)
 			}
-			casDispatcher := BuildCassetteDispatcherWithJournal(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
+			casDispatcher := BuildCassetteDispatcherWithJournalAndSink(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, deferredAgentSink)
 			reg.Replace(handlerName, casDispatcher)
 		}
 
 		// When host_bindings: is set (builtins registered) and a record sink is
-		// active, also install cassette dispatchers for every host.oracle.*
+		// active, also install cassette dispatchers for every host.agent.*
 		// builtin handler that isn't already wrapped by an episode above.
-		// This lets the cassette record oracle calls even when the cassette file
-		// has no oracle episodes yet — the first recording pass adds them.
+		// This lets the cassette record agent calls even when the cassette file
+		// has no agent episodes yet — the first recording pass adds them.
 		if len(fixture.HostBindings) > 0 && recordSink != nil {
-			oracleBuiltins := []string{
-				"host.oracle.ask",
-				"host.oracle.decide",
-				"host.oracle.extract",
-				"host.oracle.task",
-				"host.oracle.converse",
+			agentBuiltins := []string{
+				"host.agent.ask",
+				"host.agent.decide",
+				"host.agent.extract",
+				"host.agent.task",
+				"host.agent.converse",
 			}
-			for _, handlerName := range oracleBuiltins {
+			for _, handlerName := range agentBuiltins {
 				if seen[handlerName] {
 					continue // already wrapped via an episode above
 				}
@@ -626,7 +676,7 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 				if !hasFallback {
 					continue // not a builtin in this rig — skip
 				}
-				casDispatcher := BuildCassetteDispatcherWithJournal(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
+				casDispatcher := BuildCassetteDispatcherWithJournalAndSink(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, deferredAgentSink)
 				reg.Replace(handlerName, casDispatcher)
 				seen[handlerName] = true
 			}
@@ -639,29 +689,190 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		}
 	}
 
+	// Wire starlark_http_cassette: when set. This is the Starlark HTTP replay
+	// seam (distinct from host_cassette: which replaces a whole handler). We
+	// load the cassette, build a ReplayClient, and WRAP the real
+	// host.starlark.run handler so it runs against the injected replay client.
+	// The adapter checks starlarkhost.HasHTTPClient(ctx) and skips installing a
+	// production RecordingClient when a client is already present, so the
+	// ReplayClient is the one used — no socket is ever opened.
+	if fixture.StarlarkHTTPCassette != "" {
+		cassettePath := fixture.StarlarkHTTPCassette
+		if !filepath.IsAbs(cassettePath) {
+			cassettePath = filepath.Join(filepath.Dir(filePath), cassettePath)
+		}
+		raw, rerr := os.ReadFile(cassettePath)
+		if rerr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: read starlark http cassette: %w", rerr)
+		}
+		var cas starlarkhost.HTTPCassette
+		if uerr := yaml.Unmarshal(raw, &cas); uerr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: parse starlark http cassette %q: %w", cassettePath, uerr)
+		}
+
+		// Effective record mode: KITSOKI_HTTP_CASSETTE_RECORD wins over the
+		// cassette's record_mode: field; empty means replay-only ("none").
+		mode := cas.RecordMode
+		if env := os.Getenv("KITSOKI_HTTP_CASSETTE_RECORD"); env != "" {
+			mode = env
+		}
+		if vErr := starlarkhost.ValidateRecordMode(mode); vErr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: %w", vErr)
+		}
+		// KITSOKI_CASSETTE_STRICT forbids recording (CI guard), mirroring the
+		// agent host_cassette strict check.
+		if CassetteStrictRecording() && mode != "" && mode != starlarkhost.RecordModeNone {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: KITSOKI_CASSETTE_STRICT=1 but starlark http record_mode is %q", mode)
+		}
+
+		// Replay-only uses the lightweight ReplayClient; any record mode uses a
+		// RecordReplayClient backed by a real transport, flushed after the run.
+		var httpClient starlarkhost.HTTPClient
+		if mode == "" || mode == starlarkhost.RecordModeNone {
+			httpClient = starlarkhost.NewReplayClient(&cas)
+		} else {
+			rrc := starlarkhost.NewRecordReplayClient(&cas, mode, starlarkhost.NewRecordingClient())
+			httpClient = rrc
+			rig.httpCassetteFlush = func() error { return rrc.Flush(cassettePath, "") }
+		}
+
+		// The real host.starlark.run handler must be registered to wrap it. When
+		// host_bindings: is set, builtins are already registered above; otherwise
+		// register it here so reg.Get finds it.
+		if _, ok := reg.Get("host.starlark.run"); !ok {
+			reg.Register("host.starlark.run", host.StarlarkRunHandler)
+		}
+		real, _ := reg.Get("host.starlark.run")
+		reg.Replace("host.starlark.run", func(ctx context.Context, args map[string]any) (host.Result, error) {
+			return real(starlarkhost.WithHTTP(ctx, httpClient), args)
+		})
+	}
+
+	// Wire starlark_inspect_cassette: when set. This is the Starlark fs/probe
+	// replay seam, the exact sibling of starlark_http_cassette: above. We load
+	// the cassette, build a ReplayInspector, and WRAP the real host.starlark.run
+	// handler so it runs against the injected replay inspector. The adapter checks
+	// starlarkhost.HasInspector(ctx) and skips installing a production inspector
+	// when one is already present, so the ReplayInspector is the one used — no
+	// file is read and no process is run.
+	if fixture.StarlarkInspectCassette != "" {
+		cassettePath := fixture.StarlarkInspectCassette
+		if !filepath.IsAbs(cassettePath) {
+			cassettePath = filepath.Join(filepath.Dir(filePath), cassettePath)
+		}
+		raw, rerr := os.ReadFile(cassettePath)
+		if rerr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: read starlark inspect cassette: %w", rerr)
+		}
+		var cas starlarkhost.InspectCassette
+		if uerr := yaml.Unmarshal(raw, &cas); uerr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: parse starlark inspect cassette %q: %w", cassettePath, uerr)
+		}
+		inspector := starlarkhost.NewReplayInspector(&cas)
+
+		// The real host.starlark.run handler must be registered to wrap it. When
+		// host_bindings: is set, builtins are already registered above; otherwise
+		// register it here so reg.Get finds it.
+		if _, ok := reg.Get("host.starlark.run"); !ok {
+			reg.Register("host.starlark.run", host.StarlarkRunHandler)
+		}
+		real, _ := reg.Get("host.starlark.run")
+		reg.Replace("host.starlark.run", func(ctx context.Context, args map[string]any) (host.Result, error) {
+			return real(starlarkhost.WithInspector(ctx, inspector), args)
+		})
+	}
+
 	// Use a no-op harness; the orchestrator path calls RunIntent directly
 	// for intent: turns and never falls through to the harness in normal use.
 	h := &noopHarness{}
+
+	// Authoritative JSONL trace for this run. The orchestrator dual-writes
+	// every turn event here AND to SQLite (loadJourney still reads SQLite).
+	// Unlike the SQLite events table, JSONL records state_path / call_id /
+	// parent_turn, so fixture exporters get a faithful trace from it.
+	//
+	// When tracePath is empty the trace is a temp file that cleanup removes;
+	// when the caller supplies one (fixture export), the file and its sibling
+	// agent-prompts/ directory are caller-owned and left in place by cleanup.
+	traceOwned := tracePath == ""
+	if traceOwned {
+		traceFile, traceErr := os.CreateTemp("", "kitsoki-flow-*.jsonl")
+		if traceErr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: create trace temp file: %w", traceErr)
+		}
+		tracePath = traceFile.Name()
+		_ = traceFile.Close()
+		_ = os.Remove(tracePath) // OpenJSONL creates the file fresh
+	} else {
+		if mkErr := os.MkdirAll(filepath.Dir(tracePath), 0o755); mkErr != nil {
+			_ = st.Close()
+			return nil, fmt.Errorf("buildOrchestratorRig: mkdir trace dir: %w", mkErr)
+		}
+		_ = os.Remove(tracePath) // start from a fresh trace on re-runs
+	}
+	eventSink, sinkErr := store.OpenJSONL(tracePath)
+	if sinkErr != nil {
+		_ = st.Close()
+		return nil, fmt.Errorf("buildOrchestratorRig: open JSONL sink: %w", sinkErr)
+	}
+	rig.eventSink = eventSink
 
 	orchOpts := []orchestrator.Option{
 		orchestrator.WithHostRegistry(reg),
 		orchestrator.WithScheduler(sched),
 		orchestrator.WithJobStore(js),
 		// Inject the same fake clock the scheduler uses so Timeout: firings
-		// (gap §9.5) run on virtual time alongside background-job delays.
+		// run on virtual time alongside background-job delays.
 		orchestrator.WithClock(clk),
+		// Dual-write every turn event to the JSONL trace (authority stays with
+		// SQLite for loadJourney; see WithEventSink doc).
+		orchestrator.WithEventSink(eventSink),
 	}
-	// Wire the journal writer into the orchestrator so oracle handlers
-	// can write KindOracleCall entries during record-mode live calls.
+	// Wire the journal writer into the orchestrator so agent handlers
+	// can write KindAgentCall entries during record-mode live calls.
 	if rig.journalWriter != nil {
 		orchOpts = append(orchOpts, orchestrator.WithJournalWriter(rig.journalWriter))
 	}
+
+	// Execution mode (execution-modes proposal). Default one-shot preserves
+	// every existing fixture; a fixture opts into staged with `mode: staged`.
+	switch fixture.Mode {
+	case "", "one-shot", "oneshot":
+		// one-shot is the zero value; no option needed.
+	case "staged":
+		orchOpts = append(orchOpts, orchestrator.WithExecutionMode(orchestrator.ExecStaged))
+	default:
+		_ = eventSink.Close()
+		_ = os.Remove(tracePath)
+		_ = st.Close()
+		return nil, fmt.Errorf("buildOrchestratorRig: invalid mode %q (want \"staged\" or \"one-shot\")", fixture.Mode)
+	}
+
 	orch := orchestrator.New(def, m, st, h, orchOpts...)
 
 	sid, err := orch.NewSession(ctx)
 	if err != nil {
+		_ = eventSink.Close()
+		_ = os.Remove(tracePath)
 		_ = st.Close()
 		return nil, fmt.Errorf("buildOrchestratorRig: new session: %w", err)
+	}
+
+	// Update the deferred sink used by cassette dispatchers with a real sink.
+	// Cassette dispatchers were created before NewSession (before we had the session ID),
+	// so they captured a deferred sink that is now updated with the real sink.
+	// Agent events from cassette replay are written to the JSONL trace (the
+	// authoritative trace) so they carry state_path / call_id and survive — the
+	// StoreSinkAdapter.Append path only buffered them and never flushed.
+	if rig.deferredAgentSink != nil {
+		rig.deferredAgentSink.SetSink(eventSink)
 	}
 
 	rig.orch = orch
@@ -670,23 +881,29 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	rig.st = st
 	rig.sid = sid
 	rig.clk = clk
-	rig.cleanup = st.Close
+	rig.cleanup = func() error {
+		_ = eventSink.Close()
+		if traceOwned {
+			_ = os.Remove(tracePath)
+		}
+		return st.Close()
+	}
 	return &rig, nil
 }
 
-// lookupOracleCallByVerb queries the journal for the most recently written
-// KindOracleCall entry for the given session and verb and returns the parsed
+// lookupAgentCallByVerb queries the journal for the most recently written
+// KindAgentCall entry for the given session and verb and returns the parsed
 // body. Returns (nil, false) on any error or when no entry is found. Used by
-// the cassette dispatcher in record mode — oracle handlers do not return
+// the cassette dispatcher in record mode — agent handlers do not return
 // call_id in result.Data so we identify the entry by session + verb + rowid
 // ordering (latest write wins).
-func lookupOracleCallByVerb(db *sql.DB, sessionID app.SessionID, verb string) (*host.OracleCallBody, bool) {
+func lookupAgentCallByVerb(db *sql.DB, sessionID app.SessionID, verb string) (*host.AgentCallBody, bool) {
 	if db == nil || verb == "" {
 		return nil, false
 	}
 	row := db.QueryRow(
 		`SELECT body_json FROM journal
-		 WHERE kind = 'oracle.call'
+		 WHERE kind = 'agent.call'
 		   AND session_id = ?
 		   AND json_extract(body_json, '$.verb') = ?
 		 ORDER BY rowid DESC LIMIT 1`,
@@ -696,7 +913,7 @@ func lookupOracleCallByVerb(db *sql.DB, sessionID app.SessionID, verb string) (*
 	if err := row.Scan(&bodyStr); err != nil {
 		return nil, false
 	}
-	var body host.OracleCallBody
+	var body host.AgentCallBody
 	if err := json.Unmarshal([]byte(bodyStr), &body); err != nil {
 		return nil, false
 	}
@@ -724,6 +941,9 @@ func shouldUseOrchestrator(fixture *FlowFixture) bool {
 	if fixture.HostCassette != "" {
 		return true
 	}
+	if fixture.StarlarkHTTPCassette != "" {
+		return true
+	}
 	for _, t := range fixture.Turns {
 		if t.AdvanceClock != "" || t.ExpectInbox != nil || len(t.ExpectJobs) > 0 {
 			return true
@@ -740,13 +960,13 @@ func RunFlows(ctx context.Context, appPath, glob string, opts FlowOptions) (*Flo
 	// Publish KITSOKI_APP_DIR BEFORE loading so the app yaml's loader-
 	// time env-var validator can resolve `${KITSOKI_APP_DIR}` in any
 	// env-expanded field (e.g. meta_modes[*].cwd). Setting the env var
-	// after Load was the bug-2 ordering issue — `kitsoki test flows`
+	// after Load was the bug-2 ordering issue — `hally test flows`
 	// then rejected a perfectly valid yaml because the var wasn't set
 	// yet at validation time.
 	publishAppDirForTestrunner(appPath)
 
 	// Load app.
-	def, err := app.Load(appPath)
+	def, err := app.LoadWithResolver(appPath, nil, opts.ImportResolver)
 	if err != nil {
 		return nil, fmt.Errorf("load app %q: %w", appPath, err)
 	}
@@ -833,7 +1053,7 @@ func runFlowFile(ctx context.Context, def *app.AppDef, m machine.Machine, appPat
 		// fixtures that opt in.
 		fixDef, fixM := def, m
 		if len(fixture.HostBindings) > 0 {
-			overriddenDef, lerr := app.LoadWithOverrides(appPath, fixture.HostBindings)
+			overriddenDef, lerr := app.LoadWithResolver(appPath, fixture.HostBindings, opts.ImportResolver)
 			if lerr != nil {
 				return nil, fmt.Errorf("fixture in %q: load with host_bindings: %w", filePath, lerr)
 			}
@@ -950,7 +1170,7 @@ func runOneFlowLegacy(ctx context.Context, def *app.AppDef, m machine.Machine, f
 			return nil, fmt.Errorf("turn %d: neither intent nor input is set", i+1)
 		}
 
-		// Apply world_override (§7.19) before guard evaluation. Mutations are
+		// Apply world_override before guard evaluation. Mutations are
 		// applied in-place to the running world so the rest of the turn (guard
 		// eval, effects, view render) sees them.
 		for k, v := range turn.WorldOverride {
@@ -1244,7 +1464,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 	result := &FlowResult{File: filePath}
 
 	// Build the rig (store + scheduler + orchestrator).
-	rig, err := buildOrchestratorRig(ctx, def, m, fixture, filePath)
+	rig, err := buildOrchestratorRig(ctx, def, m, fixture, filePath, opts.TracePath)
 	if err != nil {
 		return nil, fmt.Errorf("runOneFlowOrchestrator: %w", err)
 	}
@@ -1320,7 +1540,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 				}
 			}
 
-			outcome, turnErr = rig.orch.RunIntent(ctx, rig.sid, call.Intent, map[string]any(call.Slots))
+			outcome, turnErr = rig.orch.RunIntentWithInput(ctx, rig.sid, call.Intent, map[string]any(call.Slots), turn.DisplayInput)
 		} else if turn.Input != "" {
 			// input: turns in the orchestrator path require a recording to resolve the
 			// intent. For now we return an error — the orchestrator path is only used
@@ -1330,7 +1550,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 			return nil, fmt.Errorf("turn %d: input: %q in orchestrator-path fixture; use intent: instead (recording routing not yet supported on orchestrator path)", i+1, turn.Input)
 		} else if turn.AdvanceClock != "" {
 			// Clock-only turn: no user input, just advance virtual time.  Used
-			// by Timeout: fixtures (gap §9.5) that need to fire a synthetic
+			// by Timeout: fixtures that need to fire a synthetic
 			// transition without first issuing a user intent.  Synthesise an
 			// empty TurnOutcome reflecting the current state so the assertion
 			// logic below can run.
@@ -1344,7 +1564,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 				TurnNumber: preJ.Turn,
 			}
 		} else {
-			return nil, fmt.Errorf("turn %d: turn requires one of intent:, input:, or advance_clock:", i+1)
+			return nil, fmt.Errorf("turn %d: turn requires one of intent:, input:, or advance_clock", i+1)
 		}
 
 		if turnErr != nil {
@@ -1426,14 +1646,16 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 		}
 
 		tr.NewState = currentState
-		// Re-render against the post-completion state/world so view
-		// assertions match what `kitsoki session show` returns — the
-		// outcome.View captured at machine.Turn time is stale once a
-		// host-call cascade or on_complete chain advances the state.
-		if v, rErr := rig.orch.RenderState(currentState, currentWorld); rErr == nil {
-			tr.View = v
-		} else {
+		// Use the outcome view when available — it reflects runtime-injected
+		// content (e.g. the on_error redirect error banner) that a bare
+		// template re-render cannot reproduce. Fall back to re-rendering
+		// against the post-completion state/world when the outcome has no
+		// view (e.g. clock-only turns or turns where the view was not yet
+		// captured at return time).
+		if outcome.View != "" {
 			tr.View = outcome.View
+		} else if v, rErr := rig.orch.RenderState(currentState, currentWorld); rErr == nil {
+			tr.View = v
 		}
 		tr.Events = outcome.Events
 
@@ -1594,6 +1816,15 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 		sessionFailures = append(sessionFailures, assertExpectFiles(filepath.Dir(filePath), fixture.ExpectFiles)...)
 	}
 
+	// Persist any newly recorded Starlark HTTP exchanges back to the cassette
+	// file (no-op for replay-only runs). Done before the orphan check / cleanup
+	// so a record run leaves the regenerated cassette on disk.
+	if rig.httpCassetteFlush != nil {
+		if ferr := rig.httpCassetteFlush(); ferr != nil {
+			sessionFailures = append(sessionFailures, fmt.Sprintf("flush starlark http cassette: %v", ferr))
+		}
+	}
+
 	// Post-run cassette orphan check: when strict_cassette_coverage: true is
 	// declared, any episode that was never matched at least once is a phantom
 	// episode the test never exercised.
@@ -1622,7 +1853,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 	}
 
 	if opts.OnRigClose != nil {
-		if err := opts.OnRigClose(filePath, rig.st, rig.sid); err != nil {
+		if err := opts.OnRigClose(filePath, rig.st, rig.sid, rig.eventSink); err != nil {
 			return nil, fmt.Errorf("OnRigClose: %w", err)
 		}
 	}
@@ -1669,7 +1900,21 @@ func seedInitialState(ctx context.Context, rig *orchRig, def *app.AppDef, fixtur
 		})
 	}
 
-	if err := rig.st.AppendEvents(rig.sid, events); err != nil {
+	// Stamp state_path on the synthetic seed events so the turn-0 group in the
+	// runstatus trace UI resolves to the initial state's phase rather than the
+	// "—" fallback. The seed transition lands the session in InitialState, so
+	// every seed event is attributed to that state.
+	if fixture.InitialState != "" {
+		for i := range events {
+			if events[i].StatePath == "" {
+				events[i].StatePath = app.StatePath(fixture.InitialState)
+			}
+		}
+	}
+
+	// Persist seed events via StoreSinkAdapter (wave-2a seam).
+	sink := store.NewStoreSinkAdapter(rig.st, rig.sid)
+	if err := sink.AppendBatch(events); err != nil {
 		return err
 	}
 
@@ -1732,7 +1977,9 @@ func injectWorldOverride(ctx context.Context, rig *orchRig, overrides map[string
 			}),
 		})
 	}
-	return rig.st.AppendEvents(rig.sid, events)
+	// Persist world-override events via StoreSinkAdapter (wave-2a seam).
+	sink := store.NewStoreSinkAdapter(rig.st, rig.sid)
+	return sink.AppendBatch(events)
 }
 
 // waitForJobsParked blocks until every currently-running job goroutine has
@@ -1846,7 +2093,7 @@ func advanceAndWait(ctx context.Context, rig *orchRig, d time.Duration) error {
 		if err := rig.orch.WaitListenerIdle(ctx, rig.sid); err != nil {
 			return fmt.Errorf("listener WaitListenerIdle: %w", err)
 		}
-		// Drain any due Timeout: firings (gap §9.5).  The timeout dispatcher
+		// Drain any due Timeout: firings.  The timeout dispatcher
 		// runs its synthetic turns on independent goroutines, so neither
 		// scheduler.WaitIdle nor orch.WaitListenerIdle covers them.
 		if err := rig.orch.WaitTimeoutsDrained(ctx, rig.sid); err != nil {
@@ -2115,7 +2362,7 @@ var _ harness.Harness = (*noopHarness)(nil)
 func countHostDispatchedMatching(actual []store.Event, handler string, args map[string]any) int {
 	count := 0
 	for _, ev := range actual {
-		if string(ev.Kind) != "HostDispatched" || ev.Payload == nil {
+		if ev.Kind != store.HostDispatched || ev.Payload == nil {
 			continue
 		}
 		var payload map[string]any
@@ -2182,7 +2429,7 @@ func assertNoHostCalls(actual []store.Event, handlers []string) []string {
 	}
 	var failures []string
 	for _, ev := range actual {
-		if string(ev.Kind) != "HostDispatched" || ev.Payload == nil {
+		if ev.Kind != store.HostDispatched || ev.Payload == nil {
 			continue
 		}
 		var payload map[string]any

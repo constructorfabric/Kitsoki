@@ -9,7 +9,7 @@ import (
 	"kitsoki/internal/world"
 )
 
-// Location is the computed "where am I" context for §7.1.
+// Location is the computed "where am I" context (the location indicator).
 type Location struct {
 	// Breadcrumb is the dot-separated state path, e.g. "bar.dark".
 	Breadcrumb string
@@ -19,7 +19,7 @@ type Location struct {
 	RelevantWorld map[string]any
 	// TurnNumber is the monotonic turn counter.
 	TurnNumber app.TurnNumber
-	// OnPath is false when in off-path mode (§7.7).
+	// OnPath is false when in off-path mode.
 	OnPath bool
 }
 
@@ -32,7 +32,7 @@ type Location struct {
 // to import the orchestrator type unchanged.
 type SlotRef = machine.MenuSlotRef
 
-// MenuEntry is one concrete row in the §7.2 menu. Each entry represents a
+// MenuEntry is one concrete row in the menu. Each entry represents a
 // fully qualified (intent + prefilled-slots) action that can either be
 // submitted directly (MissingSlots empty) or launched into the clarification
 // flow.
@@ -41,7 +41,7 @@ type SlotRef = machine.MenuSlotRef
 // rationale.
 type MenuEntry = machine.MenuEntry
 
-// Menu is the computed "where can I go" surface for §7.2. Alias to
+// Menu is the computed "where can I go" surface. Alias to
 // machine.MenuView (the canonical definition lives in machine).
 type Menu = machine.MenuView
 
@@ -53,7 +53,7 @@ type MenuItem struct {
 	BlockedReason string
 }
 
-// Clarification is the slot-fill context for §7.3.
+// Clarification is the slot-fill context for a missing-slots turn.
 type Clarification struct {
 	// IntentName is the intent awaiting slot completion.
 	IntentName string
@@ -63,7 +63,7 @@ type Clarification struct {
 	UseForm bool
 }
 
-// ComputeLocation derives the §7.1 location indicator from the current journey.
+// ComputeLocation derives the location indicator from the current journey.
 func ComputeLocation(def *app.AppDef, state app.StatePath, w world.World, turn app.TurnNumber) Location {
 	loc := Location{
 		Breadcrumb: string(state),
@@ -96,7 +96,7 @@ func ComputeLocation(def *app.AppDef, state app.StatePath, w world.World, turn a
 	return loc
 }
 
-// ComputeMenu derives the §7.2 menu from allowed intents in the current state.
+// ComputeMenu derives the menu from allowed intents in the current state.
 //
 // As of the in-view-menu-rendering refactor this is a thin wrapper over
 // machine.Machine.Menu — the actual expansion logic lives in
@@ -107,7 +107,7 @@ func ComputeMenu(_ *app.AppDef, m machine.Machine, state app.StatePath, w world.
 	return m.Menu(state, w)
 }
 
-// ComputeClarification builds the §7.3 slot-fill context for a MISSING_SLOTS outcome.
+// ComputeClarification builds the slot-fill context for a MISSING_SLOTS outcome.
 func ComputeClarification(def *app.AppDef, state app.StatePath, intentName string, missingSlotNames []string) Clarification {
 	clarification := Clarification{IntentName: intentName}
 
@@ -170,7 +170,7 @@ func FormatLocation(loc Location) string {
 
 // lookupStateByPath walks the nested state map using a dot-separated path.
 //
-// Parallel-encoded paths (proposal §9.4) are stripped to their structural
+// Parallel-encoded paths (the "region#leaf" form) are stripped to their structural
 // parent — the parallel parent state — so callers that want terminal/mode
 // checks or timeout config see a sensible result. Region-internal state
 // lookup requires the orchestrator to pick a specific region leaf and call
@@ -197,7 +197,7 @@ func lookupStateByPath(def *app.AppDef, path app.StatePath) *app.State {
 // lookupIntentByPath finds an intent definition for the given state path,
 // checking local intents first, then the global library.
 //
-// Parallel-encoded paths (proposal §9.4) are stripped to the parallel
+// Parallel-encoded paths (the "region#leaf" form) are stripped to the parallel
 // parent for state-local intent lookup; per-region scoped intents need
 // the orchestrator to pass the region leaf path directly.
 func lookupIntentByPath(def *app.AppDef, state app.StatePath, intentName string) (app.Intent, bool) {
@@ -209,7 +209,7 @@ func lookupIntentByPath(def *app.AppDef, state app.StatePath, intentName string)
 	states := def.States
 	var s *app.State
 	for _, part := range strings.Split(path, ".") {
-		s, _ = states[part]
+		s = states[part]
 		if s == nil {
 			break
 		}

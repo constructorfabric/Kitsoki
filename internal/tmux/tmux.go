@@ -1,26 +1,3 @@
-// Package tmux is the thin wrapper over the tmux(1) CLI that
-// kitsoki uses to host interactive `claude --resume` sessions
-// (proposal §4.2).
-//
-// The package keeps the tmux invocations in one place so the rest of
-// the codebase doesn't grow ad-hoc exec.Command calls. Three design
-// rules:
-//
-//  1. Use a kitsoki-owned socket path (default
-//     $XDG_STATE_HOME/kitsoki/tmux.sock). This survives systemd's
-//     RemoveIPC=yes for `/tmp/tmux-<uid>` user-session teardown and
-//     avoids stomping on the user's other tmux sessions (proposal
-//     §17.3).
-//
-//  2. Inject the binary path through the TmuxBinEnv env var so tests
-//     can substitute a fake-tmux script the same way oracle tests
-//     substitute a fake claude.
-//
-//  3. The package exposes only the verbs the chat-attach / GC flow
-//     needs: NewSession, HasSession, KillSession, ListSessions, and
-//     Attach. Each returns a structured outcome (not just an error)
-//     so callers can disambiguate "tmux says session doesn't exist"
-//     from "tmux itself isn't installed."
 package tmux
 
 import (
@@ -118,9 +95,9 @@ type NewSessionOptions struct {
 	// entry is "KEY=VALUE". Inherited from the kitsoki process unless
 	// overridden here.
 	Env []string
-	// ConfigFile is the inner-tmux config (-f) — proposal §6.5 says
-	// kitsoki ships its own keybinding file so the user's
-	// ~/.tmux.conf is untouched. Optional; empty means no -f flag.
+	// ConfigFile is the inner-tmux config (-f). kitsoki ships its own
+	// keybinding file so the user's ~/.tmux.conf is untouched (see the
+	// Non-goals in the package doc). Optional; empty means no -f flag.
 	ConfigFile string
 }
 
@@ -342,8 +319,9 @@ func (c *Client) AttachStreaming(ctx context.Context, name string) error {
 	return fmt.Errorf("tmux.AttachStreaming: %w", err)
 }
 
-// DefaultSocketPath returns the kitsoki-owned tmux socket location
-// per proposal §17.3:
+// DefaultSocketPath returns the kitsoki-owned tmux socket location.
+// A private socket keeps hosted sessions clear of the user's own tmux
+// and survives systemd's RemoveIPC teardown of /tmp/tmux-<uid>:
 //
 //	$XDG_STATE_HOME/kitsoki/tmux.sock
 //	  (fallback: $HOME/.local/state/kitsoki/tmux.sock)

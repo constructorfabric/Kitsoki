@@ -1,0 +1,8 @@
+inputs:
+  op:       { type: string, required: true }
+  a:        { type: string, required: false }
+  b:        { type: string, required: false }
+  ids_str:  { type: string, required: false }
+
+outputs:
+  groups:   { type: object }

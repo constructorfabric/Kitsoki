@@ -1,5 +1,5 @@
 <template>
-  <div class="wdv">
+  <div class="wdv" data-testid="world-diff-viewer">
     <div class="wdv__tabs">
       <button class="wdv__tab" :class="{ active: tab === 'before' }" @click="tab = 'before'">Before</button>
       <button class="wdv__tab" :class="{ active: tab === 'diff' }" @click="tab = 'diff'">
@@ -75,7 +75,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import JsonViewer from "./oracle/JsonViewer.vue";
+import JsonViewer from "./agent/JsonViewer.vue";
 
 const props = defineProps<{
   before: Record<string, unknown>;
@@ -128,7 +128,7 @@ function keyGutter(k: string): string {
 .wdv__tabs {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid var(--k-border, #1e293b);
   margin-bottom: 0.4rem;
 }
 
@@ -137,25 +137,25 @@ function keyGutter(k: string): string {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   cursor: pointer;
   font-size: 0.72rem;
   font-family: inherit;
   transition: color 0.1s, border-color 0.1s;
 }
 
-.wdv__tab:hover { color: #94a3b8; }
+.wdv__tab:hover { color: var(--k-fg-muted, #94a3b8); }
 .wdv__tab.active {
-  color: #e2e8f0;
-  border-bottom-color: #3b82f6;
+  color: var(--k-fg, #e2e8f0);
+  border-bottom-color: var(--k-border-focus, #3b82f6);
 }
 
 .wdv__tab-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #1e3a5f;
-  color: #93c5fd;
+  background: var(--k-bg-selection, #1e3a5f);
+  color: var(--k-fg-accent, #93c5fd);
   border-radius: 999px;
   font-size: 0.65rem;
   min-width: 1.2em;
@@ -169,7 +169,7 @@ function keyGutter(k: string): string {
 }
 
 .wdv__empty {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   font-style: italic;
   padding: 0.3rem 0;
 }
@@ -192,22 +192,22 @@ function keyGutter(k: string): string {
 
 .wdv__kv--added {
   background: #052e16;
-  border-left-color: #22c55e;
+  border-left-color: var(--k-success, #22c55e);
 }
 
 .wdv__kv--removed {
   background: #2d0707;
-  border-left-color: #ef4444;
+  border-left-color: var(--k-error, #ef4444);
 }
 
 .wdv__kv--changed {
   background: #1a1200;
-  border-left-color: #f59e0b;
+  border-left-color: var(--k-warning, #f59e0b);
 }
 
 .wdv__kv--neutral {
   background: transparent;
-  border-left-color: #1e293b;
+  border-left-color: var(--k-border, #1e293b);
 }
 
 .wdv__kv-gutter {
@@ -218,17 +218,17 @@ function keyGutter(k: string): string {
   font-weight: 700;
 }
 
-.wdv__kv--added   .wdv__kv-gutter { color: #4ade80; }
-.wdv__kv--removed .wdv__kv-gutter { color: #f87171; }
-.wdv__kv--changed .wdv__kv-gutter { color: #fbbf24; }
+.wdv__kv--added   .wdv__kv-gutter { color: var(--k-success, #4ade80); }
+.wdv__kv--removed .wdv__kv-gutter { color: var(--k-error, #f87171); }
+.wdv__kv--changed .wdv__kv-gutter { color: var(--k-warning, #fbbf24); }
 
 .wdv__kv-key {
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   flex-shrink: 0;
 }
 
 .wdv__kv-sep {
-  color: #475569;
+  color: var(--k-fg-subtle, #475569);
   flex-shrink: 0;
 }
 
@@ -258,8 +258,8 @@ function keyGutter(k: string): string {
   flex-shrink: 0;
 }
 
-.wdv__changed-row--old .wdv__changed-label { color: #f87171; }
-.wdv__changed-row--new .wdv__changed-label { color: #4ade80; }
+.wdv__changed-row--old .wdv__changed-label { color: var(--k-error, #f87171); }
+.wdv__changed-row--new .wdv__changed-label { color: var(--k-success, #4ade80); }
 
 .wdv__changed-row--old { opacity: 0.8; }
 </style>

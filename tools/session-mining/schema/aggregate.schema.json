@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kitsoki/session-mining/aggregate.schema.json",
+  "title": "session-mining aggregated report",
+  "description": "Output of aggregate.py: many contributors' reports merged into one cross-contributor view. This document is ITSELF a valid input to aggregate.py (the merge is associative), so it carries the per-pattern `contributors` counts and the novel promotion/quarantine buckets needed to re-aggregate without loss.",
+  "type": "object",
+  "required": ["schema_version", "vocab_version", "contributors", "reports_merged", "patterns"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "vocab_version": {
+      "description": "single version if all inputs agreed, else the array of versions seen (a mixed-version merge)",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    },
+    "contributors": { "type": "integer", "minimum": 1, "description": "total contributing reports represented (sum of inputs' weights)" },
+    "reports_merged": { "type": "integer", "minimum": 1, "description": "number of input files merged in this run" },
+    "promote_min_contributors": { "type": "integer", "minimum": 1 },
+    "patterns": {
+      "type": "array",
+      "description": "cataloged (controlled-vocabulary) patterns, sorted by determinism_priority",
+      "items": { "$ref": "#/$defs/merged_pattern" }
+    },
+    "novel_promotion_candidates": {
+      "type": "array",
+      "description": "novel clusters corroborated by >= promote_min_contributors distinct contributors",
+      "items": { "$ref": "#/$defs/merged_pattern" }
+    },
+    "novel_quarantine": {
+      "type": "array",
+      "description": "novel clusters below the promotion threshold; contribute nothing to cataloged counts",
+      "items": { "$ref": "#/$defs/merged_pattern" }
+    }
+  },
+  "$defs": {
+    "merged_pattern": {
+      "type": "object",
+      "required": ["id", "occurrences", "contributors"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "occurrences": { "type": "integer", "minimum": 1 },
+        "sessions_seen": { "type": "integer", "minimum": 0 },
+        "contributors": { "type": "integer", "minimum": 1, "description": "sum of contributing reports for this id (carried so re-aggregation stays exact)" },
+        "mechanical_fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pain": { "enum": ["low", "med", "high"] },
+        "decision_points": { "type": "array", "items": { "type": "string" } },
+        "determinism_priority": { "type": "number", "minimum": 0, "maximum": 1 },
+        "example_signatures": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

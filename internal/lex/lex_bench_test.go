@@ -1,14 +1,14 @@
 // Benchmarks for the lex public surface. Pinned here so contributors can
-// confirm the proposal's "sub-millisecond signature" claim (§3) without
-// digging into the codebase.
+// confirm the "sub-millisecond signature" claim from
+// docs/architecture/semantic-routing.md without digging into the codebase.
 //
 // Run:
 //
 //	go test -bench=. -benchmem ./internal/lex/...
 //
 // Typical numbers on modern hardware (laptop x86_64): Tokenize ~3-10 µs
-// for a short utterance, Signature ~5-15 µs. The §3 budget is "<1 ms"
-// so we have ~100x headroom.
+// for a short utterance, Signature ~5-15 µs. The budget is "<1 ms" so we
+// have ~100x headroom.
 package lex
 
 import "testing"

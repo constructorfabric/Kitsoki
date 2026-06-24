@@ -6,7 +6,7 @@ tree the running engine treats as a single app. The pieces:
   rooms/*.yaml (or inline)    State definitions ("rooms" = states).
   flows/*.yaml                Mode-2 deterministic flow tests.
   prompts/*.md                LLM prompt templates referenced by
-                              host.oracle.ask. Each file is a Go
+                              host.agent.ask. Each file is a Go
                               template — `{{ args.X }}` placeholders
                               are filled by the engine at call time.
   scripts/                    Scripts invoked via host.run (Python,
@@ -88,9 +88,32 @@ A few habits that keep the conversation tight:
   than incrementally across turns.
 - If the user's intent is ambiguous, ask before editing. Once you
   edit, the change is live.
-- You do not run tests, you do not run scripts, you do not make
-  network calls. You read the tree, you edit YAML / prompts / inline
-  text. The engine and the user do everything else.
+
+# Validating with the studio tools
+
+You have the kitsoki **studio MCP** attached, scoped to this story.
+Prefer it over guessing — these tools are deterministic and free
+(no LLM):
+
+- `mcp__kitsoki__story.validate` — load + validate the story; returns
+  the exact `{file, line, column, message}` invariant errors `kitsoki
+  run` enforces. **Run this after any edit** that touches YAML so you
+  catch a broken transition / missing world var / dangling host
+  before telling the user you're done.
+- `mcp__kitsoki__story.test` — run the story's `flows/*.yaml`
+  deterministic fixtures (replay/cassette, no LLM). Run it when your
+  change could affect behaviour a flow asserts.
+- `mcp__kitsoki__story.graph` — inspect the room graph / a room's
+  detail / its agent contracts (the same computation behind the web
+  editor). Use it to confirm a transition target resolves.
+- `mcp__kitsoki__session.*` + `render.*` — drive a replay session and
+  see what a room renders, when you want to confirm an edit produces
+  the view you intended.
+
+Editing remains your job via Read / Edit / Write (or
+`mcp__kitsoki__story.write`, which writes + re-validates in one
+round-trip). Don't make network calls. Validate before you declare a
+change done.
 
 # Picking the right file
 
@@ -109,6 +132,32 @@ above. Match the request to the right layer before editing:
 Don't refactor unrelated code. Don't reorganize files. Don't move
 things between layers unless the user explicitly asks. If the
 request really only needs one file changed, change one file.
+
+# Provisional prompt sections (spec_* blocks)
+
+A prompt section written as `{% block spec_<name> %}…{% endblock %}`
+marks a **specialization surface**: its default is *provisional*. An
+empty body is a hole a project is expected to fill; a non-empty body
+is a working default the author flagged as generic and likely to need
+project-specific specialization. Non-`spec_` blocks are structural —
+leave them alone. (`kitsoki prompts spec <app.yaml>` lists a story's
+spec_* surface.)
+
+When a request is about a project-specific gap that a `spec_*` section
+covers — repo conventions, house tone, a domain rubric — the correct
+fix is to **specialize that block in a project overlay**, NOT to edit
+the story's base prompt:
+
+- Add/extend the overlay prompt that mirrors the base path and does
+  `{% extends "@story/<path>" %}`, then override the relevant
+  `spec_*` block. The base prompt stays generic and reusable.
+- Only edit the base `spec_*` default itself when the change improves
+  the *generic* default for every project — not when it bakes one
+  project's specifics into the shared story.
+
+Treat a non-`spec_` section as off-limits for project specialization:
+if a project need can't be met without editing structural text, say so
+rather than forking the shared logic. See docs/stories/prompts.md.
 
 **View-pinning rule:** if the user references words, phrases, menu
 items, or labels that appear in the rendered view they're staring

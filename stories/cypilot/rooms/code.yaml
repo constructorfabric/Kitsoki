@@ -46,7 +46,10 @@ states:
               intent: look
     relevant_world: [ticket_id, ticket_title, feature_slug, workdir, code_artifact, cycle]
     on_enter:
+      # once: skips the (expensive) code generation on /reload or self
+      # re-entry once code_artifact is set; refine clears it to regenerate.
       - invoke: iface.artifact.create
+        once: true
         with:
           kind:      "code"
           title:     "Code for {{ world.ticket_title }}"
@@ -56,7 +59,9 @@ states:
         bind:
           code_artifact: artifact
         on_error: feature_awaiting_reply
-      # Run a local test pass against the generated patch.  Non-zero exit
+      # Run a local test pass against the generated patch.  Left WITHOUT
+      # once: deliberately — re-running tests is cheap/read-ish and we want
+      # a fresh pass on every re-entry.  Non-zero exit
       # is NOT fatal — the judge prompt at the checkpoint reads
       # world.code_artifact.tests_failed and decides whether to refine.
       - invoke: iface.ci.run_tests
@@ -75,6 +80,9 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: cache so re-entry regenerates the code
+                # artifact (ci.run_tests is not once:, so it re-runs anyway).
+                code_artifact:   {}
       quit:
         - target: "@exit:abandoned"
       look:
@@ -90,9 +98,12 @@ states:
             Ticket:         "{{ world.ticket_id }}"
             "Tests passed": '{{ world.code_artifact.tests_passed|default:0 }}'
             "Tests failed": '{{ world.code_artifact.tests_failed|default:0 }}'
-            Verdict:        '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
-            Confidence:     '{{ world.llm_verdict.confidence|default:0 }}'
-            Reason:         '{{ world.llm_verdict.reason|default:"(none)" }}'
+      - when: "(world.llm_verdict.verdict ?? '') != ''"
+        kv:
+          pairs:
+            Verdict:        '{{ world.llm_verdict.verdict }}'
+            Confidence:     '{{ world.llm_verdict.confidence|floatformat:2 }}'
+            Reason:         '{{ world.llm_verdict.reason }}'
       - heading: "Artifact"
       - code: '{{ world.code_artifact.summary_markdown|default:"(artifact pending)" }}'
       - choice:
@@ -131,7 +142,7 @@ states:
           state:  code_awaiting_reply
           body:   "{{ world.code_artifact.summary_markdown }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_code.md
@@ -170,6 +181,9 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: cache so re-entry regenerates the code
+                # artifact (ci.run_tests is not once:, so it re-runs anyway).
+                code_artifact:   {}
       quit:
         - target: "@exit:abandoned"
       look:

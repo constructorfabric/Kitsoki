@@ -1,0 +1,134 @@
+## Done
+
+- meta mode: ask questions or improve the story itself (replaces edit mode)
+- meta mode works like off path so it's a full convo, can use all normal conventions like proposal
+- meta mode chats are persistent and listed like agent sessions
+- meta mode as a generic concept (off-path, self-fix/improvement/extend) — each meta mode has different agent and prompts
+- self mode: ask questions or improve kitsoki itself
+- use specific claude agents for each room/intent where agent/claude is invoked
+- extensible stories — reusable dev story w/ company and project-specific aspects (rooms, intents, etc... as reusable building blocks — extended and composed)
+- add bug report mode
+- --continue to resume existing session
+- input history via up/down arrow
+- add reload so external app changes can be picked up without quit/restart (keep world as-is so state is preserved)
+- provide context/guidance/prompt to off_path based on current room + provide history/context/etc...
+- dedupe and integrate docs (cmd folder and main project root)
+- check that we're really doing the mcp validation method — i think we're maybe not based on some bugs
+
+## Partial / in progress
+
+- ticket/pr/etc... providers that support bitbucket jira github or file mode for testing/dev match our existing bugfix artifact write pattern — bitbucket + jira + tui done; github TBD
+- voice/setting theming and localization — different languages and oregon trail could be in space (typed-elements + pongo2 foundation in place across demo apps)
+- file story bug or kitsoki bug with a similar interface/pattern, if kitsoki is local write to file (we are in dev mode and stories + kitsoki source are local) — story bug done via `/meta bug`; kitsoki target documented in `docs/stories/bugs.md`
+- add world display to TUI — apps can specify what state is shown in the panel, make it like the actions panel — `relevant_world` pins to location indicator today; not yet a full panel
+- background jobs on VMs, dispatch and track, survive intermittent connectivity (dev laptop to VM w/ VPN and closed lid issues) — local background jobs done; VM/remote survival TODO
+- recording captures git commits and LLM interactions so it's possible to do a deterministic replay, graceful call to LLM if it's a new/changed call that needs a real response to be recorded — LLM interactions captured; git commits TBD
+- json-rpc, mcp, rest support w/ auth — mcp done; rest + json-rpc TBD
+- jsonschema for stories/rooms/etc... and good validation mode in CLI, semantic validation too, validate pongo2 templates — app-schema doc + basic validate exist; jsonschema + semantic + template validation TBD
+
+## Ideas
+
+- generate test from trace
+- generate precursor recording/state so we can continue right at the point where a new feature is to be demoed or a bug is reproduced
+- trace includes atomic state updates in some json-diff format so that there can be checkpoints + event stream for balance between size and speed of replay (reprocessing events) — event sourcing model for consistency
+- pure in-memory apps that are mutable in-flight, fully dynamic apps, export to yaml
+- in proposal review mode, make the input and proposal different colors from the rest of the text
+- when user presses enter, immediately add their input into the chat window and show thinking there, block input until resolved (can keep some spinner in the input area too)
+- visually distinguish between user commands that were interpreted deterministically vs those that use the LLM, when the LLM is used show the actual filled intent that was selected w/ confidence level
+- cache of natural language to intents to avoid calling claude again
+- intent synonyms and caching
+- multi-intent — when actions/intents are non-navigational they can be stacked within a single input — on Oregon Trail it's like name the party, define the profession and start month in a single statement
+- single LLM chat across rooms, manage the scope to determine which rooms are contained within the chat, provides better context and richer history without hacks like the history mcp
+- live discovery of story aspects as the user navigates to different projects, projects can define their own story aspects
+- expose agent API so scripts can funnel their LLM usage via the standard interface instead of invoking claude -p individually, possibly bypassing configuration. this would mean that scripts can use a generic API, and the interface can choose codex vs claude (in the future), and handle the tracing, playback and testing with a standardized mechanism. scripts would then never use claude directly
+- pass request id to downstream CLI and API calls so that the session/trace can be correlated, so for instance mcp validator can log directly against the right session (is this racy?)
+- conversation/session info/context mcp for LLM to use for clarification
+- better testing for proposal mode — should work like conversation (w/ persistent convo)
+- remote job mode: monitor and control sessions on VMs
+- open a VS Code over Remote Tunnel or to local folder for a given project/PR/etc...
+- vs code integration like claude, see what the user has open and propose changes using VS code diff
+- react UI
+- voice/speaker transport
+- live vs local mode for transports — sometimes we just want to work locally and don't need jira/bitbucket comments
+- these providers are behind mcp for use in sessions, pluggable backends with the same interface so a single prompt works across different implementations
+- official test suite (makefile) and build, etc... lint/static analysis, etc... prepare for CI
+- LLM-driven local review checklist, docs, testing, etc... add it to devstory to make it real
+- remove world from top status bar it crowds everything
+- actions panel is too narrow
+- chat input doesn't wrap it just disappears off the end of the screen
+- can't use numbers as start of chat text
+- oversight/silent-background LLM sessions watching the trace internally for certain patterns or insights to file bugs, improvement or knowledge, watch the transcript live, add configurable prompts to watch out for bad patterns and jump in with guidance (when the LLM ignores CLAUDE.md for example or some other annoying pattern).  it's possible to list/attach the sessions but not normally (behind some extra arg), and the only normal output is async artifacts like bugs, knowledge, etc... and then the user gets an inbox notification that a bg agent has created some artifact and they can review it.  self-improvement, bugs, new synonyms, etc... can all be done like this.  include non-LLM (script) actions that can also produce artifacts and notify the user based on some schedule/precursor or LLM pattern detection trigger (tell the LLM to find some pattern and when it does call a script that does some thing)
+- make sure full deterministic replay so we can do bugfix test runs w/o actually using LLM - capture git diffs, etc... for replayable scenarios (like we did PLTFRM-89912 ad infinitum)
+- llm conversation vs decision, separate interfaces, conversation/task work wouldn't be done by humans but decisions may be (and the decision schema may drive a form for example)
+- tests are slow
+- meta mode should work well with imported stories - understanding where each aspect is (if different repos especially)
+- each room has a separate transcript, there's a navigational reference text that mentions "you came from xxx you're working on yyy" or something, but the screen clears and the new room is near the top.  when going back to rooms you've already been in, there's an option to keep the room persistent - it can be either persistent or transient up to the story developer
+- chat window doesn't wrap - cuts off inputs
+- change the TUI to a single-pane, and focus on good presentation views and /commmands - add an /actions that lists the available actions, we already have /world, just print to the chat when an inbox item is received and add an /inbox command
+- each meta mode has its own color theme to visually distinguish
+- we never got rid of the world dump in the header...
+- dynamic visibility on items, so items can be hidden/shown based on role checks for example
+- back as standard navigation that authors don't hook up (it was just processed by claude to do something)
+- input scrolls instead of wraps to newline
+- repo-persisted workflow state - allow multiple people to collaborate but keep the state in the repo (or optionally in tickets I guess...)
+- we keep losing features... there was a / command listing that's now gone, and I thought the world file stuff was done too but it somehow reverted, text box scrolling is gone... the test suite must be garbage
+- choice widget (yes/no, multi-choice single or multi-select, explain like claude code)
+- hot reload thin wrapper - the main engine is an SO file that is purely stateless (use lint rules for go AST to ensure the code is stateless via static analysis), when the /meta kitsoki mode is used, the main engine can be recompiled and reloaded.  the state engine for world should be clean and self-contained such that it can be also reloaded with a dump+load cycle as necessary.  For release versions, this is a single binary with no hot loading.  For dev, there's a minimally thin wrapper around the hot-loaded aspects, to minimize the surface of changes that would require a full reload of the full application.  We want to be able to maintain/migrate state cleanly so separating it from logic is the best bet.  use stable interfaces and avoid import cycles.
+- external reload - cause a running kitsoki session to reload its yaml - done by external claude code via mcp or cli to simulate meta mode with an unamanged claude code
+- control the next proposed message - template it, tab to accept and then press enter to execute
+- identify field as secret - do not log/trace/etc... (needs to be individually provided - exception to deterministic replay) - extensive testing/verification
+- full abstraction of jira/github/local issues as CLI/mcp and use it instead of writing md to disk and just reading the md - can do file as the starting point but make sure the interface is full and correct compared to jira/github real issues
+- kitsoki turn needs to publish to trace
+- make a kitsoki mcp so claude code (and others) can start and interact with stories directly with excellent fidelity, including generating screenshots for consumption
+- make the user provided text a different color/bg like templated vs LLM in views
+- add templating for CLAUDE.md and other agent-specific stuff so that when the agent runs in the sandboxed workdir, it can have CLAUDE.md, but the repo only has AGENTS.md (thin @AGENTS.md wrapper gitignored and generated on the fly where relevant)
+- add AskUserQuestion support in kitsoki so claude code can ask questions into kitsoki - try to use the existing input form mechanism extend it if necessary
+- oregon trail with progressive LLM and environment script usage to demonstrate kitsoki and to use as a use and development tutorial
+    - use real cities' climate fetched via some API.
+    - substitute other treks like a himalayas trek or crossing the silk road
+    - adding LLM responses into scenes
+    - meta and offpath for help and free-form conversation
+    - routing basics
+    - video, slides and guided tutorial in the web ui (guided tutorial mode is a CRITICAL FEATURE!)
+- bailout agent standardization
+    - when you finish a bailout, try to improve the story to handle the case or create an improvement request (bug or feature from user is improvement request)
+- model escalation
+    - if the agent call produces an unsatisfactory result, story author or user defines escalation chain to try until good result.  keep track of good (no escalation) and bad (escalated) calls for each story site - make it robust to story changes so data timeline remains consistent
+- take a claude skill/agent and produce a story using progressive determinism
+- user input text different bg-color in chat to highlight (also in templated view outputs)
+- full meta mode for UI in conjunction w/ vue hot reload in dev
+- does /meta story get the kitsok-story-authoring skill?
+- UI improvement skill - results in mp4 demo
+- video QA agent
+- if we're in a meta session, and the edited yaml breaks, go back to the LLM w/ the error message and try again automatically up to retry limit - show each attempt to the user
+- agent autogen (microsoft azure)
+- git cleanup - tracking action-by-action and commit action-by-action deterministically
+- story editing view
+    - room-by-room, ordered by average graph distance from entrypoint
+    - see the hook and domain model of the room, edit the room directly within this domain model
+    - integrate the meta chat in the left column, with the deterministic view on the right like the existing web ui
+    - big focus on testing individual agents, seeing cassettes, etc...
+    - individual agent contracts
+- when i click on a session in web ui, take me to the chat view if it is live and the trace view if it's done/errored/etc...
+- inbox and background jobs real
+    - TUI and Web UI support
+    - navigate away from long job and come back when it's waiting on a turn
+- template vs user input vs LLM output in views
+    - use cassette recording and traces to create synthetic cases
+    - use distinctive input we can trace through multiple handoffs to capture indirect references
+    - use correctly structured json etc... so it passes validation but is still distinctive to find
+    - deterministic
+- needs some working state in the main chat after user presses enter
+- the web ui doesn't show the semantic routing layer aspect from the TUI, so it's not clear what's happening with the routing layer
+- routing decisions are not covered by the trace (in the UI at least)
+- embed kitsoki engine in wasm for the browser - keep the trace in local storage or something
+- name each agent invocation so the trace has something nice to show
+- add world viewer to web ui, show types and current values, allow edit mode w/ validation
+- tool usage disappears after final message - it should be collapsed but inspectable
+- video/slidey edit/feedback mode w/ chat and timestamping/png generation built-in so it's easy to flag a scene or a range and instruct the llm - add it to web ui
+- make web-dev - keyboard shortcut (press r to reload?) that restarts the backend with any changes to go code
+- good fake claude with expectations and cassette playback options, allow good tests about what the harness is expected to do (like check the rendered template for a specific agent instance as received by the cli)
+- right-click any item to open a meta chat about the story or kitsoki, and the meta agent will have the exact dom context you clicked and a screenshot for context
+- flow test coverage, identify untested branches
+- set up proper lint/coverage
+- use semantic routing for deterministic cassettes, combine with prompt caching maybe?  it should be useful for testing purposes to be somewhat realistic

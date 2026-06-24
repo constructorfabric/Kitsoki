@@ -1,0 +1,13 @@
+{% comment %}
+fix-tests — standalone base view. Block contract mirrors the other
+shipped stories (status / heading / body / choices / footer) so any room
+composes the same chrome. Operator-facing voice: terse, declarative.
+{% endcomment %}
+{% block status %}fix-tests  ·  cycle {{ world.cycle }}/{{ world.max_cycles }}  ·  {% if world.tests_passed %}green{% else %}red{% endif %}{% if world.outcome %}  ·  {{ world.outcome }}{% endif %}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

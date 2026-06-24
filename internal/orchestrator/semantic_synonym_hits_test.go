@@ -1,5 +1,5 @@
 // Tests for issue H1: TrySemantic must call RecordSynonymHit on every
-// successful semroute hit so the §7.6 inspect surfaces
+// successful semroute hit so the inspect surfaces
 // (--unused-synonyms, --routing-stats, --synonym-suggestions) see
 // real production data.
 //

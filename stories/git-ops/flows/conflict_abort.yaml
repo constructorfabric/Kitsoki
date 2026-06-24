@@ -1,0 +1,42 @@
+# conflict_abort — conflict with verdict.resolved=false → abort → branch_ops (rebase_done=false).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: conflict
+initial_world:
+  integration_branch:       main
+  current_branch:           feat/x
+  on_integration:           false
+  working_dir:              "."
+  conflict_origin:          rebase
+  conflict_files:           "internal/foo.go "
+  conflict_verdict:         { resolved: false, confidence: 0.3, resolution_summary: "Cannot resolve.", reason: "Incompatible changes." }
+  conflict_intent_guidance: ""
+  rebase_done:              true
+
+host_handlers:
+  host.run:
+    by_call:
+      rebase_abort:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "HEAD is now at abc1234 previous commit"
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        resolved:           false
+        confidence:         0.3
+        unresolvable_files: ["internal/foo.go"]
+        resolution_summary: "Cannot resolve."
+        reason:             "Incompatible changes."
+
+turns:
+  - intent: { name: abort, slots: {} }
+    expect_state: branch_ops
+    expect_world:
+      rebase_done:   false
+      conflict_files: ""
+
+expect_no_errors: true

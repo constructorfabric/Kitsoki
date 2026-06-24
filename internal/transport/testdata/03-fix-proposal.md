@@ -1,4 +1,4 @@
-# PROJ-89912 — Fix Proposal: SSRF via `@` injection in `rest_context.url`
+# PLTFRM-89912 — Fix Proposal: SSRF via `@` injection in `rest_context.url`
 
 ## Summary
 
@@ -56,7 +56,7 @@ Two distinct defects in the `rest_context.url` data-flow:
    caller a primitive for probing the internal network and reading
    arbitrary upstream bodies.
 
-A previous fix for the parent ticket (PROJ-87475) added a `@` / `%40`
+A previous fix for the parent ticket (PLTFRM-87475) added a `@` / `%40`
 reject in `buildRestContext` (commit `3a3e144`), but that fix is **not
 present on the deployed image** running on `mc-clean-25134` and addresses
 only one of the two defects (it does not scrub the error response, and it
@@ -129,7 +129,7 @@ Server-side logging keeps operability; the wire response becomes generic.
   URLs (`http://...`, `https://...`), `userinfo` prefixes, control chars,
   and the legitimate path forms (`/api/2/...`, `""`).
 - `internal/app/handlers/presentations_test.go` (extend the
-  PROJ-87475-era table from commit `3a3e144`): add scenarios for
+  PLTFRM-87475-era table from commit `3a3e144`): add scenarios for
   template-injected `@`, `URLVariables`-injected `@`, and assert the
   error response contains **none** of: the rendered URL, the configured
   base URL, upstream `body`, upstream `status_code`.
@@ -164,7 +164,7 @@ Repro evidence cited:
 - The buggy code path is reproducible by reading the source: a
   user-controlled string starting with `@` will deterministically hijack
   any URL parsed by `net/url`. This is the documented Go behaviour and is
-  the same defect the prior PROJ-87475 fix attempted to address.
+  the same defect the prior PLTFRM-87475 fix attempted to address.
 - Service trace shows `platform-presentation` (chart 0.27.203) as the
   ingress upstream for the `/presentations/{key}` reproduction request
   — fix must land in `ASK/presentation-service`. `account_server` and
@@ -184,7 +184,7 @@ defect, so replacing it with a generic error is the intended behaviour).
 
 ## Alternative approaches considered
 
-1. **Render-time `@` reject only (replicate PROJ-87475 fix exactly).**
+1. **Render-time `@` reject only (replicate PLTFRM-87475 fix exactly).**
    Rejected: ticket explicitly calls the parent fix "incorrect" and asks
    for input-time validation as primary defence; also leaves the error
    info-disclosure in place.

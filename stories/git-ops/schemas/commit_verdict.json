@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "commit_verdict",
+  "description": "Conventional-commit message authored by the agent for a staged diff.",
+  "type": "object",
+  "required": ["type", "summary", "message"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["feat", "fix", "refactor", "docs", "test", "chore", "perf", "style", "ci", "build", "revert"],
+      "description": "Conventional commit type."
+    },
+    "scope": {
+      "type": ["string", "null"],
+      "description": "Optional scope in parentheses, e.g. 'auth' → 'feat(auth): ...'."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 72,
+      "description": "One-line imperative summary (without type prefix). Must be ≤72 chars."
+    },
+    "body": {
+      "type": ["string", "null"],
+      "description": "Optional longer explanation of what changed and why."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 5,
+      "description": "Complete commit message: 'type(scope): summary\\n\\nbody'. Used verbatim in git commit -m."
+    }
+  },
+  "additionalProperties": false
+}

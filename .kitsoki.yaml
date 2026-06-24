@@ -1,0 +1,32 @@
+# Shared, checked-in kitsoki config — the team baseline.
+#
+# This file is committed, so it must load for EVERYONE with zero setup: it
+# carries only the ambient Claude profile (native subscription auth, no secrets,
+# no ${VAR}). Profiles that need an API key or retarget a CLI at another
+# endpoint (synthetic, codex, a local llama.cpp) reference env vars that aren't
+# universally set, so they would hard-fail this file at load — they live in the
+# gitignored override instead.
+#
+# Personal / secret-bearing / machine-specific settings go in a sibling
+# `.kitsoki.local.yaml` (gitignored). Load deep-merges it on top of this file,
+# LOCAL-WINS: it can add new profiles, replace a profile here whole, or point
+# `default_profile` at a profile only it declares. Start from the template:
+#
+#   cp .kitsoki.local.yaml.example .kitsoki.local.yaml
+#   export SYNTHETIC_API_KEY=sk-...      # in your shell / profile / .envrc
+#   kitsoki web --stories-dir stories    # then pick the provider in the header
+#   # …or in the TUI:  /provider synthetic-claude  ·  /model 2
+#
+# See docs/architecture/harness-profiles.md for the full reference.
+
+default_profile: claude-native
+
+harness_profiles:
+  # Your native Anthropic Claude Code subscription (ambient auth — nothing to
+  # set). claude supports a model selector (short names) and --effort.
+  claude-native:
+    backend: claude
+    model: opus
+    models: [opus, sonnet, haiku]
+    effort: medium
+    efforts: [low, medium, high, xhigh, max]

@@ -14,7 +14,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world:
   core__ticket_id:      "TKT-AUTO"
   core__ticket_title:   "Two-layer autonomous-advance smoke"
@@ -49,7 +49,7 @@ host_handlers:
     data: { ok: true, sha: "abc123", diff: "", url: "https://example/pr/auto", pr_id: "auto", state: "success", checks: "", comments: "" }
   host.local:
     data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0, state: "success" }
-  host.local_files.ticket:
+  host.gh.ticket:
     data: { ok: true, tickets: "" }
   # Confident verdict at every checkpoint. The `intent: "accept"`
   # field is the BARE name a real LLM produces; the dispatcher's
@@ -57,8 +57,8 @@ host_handlers:
   # IntentAliases entry to `core__bf__accept` for bf-internal
   # checkpoints (and through pr's analogous chain when the flow
   # reaches that compound).
-  host.oracle.decide:
-    data:
+  host.agent.decide:
+    data: &agent_stub
       ok: true
       submitted:
         summary_title:    "Autonomous regression artifact"
@@ -80,8 +80,15 @@ host_handlers:
         intent:     "accept"      # BARE name — proves the fix
         reason:     "Confident; advance autonomously."
 
+  # host.agent.task — bf reproducing/implementing/testing/validating
+  # rooms generate their artifact via the `task` verb (judge steps use
+  # `decide`). Same stub payload as decide (shared anchor); the artifact
+  # schema's additionalProperties tolerates the judge fields.
+  host.agent.task:
+    data: *agent_stub
+
 turns:
-  # core.main → core.bf.implementing in one user turn.
+  # core.landing → core.bf.implementing in one user turn.
   #
   # bf.idle's on_enter auto-emits `start` when entered with a ticket
   # loaded and no reproduction artifact yet, dropping into reproducing.

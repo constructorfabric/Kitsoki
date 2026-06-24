@@ -283,4 +283,3 @@ func (m RootModel) handleMetaAttachDone(msg metaAttachDoneMsg) (tea.Model, tea.C
 	m.transcript.AppendSystem("back in kitsoki — claude is still running in the background (/attach to drop back in, or keep typing here)")
 	return m, nil
 }
-

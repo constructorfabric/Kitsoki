@@ -35,6 +35,7 @@ import (
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 	"kitsoki/internal/transport"
+	"kitsoki/internal/world"
 )
 
 // EX_TEMPFAIL is the BSD/sysexits.h "temporary failure" exit code that
@@ -48,7 +49,7 @@ func sessionCmd() *cobra.Command {
 		Use:   "session",
 		Short: "Manage persistent singleton sessions keyed by (transport, thread)",
 		Long: `Sessions are persistent singletons addressed by an external key of
-the form transport:thread (e.g. jira:PROJ-12345). Used as the
+the form transport:thread (e.g. jira:PLTFRM-12345). Used as the
 contract between kitsoki and external orchestrators (loop.py, future
 webhook receivers).
 
@@ -443,7 +444,20 @@ Output JSON: {session_id, deleted_tables: {events: N, snapshots: N, ...}}`,
 				fmt.Fprintf(cmd.ErrOrStderr(),
 					"Permanently delete session %s and all related data? [y/N]: ", sid)
 				scanner := bufio.NewScanner(cmd.InOrStdin())
-				scanner.Scan()
+				if !scanner.Scan() {
+					// EOF / I/O error (e.g. piped or closed stdin): treat as a
+					// non-confirmation and abort the destructive delete, but
+					// surface the I/O condition rather than reporting a bare
+					// "Aborted." that looks like a deliberate decline.
+					if err := scanner.Err(); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"Aborted: cannot read confirmation from stdin: %v\n", err)
+					} else {
+						fmt.Fprintln(cmd.ErrOrStderr(),
+							"Aborted: no confirmation on stdin (EOF); not deleting.")
+					}
+					return nil
+				}
 				answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
 				if answer != "y" && answer != "yes" {
 					fmt.Fprintln(cmd.ErrOrStderr(), "Aborted.")
@@ -745,7 +759,7 @@ func sessionCreateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&appPath, "app", "", "path to app.yaml (required)")
 	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
-	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread (e.g. jira:PROJ-12345)")
+	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread (e.g. jira:PLTFRM-12345)")
 	_ = cmd.MarkFlagRequired("app")
 	return cmd
 }
@@ -764,6 +778,8 @@ func sessionContinueCmd() *cobra.Command {
 		harnessType   string
 		claudeModel   string
 		recordingPath string
+		tracePath     string // --trace override; "" = use default JSONL path when key is known
+		execModeFlag  string
 	)
 	cmd := &cobra.Command{
 		Use:   "continue",
@@ -805,7 +821,24 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 
 			sid, err := resolveSessionID(ctx, s, key, idFlag)
 			if err != nil {
-				return err
+				// If key lookup failed and --trace is provided, try JSONL recovery.
+				// This supports the Jenkins/Jira workflow where SQLite is deleted/unavailable
+				// but the JSONL trace is saved (e.g., in a Jira ticket) and restored later.
+				if key != "" && tracePath != "" && errors.Is(err, store.ErrSessionNotFound) {
+					// Session not in SQLite, but JSONL trace exists.
+					// Recover state from JSONL and create a new session.
+					if newSID, recoverErr := recoverSessionFromJSONL(ctx, tracePath, def, s, key); recoverErr == nil {
+						sid = newSID
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"note: recovered session from JSONL trace (session %s)\n",
+							sid)
+					} else {
+						// JSONL recovery failed; return original error
+						return err
+					}
+				} else {
+					return err
+				}
 			}
 
 			slotVals, err := decodeJSONFlag(slotsFlag, "slots")
@@ -859,7 +892,7 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 			}
 
 			// Build the job store + scheduler so on_enter effects with
-			// `background: true` (host.oracle.ask_with_mcp in phase_12_6,
+			// `background: true` (host.agent.ask_with_mcp in phase_12_6,
 			// phase_minus_1, …) actually dispatch asynchronously and their
 			// on_complete: chains fire.  Without this wiring the
 			// orchestrator's WithScheduler doc explicitly states that
@@ -885,9 +918,42 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 				}
 			}
 
+			// Wave 3-entry: open (or create) a JSONL trace for this session.
+			// Resolution: use --trace if provided; otherwise derive the default
+			// path from (app.ID, transport, thread) when --key is set.
+			// When only --id is provided we have no transport:thread to key the
+			// path, so we fall back to SQLite-only event writes for that session.
+			var jsonlSink *store.JSONLSink
+			resolvedTracePath := tracePath
+			if resolvedTracePath == "" && key != "" {
+				transport, thread, kErr := parseExternalKey(key)
+				if kErr == nil {
+					resolvedTracePath = store.DefaultTracePath(def.App.ID, transport, thread)
+				}
+			}
+			if resolvedTracePath != "" {
+				if mkErr := os.MkdirAll(filepath.Dir(resolvedTracePath), 0o755); mkErr == nil {
+					if sink, sinkErr := store.OpenJSONL(resolvedTracePath); sinkErr == nil {
+						jsonlSink = sink
+						defer func() { _ = jsonlSink.Close() }()
+					} else {
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"warning: open JSONL trace %q failed (%v); falling back to SQLite-only writes\n",
+							resolvedTracePath, sinkErr)
+					}
+				} else {
+					fmt.Fprintf(cmd.ErrOrStderr(),
+						"warning: create trace dir for %q failed (%v); falling back to SQLite-only writes\n",
+						resolvedTracePath, mkErr)
+				}
+			}
+
 			orchOpts := []orchestrator.Option{
 				orchestrator.WithHostRegistry(hostReg),
 				orchestrator.WithTransportRegistry(transportReg),
+			}
+			if jsonlSink != nil {
+				orchOpts = append(orchOpts, orchestrator.WithEventSink(jsonlSink))
 			}
 			if chatStoreOpt != nil {
 				orchOpts = append(orchOpts, chatStoreOpt)
@@ -907,6 +973,24 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 			if jobStoreOpt != nil {
 				orchOpts = append(orchOpts, jobStoreOpt)
 			}
+			// Execution mode (execution-modes proposal). Defaults to
+			// one-shot here — like `kitsoki turn` — so the scripted drive
+			// path (and the debugging skill's session continue --intent)
+			// keeps walking pipelines. Pass --mode staged to pause at
+			// decision gates.
+			switch execModeFlag {
+			case "", "one-shot", "oneshot":
+				// one-shot is the orchestrator zero value; no option needed.
+			case "staged":
+				orchOpts = append(orchOpts, orchestrator.WithExecutionMode(orchestrator.ExecStaged))
+			default:
+				return fmt.Errorf("--mode %q is invalid (want \"staged\" or \"one-shot\")", execModeFlag)
+			}
+			if d := def.Decider; d != nil {
+				orchOpts = append(orchOpts, orchestrator.WithDecider(orchestrator.DeciderConfig{
+					Agent: d.Agent, Schema: d.Schema, Prompt: d.Prompt, Threshold: d.Threshold,
+				}))
+			}
 			orch := orchestrator.New(def, m, s, h, orchOpts...)
 
 			// NewSession spawns the per-session terminal-event listener for
@@ -916,6 +1000,13 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 			// `handleJobTerminal` never fires, so on_complete: chains are
 			// dropped on the floor.
 			orch.EnsureSessionListener(sid)
+
+			// Record the effective story into the trace (base snapshot on a
+			// fresh session; diff if the on-disk story drifted from what the
+			// trace already carries) so the session trace stays self-contained.
+			if recErr := orch.RecordEffectiveStory(ctx, sid); recErr != nil {
+				return fmt.Errorf("record effective story: %w", recErr)
+			}
 
 			var outcome *orchestrator.TurnOutcome
 			lockErr := s.WithWriterLock(ctx, sid, func() error {
@@ -992,7 +1083,7 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 					}
 					// Still in an _executing room: a second bg job may
 					// be in flight (e.g. phase_13_executing's
-					// host.oracle.ask_with_mcp).  Loop to drain it.
+					// host.agent.ask_with_mcp).  Loop to drain it.
 				}
 				// Refresh the outcome view from persisted state so the
 				// JSON return reflects the post-drain settlement (loop.py
@@ -1010,14 +1101,17 @@ another process holds it, this command exits 75 (EX_TEMPFAIL).`,
 	}
 	cmd.Flags().StringVar(&appPath, "app", "", "path to app.yaml (required)")
 	cmd.Flags().StringVar(&dbPath, "db", "", "session SQLite database (default: $XDG_DATA_HOME/kitsoki/sessions.db)")
-	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread (e.g. jira:PROJ-12345)")
+	cmd.Flags().StringVar(&key, "key", "", "external key transport:thread (e.g. jira:PLTFRM-12345)")
 	cmd.Flags().StringVar(&idFlag, "id", "", "session ID (alternative to --key)")
 	cmd.Flags().StringVar(&intentName, "intent", "", "intent name to dispatch directly (no LLM)")
 	cmd.Flags().StringVar(&slotsFlag, "slots", "", "intent slots as JSON or @file. With --intent: full slot set passed to SubmitDirect. With --raw: supplemental slots merged into the harness-resolved intent (existing keys are preserved).")
 	cmd.Flags().StringVar(&rawText, "raw", "", "raw inbound reply body, routed through the harness")
+	cmd.Flags().StringVar(&execModeFlag, "mode", "one-shot", `execution mode: "one-shot" (auto-advance, default) or "staged" (stop at decision gates)`)
 	cmd.Flags().StringVar(&harnessType, "harness", "", "harness for --raw: claude|live|replay (default auto)")
 	cmd.Flags().StringVar(&claudeModel, "claude-model", "", "model passed to claude -p --model")
 	cmd.Flags().StringVar(&recordingPath, "recording", "", "recording YAML for --harness replay")
+	cmd.Flags().StringVar(&tracePath, "trace", "",
+		"JSONL trace file for event writes; default: ~/.kitsoki/sessions/<app>/<sha8>-<slug>.jsonl (derived from --key)")
 	_ = cmd.MarkFlagRequired("app")
 	return cmd
 }
@@ -1209,7 +1303,7 @@ func sessionBindKeyCmd() *cobra.Command {
 func parseExternalKey(key string) (transport, thread string, err error) {
 	idx := strings.Index(key, ":")
 	if idx <= 0 || idx == len(key)-1 {
-		return "", "", fmt.Errorf("--key %q must be in transport:thread form (e.g. jira:PROJ-12345)", key)
+		return "", "", fmt.Errorf("--key %q must be in transport:thread form (e.g. jira:PLTFRM-12345)", key)
 	}
 	return key[:idx], key[idx+1:], nil
 }
@@ -1226,9 +1320,70 @@ func resolveSessionID(ctx context.Context, s store.Store, key, idFlag string) (a
 	}
 	sid, err := s.LookupByKey(ctx, transport, thread)
 	if errors.Is(err, store.ErrSessionNotFound) {
-		return "", fmt.Errorf("no session bound to %s", key)
+		return "", store.ErrSessionNotFound // Return the original error for recovery logic to detect
 	}
 	return sid, err
+}
+
+// recoverSessionFromJSONL recovers a session from a JSONL trace when SQLite is unavailable.
+// This supports the Jenkins/Jira workflow where the trace is saved externally but the
+// session database is deleted or never exists on the recovery host.
+//
+// Flow:
+//  1. Read and verify the JSONL trace
+//  2. Create a new session in SQLite
+//  3. Append the recovered events to the new session
+//  4. Bind the external key to the new session
+//  5. Return the new session ID
+//
+// Note: The recovered events are appended with their original turn/seq numbers.
+// LoadHistory will replay from the latest snapshot or from turn 0 if no snapshot.
+// The recovered state is implicit in the event sequence.
+func recoverSessionFromJSONL(ctx context.Context, tracePath string, def *app.AppDef,
+	s store.Store, key string) (app.SessionID, error) {
+
+	// Open and read the JSONL trace.
+	jsonlStore, err := store.OpenJSONL(tracePath)
+	if err != nil {
+		return "", fmt.Errorf("open JSONL trace %q: %w", tracePath, err)
+	}
+	defer func() { _ = jsonlStore.Close() }()
+
+	history := jsonlStore.History()
+	if len(history) == 0 {
+		return "", fmt.Errorf("JSONL trace %q is empty; cannot recover session", tracePath)
+	}
+
+	// Verify the trace can be replayed by rebuilding the journey.
+	rootState := app.StatePath(def.Root.(string))
+	_, err = store.BuildJourney(def, rootState, world.New(), history)
+	if err != nil {
+		return "", fmt.Errorf("rebuild journey from JSONL trace: %w", err)
+	}
+
+	// Create a new session in SQLite.
+	newSID, err := s.CreateSession(ctx, def)
+	if err != nil {
+		return "", fmt.Errorf("create session for recovery: %w", err)
+	}
+
+	// Append all recovered events to the new session.
+	// The events maintain their original turn/seq structure, which is safe
+	// because they're being appended to a different session (unique by session_id).
+	if err := s.AppendEvents(newSID, history); err != nil {
+		return "", fmt.Errorf("append recovered events to session: %w", err)
+	}
+
+	// Bind the external key to the new session.
+	transport, thread, err := parseExternalKey(key)
+	if err != nil {
+		return "", err
+	}
+	if err := s.BindExternalKey(ctx, newSID, transport, thread); err != nil {
+		return "", fmt.Errorf("bind external key to recovered session: %w", err)
+	}
+
+	return newSID, nil
 }
 
 // publishAppDir sets KITSOKI_APP_DIR so host handlers can resolve relative paths.
@@ -1256,7 +1411,11 @@ func publishAppDir(appPath string) {
 // %q: %w" wrapper so call-site diagnostics stay stable.
 func loadAppWithEnv(appPath string) (*app.AppDef, error) {
 	publishAppDir(appPath)
-	def, err := app.Load(appPath)
+	// Inject the @kitsoki/<name> import resolver (--kitsoki-repo override ›
+	// on-disk kitsoki root › embedded library). A foreign repo carrying only a
+	// `source: "@kitsoki/dev-story"` instance loads against the embedded
+	// library with no kitsoki checkout present.
+	def, err := app.LoadWithResolver(appPath, nil, buildImportResolver())
 	if err != nil {
 		return nil, fmt.Errorf("load app %q: %w", appPath, err)
 	}
@@ -1303,8 +1462,8 @@ func externalKeysView(keys []store.ExternalKey) []map[string]any {
 // (in-process buffer); adds a JiraTransport when the JIRA_URL,
 // JIRA_USERNAME, and JIRA_API_TOKEN env vars are all set; adds a
 // BitbucketTransport when a Bitbucket Bearer token is discoverable
-// (either via $BITBUCKET_TOKEN or the fallback file at
-// “~/.config/kitsoki/bitbucket-token“).
+// (either via $BITBUCKET_TOKEN or the standard Acronis location
+// “~/.config/acronis/bitbucket-token“).
 //
 // Setting JIRA_INSECURE_SKIP_VERIFY=1 disables TLS verification on the
 // Jira HTTP client.  This is needed for internal/self-hosted instances
@@ -1312,10 +1471,9 @@ func externalKeysView(keys []store.ExternalKey) []map[string]any {
 // whose CA is not on the system trust store.  Off by default — only
 // opt in deliberately.
 //
-// The Bitbucket client always skips TLS verification because it
-// defaults to an enterprise ZTA-proxy mount
-// (https://localhost:3128/bitbucket) which presents a self-signed
-// cert.
+// The Bitbucket client always skips TLS verification because it defaults
+// to the Acronis ZTA proxy mount (https://localhost:3128/bitbucket) which
+// presents a self-signed cert; same convention as tools/loopy.
 func buildTransportRegistry() (*transport.Registry, error) {
 	reg := transport.NewRegistry()
 	reg.Register(transport.NewTUITransport())
@@ -1360,8 +1518,8 @@ func buildTransportRegistry() (*transport.Registry, error) {
 
 // loadBitbucketToken resolves the Bitbucket bearer token.  Preference:
 //  1. $BITBUCKET_TOKEN (test overrides + CI),
-//  2. “~/.config/kitsoki/bitbucket-token“ (on-disk fallback;
-//     override via $BITBUCKET_TOKEN in your own setup).
+//  2. “~/.config/acronis/bitbucket-token“ (the standard Acronis location
+//     read by tools/loopy/bugfix/lib/creds.bitbucket_token).
 //
 // Returns the empty string when neither source is available so
 // buildTransportRegistry can simply skip registering the transport rather
@@ -1374,7 +1532,7 @@ func loadBitbucketToken() string {
 	if err != nil || home == "" {
 		return ""
 	}
-	data, err := os.ReadFile(filepath.Join(home, ".config", "kitsoki", "bitbucket-token"))
+	data, err := os.ReadFile(filepath.Join(home, ".config", "acronis", "bitbucket-token"))
 	if err != nil {
 		return ""
 	}

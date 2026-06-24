@@ -1,0 +1,71 @@
+# integrate_moved_main — main advanced one commit after the branch forked.
+# integrate re-reads CURRENT main HEAD at entry as the rebase base, replays the
+# branch on top, and merges → no lost work.
+#
+# At the flow level the integrate script is stubbed; the routing contract is
+# identical to integrate_clean. The LOAD-BEARING lost-work-safety (the rebase
+# base is current main re-read at entry, never a stored SHA) is proven against
+# a REAL git repo by stories/git-ops/tests/integrate_moved_main.sh — see that
+# script for the actual moved-main replay assertion.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feature/x
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feature/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      1
+            commits_behind:     1
+            has_uncommitted:    false
+            no_common_ancestor: false
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+      integrate_exec:
+        # The branch was 1 behind a moved main; the script rebased it onto the
+        # NEW HEAD and merged. integrated_sha descends from the new main.
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "def5678"
+            last_op_ok:     true
+            last_error:     ""
+
+turns:
+  - intent: { name: integrate, slots: {} }   # no branch slot → uses current_branch
+    expect_state: main_ops
+    expect_world:
+      integrate_branch:  feature/x
+      integrate_outcome: integrated
+      integrated_sha:    "def5678"
+      last_op_outcome:   integrated
+
+expect_no_errors: true

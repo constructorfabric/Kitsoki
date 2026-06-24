@@ -6,8 +6,8 @@ package host_test
 // Two distinct defects in internal/host/localfiles_ticket.go:
 //
 //  1. bugSummary projects frontmatter key "priority", but bug files
-//     (per issues/README.md) use "severity: P0|P1|P2|P3". As a result,
-//     the ticket summary
+//     (per docs/stories/bugs.md and issues/README.md)
+//     use "severity: P0|P1|P2|P3". As a result, the ticket summary
 //     returned from iface.ticket.search has an empty priority field for
 //     every local-files ticket, and views that branch on `t.priority`
 //     never render the badge.

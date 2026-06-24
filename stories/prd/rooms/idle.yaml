@@ -1,0 +1,169 @@
+# idle — idea discovery. A conversation, not a form.
+#
+# A free-form product idea is awkward to type into a single input field,
+# so intake is a chat: the operator talks, the `interviewer` agent replies
+# and helps sharpen the idea, and `start` distills the conversation into
+# world.idea before advancing to the structured clarification list.
+#
+# No `choice:` selector — the operator is dropped straight into the
+# conversation and just types. Free text routes through the LLM router
+# (discuss carries a required `message` slot, so the whole line is
+# captured whole); the closing prose names `ready` / `quit` so the
+# semantic router still catches those verbs. Same shape as the
+# selectorless testdata/apps/dev-story/rooms/agent.yaml chat room.
+#
+# mode: conversational (the stories/oregon-trail/rooms/trail_guide.yaml
+# pattern). on_enter ONLY creates the persistent chat — the greeting is the
+# static `prose:` in the view, NOT an LLM call. The interviewer model runs
+# exclusively to process operator messages (the `discuss` self-loop), never
+# to produce intro text. The discuss arc uses `target: .` precisely so
+# on_enter does NOT re-fire (an explicit `target: idle` would re-enter and
+# re-create the chat each turn — see the discuss comment); the converse
+# call lives in the arc's own effects.
+
+states:
+
+  idle:
+    mode: conversational
+    # default_intent pins the free-text fallthrough: when the semantic
+    # router doesn't match a verb, the operator's line routes to `discuss`
+    # (captured whole via its required `message` slot) rather than no-op'ing.
+    # The golden proposal intake (dev-story proposal.yaml) sets this same
+    # pair — mode: conversational + default_intent: discuss — explicitly so
+    # the conversation never depends on the router catching `discuss`.
+    default_intent: discuss
+    description: "Describe your idea — talk it through; I'll help shape it."
+    view:
+      - heading: "PRD discovery"
+      # Error surfacing — rendered only when a downstream room's on_enter
+      # invoke failed and its on_error arc routed BACK here (or a return
+      # via restart_from idle carried a stale value). last_error is set
+      # automatically by the runtime; the successful arcs below clear it.
+      - template: "⚠ **Discovery failed** — {{ world.last_error }}."
+        when: "world.last_error != ''"
+      # First turn only (idea_turns == 0): the full pitch prompt. Once the
+      # conversation is underway it would just be repeated intro text, so it
+      # gives way to the shorter "in progress" line below.
+      - prose: "Describe the product idea you want a PRD for — in your own words. Point me at any existing docs or code worth reading and I'll read them; I'll ask focused questions to sharpen it."
+        when: "world.idea_turns == 0"
+      - prose: "Discovery in progress — keep sharpening the idea with me."
+        when: "world.idea_turns > 0"
+      - kv:
+          pairs:
+            Turns:  "{{ world.idea_turns }}"
+      # Informational only: where the PRD WILL be written. The slug + per-PRD
+      # workspace are not minted until the search gate (prd_slug.py), so name
+      # the shape generically rather than a concrete path. Rendered as prose
+      # (not a kv .md value) so the web UI does not linkify it into a clickable
+      # preview of a file that does not exist yet — the real draft lands at
+      # {{ prd_workspace }}/004-prd.md in the drafting room, and the readable
+      # artifact link is surfaced there once prd_artifact exists.
+      - prose: "Planned output: a per-PRD workspace under `{{ world.workdir }}/.artifacts/prd/<slug>/` (numbered drafts), published to `{{ world.workdir }}/{{ world.publish_durable_path }}/<slug>.md` on accept."
+      - prose: '{{ world.idea_answer }}'
+        when: "world.idea_answer"
+      # Verb hint — kept on every turn so the semantic router reliably catches
+      # `ready` / `quit` typed as free text (there is no choice selector).
+      - prose: "Say **ready** when it's clear enough and I'll move on to focused questions, or **quit** to abandon."
+    relevant_world: [workdir, publish_durable_path, idea, idea_message, idea_answer, idea_chat_title, idea_turns, last_error]
+    on_enter:
+      # Get-or-create the discovery chat. MUST be `host.chat.resolve`
+      # (get-or-create), NOT `host.chat.create` (unconditional INSERT):
+      # on_enter can re-fire — e.g. `/reload`'s RerunOnEnter, or a future
+      # re-entry — and `create` would spawn a fresh EMPTY chat each time,
+      # orphaning the conversation so far while leaving idea_turns/idea_message
+      # intact. The next `start` would then distill an empty chat. resolve
+      # returns the SAME chat, so the thread survives a reload. No kickoff
+      # converse — the greeting is the static prose in the view, so no LLM call
+      # fires until the operator speaks.
+      #
+      # Discovery is per-session: host.chat.* is always session-scoped (the
+      # session id is folded into the chat identity — see chatScopeKey in
+      # internal/host/chat_handlers.go), so a brand-new `kitsoki run` starts a
+      # FRESH discovery conversation rather than resuming a previous session's
+      # thread (which would replay whatever persona/context leaked into it).
+      # `/reload` and resume of the SAME session keep the id, so they reuse the
+      # chat. scope_key=workdir only discriminates WITHIN a session (one
+      # discovery thread per working directory). A chat never persists across
+      # sessions — that is an engine invariant, not a per-story choice.
+      - invoke: host.chat.resolve
+        with:
+          app:       "prd"
+          room:      "idle"
+          scope_key: "{{ world.workdir }}"
+          title:     "PRD idea discovery"
+        bind:
+          idea_chat_id:    "chat_id"
+          idea_chat_title: "title"
+    on:
+      # Self-loop. `target: .` (NOT `target: idle`) is load-bearing: an
+      # explicit self-target counts as a re-entry and RE-FIRES on_enter
+      # (machine.go isReEntry, the same idiom the bugfix `refine:` arcs use).
+      # That would re-run chat.create every turn — spawning a fresh chat_id
+      # and discarding the conversation history — and, when on_enter still
+      # had a kickoff converse, clobber this reply with the intro greeting.
+      # `.` skips on_enter, so the chat persists and the converse call below
+      # is the only LLM call. idea_answer is cleared up front so a failure
+      # doesn't leave a stale reply paired with the new message.
+      discuss:
+        - target: .
+          effects:
+            - set:
+                idea_message: "{{ slots.message }}"
+                idea_answer:  ""
+                # Clear any stale error bounced here so the warning doesn't
+                # persist once the operator carries on talking.
+                last_error:   ""
+            - increment: { idea_turns: 1 }
+            - invoke: host.agent.converse
+              with:
+                chat_id:     "{{ world.idea_chat_id }}"
+                agent:       interviewer
+                working_dir: "{{ world.workdir }}"
+                question:    "{{ slots.message }}"
+              bind:
+                idea_answer:     "answer"
+                idea_chat_id:    "chat_id"
+                idea_session_id: "claude_session_id"
+
+      # Capture docs/code the operator names mid-chat ("see docs/auth.md").
+      # A self-loop with `target: .` so on_enter does NOT re-fire (the chat
+      # is preserved — same idiom as the discuss arc). Records the paths into
+      # upstream_paths so they thread through to the reference researcher
+      # (references.yaml passes upstream_paths to the researcher). The golden
+      # proposal intake threads the same operator-named docs into its scout
+      # via a capture_existing intent (dev-story proposal.yaml). The operator
+      # keeps talking afterward; nothing else is disturbed.
+      capture_existing:
+        - target: .
+          effects:
+            - set:
+                upstream_paths: "{{ slots.paths }}"
+
+      # Distill the whole conversation into a crisp idea statement, then
+      # advance to the prior-art gate (search). The gate runs the scout
+      # BEFORE the expensive clarification + reference + draft work, so a
+      # duplicate idea is caught here rather than after several rounds.
+      start:
+        - target: search
+          effects:
+            # Leaving cleanly → clear any stale error so it doesn't leak
+            # into search's view.
+            - set:
+                last_error: ""
+            - invoke: host.agent.converse
+              with:
+                chat_id:     "{{ world.idea_chat_id }}"
+                agent:       interviewer
+                working_dir: "{{ world.workdir }}"
+                question:    "The discovery conversation is complete. Write a single, crisp problem/idea statement (1-4 sentences) that captures what this PRD should be about, synthesising everything we discussed. Output ONLY that statement — no preamble, no questions."
+              bind:
+                idea: "answer"
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_idle"
+                status:         "abandoned"
+      look:
+        - target: .

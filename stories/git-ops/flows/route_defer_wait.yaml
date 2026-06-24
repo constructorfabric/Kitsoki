@@ -1,0 +1,60 @@
+# route_defer_wait — "let's wait" in merge_into_main → defer state (branch_ops, rebase_done preserved).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: merge_into_main
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+  rebase_done:        true
+  rebase_base_sha:    "abc1234"
+
+host_handlers:
+  host.run:
+    by_call:
+      descendant_check:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"descendant_ok":true,"stale":false}'
+          stdout_json:
+            descendant_ok: true
+            stale:         false
+      target_tree_check:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"target_dirty":false,"merge_in_progress":false}'
+          stdout_json:
+            target_dirty:      false
+            merge_in_progress: false
+      stash_if_dirty:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"stash_ref":"","stashed":false}'
+          stdout_json:
+            stash_ref: ""
+            stashed:   false
+      git_merge:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "Merge made by the 'no-ff' strategy."
+      post_merge_build:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "build ok"
+
+turns:
+  # defer before on_enter fires (initial render)
+  - intent: { name: defer, slots: {} }
+    expect_state: branch_ops
+    expect_world:
+      rebase_done: true
+
+expect_no_errors: true

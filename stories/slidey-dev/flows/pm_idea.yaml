@@ -1,0 +1,124 @@
+# pm_idea (slidey-dev) — the PM/PRD HALF of the PRD → Design walk on slidey.
+#
+# The capture flow for the `slidey-pm-idea` rrweb tour clip: a product manager
+# starts with an idea (a `slidey --notes` speaker-notes export), talks it
+# through discovery + clarification, the PRD is drafted and published. Same
+# stubs as prd_to_design_demo.yaml (the full walk); this one stops at
+# core.prd_published so the clip is the PM half only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world:
+  judge_mode: "human"
+  core__workdir:               "."
+  core__publish_durable_path:  "docs/prd"
+  core__prd_doc_filename:      ""
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: false }
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "Speaker-notes export idea", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "A printable per-scene handout exported straight from the deck spec.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  host.agent.search:
+    data: { hits: [], top: null }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary actor and where do they use the handout?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+    by_call:
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q1: presenters reviewing a deck before a talk\nQ2: decks-exported-to-notes-without-rendering-video\n"
+            answered_ids_append: "|1||2|"
+            matched_count:       2
+      name_slug:
+        data:
+          ok: true
+          submitted: { slug: "speaker-notes-export", rationale: "the slidey feature the design is authored for" }
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "A net-new spec-derived output alongside video/PDF/web; no overlap with existing outputs." }
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/prd/speaker-notes-export.md", sections: "§5", rationale: "the PRD this design realizes" }
+  host.agent.task:
+    by_call:
+      prd_author:
+        data:
+          ok: true
+          submitted:
+            title:            "PRD: Speaker-Notes Export"
+            summary_markdown: |
+              # PRD: Speaker-Notes Export
+
+              ## Problem & Context
+              A slidey deck is one JSON spec that renders to video, PDF, and an
+              interactive web player — but a presenter rehearsing a talk has no
+              printable, per-scene handout of what each scene says.
+
+              ## Target Users
+              Presenters and deck authors reviewing a deck before a talk.
+
+              ## Goals
+              - A `slidey deck.json --notes out.md` flag that emits a per-scene
+                handout (eyebrow + body + narration) from the same spec.
+              - Deterministic and LLM-free: same spec in, same notes out.
+
+              ## Requirements
+              - Functional: one Markdown section per scene, in spec order.
+              - Non-functional: headline metric is
+                decks-exported-to-notes-without-rendering-video.
+
+              ## Open Questions
+              - Should scenes with no narration be skipped or emitted empty?
+            file_path:           ".artifacts/prd/speaker-notes-export/004-prd.md"
+            confidence:          0.84
+            needs_clarification: false
+            follow_up_questions: []
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "speaker-notes-export", workspace: ".artifacts/prd/speaker-notes-export" }
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            prd_file: "docs/prd/speaker-notes-export.md"
+
+turns:
+  - intent: { name: core__go_prd, slots: {} }
+    expect_state: core.prd.idle
+  - intent: { name: core__prd__discuss, slots: { message: "I want a slidey --notes speaker-notes export" } }
+    expect_state: core.prd.idle
+  - intent: { name: core__prd__start, slots: {} }
+    expect_state: core.prd.search
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.clarifying
+  - intent: { name: core__prd__answer, slots: { text: "presenters rehearsing a talk; metric is decks-exported-to-notes-without-rendering-video" } }
+    expect_state: core.prd.clarifying
+  - intent: { name: core__prd__submit_answers, slots: {} }
+    expect_state: core.prd.brief
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.references
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.drafting
+  - intent: { name: core__prd__accept, slots: {} }
+    expect_state: core.prd_published
+
+expect_no_errors: true

@@ -35,7 +35,11 @@ states:
               intent: quit
     relevant_world: [pr_id, pr_title, merge_strategy, merge_sha]
     on_enter:
+      # once: true — merging is the most destructive external side-effect in
+      # the pipeline; a /reload of merge_executing would attempt a second
+      # merge. Skipped once merge_sha is bound. No re-run re-enters here.
       - invoke: iface.vcs.merge
+        once: true
         with:
           pr_id:    "{{ world.pr_id }}"
           strategy: "{{ world.merge_strategy }}"
@@ -65,9 +69,12 @@ states:
             PR:           "{{ world.pr_id }}"
             "Merge SHA":  '{{ world.merge_sha|default:"(unknown)" }}'
             "PR url":     '{{ world.pr_url|default:"(unknown)" }}'
-            Verdict:      '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
-            Confidence:   '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
-            Reason:       '{{ world.llm_verdict.reason|default:"(none)" }}'
+      - when: "(world.llm_verdict.verdict ?? '') != ''"
+        kv:
+          pairs:
+            Verdict:      '{{ world.llm_verdict.verdict }}'
+            Confidence:   '{{ world.llm_verdict.confidence|floatformat:2 }}'
+            Reason:       '{{ world.llm_verdict.reason }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -101,7 +108,8 @@ states:
           state:   merge_awaiting_reply
           body:    "PR {{ world.pr_id }} merged at {{ world.merge_sha }}."
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
+        id: merge_judge
         with:
           agent: judge
           prompt: prompts/judge_merge.md
@@ -112,6 +120,12 @@ states:
             pr_url:     "{{ world.pr_url }}"
         bind:
           llm_verdict: submitted
+        selection:
+          profile: synthetic-codex
+          model: syn:small:text
+          effort: low
+          evidence: evals/reports/merge_judge/latest.json
+          fallback_profile: claude
       - when: |
           world.judge_mode != 'human' &&
           world.llm_verdict.confidence >= world.judge_confidence_threshold &&

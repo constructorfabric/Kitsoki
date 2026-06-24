@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gate_plan",
+  "description": "The gate planner's choice for an ad hoc Cherny loop goal.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "gate_mode": {
+      "type": "string",
+      "enum": ["script", "agent", "hybrid"],
+      "description": "The checker shape: script, agent review, or both."
+    },
+    "gate_command": {
+      "type": "string",
+      "description": "Shell command for script/hybrid gates; empty for pure agent gates."
+    },
+    "artifact": {
+      "type": "string",
+      "description": "Best artifact path to inspect or edit, when implied by the goal."
+    },
+    "prompt_focus": {
+      "type": "string",
+      "description": "Focused reviewer instruction for agent/hybrid gates."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why this gate proves the goal is done."
+    }
+  },
+  "required": ["gate_mode", "gate_command", "artifact", "prompt_focus", "reason"]
+}

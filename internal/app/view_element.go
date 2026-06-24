@@ -1,5 +1,6 @@
-// view_element.go — typed view element schema (Phase A of the
-// view-elements design).
+// view_element.go — typed view element schema. The element vocabulary is
+// documented in docs/stories/story-style.md; the schema reference lives in
+// docs/embedded/app-schema.md.
 //
 // Phase A is schema-only. The View type custom-unmarshals YAML and accepts
 // any of three author surfaces:
@@ -33,8 +34,8 @@
 //
 // Phase A performs no rendering and resolves no inheritance. The string
 // form continues to render identically through today's Glamour path; the
-// new array form is opt-in, file-by-file. See the proposal §2.3 and the
-// Phase A bullet in §7 for the migration discipline.
+// new array form is opt-in, file-by-file. See docs/stories/story-style.md
+// for the element vocabulary and migration discipline.
 
 package app
 
@@ -75,7 +76,7 @@ type View struct {
 	Blocks map[string][]ViewElement
 
 	// TemplateFile is the optional standalone-template form
-	// (proposal §3.3 option 2). When non-empty the view renders by
+	// (standalone .pongo template form). When non-empty the view renders by
 	// pulling <appDir>/views/<TemplateFile> through the AppRenderer
 	// and substituting against the runtime env. Mutually exclusive
 	// with Source, Elements, and Extends/Blocks. Phase H wires the
@@ -97,6 +98,12 @@ type View struct {
 //     holds an optional CSS-style hex foreground (e.g. "#06B6D4"). The
 //     renderer generates the figlet-style art at render time from Source
 //     so authors don't have to paste pre-baked ASCII into YAML.
+//   - "media" — MediaHandle holds the artifact id/handle to display;
+//     MediaCaption holds an optional caption shown beneath the artifact;
+//     MediaKind holds the artifact kind (video/image/pdf/html/slideshow)
+//     used to select the pointer icon; MediaPath holds the optional
+//     resolved .artifacts/ path (pongo2 template, bound from a world slot).
+//     This element is display-only (no input bar, no choices).
 //
 // When is the optional element-level guard expression (expr-lang source).
 // Phase A stores it verbatim; the Phase D renderer evaluates it against
@@ -112,9 +119,27 @@ type ViewElement struct {
 	Color    string
 	When     string
 
-	// ---- Choice fields (Phase A of the choice-widget design).
-	// Populated only when Kind == "choice"; otherwise zero.  YAML shape
-	// is documented in docs/choice-widget.md and the embedded schema.
+	// ---- Media fields.
+	// Populated only when Kind == "media"; otherwise zero.
+
+	// MediaHandle is the artifact id/handle that identifies the media to
+	// display. Required — an empty handle is a load-time error.
+	MediaHandle string
+	// MediaCaption is an optional one-line caption rendered beneath the
+	// media artifact.
+	MediaCaption string
+	// MediaKind is the artifact kind (video/image/pdf/html/slideshow).
+	// Used at render time to pick the pointer icon. Empty means unknown.
+	MediaKind string
+	// MediaPath is the resolved .artifacts/ path to display in the TUI
+	// pointer line. Authors supply this as a pongo2 template bound from
+	// a world slot that holds the path returned by host.artifacts_dir.
+	// When empty, the TUI pointer falls back to displaying MediaHandle.
+	MediaPath string
+
+	// ---- Choice fields.
+	// Populated only when Kind == "choice"; otherwise zero. See
+	// docs/stories/choice-widget.md for the YAML shape.
 
 	// ChoiceMode discriminates the three submodes: "single", "multi", "form".
 	// Default applied at unmarshal time is "single" per the proposal.
@@ -301,7 +326,22 @@ type rawViewElementYAML struct {
 	KV       *rawKVYAML     `yaml:"kv,omitempty"`
 	Banner   *rawBannerYAML `yaml:"banner,omitempty"`
 	Choice   *rawChoiceYAML `yaml:"choice,omitempty"`
+	Media    *rawMediaYAML  `yaml:"media,omitempty"`
 	When     string         `yaml:"when,omitempty"`
+}
+
+// rawMediaYAML decodes the media element body. Handle is the required
+// artifact id/handle; Caption is an optional one-line label shown beneath
+// the artifact in the rendered view. Kind is the media type
+// (video/image/pdf/html/slideshow) used to pick the pointer icon at
+// render time. Path is the optional resolved .artifacts/ path; authors
+// may supply it as a pongo2 template expression bound from a world slot
+// that holds the path returned by host.artifacts_dir.
+type rawMediaYAML struct {
+	Handle  string `yaml:"handle"`
+	Caption string `yaml:"caption,omitempty"`
+	Kind    string `yaml:"kind,omitempty"`
+	Path    string `yaml:"path,omitempty"`
 }
 
 // rawBannerYAML decodes the banner element body. Text is the phase name
@@ -309,9 +349,10 @@ type rawViewElementYAML struct {
 // caption shown beneath; Color is an optional CSS-style hex foreground
 // applied to the art via lipgloss (subtitle stays unstyled).
 type rawBannerYAML struct {
-	Text     string `yaml:"text"`
-	Subtitle string `yaml:"subtitle,omitempty"`
-	Color    string `yaml:"color,omitempty"`
+	Text     string  `yaml:"text"`
+	Subtitle string  `yaml:"subtitle,omitempty"`
+	Color    string  `yaml:"color,omitempty"`
+	When     *string `yaml:"when,omitempty"` // see nestedWhenGuard
 }
 
 // rawListYAML decodes the list element body. Items are decoded into a
@@ -320,6 +361,7 @@ type rawBannerYAML struct {
 type rawListYAML struct {
 	Items  []rawListItemYAML `yaml:"items"`
 	Marker string            `yaml:"marker,omitempty"`
+	When   *string           `yaml:"when,omitempty"` // see nestedWhenGuard
 }
 
 // rawListItemYAML accepts either a string or an object. We do this with
@@ -354,7 +396,7 @@ func (r *rawListItemYAML) UnmarshalYAML(data []byte) error {
 	if strings.TrimSpace(obj.Label) == "" {
 		return fmt.Errorf("list item: label is required")
 	}
-	r.resolved = ListItem{Label: obj.Label, Hint: obj.Hint, When: obj.When}
+	r.resolved = ListItem(obj)
 	return nil
 }
 
@@ -363,6 +405,28 @@ func (r *rawListItemYAML) UnmarshalYAML(data []byte) error {
 // colon-aligned column order — is preserved.
 type rawKVYAML struct {
 	Pairs goyaml.MapSlice `yaml:"pairs"`
+	When  *string         `yaml:"when,omitempty"` // see nestedWhenGuard
+}
+
+// nestedWhenGuard rejects an element-level `when:` guard that was written
+// INSIDE an element's body (a sibling of `pairs:`/`items:`/`text:`) instead
+// of at the element level (a sibling of the `kv:`/`list:`/`banner:` key).
+//
+// The decoder routes the two positions to different fields: a correctly-placed
+// guard lands on rawViewElementYAML.When; a nested one lands on the body
+// struct's When. Before this guard the nested form was silently dropped (the
+// body structs had no `when` field), so the guard never ran and the element
+// always rendered — a subtle footgun that disabled, e.g., the bugfix/code-review
+// checkpoint verdict-row guards until they were lifted to the element level.
+// Failing loudly at load is the fix (stories exist to force-resolve such traps).
+func nestedWhenGuard(kind string, nested *string) error {
+	if nested == nil {
+		return nil
+	}
+	return fmt.Errorf(
+		"%s element: `when:` must be a sibling of `%s:` (element level), not nested inside the %s body — "+
+			"a nested guard is ignored. Dedent the `when:` to align with `%s:`.",
+		kind, kind, kind, kind)
 }
 
 // toElement resolves a rawViewElementYAML into a concrete ViewElement.
@@ -393,6 +457,9 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 	}
 	if r.List != nil {
 		set = append(set, "list")
+		if err := nestedWhenGuard("list", r.List.When); err != nil {
+			return ViewElement{}, err
+		}
 		items := make([]ListItem, len(r.List.Items))
 		for i, raw := range r.List.Items {
 			items[i] = raw.resolved
@@ -406,10 +473,16 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 	}
 	if r.KV != nil {
 		set = append(set, "kv")
+		if err := nestedWhenGuard("kv", r.KV.When); err != nil {
+			return ViewElement{}, err
+		}
 		out = ViewElement{Kind: "kv", Pairs: r.KV.Pairs, When: when}
 	}
 	if r.Banner != nil {
 		set = append(set, "banner")
+		if err := nestedWhenGuard("banner", r.Banner.When); err != nil {
+			return ViewElement{}, err
+		}
 		out = ViewElement{
 			Kind:     "banner",
 			Source:   r.Banner.Text,
@@ -433,6 +506,17 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 			out.When = when
 		}
 	}
+	if r.Media != nil {
+		set = append(set, "media")
+		out = ViewElement{
+			Kind:         "media",
+			MediaHandle:  r.Media.Handle,
+			MediaCaption: r.Media.Caption,
+			MediaKind:    r.Media.Kind,
+			MediaPath:    r.Media.Path,
+			When:         when,
+		}
+	}
 	switch len(set) {
 	case 0:
 		return ViewElement{}, fmt.Errorf("element has no kind (expected one of prose / heading / list / kv / code / template / banner / choice)")
@@ -454,7 +538,7 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 // Phase A validates structure only — expression contents (When source,
 // pongo2 templates in leaf strings) are left to later phases.
 func (v View) Validate() error {
-	// At most one choice element per view (choice-widget proposal §4.5).
+	// At most one choice element per view (see docs/stories/choice-widget.md).
 	// Counted across the Elements slice; Blocks are forbidden from
 	// containing choice at all (checked below) so they don't participate.
 	choiceCount := 0
@@ -472,7 +556,7 @@ func (v View) Validate() error {
 	for name, els := range v.Blocks {
 		for i, el := range els {
 			// Choice elements cannot live inside an extends-form block
-			// (choice-widget proposal §4.5 / §8). The typed metadata is
+			// (see docs/stories/choice-widget.md). The typed metadata is
 			// lost through the inheritance pipeline, so authors must
 			// place the choice as a sibling of the extends form.
 			if el.Kind == "choice" {
@@ -516,12 +600,17 @@ func (e ViewElement) validate() error {
 		return nil
 	case "banner":
 		if strings.TrimSpace(e.Source) == "" {
-			return fmt.Errorf("banner requires a non-empty text:")
+			return fmt.Errorf("banner requires a non-empty text")
 		}
 		return nil
 	case "choice":
 		return validateChoice(e)
+	case "media":
+		if strings.TrimSpace(e.MediaHandle) == "" {
+			return fmt.Errorf("media requires a non-empty handle")
+		}
+		return nil
 	default:
-		return fmt.Errorf("unknown element kind %q (expected one of prose / heading / list / kv / code / template / banner / choice)", e.Kind)
+		return fmt.Errorf("unknown element kind %q (expected one of prose / heading / list / kv / code / template / banner / choice / media)", e.Kind)
 	}
 }

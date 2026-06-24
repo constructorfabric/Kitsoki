@@ -145,7 +145,7 @@ func TestSanitizeForJira_Tables(t *testing.T) {
 // (phase_1_7) artifact.
 func TestSanitizeForJira_RealisticSummary(t *testing.T) {
 	in := strings.Join([]string{
-		"# PROJ-89912 — reproduction checkpoint",
+		"# PLTFRM-89912 — reproduction checkpoint",
 		"",
 		"**Result: PASS**",
 		"",
@@ -165,7 +165,7 @@ func TestSanitizeForJira_RealisticSummary(t *testing.T) {
 
 	// Spot-check key conversions.
 	for _, want := range []string{
-		"h1. PROJ-89912 — reproduction checkpoint",
+		"h1. PLTFRM-89912 — reproduction checkpoint",
 		"*Result: PASS*",
 		"{{mc-clean-25134}}",
 		"* step 1: hit the endpoint",
@@ -188,7 +188,7 @@ func TestSanitizeForJira_RealisticSummary(t *testing.T) {
 	}
 }
 
-// Snapshot test: feed each on-disk PROJ-89912 fixture through the
+// Snapshot test: feed each on-disk PLTFRM-89912 fixture through the
 // sanitiser and assert the output (a) is non-empty and (b) carries no
 // raw `**bold**` / `# heading` artefacts.
 func TestSanitizeForJira_Fixtures(t *testing.T) {

@@ -2,13 +2,14 @@ package testrunner
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"kitsoki/internal/clock"
 	"kitsoki/internal/host"
 	"kitsoki/internal/journal"
+	"kitsoki/internal/store"
 )
 
 // Cassette is one host-cassette file (kind: host_cassette).
@@ -36,37 +38,44 @@ type Cassette struct {
 	path       string
 	phaseRegex *regexp.Regexp
 	mu         sync.Mutex
+
+	// episodeMatchCounts tracks the number of times each episode has been
+	// matched so far (keyed by episode ID). For replay:any episodes this
+	// is the running matchIdx counter; for normal episodes it is capped at 1.
+	// Protected by mu. Seeded from prior trace history via SeedMatchCountsFromHistory
+	// so post-resume matches produce collision-free call_ids.
+	episodeMatchCounts map[string]int
 }
 
 // CassetteEpisode is one episode entry in a cassette.
 type CassetteEpisode struct {
-	ID       string            `yaml:"id"`
-	Match    map[string]any    `yaml:"match"`
-	Response CassetteResponse  `yaml:"response,omitempty"`
-	Delay    string            `yaml:"delay,omitempty"`
-	Replay   string            `yaml:"replay,omitempty"`
-	Oracle   *EpisodeOracle    `yaml:"oracle,omitempty"` // present for host.oracle.* episodes
+	ID       string           `yaml:"id"`
+	Match    map[string]any   `yaml:"match"`
+	Response CassetteResponse `yaml:"response,omitempty"`
+	Delay    string           `yaml:"delay,omitempty"`
+	Replay   string           `yaml:"replay,omitempty"`
+	Agent    *EpisodeAgent    `yaml:"agent,omitempty"` // present for host.agent.* episodes
 
 	played bool
 }
 
-// EpisodeOracle mirrors journal.OracleCallBody. Present when the episode was
-// recorded against a host.oracle.* handler. On replay the dispatcher writes a
-// KindOracleCall journal entry from this block. On record the dispatcher
-// populates this block from the KindOracleCall entry the handler just wrote.
+// EpisodeAgent mirrors journal.AgentCallBody. Present when the episode was
+// recorded against a host.agent.* handler. On replay the dispatcher writes a
+// KindAgentCall journal entry from this block. On record the dispatcher
+// populates this block from the KindAgentCall entry the handler just wrote.
 //
-// All fields map 1:1 to OracleCallBody. Long prompts and responses may live in
+// All fields map 1:1 to AgentCallBody. Long prompts and responses may live in
 // sidecar files referenced by !include (the preprocessor handles them before
 // unmarshaling). The call_id field is advisory at load time — it is always
-// recomputed as sha256("oracle-call:" + appID + ":" + episodeID)[:16] so that
+// recomputed as sha256("agent-call:" + appID + ":" + episodeID)[:16] so that
 // re-records are byte-stable and hand-edits to the episode id roll the call_id
 // forward automatically.
 //
 // Input is typed as `any` rather than json.RawMessage because goccy/go-yaml
 // cannot deserialize YAML flow mappings into []byte. The dispatcher marshals
 // it to json.RawMessage before writing journal entries.
-type EpisodeOracle struct {
-	Verb           string  `yaml:"verb"`                      // ask | decide | extract | task | converse
+type EpisodeAgent struct {
+	Verb           string  `yaml:"verb"` // ask | decide | extract | task | converse
 	Agent          string  `yaml:"agent,omitempty"`
 	Model          string  `yaml:"model,omitempty"`
 	Turn           int64   `yaml:"turn,omitempty"`
@@ -80,14 +89,101 @@ type EpisodeOracle struct {
 	Response       string  `yaml:"response,omitempty"`
 	Error          string  `yaml:"error,omitempty"`
 	CallID         string  `yaml:"call_id,omitempty"` // advisory; recomputed on every load
+
+	// Transcript, when present, is the recorded agent-action transcript for this
+	// agent call (the claude stream-json / openai-chat events). On replay it is
+	// written to the <call_id>.jsonl (+ .timings) sidecar verbatim via the
+	// TranscriptWriter in ctx and referenced from agent.call.complete by a
+	// transcript_ref pointer — NO live tool ever runs, and the sidecar is
+	// byte-identical to the recorded events. In record mode (new_episodes) the
+	// live captured transcript is folded in here. Mirrors the
+	// PromptTokens/CostUSD record-and-replay-verbatim flow. Optional and additive:
+	// a code path that does not read transcript: ignores it entirely, so existing
+	// cassettes (and the trace-features-video spec that replays this one) are
+	// unaffected. See docs/tracing/cassettes.md (Recorded agent-action transcripts).
+	Transcript *EpisodeTranscript `yaml:"transcript,omitempty"`
 }
 
-// derivedCallID returns the deterministic call_id for the episode per §7:
+// EpisodeTranscript is one agent call's recorded agent-action transcript inside
+// a cassette episode. It is the cassette-side mirror of host.TranscriptRef +
+// the sidecar contents: Format names the event schema, Events are the verbatim
+// backend-native events (one per sidecar line), and Timings are the optional
+// per-event capture-time offsets (ms since call start) for the waterfall.
 //
-//	sha256("oracle-call:" + appID + ":" + episodeID)[:16]
-func derivedCallID(appID, episodeID string) string {
-	h := sha256.Sum256([]byte("oracle-call:" + appID + ":" + episodeID))
-	return fmt.Sprintf("%x", h[:8]) // 8 bytes → 16 hex chars
+// Events accepts either form an author finds convenient and both replay to a
+// byte-identical sidecar after canonicalization:
+//   - a list of JSON strings (one verbatim event line each), or
+//   - a list of YAML/JSON mappings (objects), marshaled compactly to one line.
+type EpisodeTranscript struct {
+	Format  string  `yaml:"format"`
+	Events  []any   `yaml:"events"`
+	Timings []int64 `yaml:"timings,omitempty"`
+}
+
+// eventLines converts the authored Events into verbatim JSON byte lines, one per
+// event, suitable for the TranscriptWriter.
+//
+// A string element is an already-serialized event line and is preserved
+// BYTE-VERBATIM (key order, number literals like 49.0, incidental spacing). This
+// is the load-bearing determinism invariant: the live claude tee writes its raw
+// stream-json bytes unchanged (transcript_writer.go Finalize), and foldLiveTranscript
+// stores those exact lines as string elements — so a live-captured-then-folded
+// transcript MUST replay byte-identical to the original sidecar. Re-marshaling
+// here would re-sort keys and reformat numbers and break that contract.
+//
+// A mapping element (a YAML/JSON object authored for convenience, never produced
+// by live capture) is marshaled compactly; no byte-identity contract applies to
+// it because there is no live counterpart. Elements that fail to parse/marshal
+// are skipped (best-effort) — LoadCassette validates string events up front
+// (validateEpisodeTranscripts) so a fat-fingered recorded line fails fast there
+// rather than silently shortening the sidecar.
+func (t *EpisodeTranscript) eventLines() []json.RawMessage {
+	if t == nil {
+		return nil
+	}
+	out := make([]json.RawMessage, 0, len(t.Events))
+	for _, ev := range t.Events {
+		switch e := ev.(type) {
+		case string:
+			if !json.Valid([]byte(e)) {
+				continue
+			}
+			// Preserve the authored bytes verbatim — do NOT re-marshal.
+			line := make(json.RawMessage, len(e))
+			copy(line, e)
+			out = append(out, line)
+		default:
+			b, err := json.Marshal(e)
+			if err != nil {
+				continue
+			}
+			out = append(out, json.RawMessage(b))
+		}
+	}
+	return out
+}
+
+// validateEpisodeTranscripts checks that every string-form event in every
+// episode's recorded transcript is valid JSON, so a malformed recorded line
+// fails at load rather than silently dropping from the replayed sidecar (which
+// would make transcript_ref.events under-count the authored events). Mapping-form
+// events are skipped — they are re-marshaled at replay and cannot be malformed.
+func validateEpisodeTranscripts(cas *Cassette) error {
+	for _, ep := range cas.Episodes {
+		if ep.Agent == nil || ep.Agent.Transcript == nil {
+			continue
+		}
+		for i, ev := range ep.Agent.Transcript.Events {
+			s, ok := ev.(string)
+			if !ok {
+				continue
+			}
+			if !json.Valid([]byte(s)) {
+				return fmt.Errorf("episode %q: transcript event[%d] is not valid JSON: %q", ep.ID, i, s)
+			}
+		}
+	}
+	return nil
 }
 
 // CassetteResponse is the canned response for an episode.
@@ -172,13 +268,21 @@ func LoadCassette(path string) (*Cassette, error) {
 		cas.phaseRegex = re
 	}
 
-	// §6.3: replay:any + oracle: is forbidden — writing the same KindOracleCall
-	// row on every invocation would produce duplicate journal entries.
-	for i, ep := range cas.Episodes {
-		if ep.Replay == "any" && ep.Oracle != nil {
-			return nil, fmt.Errorf("cassette: %q: episode %q: replay:any is forbidden with oracle: block (§6.3)", abs, ep.ID)
-		}
-		_ = i
+	// replay:any + agent: was previously forbidden because re-invoking the same
+	// episode would produce duplicate journal rows in the SQLite agent journal.
+	// With agent events written to the JSONL event sink, each match produces a
+	// distinct AgentCalled/AgentReturned pair with a unique call_id (different
+	// matchIdx) and the same episode_id. The constraint is lifted: replay:any +
+	// agent: is now legal and means "this agent exchange is replayable N times,
+	// each producing a fresh event pair." See docs/architecture/agent-plugin.md
+	// (cassette agent, call_id derivation) for the recording format.
+	_ = cas.Episodes // no validation against replay:any + agent: any more
+
+	// Fail fast on a malformed recorded transcript event. eventLines() skips
+	// unparseable elements at replay time; without this check a fat-fingered
+	// string event would silently shorten the sidecar and desync transcript_ref.
+	if err := validateEpisodeTranscripts(&cas); err != nil {
+		return nil, fmt.Errorf("cassette: %q: %w", abs, err)
 	}
 
 	cas.path = abs
@@ -213,7 +317,47 @@ func resolveIncludes(data []byte, baseDir string) ([]byte, error) {
 			continue
 		}
 		prefix := m[1] + m[2]
-		incPath := filepath.Join(baseDir, strings.TrimSpace(m[3]))
+		rawIncPath := strings.TrimSpace(m[3])
+
+		// Reject absolute paths unconditionally.
+		if filepath.IsAbs(rawIncPath) {
+			return nil, fmt.Errorf("!include %q: absolute paths are not allowed", rawIncPath)
+		}
+
+		// Resolve relative to baseDir, then verify the resolved path stays within baseDir.
+		incPath := filepath.Join(baseDir, rawIncPath)
+
+		// Canonicalise BOTH paths with EvalSymlinks before the containment check.
+		// baseDir is resolved in case it (or a parent) is a symlink — e.g. on
+		// macOS the temp root /var/folders/... is itself a symlink to
+		// /private/var/folders/... Crucially incPath must be resolved the SAME
+		// way, or canonBase (resolved) and canonInc (unresolved) never share a
+		// prefix and every include is falsely rejected as "outside" on macOS.
+		// Resolving incPath also HARDENS the check: a symlink planted inside the
+		// cassette dir that points outward resolves to its real target here and
+		// is correctly rejected, whereas a plain Clean would let the later
+		// ReadFile follow it and escape.
+		canonBase, evalErr := filepath.EvalSymlinks(baseDir)
+		if evalErr != nil {
+			// baseDir might not exist yet in some edge cases; fall back to clean path.
+			canonBase = filepath.Clean(baseDir)
+		}
+		canonInc, incEvalErr := filepath.EvalSymlinks(incPath)
+		if incEvalErr != nil {
+			// incPath itself may not exist yet; resolve its existing parent dir
+			// (which shares baseDir's symlink resolution) and re-join the leaf so
+			// the comparison still uses the same canonical root as canonBase.
+			if parent, perr := filepath.EvalSymlinks(filepath.Dir(incPath)); perr == nil {
+				canonInc = filepath.Join(parent, filepath.Base(incPath))
+			} else {
+				canonInc = filepath.Clean(incPath)
+			}
+		}
+		rel, relErr := filepath.Rel(canonBase, canonInc)
+		if relErr != nil || strings.HasPrefix(rel, "..") {
+			return nil, fmt.Errorf("!include %q: path resolves outside the cassette directory", rawIncPath)
+		}
+
 		raw, readErr := os.ReadFile(incPath)
 		if readErr != nil {
 			return nil, fmt.Errorf("!include %q: %w", incPath, readErr)
@@ -271,6 +415,33 @@ func episodeIDs(eps []*CassetteEpisode) []string {
 		ids[i] = e.ID
 	}
 	return ids
+}
+
+// SeedMatchCountsFromHistory initialises the per-episode match counters from a
+// prior trace history. It scans AgentCalled events that carry an episode_id
+// field (written by writeCassetteAgentEvents) and sets each episode's counter
+// to max(match_idx)+1 so that the first post-resume match produces a fresh
+// matchIdx that does not collide with any pre-resume call_id.
+//
+// This must be called before the cassette dispatcher processes any events.
+// Callers that hold a prior store.History (e.g. after reloading a JSONL trace)
+// should call this once immediately after LoadCassette.
+func (c *Cassette) SeedMatchCountsFromHistory(hist store.History) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.episodeMatchCounts == nil {
+		c.episodeMatchCounts = make(map[string]int)
+	}
+	for _, ev := range hist {
+		if ev.Kind != store.AgentCalled || ev.EpisodeID == "" {
+			continue
+		}
+		// match_idx is the index of this match; next must be at least match_idx+1.
+		next := ev.MatchIdx + 1
+		if next > c.episodeMatchCounts[ev.EpisodeID] {
+			c.episodeMatchCounts[ev.EpisodeID] = next
+		}
+	}
 }
 
 // MatchEpisode finds the first unplayed episode that matches (handler, args,
@@ -331,7 +502,11 @@ func episodeMatches(ep *CassetteEpisode, handler string, args map[string]any, ph
 // Uses deep equality after JSON-normalising both sides so that int/float
 // comparisons from YAML work against string-typed args and vice-versa.
 func matchValue(got, want any) bool {
-	if got == want {
+	// Fast path: direct equality, but ONLY for comparable dynamic types.
+	// `got == want` panics ("comparing uncomparable type") when either side is
+	// a slice or map (e.g. matching host.run's `args` list), so guard it — the
+	// JSON-normalised path below handles those cases correctly.
+	if isComparable(got) && isComparable(want) && got == want {
 		return true
 	}
 	// JSON-normalise both sides so numeric types compare correctly.
@@ -343,17 +518,26 @@ func matchValue(got, want any) bool {
 	return string(gj) == string(wj)
 }
 
+// isComparable reports whether v's dynamic type is comparable with ==. Slices,
+// maps, and funcs are not, and comparing them with == panics at runtime.
+func isComparable(v any) bool {
+	if v == nil {
+		return true
+	}
+	return reflect.TypeOf(v).Comparable()
+}
+
 // CassetteDispatcherOpts carries optional dependencies for BuildCassetteDispatcher.
 // All fields are optional; nil values are safe no-ops.
 type CassetteDispatcherOpts struct {
-	// JournalWriter, when non-nil, is used on replay to write KindOracleCall
-	// journal entries for episodes that carry an oracle: block (Phase 2). It is
-	// also used on record to read back the KindOracleCall the live handler wrote
-	// and capture it into the synthesised episode's oracle: block (Phase 3).
+	// JournalWriter, when non-nil, is used on replay to write KindAgentCall
+	// journal entries for episodes that carry an agent: block (Phase 2). It is
+	// also used on record to read back the KindAgentCall the live handler wrote
+	// and capture it into the synthesised episode's agent: block (Phase 3).
 	JournalWriter journal.Writer
 
 	// JournalDB, when non-nil, is the *sql.DB backing the in-memory journal so
-	// the dispatcher can query KindOracleCall entries by call_id after a live
+	// the dispatcher can query KindAgentCall entries by call_id after a live
 	// handler returns in record mode (Phase 3).
 	JournalDB interface {
 		Query(query string, args ...any) (interface {
@@ -365,16 +549,21 @@ type CassetteDispatcherOpts struct {
 	}
 
 	// SessionID is needed to write journal entries on replay. The dispatcher
-	// reads it from the oracle context in ctx when empty.
+	// reads it from the agent context in ctx when empty.
 	SessionID app.SessionID
+
+	// EventSink, when non-nil, receives AgentCalled / AgentReturned /
+	// AgentError events on replay (wave 3-agent parallel write). This is the
+	// JSONL-side write alongside the existing journal write.
+	EventSink store.EventSink
 }
 
-// OracleJournalLookup is the function type used by the cassette dispatcher in
-// record mode to retrieve the KindOracleCall journal entry the live handler
-// just wrote. ctx carries the oracle call context (session, turn), verb is the
-// oracle verb derived from the handler name (e.g. "task" from "host.oracle.task").
+// AgentJournalLookup is the function type used by the cassette dispatcher in
+// record mode to retrieve the KindAgentCall journal entry the live handler
+// just wrote. ctx carries the agent call context (session, turn), verb is the
+// agent verb derived from the handler name (e.g. "task" from "host.agent.task").
 // Returns (nil, false) when no entry is found.
-type OracleJournalLookup func(ctx context.Context, verb string) (*host.OracleCallBody, bool)
+type AgentJournalLookup func(ctx context.Context, verb string) (*host.AgentCallBody, bool)
 
 // BuildCassetteDispatcher returns a host.Handler closure that the testrunner
 // installs under every handler name referenced by the cassette's episodes.
@@ -390,12 +579,12 @@ func BuildCassetteDispatcher(
 	recordSink func(ep *CassetteEpisode),
 	clk clock.Clock,
 ) host.Handler {
-	return buildCassetteDispatcherFull(cas, handlerName, stateOf, fallback, recordSink, clk, nil, nil)
+	return buildCassetteDispatcherFull(cas, handlerName, stateOf, fallback, recordSink, clk, nil, nil, nil)
 }
 
 // BuildCassetteDispatcherWithJournal is the journal-aware variant of
 // BuildCassetteDispatcher. jw is the journal writer for the rig's in-memory
-// store; journalLookup reads the KindOracleCall entry the live handler just
+// store; journalLookup reads the KindAgentCall entry the live handler just
 // wrote, identified by ctx + verb (derived from handlerName). Returns (nil, false)
 // when no entry is found.
 func BuildCassetteDispatcherWithJournal(
@@ -406,9 +595,47 @@ func BuildCassetteDispatcherWithJournal(
 	recordSink func(ep *CassetteEpisode),
 	clk clock.Clock,
 	jw journal.Writer,
-	journalLookup OracleJournalLookup,
+	journalLookup AgentJournalLookup,
 ) host.Handler {
-	return buildCassetteDispatcherFull(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup)
+	return buildCassetteDispatcherFull(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, nil)
+}
+
+// BuildCassetteDispatcherWithJournalAndSink combines journal and event sink support.
+// Both jw and sink are optional; if both are provided, agent events are written
+// to the sink during cassette replay.
+func BuildCassetteDispatcherWithJournalAndSink(
+	cas *Cassette,
+	handlerName string,
+	stateOf func() string,
+	fallback host.Handler,
+	recordSink func(ep *CassetteEpisode),
+	clk clock.Clock,
+	jw journal.Writer,
+	journalLookup AgentJournalLookup,
+	sink store.EventSink,
+) host.Handler {
+	return buildCassetteDispatcherFull(cas, handlerName, stateOf, fallback, recordSink, clk, jw, journalLookup, sink)
+}
+
+// BuildCassetteDispatcherWithSink is the EventSink-aware variant of
+// BuildCassetteDispatcher. sink receives AgentCalled / AgentReturned /
+// AgentError events on replay (wave 3-agent parallel write). When priorHist
+// is non-nil, SeedMatchCountsFromHistory is called first so that post-resume
+// matches produce collision-free call_ids.
+func BuildCassetteDispatcherWithSink(
+	cas *Cassette,
+	handlerName string,
+	stateOf func() string,
+	fallback host.Handler,
+	recordSink func(ep *CassetteEpisode),
+	clk clock.Clock,
+	sink store.EventSink,
+	priorHist store.History,
+) host.Handler {
+	if priorHist != nil {
+		cas.SeedMatchCountsFromHistory(priorHist)
+	}
+	return buildCassetteDispatcherFull(cas, handlerName, stateOf, fallback, recordSink, clk, nil, nil, sink)
 }
 
 func buildCassetteDispatcherFull(
@@ -419,7 +646,8 @@ func buildCassetteDispatcherFull(
 	recordSink func(ep *CassetteEpisode),
 	clk clock.Clock,
 	jw journal.Writer,
-	journalLookup OracleJournalLookup,
+	journalLookup AgentJournalLookup,
+	eventSink store.EventSink,
 ) host.Handler {
 	return func(ctx context.Context, args map[string]any) (host.Result, error) {
 		statePath := stateOf()
@@ -431,10 +659,18 @@ func buildCassetteDispatcherFull(
 			// so UnmatchedEpisodes doesn't count them as orphans, while still
 			// being re-matchable (MatchEpisode skips only when played && not any).
 			ep.played = true
+			// Allocate and advance the per-episode match counter atomically under mu.
+			// This is the matchIdx used in call_id derivation: for replay:any
+			// episodes each match gets a distinct idx; normal episodes always get 0.
+			if cas.episodeMatchCounts == nil {
+				cas.episodeMatchCounts = make(map[string]int)
+			}
+			matchIdx := cas.episodeMatchCounts[ep.ID]
+			cas.episodeMatchCounts[ep.ID] = matchIdx + 1
 			// Capture values before releasing lock.
 			resp := ep.Response
 			delay := ep.Delay
-			oracleBlock := ep.Oracle
+			agentBlock := ep.Agent
 			epID := ep.ID
 			cas.mu.Unlock()
 
@@ -446,9 +682,14 @@ func buildCassetteDispatcherFull(
 				}
 			}
 
-			// Phase 2: write KindOracleCall journal entry when oracle: block present.
-			if oracleBlock != nil && jw != nil {
-				writeOracleJournalEntry(ctx, jw, cas, epID, oracleBlock)
+			// Wave 3-agent / B-4: write AgentCalled+AgentReturned to JSONL sink.
+			// The SQLite journal write was removed in B-4 — cassette dispatch is
+			// sink-only now. B-5 will delete agent_journal.go entirely.
+			// matchIdx is threaded through so the emitted AgentCalled event carries
+			// episode_id and match_idx; on post-resume reload these are used by
+			// SeedMatchCountsFromHistory to restore the counter.
+			if agentBlock != nil && eventSink != nil {
+				writeCassetteAgentEvents(ctx, eventSink, cas, epID, matchIdx, agentBlock)
 			}
 
 			if resp.InfraError != "" {
@@ -485,16 +726,24 @@ func buildCassetteDispatcherFull(
 		if recordSink != nil {
 			synth := synthesiseEpisode(handlerName, args, statePath, cas, liveResult)
 
-			// Phase 3: for host.oracle.* handlers, read the KindOracleCall entry
-			// the live handler just wrote and capture it in the episode's oracle: block.
-			// Derive the verb from the handler name (e.g. "task" from "host.oracle.task").
-			if strings.HasPrefix(handlerName, "host.oracle.") && journalLookup != nil {
-				verb := strings.TrimPrefix(handlerName, "host.oracle.")
+			// Phase 3: for host.agent.* handlers, read the KindAgentCall entry
+			// the live handler just wrote and capture it in the episode's agent: block.
+			// Derive the verb from the handler name (e.g. "task" from "host.agent.task").
+			if strings.HasPrefix(handlerName, "host.agent.") && journalLookup != nil {
+				verb := strings.TrimPrefix(handlerName, "host.agent.")
 				if body, ok := journalLookup(ctx, verb); ok {
 					// Compute the deterministic call_id for this episode.
-					detCallID := derivedCallID(cas.AppID, synth.ID)
-					synth.Oracle = oracleBodyToEpisode(body, detCallID)
-					synth.Oracle.Turn = int64(host.OracleCallCtxFrom(ctx).Turn)
+					detCallID := host.DeriveCallID(cas.AppID, synth.ID)
+					synth.Agent = agentBodyToEpisode(body, detCallID)
+					synth.Agent.Turn = int64(host.AgentCallCtxFrom(ctx).Turn)
+					// Phase 3 (agent-action-transcripts): fold the live captured
+					// transcript+timings into the episode so a re-record carries the
+					// agent's actions, and a subsequent replay reproduces the sidecar
+					// verbatim. Best-effort: the live handler wrote it under its own
+					// (live) call_id; we read that sidecar from ctx's transcripts dir.
+					if et := foldLiveTranscript(ctx, body.CallID); et != nil {
+						synth.Agent.Transcript = et
+					}
 				}
 			}
 
@@ -504,19 +753,31 @@ func buildCassetteDispatcherFull(
 	}
 }
 
-// writeOracleJournalEntry constructs a KindOracleCall journal.Entry from an
-// EpisodeOracle block and writes it to jw. The call_id is the deterministic
-// value derived from cas.AppID + episodeID (§7); the stored oracle.call_id is
-// advisory and is overridden here to keep re-records byte-stable.
-//
-// The oracle call context (session, turn, state) is read from ctx via the
-// standard host.OracleCallCtxFrom helper so the entry lands in the correct
-// session's journal row.
-func writeOracleJournalEntry(ctx context.Context, jw journal.Writer, cas *Cassette, epID string, o *EpisodeOracle) {
-	callID := derivedCallID(cas.AppID, epID)
-	oc := host.OracleCallCtxFrom(ctx)
+// The SQLite agent journal (agent_journal.go) was deleted in B-5.
+// AgentCalled / AgentReturned events flow to the JSONL EventSink only.
+// BuildCassetteDispatcherWithJournal retains its jw parameter for API
+// backwards compat; the journal write path is gone.
 
-	// Marshal Input (any) to json.RawMessage for the journal entry.
+// writeCassetteAgentEvents writes an AgentCalled + AgentReturned (or
+// AgentError) event pair to sink for a cassette episode replay (legacy dispatcher
+// path; the cassetteAgent transport also uses this implicitly via Dispatch).
+//
+// call_id is derived deterministically as:
+//
+//	sha256("agent-call:" + appID + ":" + episodeID + ":" + matchIdx)[:16]
+//
+// using host.DeriveCallID. matchIdx is the 0-based match counter allocated by
+// buildCassetteDispatcherFull atomically under cas.mu. For replay:any episodes
+// each call gets a distinct matchIdx so the call_id differs per match even
+// though the episode body is identical. episode_id and match_idx are
+// written as top-level fields on the AgentCalled event so that post-resume
+// SeedMatchCountsFromHistory can reconstruct the counters.
+func writeCassetteAgentEvents(ctx context.Context, sink store.EventSink, cas *Cassette, epID string, matchIdx int, o *EpisodeAgent) {
+	callID := host.DeriveCallID(cas.AppID, fmt.Sprintf("%s:%d", epID, matchIdx))
+	oc := host.AgentCallCtxFrom(ctx)
+	now := time.Now()
+
+	// Build input raw from the agent block (best-effort).
 	var inputRaw json.RawMessage
 	if o.Input != nil {
 		if b, merr := json.Marshal(o.Input); merr == nil {
@@ -524,49 +785,148 @@ func writeOracleJournalEntry(ctx context.Context, jw journal.Writer, cas *Casset
 		}
 	}
 
-	body := host.OracleCallBody{
-		CallID:         callID,
-		Verb:           o.Verb,
-		Agent:          o.Agent,
-		Model:          o.Model,
-		DurationMS:     o.DurationMs,
-		PromptTokens:   o.PromptTokens,
-		ResponseTokens: o.ResponseTokens,
-		CostUSD:        o.CostUSD,
-		SystemPrompt:   o.SystemPrompt,
-		Prompt:         o.Prompt,
-		Input:          inputRaw,
-		Response:       json.RawMessage(marshalOracleResponseString(o.Response)),
-		Error:          o.Error,
+	// AgentCalled: use now as dispatch time (cassette replay is instantaneous).
+	// Guarantee a prompt reference on every agent.call.start:
+	// large prompts spill to a sidecar file and
+	// are referenced via PromptFile; small (or any non-offloaded) prompts are
+	// embedded inline so a consumer never faces a missing reference. This mirrors
+	// the live host.Dispatch path (internal/host/agent_dispatch.go) — the
+	// cassette replay emitter must produce the same invariant as production.
+	promptFile, _ := host.StorePromptIfLargeForTest(ctx, o.CallID, o.Prompt)
+	inlinePrompt := ""
+	if promptFile == "" {
+		inlinePrompt = o.Prompt
+	}
+	// Stamp the live harness selection so a cassette-replayed agent event
+	// reflects which profile/model the operator selected for this turn — the
+	// same provenance the live path records (agent_event_sink.go). The active
+	// profile's resolved model (selection override or profile default) supersedes
+	// the cassette's static o.Model when present, so the trace matches the picker.
+	model := o.Model
+	profileName := host.ActiveProfileNameFromCtx(ctx)
+	effort := ""
+	if ap, ok := host.ActiveProfileFromContext(ctx); ok {
+		if ap.Provider.Model != "" {
+			model = ap.Provider.Model
+		}
+		effort = ap.Provider.Effort
+	}
+	calledPayload := host.AgentCalledPayload{
+		Verb:       o.Verb,
+		Agent:      o.Agent,
+		Model:      model,
+		Profile:    profileName,
+		Effort:     effort,
+		Prompt:     inlinePrompt,
+		PromptFile: promptFile,
+		Input:      inputRaw,
+	}
+	calledRaw, err := json.Marshal(calledPayload)
+	if err == nil {
+		calledEv := store.Event{
+			Turn:      oc.Turn,
+			Ts:        now,
+			Kind:      store.AgentCalled,
+			StatePath: oc.StatePath,
+			Payload:   json.RawMessage(calledRaw),
+			CallID:    callID,
+			EpisodeID: epID,
+			MatchIdx:  matchIdx,
+		}
+		_ = sink.Append(calledEv)
 	}
 
-	raw, err := json.Marshal(body)
-	if err != nil {
-		return // best-effort
-	}
+	// AgentReturned or AgentError: use now (slightly after) as response time.
+	returnedAt := time.Now()
+	if o.Error != "" {
+		errPayload := host.AgentErrorPayload{
+			Verb:       o.Verb,
+			Agent:      o.Agent,
+			DurationMS: o.DurationMs,
+			Error:      o.Error,
+		}
+		errRaw, merr := json.Marshal(errPayload)
+		if merr == nil {
+			errEv := store.Event{
+				Turn:      oc.Turn,
+				Ts:        returnedAt,
+				Kind:      store.AgentError,
+				StatePath: oc.StatePath,
+				Payload:   json.RawMessage(errRaw),
+				CallID:    callID,
+			}
+			_ = sink.Append(errEv)
+		}
+	} else {
+		responseRaw := json.RawMessage(marshalAgentResponseString(o.Response))
 
-	turn := oc.Turn
-	if o.Turn > 0 {
-		turn = app.TurnNumber(o.Turn)
-	}
+		// Replay the recorded agent-action transcript: write the verbatim events
+		// (+ timings) to the <call_id>.jsonl sidecar via the TranscriptWriter in
+		// ctx and reference it from this agent.call.complete by a transcript_ref
+		// pointer. No live tool runs; the sidecar is byte-identical to the record.
+		// Nil/empty (no transcript: block) is a no-op, so legacy episodes are
+		// unaffected. Mirrors the live host.Dispatch transcript_ref flow.
+		var transcriptRef *host.TranscriptRef
+		if o.Transcript != nil {
+			transcriptRef = host.WriteReplayTranscript(ctx, callID,
+				o.Transcript.Format, o.Transcript.eventLines(), o.Transcript.Timings)
+		}
 
-	e := journal.Entry{
-		Ts:      time.Now(),
-		Session: oc.SessionID,
-		Turn:    turn,
-		Seq:     0,
-		Kind:    journal.KindOracleCall,
-		Body:    json.RawMessage(raw),
+		// Surface recorded token usage + cost in the canonical opaque-meta shape
+		// the live claude-CLI transport emits (meta.usage.{input,output}_tokens +
+		// meta.cost_usd), so a cassette-replayed agent.call.complete carries the
+		// same cost signal the runstatus usage meter aggregates as a real trace.
+		// Without this the host-cassette replay path dropped usage entirely and
+		// the meter under-reported the agent's spend as $0. Mirrors
+		// cassetteAgent.Ask (cassette_agent.go).
+		var meta map[string]any
+		if o.PromptTokens > 0 || o.ResponseTokens > 0 || o.CostUSD > 0 {
+			meta = map[string]any{}
+			if o.PromptTokens > 0 || o.ResponseTokens > 0 {
+				usage := map[string]any{}
+				if o.PromptTokens > 0 {
+					usage["input_tokens"] = o.PromptTokens
+				}
+				if o.ResponseTokens > 0 {
+					usage["output_tokens"] = o.ResponseTokens
+				}
+				meta["usage"] = usage
+			}
+			if o.CostUSD > 0 {
+				meta["cost_usd"] = o.CostUSD
+			}
+		}
+
+		retPayload := host.AgentReturnedPayload{
+			Verb:          o.Verb,
+			Agent:         o.Agent,
+			Model:         o.Model,
+			DurationMS:    o.DurationMs,
+			Response:      responseRaw,
+			TranscriptRef: transcriptRef,
+			Meta:          meta,
+		}
+		retRaw, merr := json.Marshal(retPayload)
+		if merr == nil {
+			retEv := store.Event{
+				Turn:      oc.Turn,
+				Ts:        returnedAt,
+				Kind:      store.AgentReturned,
+				StatePath: oc.StatePath,
+				Payload:   json.RawMessage(retRaw),
+				CallID:    callID,
+			}
+			_ = sink.Append(retEv)
+		}
 	}
-	_ = jw.Append(e)
 }
 
-// marshalOracleResponseString converts the response string from an
-// EpisodeOracle to the JSON form expected in OracleCallBody.Response
+// marshalAgentResponseString converts the response string from an
+// EpisodeAgent to the JSON form expected in AgentCallBody.Response
 // (a JSON-encoded string value). If the response is already valid JSON, it is
 // returned as-is (allowing rich response objects); otherwise it is wrapped in a
 // JSON string literal.
-func marshalOracleResponseString(s string) []byte {
+func marshalAgentResponseString(s string) []byte {
 	if s == "" {
 		return nil
 	}
@@ -582,11 +942,67 @@ func marshalOracleResponseString(s string) []byte {
 	return b
 }
 
-// oracleBodyToEpisode converts a host.OracleCallBody into an EpisodeOracle
+// foldLiveTranscript reads the live agent-action transcript sidecar the live
+// agent handler just wrote (keyed by its live call_id) and returns it as an
+// EpisodeTranscript for folding into a recorded episode. The sidecar lives in
+// the run's transcripts/ dir, the sibling of the agent-prompts/ dir installed
+// in ctx (see orchestrator host_dispatch). Returns nil when no prompts dir is in
+// ctx, no sidecar exists for liveCallID, or it is empty — record mode then
+// simply omits the transcript: block (best-effort; never aborts a recording).
+//
+// The .timings sidecar ("<idx> <ms>" per line) is parsed back into the per-event
+// offset slice so a subsequent replay reproduces the waterfall verbatim.
+func foldLiveTranscript(ctx context.Context, liveCallID string) *EpisodeTranscript {
+	if liveCallID == "" {
+		return nil
+	}
+	promptsDir := host.AgentPromptsDirFromCtx(ctx)
+	if promptsDir == "" {
+		return nil
+	}
+	transcriptsDir := filepath.Join(filepath.Dir(promptsDir), "transcripts")
+	jsonlPath := filepath.Join(transcriptsDir, liveCallID+".jsonl")
+	raw, err := os.ReadFile(jsonlPath)
+	if err != nil || len(strings.TrimSpace(string(raw))) == 0 {
+		return nil
+	}
+	var events []any
+	for _, line := range strings.Split(strings.TrimRight(string(raw), "\n"), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		// Store as a string element (verbatim JSON line); eventLines re-canonicalizes.
+		events = append(events, line)
+	}
+	if len(events) == 0 {
+		return nil
+	}
+	et := &EpisodeTranscript{Format: "claude-stream-json", Events: events}
+	// Parse the parallel .timings sidecar ("<idx> <ms>" per line), preserving order.
+	if traw, terr := os.ReadFile(filepath.Join(transcriptsDir, liveCallID+".timings")); terr == nil {
+		for _, line := range strings.Split(strings.TrimRight(string(traw), "\n"), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) != 2 {
+				continue
+			}
+			ms, perr := strconv.ParseInt(fields[1], 10, 64)
+			if perr != nil {
+				continue
+			}
+			et.Timings = append(et.Timings, ms)
+		}
+		if len(et.Timings) != len(et.Events) {
+			et.Timings = nil // mismatch — drop rather than misalign the waterfall
+		}
+	}
+	return et
+}
+
+// agentBodyToEpisode converts a host.AgentCallBody into an EpisodeAgent
 // suitable for embedding in a cassette episode. detCallID is the deterministic
-// call_id computed from the episode identity (§7); it overrides the UUID the
+// call_id computed from the episode identity; it overrides the UUID the
 // live handler generated.
-func oracleBodyToEpisode(b *host.OracleCallBody, detCallID string) *EpisodeOracle {
+func agentBodyToEpisode(b *host.AgentCallBody, detCallID string) *EpisodeAgent {
 	responseStr := ""
 	if b.Response != nil {
 		// Store the raw JSON response string for .txt sidecar friendliness;
@@ -603,9 +1019,9 @@ func oracleBodyToEpisode(b *host.OracleCallBody, detCallID string) *EpisodeOracl
 	// Prompt/SystemPrompt, and storing map[string]interface{} values through
 	// goccy/go-yaml v1.19.2 can cause encoder stack overflow on certain YAML-
 	// decoded map structures. The Prompt and Response fields are sufficient for
-	// fromhistory to synthesise oracle.<verb>.start/.complete trace events.
+	// fromhistory to synthesise agent.<verb>.start/.complete trace events.
 
-	return &EpisodeOracle{
+	return &EpisodeAgent{
 		CallID:         detCallID,
 		Verb:           b.Verb,
 		Agent:          b.Agent,
@@ -628,15 +1044,15 @@ func synthesiseEpisode(handlerName string, args map[string]any, statePath string
 		matchMap["phase"] = cas.phaseFromStatePath(statePath)
 	}
 
-	// For oracle handlers:
+	// For agent handlers:
 	//   1. Only match on handler + phase (skip args — they contain YAML-decoded
 	//      nested maps that trigger a goccy/go-yaml v1.19.2 encoder stack overflow).
 	//   2. Don't store result.Data — it contains deeply-nested JSON-decoded values
 	//      (e.g. the "submitted" artifact) that also cause the YAML overflow. On
-	//      replay the live oracle fallback is always called, so the stored response
+	//      replay the live agent fallback is always called, so the stored response
 	//      data is never used.
 	var respData map[string]any
-	if !strings.HasPrefix(handlerName, "host.oracle.") {
+	if !strings.HasPrefix(handlerName, "host.agent.") {
 		for k, v := range args {
 			if k != "handler" && k != "phase" && k != "schema_name" {
 				matchMap[k] = v
@@ -690,7 +1106,7 @@ func CassetteStrictRecording() bool {
 // AppendEpisodeToFile appends ep to the cassette file at cas.path.
 //
 // Rather than re-marshaling the entire cassette (which can stack-overflow on
-// large oracle responses when goccy/go-yaml encodes deeply-nested any values),
+// large agent responses when goccy/go-yaml encodes deeply-nested any values),
 // we marshal only the new episode and raw-append it to the existing file.
 // The episode is indented by two spaces to slot into the episodes: list.
 func AppendEpisodeToFile(cas *Cassette, ep *CassetteEpisode) error {

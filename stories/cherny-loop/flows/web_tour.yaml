@@ -1,0 +1,124 @@
+# Mode-2 proof of the autonomous loop path: configure a script-gated loop, then
+# `launch` ONCE — the loop verifies the gate is RED (baseline) and runs itself to
+# the iteration ceiling without any further operator input. Lands directly in
+# configuring (the root — no idle/begin ceremony).
+#
+# Realistic, CONVERGING scenario: fix a token-bucket rate limiter. Each gate run
+# surfaces a DIFFERENT, progressively-deeper failure (burst → refill → race →
+# deadlock) and each maker step fixes the one the gate just named — visible
+# convergence, not blind retrying. The budget (3) stops it mid-convergence, which
+# is exactly why the budget guard exists.
+#
+# Budget is 3 because the autonomous run is one emit_intent chain and the engine
+# caps chain depth at 8 (two hops per iteration). Larger budgets need the
+# background-job runner — a real constraint the story exposes.
+#
+# Per-call stubbing: maker (host.agent.task) and gate (host.run) carry a
+# templated `id:` (maker-N / gate-N; gate-0 is the baseline) threaded into
+# args.call, so `by_call:` returns a distinct response per iteration.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:
+    by_call:
+      gate-0:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: |-
+            --- FAIL: TestAllow_Burst (0.00s)
+                limiter_test.go:34: burst of 5 rejected at request #4 (want all 5 allowed)
+            FAIL	kitsoki/internal/ratelimit	0.012s
+      gate-1:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: |-
+            --- FAIL: TestAllow_Refill (0.00s)
+                limiter_test.go:52: after 1s, 0 tokens refilled (want 10 at rate 10/s)
+            FAIL	kitsoki/internal/ratelimit	0.011s
+      gate-2:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: |-
+            --- FAIL: TestAllow_Concurrent (0.02s)
+                limiter_test.go:68: data race: 12/100 goroutines double-spent a token
+            FAIL	kitsoki/internal/ratelimit	0.024s
+      gate-3:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: |-
+            --- FAIL: TestAllow_Concurrent (1.20s)
+                limiter_test.go:68: timeout: Allow held the lock across time.Sleep (deadlock)
+            FAIL	kitsoki/internal/ratelimit	1.231s
+  host.agent.task:
+    by_call:
+      maker-1: { data: { submitted: { summary: "Initialize the bucket with tokens=burst so a cold limiter allows a full burst" } } }
+      maker-2: { data: { submitted: { summary: "Refill tokens by elapsed×rate on each Allow, capped at the burst size" } } }
+      maker-3: { data: { submitted: { summary: "Guard the token read-modify-write with a mutex to kill the double-spend race" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  # configure sets the goal + script gate + budget (the web demo routes a free-text
+  # message to this same intent via the replay recording; here we submit it
+  # explicitly as the Mode-2 proof).
+  - intent:
+      name: configure
+      slots:
+        goal:             "Get `go test ./internal/ratelimit` green"
+        gate_command:     "go test ./internal/ratelimit"
+        gate_mode:        "script"
+        iteration_budget: 3
+    expect_state: configuring
+    expect_world:
+      goal_text:        "Get `go test ./internal/ratelimit` green"
+      gate_command:     "go test ./internal/ratelimit"
+      iteration_budget: 3
+  # launch runs the WHOLE loop autonomously in one turn: baseline RED →
+  # auto-proceed → iterate 1..3 → stop at the iteration ceiling.
+  - intent: { name: launch, slots: {} }
+    expect_state: __exit__exhausted
+    expect_world:
+      terminal_reason: "iteration_budget"
+      iteration:       3
+      maker_summary:   "Guard the token read-modify-write with a mutex to kill the double-spend race"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-1 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-1 }
+        times: 1
+      - handler: host.run
+        args: { call: gate-1 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-2 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-2 }
+        times: 1
+      - handler: host.run
+        args: { call: gate-2 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-3 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-3 }
+        times: 1
+      - handler: host.run
+        args: { call: gate-3 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

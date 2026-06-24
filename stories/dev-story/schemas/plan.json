@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "plan",
+  "description": "An ad-hoc, executable plan the workbench planner proposes for a concrete piece of work: one goal, exactly one executable step, and a verify gate that proves the step landed. A strict subset of cherny-loop's gate_plan.json (single step, single verify) so an accepted plan can be handed straight to cherny-loop when iteration is wanted. The operator accepts it as-is (accept_plan) or refines it (free text → the work sink re-dispatches the planner with the prior plan); apply runs the step then runs verify and routes on a real pass/fail verdict.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["goal", "step", "verify"],
+  "properties": {
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One line: the contract this plan satisfies, e.g. 'Migrate repo-local issues/ to GitHub issues.'"
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "description", "mutating"],
+      "description": "Exactly one executable step (single-step is the v1 scope; multi-step is cherny-loop's job).",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["run", "agent"],
+          "description": "How the step is carried out. 'run' / 'agent' both dispatch the landing_agent prompted with the ACCEPTED plan as its instruction (not a fresh re-prose)."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What the step does, concretely, e.g. 'Create a GitHub issue per file in issues/, mapping frontmatter.'"
+        },
+        "mutating": {
+          "type": "boolean",
+          "description": "True ⇒ apply holds for the operator's write-mode grant before the effect lands."
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "reason"],
+      "description": "The gate that proves the step is done. A subset of gate_plan's gate config.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["script", "agent", "hybrid"],
+          "description": "script: a Starlark verify script (default, preferred); agent: an adversarial gate_reviewer; hybrid: both."
+        },
+        "script": {
+          "type": "string",
+          "description": "Path to the Starlark verify script (relative to the story), e.g. 'verify/issues_migrated.star'. Required for script/hybrid; empty for pure agent gates."
+        },
+        "inputs": {
+          "type": "object",
+          "description": "Typed inputs for the verify script, validated by the script's .star.yaml sidecar, e.g. { expected_min: 3 }.",
+          "additionalProperties": true
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why this gate proves the goal is done, e.g. 'Passes iff GitHub lists >= expected_min open issues matching the local set.'"
+        }
+      }
+    }
+  }
+}

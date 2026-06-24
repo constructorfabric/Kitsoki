@@ -1,0 +1,131 @@
+# conflict-resolve — shared, importable conflict-resolution sub-flow.
+#
+# Extracted from git-ops so BOTH the git-ops hub AND the delivery-tail landing
+# path import the SAME resolver as peers (the kitsoki "extract a third story"
+# pattern — see docs/stories/imports.md; you cannot import a single room, so the
+# reusable piece is its own story with clean @exit: exits).
+#
+# CONTRACT: the caller enters this story with a rebase (or merge) ALREADY IN
+# PROGRESS in `working_dir`, stopped on conflicts that the caller's own rerere
+# replay could NOT auto-resolve (the never-seen hunks). This story then:
+#
+#   gather conflicted files
+#     └─ go.sum only        → go mod tidy → rebase --continue → @exit:resolved
+#     └─ real conflicts     → conflict_resolver agent (Read/Edit only) →
+#                             story stages + `git rebase --continue`
+#                             (this RECORDS the resolution into rerere, so the
+#                              NEXT branch to hit the same hunk auto-resolves) →
+#                             build-check →
+#                                green  → @exit:resolved
+#                                agent could-not-resolve / build red:
+#                                   auto_escalate=true (headless tail) → @exit:escalated
+#                                   auto_escalate=false (operator present) → hold
+#                                       for `guide`/`abort` in-room (git-ops hub)
+#
+# The caller owns STARTING the rebase and ROUTING the exits (git-ops branches
+# resolved by conflict_origin → main_ops/branch_ops; the tail re-enters integrate
+# so the now-rerere-recorded resolution replays and the merge completes).
+
+app:
+  id: conflict-resolve
+  version: 0.1.0
+  title: "conflict-resolve — agent + rerere conflict resolution (importable)"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.agent.task
+
+# conflict_resolver: tools [Read, Edit], NO Bash — the write-fence. The agent
+# physically cannot run git; the story drives every git command. Correctness is
+# gated by acceptance.post_cmd (git diff --check) + the post-continue build check.
+agents:
+  conflict_resolver:
+    system_prompt: |
+      You are a conflict resolver. Your only job is to resolve merge conflicts in
+      the files listed. Strategy: preserve both sides' intent — take the target
+      branch version as the base and re-apply the additive changes from the source
+      branch on top. For non-ASCII binary files: write a clean version from scratch.
+      You MUST NOT run any git commands. You MUST NOT stage files, commit, push,
+      or checkout branches. Edit the working tree only; the story drives every git
+      command. Remove all conflict markers (<<<<<<, ======, >>>>>>) before reporting
+      resolved=true.
+    model: claude-sonnet-4-6
+    tools: [Read, Edit]
+    external_side_effect: false
+
+world:
+  # ── World-in (caller seeds these) ──────────────────────────────────────────
+  working_dir:              { type: string, default: "." }   # the worktree with the in-progress rebase
+  current_branch:           { type: string, default: "" }    # the branch being rebased (source/incoming)
+  integration_branch:       { type: string, default: "main" }# the branch rebased onto (target/HEAD)
+  build_check_cmd:          { type: string, default: "go build ./... && go test ./..." }
+  build_check_disabled:     { type: bool,   default: false }
+  # auto_escalate: headless callers (the tail) set true so an unresolved conflict
+  # exits @exit:escalated instead of waiting for an operator's guide/abort. The
+  # git-ops hub leaves it false — an operator is present to steer.
+  auto_escalate:            { type: bool,   default: false }
+  # conflict_origin is carried through untouched for the caller's exit routing
+  # (git-ops: pull vs rebase → main_ops vs branch_ops). This story does not read it.
+  conflict_origin:          { type: string, default: "" }
+
+  # ── Internal / minted ──────────────────────────────────────────────────────
+  conflict_files:           { type: string, default: "" }    # may be pre-seeded by a test/caller
+  conflict_verdict:         { type: object, default: {} }
+  conflict_intent_guidance: { type: string, default: "" }    # operator guidance for a retry
+  last_op_output:           { type: string, default: "" }
+  last_op_ok:               { type: bool,   default: true }
+  last_op_outcome:          { type: string, default: "" }     # go_sum_fixed | build_failed | escalation
+  rebase_done:              { type: bool,   default: false }
+  last_error:               { type: string, default: "" }     # the real failure on @exit:escalated
+  status:                   { type: string, default: "" }     # needs-human on escalation
+
+intents:
+  # Entry stub (standalone flow tests transition INTO conflict to fire on_enter).
+  begin:
+    description: "Enter the resolver at the conflict room (flow-test bootstrap)."
+    examples: ["begin", "start"]
+    priority: 80
+  # Operator-facing (interactive callers, e.g. the git-ops hub).
+  guide:
+    description: "Provide high-level guidance and retry the resolver agent."
+    examples: ["guide", "hint", "use ours", "keep theirs", "take main"]
+    priority: 60
+    slots:
+      intent: { type: string, required: false }
+  abort:
+    description: "git rebase --abort and exit (caller decides where to land)."
+    examples: ["abort", "cancel", "give up"]
+    priority: 55
+  # Internal routing (post-bind guarded emits from the conflict room).
+  gosum_fix:
+    description: "(internal) only go.sum conflicts — resolve via go mod tidy."
+    examples: []
+    priority: 1
+  rebase_continue:
+    description: "(internal) stage the resolution and git rebase --continue."
+    examples: []
+    priority: 1
+  conflict_resolved:
+    description: "(internal) resolution clean + build green → @exit:resolved."
+    examples: []
+    priority: 1
+  escalate:
+    description: "(internal) headless: agent could not resolve / build red → @exit:escalated."
+    examples: []
+    priority: 1
+  look:
+    description: "Re-render the current room."
+    examples: ["look", "status"]
+    priority: 5
+
+exits:
+  resolved:  { requires: [] }              # rebase --continue done, build green
+  aborted:   { requires: [] }              # operator aborted the rebase
+  escalated: { requires: [last_error] }    # could not resolve — caller routes to needs-human
+
+root: bootstrap
+
+include:
+  - rooms/*.yaml

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -56,6 +55,29 @@ func detectAutoStyle() string {
 		}
 	})
 	return autoStyleName
+}
+
+// sourceColorThemeFor maps a detectAutoStyle() result to the
+// sourcecolor palette. A light terminal gets LightTheme so the
+// LLM/template bands read as pale tints; dark and notty (test / piped)
+// terminals keep DarkTheme — the historical default — so existing
+// output and test assertions are unchanged.
+//
+// Without this, FlushPending hard-coded DarkTheme, painting a dark
+// bronze band behind LLM-sourced text even on a light terminal: the
+// "dark-mode background with no dark background" regression a
+// light-terminal operator hit after the source-color feature landed.
+func sourceColorThemeFor(styleName string) sourcecolor.Theme {
+	if styleName == "light" {
+		return sourcecolor.LightTheme
+	}
+	return sourcecolor.DarkTheme
+}
+
+// sourceColorTheme resolves the active sourcecolor palette from the
+// detected terminal background.
+func sourceColorTheme() sourcecolor.Theme {
+	return sourceColorThemeFor(detectAutoStyle())
 }
 
 // transcriptEntry is one item in the transcript history.
@@ -136,6 +158,11 @@ func newTranscriptModel(width, height int) transcriptModel {
 		glamour.WithPreservedNewLines(),
 	)
 	if err != nil {
+		// Markdown formatting is degraded: Render() will fall back to
+		// emitting raw text (see renderMarkdown's nil-renderer guard).
+		// Surface it so operators know why the transcript looks plain.
+		slog.Warn("transcript: glamour renderer init failed; markdown formatting disabled",
+			"err", err)
 		renderer = nil
 	}
 
@@ -168,6 +195,10 @@ func (m *transcriptModel) queue(body string) {
 	if w := m.queueWrapWidth(); w > 0 {
 		body = ansi.Hardwrap(body, w, true)
 	}
+	// Invariant: the live spinner/queue indicator (⏳) must never reach
+	// scrollback — it belongs to the View() bottom region only. This is
+	// guarded by a test (TestTranscriptQueue_NoIndicatorLeak) rather than
+	// a live-path slog.Warn, so the prod queue() stays free of BUG noise.
 	m.pending = append(m.pending, body)
 }
 
@@ -209,7 +240,7 @@ func (m *transcriptModel) FlushPending() tea.Cmd {
 	items := m.pending
 	m.pending = nil
 	joined := strings.Join(items, "\n")
-	joined = sourcecolor.Colorize(joined, sourcecolor.DarkTheme, sourcecolor.Options{
+	joined = sourcecolor.Colorize(joined, sourceColorTheme(), sourcecolor.Options{
 		Width: m.queueWrapWidth(),
 	})
 	return tea.Println(joined)
@@ -226,8 +257,7 @@ func (m *transcriptModel) LiveLine() string { return m.liveLine }
 // the orchestrator. Pairs with AppendAgentBody for the body that lands
 // once the orchestrator finishes.
 //
-// Used by submitInput in the single-pane redesign (proposal §"Input
-// feedback").
+// Used by submitInput to give immediate input feedback.
 func (m *transcriptModel) AppendUserInputEcho(input string) {
 	if input == "" {
 		return
@@ -278,6 +308,11 @@ func (m *transcriptModel) AppendLive(body string) int {
 	return 0
 }
 
+// hasLive reports whether an in-flight live line is active (not yet settled).
+// Callers guard FinalizeLive on it so a turn-completion finalizer and an
+// observer hit event can't both commit the same routing line.
+func (m *transcriptModel) hasLive() bool { return m.liveLine != "" }
+
 // UpdateLive replaces the in-flight line. No-op when no live line is
 // active — defensive against late-arriving tier events that fire
 // after settlement.
@@ -305,7 +340,7 @@ func (m *transcriptModel) FinalizeLive(body string) {
 
 // AppendBlock appends a pre-rendered styled multi-line body verbatim —
 // no Markdown pipeline, no extra styling. Used by slash commands that
-// render their own output (e.g. /help, /actions) via internal/tui/blocks.
+// render their own output (e.g. /help, /intents) via internal/tui/blocks.
 func (m *transcriptModel) AppendBlock(body string) {
 	if body == "" {
 		return
@@ -478,7 +513,7 @@ func (m *transcriptModel) AppendTurn(userInput, view string) {
 // option (a)). It stores the parsed View, the runtime env, and the
 // per-app renderer so the entry can be re-rendered at the new
 // viewport width on WindowSizeMsg without losing the "templating
-// happens before element layout" contract of the proposal §4.
+// happens before element layout" contract.
 //
 // The fallback string view (rendered at the machine's stable width)
 // is used immediately for the initial paint; subsequent resize-driven
@@ -561,7 +596,21 @@ func (m *transcriptModel) renderViewWith(v app.View, env expr.Env, rr *render.Ap
 	if rr != nil {
 		leafRR = rr
 	}
-	out, err := elements.RenderAll(v, env, wrap, m.renderGlamour, leafRR)
+	// Legacy scalar `view:` interception. app.LegacyView normalises the
+	// hand-authored markdown to one {Kind:"template"} element that renders
+	// through renderGlamour — which uses WithPreservedNewLines and so caps
+	// pure prose at the author's hand-wrap column (it never grows on a wide
+	// panel). Split the source into blank-line blocks and route pure-prose
+	// blocks through the reflowing `prose` element while leaving structured
+	// blocks (lists, headings, indented examples) on the Glamour path. The
+	// original view is kept for the on-error SourceString fallback.
+	renderView := v
+	if v.Source != "" && len(v.Elements) == 1 && v.Elements[0].Kind == "template" {
+		if split := elements.SplitLegacyView(v.Source); len(split) > 0 {
+			renderView = app.View{Source: v.Source, Elements: split}
+		}
+	}
+	out, err := elements.RenderAll(renderView, env, wrap, m.renderGlamour, leafRR)
 	if err != nil {
 		// On a render error fall back to the raw source — better to show
 		// the un-styled template body than to drop the turn entirely.
@@ -688,7 +737,7 @@ func startsWithListMarker(s string) bool {
 	return false
 }
 
-// AppendOffPathAnswer appends an oracle reply styled with the soft off-path
+// AppendOffPathAnswer appends an agent reply styled with the soft off-path
 // amber tint. The reply runs through the same Markdown pipeline as
 // AppendTurn so formatting (lists, code blocks) renders cleanly. Pass
 // userInput="" when the caller already appended the question header in a
@@ -845,7 +894,7 @@ func (m *transcriptModel) ScrollToLine(n int) {
 
 // AppendMetaStreamLine appends a single muted "→ <text>" line to the
 // transcript.  Used by the meta-mode stream observer to render live
-// progress from a streaming oracle call (tool calls, narration,
+// progress from a streaming agent call (tool calls, narration,
 // retry notes) above the eventual final assistant reply.  The leading
 // arrow matches AppendError / AppendGuardHint / AppendDisambig so the
 // reader sees a consistent prefix for engine-side breadcrumbs.
@@ -867,7 +916,7 @@ func (m *transcriptModel) AppendMetaStreamLine(text string) {
 // AppendRoomBanner emits a room-entry banner above the in-flight
 // tool-call breadcrumbs. The orchestrator fires this when a turn
 // lands in a new room (top-level state change) BEFORE its on_enter
-// host calls dispatch, so a long oracle / Bash / Read stream lands
+// host calls dispatch, so a long agent / Bash / Read stream lands
 // beneath the banner instead of leading it.
 //
 // banner is the pre-styled output from elements.Banner.Render (ANSI
@@ -967,6 +1016,22 @@ func (m *transcriptModel) AppendError(userInput, msg string) {
 	m.queue(body)
 }
 
+// AppendWarning appends a non-fatal warning: something didn't take
+// (e.g. a story edit failed to reload), but the session keeps running on
+// its previous state. Styled amber with a ⚠ prefix so it reads as a
+// heads-up rather than the error-red of a hard failure. Mirrors
+// AppendError's header handling for a consistent "> input" anchor.
+func (m *transcriptModel) AppendWarning(userInput, msg string) {
+	body := warningStyle.Render("⚠ " + msg)
+	entry := transcriptEntry{body: body}
+	if userInput != "" {
+		entry.header = "> " + userInput
+		m.queue(turnHeaderStyle.Render(entry.header))
+	}
+	m.entries = append(m.entries, entry)
+	m.queue(body)
+}
+
 // AppendGuardHint appends a guard-failure hint. The leading arrow softens
 // the older "[blocked]" prefix: a guard refusal is information, not an
 // alarm — the user picked a valid intent and the world said "not now",
@@ -1055,8 +1120,8 @@ func (m transcriptModel) View() string {
 // ReconstructFromEntries replays a slice of journal entries (ordered by turn,
 // seq) into the transcript model, rehydrating it from durable journal data.
 //
-// This is the read side of the continue-mode transcript rehydration path
-// (proposal §4.6).  Each recognised entry kind maps to the corresponding live
+// This is the read side of the continue-mode transcript rehydration path.
+// Each recognised entry kind maps to the corresponding live
 // constructor; unrecognised kinds are skipped with a debug log line — the
 // method never panics on unknown kinds.
 //
@@ -1210,23 +1275,25 @@ func (m *transcriptModel) EntryCount() int {
 	return len(m.entries)
 }
 
+// LastBody returns the styled body of the most recently appended entry,
+// or "" when the transcript is empty. The live TUI never re-renders this
+// into View() (settled bodies live in scrollback via tea.Println); it is
+// exposed so the frame composer can include the current room body in a
+// single still Frame for headless callers (see ComposeFrame). Entries
+// that carry only a header (a bare user-input echo) contribute no body,
+// so this walks backwards to the last entry whose body is non-empty.
+func (m *transcriptModel) LastBody() string {
+	for i := len(m.entries) - 1; i >= 0; i-- {
+		if m.entries[i].body != "" {
+			return m.entries[i].body
+		}
+	}
+	return ""
+}
+
 func max(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
-}
-
-// scrollMsg is a generic viewport scroll message (for testing).
-type scrollMsg struct {
-	key string
-}
-
-// renderWidth returns the rendered width of a string via lipgloss measurement.
-func renderWidth(s string) int {
-	return lipgloss.Width(s)
-}
-
-func formatWidth(n int) string {
-	return fmt.Sprintf("%d", n)
 }

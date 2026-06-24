@@ -1,0 +1,37 @@
+# ticket_search_freeform_work — prose from the ticket browser enters the
+# free-form workbench instead of being interpreted as navigation.
+#
+# The live regression was: from ticket_search, the operator typed an actionable
+# prose request about migrating local issue files to GitHub. The LLM router
+# chose go_main, so the UI showed the landing/opening text and no agent work.
+# The room now declares default_intent: work, so unmatched prose is captured as
+# a workbench request and landing's existing landing_agent path runs.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: ticket_search
+initial_world:
+  ticket_results:
+    - { id: "1", title: "Seed ticket", status: "open", type: "bug" }
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Identified the local issue migration path and the GitHub target."
+        details: "Would inspect issues/, map local frontmatter to GitHub issue fields, and prepare a dry run."
+
+turns:
+  - intent:
+      name: work
+      slots:
+        request: "we have a bunch of tickets saved in the repo itself we need to migrate to github"
+    expect_state: landing
+    expect_world:
+      landing_request: "we have a bunch of tickets saved in the repo itself we need to migrate to github"
+      landing_note:
+        summary: "Identified the local issue migration path and the GitHub target."
+        details: "Would inspect issues/, map local frontmatter to GitHub issue fields, and prepare a dry run."
+
+expect_no_errors: true

@@ -1,5 +1,5 @@
-// parallel_test.go covers `type: parallel` runtime semantics
-// (proposal §9.4).  See parallel.go for the design notes.
+// parallel_test.go covers `type: parallel` runtime semantics.
+// See parallel.go for the design notes.
 package machine_test
 
 import (

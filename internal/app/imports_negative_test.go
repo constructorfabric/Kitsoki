@@ -10,7 +10,7 @@ import (
 )
 
 // TestImports_NegativeCases is a table-driven test of every validation
-// error the imports loader can surface (see docs/imports.md "Validation surface").
+// error the imports loader can surface (see docs/stories/imports.md "Validation surface").
 // Each case authors a minimal in-memory parent+child manifest pair,
 // writes them to a temp directory, runs Load, and asserts the expected
 // error fragment appears.

@@ -83,7 +83,8 @@ func TestDrive_JournalLifecycle(t *testing.T) {
 	// Collect the typed entries for this session and assert the four kinds.
 	gotKinds := map[string]int{}
 	gotByDrive := map[string][]string{} // drive_id → list of kinds
-	for e := range jr.ReplayTyped(app.SessionID(sid)) {
+	typedSeq, typedErr := jr.ReplayTyped(app.SessionID(sid))
+	for e := range typedSeq {
 		switch e.Kind {
 		case journal.KindChatDriveSubmitted,
 			journal.KindChatDriveCompleted,
@@ -98,6 +99,7 @@ func TestDrive_JournalLifecycle(t *testing.T) {
 			}
 		}
 	}
+	require.NoError(t, typedErr())
 
 	require.Equal(t, 3, gotKinds[journal.KindChatDriveSubmitted],
 		"expected 3 submitted entries (one per Enqueue)")

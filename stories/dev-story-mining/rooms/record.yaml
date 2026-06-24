@@ -1,0 +1,97 @@
+# record — phase 5/5. Climb the determinism ladder where the data supports it.
+#
+# The `recorder` persona reviews recorded decisions at existing gates and
+# reports any that one branch dominates enough to drop a rung (L2→L3→L4).
+# Finding NO ladder moves is a valid, honest outcome — record_artifact may
+# carry an empty `ladder_moves`. accept exits via @exit:done (which requires
+# record_artifact to be set — the loop's completion contract).
+
+states:
+
+  record:
+    description: "Review recorded decisions; propose any determinism-ladder moves."
+    view:
+      - banner:
+          text:     "RECORD"
+          subtitle: "Phase 5 / 5  ·  can a gate drop a rung? (L2→L3→L4)"
+          color:    "#10B981"
+      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }}"
+      - heading: "Ladder review"
+      - code: '{{ world.record_artifact.summary_markdown|default:"(pending — recorder has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "finish the loop"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-review with feedback"
+              intent: refine
+              param: { slot: feedback, type: string, placeholder: "what to reconsider", required: false }
+            - label:  "quit"
+              hint:   "abandon the loop"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [job, stories_dir, judge_mode, judge_confidence_threshold, author_artifact, record_artifact, llm_verdict, refine_feedback, cycle]
+    on_enter:
+      - invoke: host.agent.ask
+        once: true
+        with:
+          agent: recorder
+          schema: schemas/record_artifact.json
+          prompt: prompts/record_executing.md
+          args:
+            stories_dir:     "{{ world.stories_dir }}"
+            author_summary:  "{{ world.author_artifact.summary_markdown }}"
+        bind:
+          record_artifact: submitted
+        on_error: idle
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.agent.decide
+        with:
+          agent: judge
+          prompt: prompts/judge_generic.md
+          schema: schemas/judge_verdict.json
+          args:
+            phase:          "record"
+            artifact_title: "ladder review"
+            artifact_body:  "{{ world.record_artifact.summary_markdown }}"
+            criterion:      "Any proposed ladder move is justified by a dominated decision distribution over a meaningful sample; an empty ladder_moves is acceptable when the data does not support a move."
+            threshold:      "{{ world.judge_confidence_threshold }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        - target: "@exit:done"
+          effects:
+            - say: "Loop complete — gate installed; ladder review recorded."
+            - set: { status: "authored", refine_feedback: "" }
+      refine:
+        - when: "world.record_cycle >= world.record_budget"
+          target: "@exit:done"
+          effects:
+            - set: { status: "authored" }
+        - target: record
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                record_cycle:    "{{ world.record_cycle + 1 }}"
+                cycle:           "{{ world.cycle + 1 }}"
+                record_artifact: {}
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_at_record", status: "abandoned" }
+      look:
+        - target: .

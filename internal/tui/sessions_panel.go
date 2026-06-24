@@ -9,8 +9,8 @@ import (
 	"kitsoki/internal/metamode"
 )
 
-// sessionsPanelModel is the foyer "meta sessions" overlay
-// (meta-mode proposal §2.1). It lists every active meta chat the
+// sessionsPanelModel is the foyer "meta sessions" overlay. See
+// docs/stories/meta-mode.md §8 "Chat persistence". It lists every active meta chat the
 // controller can see — including cross-app `self` chats merged in
 // by Controller.ListChats — and lets the user pick one to resume
 // without typing `/meta resume <id>`.

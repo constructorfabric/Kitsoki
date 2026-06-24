@@ -1,0 +1,3 @@
+{"type": "user", "message": {"content": "force push the rebased branch to origin"}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "tu1", "name": "Bash", "input": {"command": "git push --force-with-lease origin feat-auth"}}]}}
+{"type": "user", "toolUseResult": {"stdout": "To github.com:acme/widget.git\n + abc1234...def5678 feat-auth -> feat-auth (forced update)", "stderr": "", "interrupted": false}, "message": {"content": [{"type": "tool_result", "tool_use_id": "tu1", "is_error": false, "content": " + abc1234...def5678 feat-auth -> feat-auth (forced update)"}]}}

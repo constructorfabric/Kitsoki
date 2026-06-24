@@ -1,0 +1,57 @@
+# Traceability:
+# - Source call site: stories/dev-story/rooms/verifying.yaml, host.agent.decide id `verify-agent`.
+# - Prompt: stories/dev-story/prompts/gate_review.md.
+# - Schema: stories/dev-story/schemas/gate_verdict.json.
+# - Purpose: adversarial verification gate for autonomous workbench tasks.
+kind: agent_eval
+app: ../app.yaml
+call: verify-agent
+agent: gate_reviewer
+
+task:
+  goal: "Decide whether an agent-produced artifact actually satisfies the accepted plan."
+  boundedness:
+    max_turns: 1
+    tool_policy: read-only
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.95
+    max_p95_latency_ms: 8000
+    max_avg_cost_usd: 0.002
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low, medium]
+  repeat: 5
+
+comparator:
+  kind: field_subset
+
+examples:
+  - name: artifact-meets-goal
+    args:
+      goal: "Document how to run the model harness eval story."
+      goal_artifact: "README includes start command, artifact paths, and no-live-LLM testing note."
+      prompt_focus: "Verify instructions are complete and safe."
+      script_ok: true
+      script_output: "docs present"
+    expect:
+      pass: true
+      reason: "The artifact documents the command, outputs, and no-live-LLM safety constraints."
+      fixes: []
+  - name: artifact-missing-proof
+    args:
+      goal: "Prove confidence-bar reduction is safe."
+      goal_artifact: "Report says lower the bar, but only aggregate candidate rows are available."
+      prompt_focus: "Reject claims without per-example actual confidence."
+      script_ok: false
+      script_output: "no per-example confidence rows"
+    expect:
+      pass: false
+      reason: "The artifact lacks per-example confidence evidence needed to prove lower false accepts."
+      fixes: ["Collect per-example actual intent and confidence before lowering the bar."]

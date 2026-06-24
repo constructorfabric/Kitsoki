@@ -1,0 +1,86 @@
+# happy_path_rebase_merge — branch_ops → rebase (ok) → branch_ops (rebase_done=true)
+# → merge_into_main (single-script: guards ok, merge ok, build ok) → main_ops.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+  has_uncommitted:    false
+  commits_ahead:      2
+  commits_behind:     0
+  rebase_done:        false
+  rebase_base_sha:    ""
+  build_check_cmd:    "echo 'build ok'"
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      2
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+      rebase_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            pre_rebase_tag:  ""
+            last_op_output:  "Successfully rebased."
+            rebase_base_sha: ""
+            rebase_done:     true
+            conflict_origin: ""
+      merge_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:           merged
+            descendant_ok:     true
+            merge_in_progress: false
+            last_op_ok:        true
+            last_op_output:    "Merge successful"
+            stash_ref:         ""
+            rebase_done:       false
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+
+turns:
+  - intent: { name: rebase, slots: {} }
+    expect_state: branch_ops
+    expect_world:
+      rebase_done: true
+
+  - intent: { name: merge_into_main, slots: {} }
+    expect_state: merge_into_main
+    expect_world:
+      last_op_outcome: merged
+
+  - intent: { name: back, slots: {} }
+    expect_state: main_ops
+
+expect_no_errors: true

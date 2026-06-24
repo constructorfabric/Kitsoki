@@ -1,6 +1,6 @@
 package host_test
 
-// bash_mcp_test.go — N2 coverage for bash_mcp.go (oracle code review N2).
+// bash_mcp_test.go — N2 coverage for bash_mcp.go (agent code review N2).
 //
 // Tests:
 //   1. BuildBashMCPEntry roundtrip — build entry, parse config file, assert fields match.

@@ -1,0 +1,273 @@
+{
+  "meta": {
+    "mode": "pitch",
+    "narration": { "voice": "en-AU-NatashaNeural" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "title": "The Architecture of a Kitsoki Story",
+      "subtitle": "Rooms · Phases · Intents · Agent",
+      "narration": "Rooms, phases, intents, agent."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The Core Idea",
+      "body": "Free text arrives. A declared, finite alphabet of intents decides what can happen next.",
+      "lede": "The LLM only translates — the graph decides.",
+      "narration": "Intents decide what happens. The LLM only translates — never acts."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "The Architecture at a Glance",
+      "panels": [{
+        "auto_layout": true,
+        "rankdir": "TB",
+        "ranksep": 60,
+        "nodesep": 60,
+        "nodes": [
+          { "id": "user",    "label": "User",          "sub": "free text in" },
+          { "id": "router",  "label": "Router",         "sub": "4-tier stack",    "style": "primary" },
+          { "id": "machine", "label": "State Machine",  "sub": "rooms + intents", "style": "primary" },
+          { "id": "world",   "label": "World",          "sub": "typed, persisted" },
+          { "id": "hosts",   "label": "Hosts + Agent", "sub": "host.* · LLM" },
+          { "id": "env",     "label": "Environment",    "sub": "shell · files · APIs" }
+        ],
+        "edges": [
+          { "from": "user",    "to": "router",  "label": "free text" },
+          { "from": "router",  "to": "machine", "label": "intent + slots" },
+          { "from": "machine", "to": "world",   "label": "bind",    "elbow": true },
+          { "from": "machine", "to": "hosts",   "label": "invoke:", "elbow": true },
+          { "from": "hosts",   "to": "env",     "label": "actions" }
+        ]
+      }],
+      "caption": "Hosts return typed results via bind: — the machine re-renders the view against the updated World after every bind settles.",
+      "narration": "Free text maps to a named intent. Hosts are the only door — results bind back."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Three Consequences",
+      "body": "The LLM can't invent actions · The machine is pure · The author is in charge",
+      "narration": "No invented actions. Pure transitions. YAML is reviewable."
+    },
+    {
+      "type": "code",
+      "variant": "source",
+      "title": "Three State Flavours",
+      "lang": "yaml",
+      "code": "# Atomic — leaf; handles intents directly\nkitchen:\n  view: \"You are in the kitchen.\"\n  on_enter:\n    - say: \"You smell stew.\"\n  on:\n    go_north: { target: hallway }\n\n# Compound — owns children; intents inherit down\nground_floor:\n  initial: kitchen\n  states:\n    kitchen: ...\n    hallway: ...\n  on:\n    quit: { target: menu }   # all children inherit this\n\n# Parallel — regions run concurrently; emit: crosses siblings\nworld:\n  type: parallel\n  states:\n    lighting: ...   # own intent loop\n    calendar: ...   # emit: visible to lighting",
+      "caption": "Every room is a state. Not every state is a room — a room is a top-level state the operator can land on.",
+      "narration": "Three flavours: atomic leaves, compound groups with inherited intents, and parallel regions that share events across siblings."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "One Room's Lifecycle",
+      "panels": [{
+        "auto_layout": true,
+        "rankdir": "TB",
+        "ranksep": 60,
+        "nodesep": 60,
+        "nodes": [
+          { "id": "enter",     "label": "Enter" },
+          { "id": "on_enter",  "label": "on_enter:",   "sub": "effects + bind",  "style": "primary" },
+          { "id": "view",      "label": "Render View", "sub": "pongo2 over world" },
+          { "id": "wait",      "label": "User Input",  "sub": "routed to intent" },
+          { "id": "on_intent", "label": "on: <intent>","sub": "guards + effects", "style": "primary" },
+          { "id": "target",    "label": "target:",     "sub": ". or room name" }
+        ],
+        "edges": [
+          { "from": "enter",     "to": "on_enter" },
+          { "from": "on_enter",  "to": "view" },
+          { "from": "view",      "to": "wait" },
+          { "from": "wait",      "to": "on_intent" },
+          { "from": "on_intent", "to": "target" },
+          { "from": "target",    "to": "view",     "label": "target: ." },
+          { "from": "target",    "to": "on_enter", "label": "re-enter" }
+        ]
+      }],
+      "caption": "No on_exit hook — exit effects belong on the transition that leaves, visible on the outgoing edge.",
+      "narration": "on_enter on every arrival. View from world state. Intent routes to a transition. target: picks what comes next."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Six Effect Verbs — The Only Mutators",
+      "columns": 3,
+      "cards": [
+        { "label": "set",          "sub": "set: { key: value }",  "lines": ["assign world variables"] },
+        { "label": "increment",    "sub": "increment: { key: 1 }", "lines": ["integer delta on a world var"] },
+        { "label": "say",          "sub": "say: \"line\"",         "lines": ["append narration to view"] },
+        { "label": "invoke",       "sub": "invoke: host.X",        "lines": ["call a host handler", "bind: / on_error:"] },
+        { "label": "emit",         "sub": "emit: event",           "lines": ["broadcast to siblings"] },
+        { "label": "emit_intent",  "sub": "emit_intent: name",     "lines": ["synthetic intent", "depth-capped at 8"] }
+      ],
+      "caption": "Effects run in declaration order. Each sees the writes of all prior effects in the chain. The LLM never writes the world.",
+      "narration": "Six verbs form the effect alphabet. Set, increment, say, invoke, emit, emit_intent. The LLM never writes the world."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "The Turn Loop",
+      "panels": [{
+        "auto_layout": true,
+        "rankdir": "TB",
+        "ranksep": 60,
+        "nodesep": 60,
+        "nodes": [
+          { "id": "input",   "label": "Free Text In" },
+          { "id": "routing", "label": "Routing Tiers",  "sub": "deterministic first", "style": "primary" },
+          { "id": "llm",     "label": "LLM Translate",  "sub": "harness.RunTurn",     "style": "secondary" },
+          { "id": "machine", "label": "machine.Turn",   "sub": "pure · replayable",   "style": "primary" },
+          { "id": "dispatch","label": "Dispatch Hosts", "sub": "invoke + bind" },
+          { "id": "settle",  "label": "Settle",         "sub": "emit_intent chains" },
+          { "id": "persist", "label": "Persist",        "sub": "append-only log" },
+          { "id": "render",  "label": "Render View",    "sub": "all surfaces" }
+        ],
+        "edges": [
+          { "from": "input",    "to": "routing" },
+          { "from": "routing",  "to": "machine", "label": "resolved" },
+          { "from": "routing",  "to": "llm",     "label": "missed" },
+          { "from": "llm",      "to": "machine" },
+          { "from": "machine",  "to": "dispatch" },
+          { "from": "dispatch", "to": "settle" },
+          { "from": "settle",   "to": "persist" },
+          { "from": "persist",  "to": "render" }
+        ]
+      }],
+      "caption": "LLM calls and host invocations record their inputs and outputs — every step downstream is replayable.",
+      "narration": "Cheap tiers first. LLM only on a miss. machine.Turn is pure and replayable."
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "The Four-Tier Router",
+      "columns": ["Tier", "Matches", "Cost", "Badge"],
+      "rows": [
+        { "cells": ["Deterministic",  "Exact menu string or unique example", "map lookup", "▣"] },
+        { "cells": ["Bare synonyms",  "Stem-bag includes a synonyms: phrase", "~3 µs",    "⌁"] },
+        { "cells": ["Slot template",  "{slot}-capturing template match",      "<100 µs",   "◐"] },
+        { "cells": ["Turn cache",     "Same input seen before; revalidates",  "~80 µs",    "⟲"] },
+        { "cells": ["LLM",            "Last resort; writes result to cache",  "2–5 s",     "✦"], "highlight": 0 }
+      ],
+      "caption": "On Oregon Trail, ~3 of 4 turns resolve without an LLM call.",
+      "narration": "Deterministic lookup. Synonym bags. Slot-capturing templates. A warm cache. LLM last — writes back to cache."
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Agent Verb Surface — host.agent.*",
+      "columns": ["Verb", "Shape", "Mutates?"],
+      "rows": [
+        { "cells": ["extract",  "free text → intent + slots",           "no"] },
+        { "cells": ["decide",   "bounded choice → one from a list",     "no"] },
+        { "cells": ["ask",      "one-shot Q&A, read-only tools",        "no"] },
+        { "cells": ["task",     "multi-turn agentic, declared tools",   "sandboxed"] },
+        { "cells": ["converse", "persistent multi-turn chat thread",    "yes"] }
+      ],
+      "caption": "All five route through agent_dispatch.go. extract/decide/ask read-only; task/converse mutate.",
+      "narration": "Five verbs ordered by blast radius. Extract and decide are read-only. Task is sandboxed agentic. Converse is persistent."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Meta-Mode — Stepping Off the Graph",
+      "columns": 3,
+      "cards": [
+        { "label": "story.edit",    "sub": "default /meta story", "lines": ["full Claude toolset",  "edits the running story"], "style": "primary" },
+        { "label": "story.ask",     "sub": "read-only Q&A",        "lines": ["Read / Glob / Grep",  "agent.ask backend"] },
+        { "label": "story.bug",     "sub": "file a story bug",     "lines": ["kitsoki bug create"] },
+        { "label": "kitsoki.edit",  "sub": "edits kitsoki repo",   "lines": ["needs $KITSOKI_REPO"] },
+        { "label": "kitsoki.ask",   "sub": "read-only Q&A",        "lines": ["about kitsoki source"] },
+        { "label": "kitsoki.bug",   "sub": "file a kitsoki bug",   "lines": ["against kitsoki itself"] }
+      ],
+      "caption": "/meta story · /meta kitsoki · bare /meta ask resolves to the story group. /onpath resumes the saved FSM state.",
+      "narration": "/meta pauses the FSM and opens a named-agent sidebar. Story and kitsoki groups — edit, ask, and bug verbs. Every app gets them free."
+    },
+    {
+      "type": "cards",
+      "variant": "qa",
+      "title": "The Gate — Advancing Without Input",
+      "question": "What resolves a room's advancing intents?",
+      "answer": [
+        "One advancing intent → auto-advance. The engine fires it; no decider needed.",
+        "Multi-way gate → a decider picks: default (deterministic), llm (agent.decide), or human.",
+        "emit_intent: dispatches a synthetic intent this same turn — depth-capped at 8.",
+        "one-shot mode resolves every gate autonomously; staged mode stops at a multi-way gate for a human."
+      ],
+      "caption": "The same graph runs fully autonomous, LLM-judged, or human-gated — by flipping execution mode, not rewriting YAML.",
+      "narration": "One intent auto-fires. Multi-way gates go to a decider. emit_intent skips the wait."
+    },
+    {
+      "type": "code",
+      "variant": "source",
+      "title": "A Compute Room — No User, No LLM",
+      "lang": "yaml",
+      "code": "build:\n  on_enter:\n    - invoke: host.run\n      with: { cmd: \"make build\" }\n      bind: { build_exit: exit_code }\n    - emit_intent: route       # synthetic intent, same turn\n  on:\n    route:\n      - when: \"world.build_exit == 0\"\n        target: deploy\n      - default: true\n        target: triage",
+      "caption": "Guards are pure world.* evaluation via internal/expr. No human, no LLM — same inputs always yield the same branch.",
+      "narration": "Bind the exit code, emit route. Guards choose deploy or triage — pure expression."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Phases — Compressing Repeated Rooms",
+      "columns": 2,
+      "cards": [
+        { "label": "Declare once",          "sub": "phase_templates:",    "lines": ["parametric YAML — {id}, {title}", "states, views, on: maps"] },
+        { "label": "Instantiate per phase", "sub": "phases.graph:",        "lines": ["one entry per phase", "next: arcs wire the chain"] },
+        { "label": "Cycle budgets",         "sub": "cycle_budgets:",       "lines": ["increment + guard synthesised", "exceeds N → *_error state"] },
+        { "label": "Checkpoint intents",    "sub": "checkpoint_intents:",  "lines": ["merged into *_awaiting_reply", "continue / refine / restart_from"] }
+      ],
+      "caption": "expandPhases() in internal/app/phases.go materialises the full state graph at load time.",
+      "narration": "Declare once. Instantiate per phase. Cycle budgets cap retries. Checkpoint intents let operators jump back."
+    },
+    {
+      "type": "table",
+      "variant": "comparison",
+      "title": "Story vs Workflow Engine — Rosetta Stone",
+      "columns": ["Workflow Term", "Story Term"],
+      "rows": [
+        { "cells": ["Workflow / DAG / pipeline", "Story (state graph)"] },
+        { "cells": ["Step / task / node",        "Room (a state)"] },
+        { "cells": ["Conditional / branch",      "Guarded transition arm (when:)"] },
+        { "cells": ["Context / variables",       "World (typed · persisted)"] },
+        { "cells": ["Decision node / router",    "Gate resolved by a decider"] },
+        { "cells": ["Human approval gate",       "wait gate / human decider"] }
+      ],
+      "caption": "A workflow is a story where every gate is single-intent or deterministically guarded — and nothing waits.",
+      "narration": "Every workflow concept maps to a story concept. A story adds interruptible gates, typed world, and a decider at every fork."
+    },
+    {
+      "type": "cards",
+      "variant": "versus",
+      "title": "Story vs Lead Agent + Subagents",
+      "left": {
+        "label": "Lead Agent",
+        "lines": [
+          "Decides next step at runtime",
+          "Plan lives in the model's head",
+          "Emergent — not enumerable",
+          "Rerun may differ",
+          "Blast radius = full tool set"
+        ]
+      },
+      "right": {
+        "label": "Story",
+        "lines": [
+          "Graph decides — guard + decider",
+          "Plan is author-declared YAML",
+          "Finite, reviewable, replayable",
+          "Same world + intent = same result",
+          "Per-call declared tools:"
+        ]
+      },
+      "caption": "agent.task ≈ a subagent call. agent.decide ≈ the lead picks which subagent. The graph holds the orchestration.",
+      "narration": "The agent decides at runtime. The story decides at author-time. The model is called at declared points."
+    },
+    {
+      "type": "cta",
+      "wordmark": "kitsoki",
+      "tagline": "Deterministic graphs. Declared authority. Every decision recorded.",
+      "url": "github.com/acrobc/kitsoki",
+      "narration": "Deterministic graphs. Declared authority. Every decision recorded."
+    }
+  ]
+}

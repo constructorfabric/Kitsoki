@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "brief_verdict",
+  "description": "brief-gate decide verdict: is the distilled scenario brief concrete enough to author from?",
+  "type":    "object",
+  "required": ["verdict", "reason"],
+  "properties": {
+    "verdict":   { "type": "string", "enum": ["ok", "clarify"] },
+    "reason":    { "type": "string", "minLength": 4 },
+    "questions": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

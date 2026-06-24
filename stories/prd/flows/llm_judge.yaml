@@ -1,0 +1,125 @@
+# llm_judge — idle → clarifying → brief → references → drafting in llm judge
+# mode, proving the THREE `host.agent.decide` call sites (clarifying's
+# `analyst_questions`, references' `references_research`, drafting's
+# `judge_verdict`) are stubbed INDEPENDENTLY in one fixture via `by_call:`.
+#
+# All three calls share the handler name `host.agent.decide`. Before
+# invoke-`id:` addressing, a single fixture could not give them distinct
+# responses without either giving one a different verb (distorting the story)
+# or splitting the traversal across fixtures. Here the analyst returns
+# clarifying questions, the researcher returns a reference list, and the judge
+# returns a verdict — keyed apart purely by the call-site id.
+#
+# The judge returns verdict=uncertain so it falls through to the human-mode
+# view (the auto-fire guard requires verdict/intent != 'uncertain'); drafting
+# is the resting state and llm_verdict is bound from the judge's envelope.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "llm"
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "A CLI for X that helps developers do Y.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  # search-confirm mints the per-PRD workspace.
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "a-cli-for-x", workspace: ".artifacts/prd/a-cli-for-x" }
+  # One stub, two call sites — addressed by the invoke `id:`.
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    by_call:
+      # The prior-art scout (search room) — no overlap, so confirm proceeds.
+      existing_scan:
+        data:
+          ok: true
+          submitted:
+            overlaps: []
+            roadmap_fit: "Greenfield — no existing PRD covers this."
+      analyst_questions:
+        data:
+          ok: true
+          submitted:
+            questions:
+              - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+              - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/spec.md", sections: "Goals", rationale: "the PRD must align with the stated goals" }
+      judge_verdict:
+        data:
+          ok: true
+          submitted:
+            verdict:    "uncertain"
+            intent:     "uncertain"
+            reason:     "The draft is plausible but the success metric is still thin."
+            confidence: 0.55
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/out.md", message_id: "out#1" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  # Discovery conversation, then distill into world.idea and advance.
+  - intent: { name: discuss, slots: { message: "I want a CLI for X" } }
+    expect_state: idle
+  - intent: { name: start, slots: {} }
+    expect_state: search
+    expect_world:
+      idea: "A CLI for X that helps developers do Y."
+  # No overlap at the gate → confirm proceeds to clarifying.
+  - intent: { name: confirm, slots: {} }
+    expect_state: clarifying
+
+  # Answer the analyst's questions → brief (analyst_questions decide bound
+  # the questions; clarifying_cycle increments).
+  - intent: { name: submit_answers, slots: { answers: "1) developers 2) time-to-first-success" } }
+    expect_state: brief
+    expect_world:
+      clarifying_cycle: 1
+
+  # Confirm the brief → references; the researcher (references_research)
+  # decide runs — a different envelope than the analyst's, keyed by id.
+  - intent: { name: confirm, slots: {} }
+    expect_state: references
+
+  # Confirm references → drafting. The author drafts and the judge
+  # (judge_verdict) runs; the uncertain verdict leaves us at drafting with
+  # llm_verdict bound from the `judge_verdict` envelope — proof the three
+  # decide call sites were addressed apart purely by their invoke `id:`.
+  - intent: { name: confirm, slots: {} }
+    expect_state: drafting
+    expect_world:
+      llm_verdict:
+        verdict:    "uncertain"
+        intent:     "uncertain"
+        reason:     "The draft is plausible but the success metric is still thin."
+        confidence: 0.55
+
+expect_no_errors: true

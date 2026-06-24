@@ -1,0 +1,89 @@
+# Cassette for happy_needs_update.yaml — reviewing.on_enter fires
+# three host calls in order; one episode per slot.
+
+kind: host_cassette
+app_id: docs-review
+generated_at: 2026-05-28T00:00:00Z
+match_on: [handler]
+
+episodes:
+  # 1. host.run preflight — synthesises the {sha, recent_log,
+  #    recent_changes} envelope. stdout_json is what the room binds.
+  - id: preflight_run
+    match:
+      handler: host.run
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |
+          {"sha":"deadbeefcafefeed","recent_log":"abc1234 docs: add foo\n5678def feat: new host","recent_changes":" docs/foo.md | 2 +-\n internal/host/bar.go | 40 ++++"}
+        stdout_json:
+          sha: "deadbeefcafefeed"
+          commit_count: "21"
+          recent_log: "abc1234 docs: add foo\n5678def feat: new host"
+          recent_changes: " docs/foo.md | 2 +-\n internal/host/bar.go | 40 ++++"
+          working_tree_diff: ""
+    replay: any
+
+  # 2. host.agent.decide — opus verdict.
+  - id: agent_decide
+    match:
+      handler: host.agent.decide
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        submitted:
+          decision: "needs_update"
+          summary:  "docs/hosts.md (lines 80-92) is missing an entry for the host.bar handler introduced in 5678def."
+          confidence: 0.82
+          commits:
+            - sha: "5678def"
+              subject: "feat: new host"
+              change: "registers a new host.bar handler in internal/host/bar.go"
+            - sha: "abc1234"
+              subject: "docs: add foo"
+              change: "minor docs/foo.md tweak; not behavior-changing"
+          stale_docs:
+            - path: "docs/hosts.md"
+              lines: "80-92"
+              anchor: "Host registry table"
+              invalidations:
+                - commit: "5678def"
+                  source: "internal/host/bar.go"
+                  change: "registers host.bar as a new handler"
+                  reason: "the host registry table has no row for host.bar"
+          recommended_actions:
+            - "add a `host.bar` row to docs/hosts.md mirroring the host.run shape"
+    replay: any
+
+  # 3. host.artifacts_dir — write artifact.
+  - id: artifacts_dir_write
+    match:
+      handler: host.artifacts_dir
+    response:
+      data:
+        ok: true
+        path: "/tmp/.artifacts/docs-review-deadbeefcafefeed.md"
+        message_id: "docs-review-deadbeefcafefeed#0"
+    replay: any
+
+  # 4. host.agent.task — docs_writer applies the fix. Triggered when
+  #    reviewed.on_enter emits fix_docs (decision == needs_update).
+  - id: docs_writer_task
+    match:
+      handler: host.agent.task
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        submitted:
+          applied: true
+          summary: "Patched docs/hosts.md by appending a host.bar row to the registry table at lines 80-92."
+          files_changed:
+            - path: "docs/hosts.md"
+              change: "added host.bar entry mirroring host.run shape"
+          unresolved: []
+          blockers: []
+    replay: any

@@ -1,11 +1,9 @@
-// Package viz — flowchart.go implements a Mermaid flowchart LR exporter.
-//
-// Unlike the stateDiagram-v2 exporter (mermaid.go) which shows the state-machine
-// topology, this exporter shows DATA FLOW: rooms as subgraphs, on_enter step
-// chains as hexagon nodes, and world writes as cylinder nodes.
-//
-// The output style matches the hand-drawn bugfix pipeline diagrams under
-// stories/bugfix/diagrams/ (phase-0-pipeline.mmd, phase-1-pipeline.mmd).
+// flowchart.go implements the Mermaid flowchart LR exporter. Where the
+// stateDiagram-v2 exporter (mermaid.go) shows state-machine topology, this one
+// shows DATA FLOW: rooms as subgraphs, on_enter step chains as hexagon nodes,
+// world writes as cylinder nodes — gated by [DetailLevel] and scoped by
+// [FlowchartFilter]. The output style matches the hand-drawn bugfix pipeline
+// diagrams under stories/bugfix/diagrams/. See doc.go for the overview.
 package viz
 
 import (
@@ -18,7 +16,10 @@ import (
 	"kitsoki/internal/app"
 )
 
-// DetailLevel controls how much internal structure is emitted.
+// DetailLevel controls how much internal structure the flowchart emits. The
+// levels are a strict ascending superset chain (rooms ⊂ states ⊂ steps ⊂
+// full), so a single graph walk gated on the level produces any of them. The
+// zero value is [DetailRooms]; the CLI default is [DetailStates].
 type DetailLevel int
 
 const (
@@ -32,7 +33,11 @@ const (
 	DetailFull
 )
 
-// ParseDetailLevel parses "rooms", "states", "steps", or "full".
+// ParseDetailLevel maps the CLI `--detail` flag value to a [DetailLevel],
+// accepting "rooms", "states", "steps", or "full" (case- and
+// whitespace-insensitive). On an unknown value it returns [DetailStates] (the
+// safe default) together with a descriptive error, so a caller that ignores
+// the error still gets a usable level.
 func ParseDetailLevel(s string) (DetailLevel, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "rooms":
@@ -48,7 +53,9 @@ func ParseDetailLevel(s string) (DetailLevel, error) {
 	}
 }
 
-// String returns the canonical string for a DetailLevel.
+// String returns the canonical flag spelling of d, the inverse of
+// [ParseDetailLevel]; an out-of-range value renders as "states" so callers
+// always get a parseable token.
 func (d DetailLevel) String() string {
 	switch d {
 	case DetailRooms:
@@ -64,14 +71,19 @@ func (d DetailLevel) String() string {
 	}
 }
 
-// FlowchartFilter scopes the diagram to a subset of rooms. Zero value = no filter.
+// FlowchartFilter scopes the diagram to a subset of rooms. Its zero value
+// selects every room. The two scoping modes are mutually exclusive: set Room
+// for a single room, or set both From and To for the rooms on some path
+// between them (a reachability slice). Validate before use.
 type FlowchartFilter struct {
 	Room string // single room name; exclusive with From/To
 	From string // start of a range; requires To
 	To   string // end of a range; requires From
 }
 
-// Validate checks mutual exclusivity constraints on the filter.
+// Validate rejects the two ill-formed filter shapes that [ResolveFilterRooms]
+// cannot interpret: combining Room with a From/To range, and setting only one
+// end of a range. A zero filter is valid (it selects all rooms).
 func (f FlowchartFilter) Validate() error {
 	if f.Room != "" && (f.From != "" || f.To != "") {
 		return fmt.Errorf("--room cannot be combined with --from/--to")
@@ -82,8 +94,12 @@ func (f FlowchartFilter) Validate() error {
 	return nil
 }
 
-// ResolveFilterRooms returns the ordered slice of room names to include given a filter.
-// Zero filter returns all rooms in GroupRooms order.
+// ResolveFilterRooms turns a [FlowchartFilter] into the concrete ordered set
+// of rooms to draw, always in [Rooms.Order] for deterministic output. A zero
+// filter returns every room; a Room filter returns that one room; a From/To
+// range returns the rooms lying on some cross-room path from From to To
+// (intersection of forward- and backward-reachable rooms in the room-level
+// transition graph). It errors when the filter names a room not present in a.
 func ResolveFilterRooms(a *app.AppDef, f FlowchartFilter) ([]string, error) {
 	rooms := GroupRooms(a)
 
@@ -121,8 +137,8 @@ func ResolveFilterRooms(a *app.AppDef, f FlowchartFilter) ([]string, error) {
 	}
 
 	// Build room-level adjacency graph from cross-room transitions.
-	adj := map[string][]string{}     // forward: room → []room
-	radj := map[string][]string{}    // reverse: room → []room
+	adj := map[string][]string{}  // forward: room → []room
+	radj := map[string][]string{} // reverse: room → []room
 	adjSeen := map[[2]string]bool{}
 
 	walkAllStates(a.States, "", func(path string, s *app.State) {
@@ -189,7 +205,9 @@ func ResolveFilterRooms(a *app.AppDef, f FlowchartFilter) ([]string, error) {
 	return selected, nil
 }
 
-// ExportFlowchart writes a Mermaid flowchart LR diagram to w.
+// ExportFlowchart is the streaming form of [FlowchartBytes]: it renders the
+// flowchart and writes it to w, returning either the render error or w's write
+// error. Use [FlowchartBytes] when you need the bytes in memory.
 func ExportFlowchart(a *app.AppDef, detail DetailLevel, filter FlowchartFilter, w io.Writer) error {
 	b, err := FlowchartBytes(a, detail, filter)
 	if err != nil {
@@ -200,9 +218,11 @@ func ExportFlowchart(a *app.AppDef, detail DetailLevel, filter FlowchartFilter, 
 }
 
 // PipelineOrder returns rooms in BFS discovery order from the initial state,
-// skipping synthetic exit rooms whose names start with "__".
-// This gives the human-readable pipeline sequence used to label rooms with
-// their position (e.g. "2/8 · reproducing").
+// which is the human-readable sequence used to label rooms with their position
+// (e.g. "phase 2 · reproducing"). It differs from [Rooms.Order]'s alphabetical
+// ordering on purpose: a reader follows the flow, not the alphabet. Synthetic
+// exit rooms (names starting with "__") are skipped; rooms unreachable from the
+// initial state are appended in [Rooms.Order] for determinism.
 func PipelineOrder(a *app.AppDef) []string {
 	rooms := GroupRooms(a)
 
@@ -273,7 +293,12 @@ func PipelineOrder(a *app.AppDef) []string {
 	return order
 }
 
-// FlowchartBytes returns the Mermaid flowchart source as a byte slice.
+// FlowchartBytes renders the full Mermaid flowchart source for a — the leading
+// %% comments, the flowchart header, room subgraphs and edges at the requested
+// detail, and the trailing classDef style block — and returns it as bytes.
+// It is the canonical flowchart entry point; [ExportFlowchart] and
+// [FlowchartWithMap] build on it. It errors only when filter names an unknown
+// room (via [ResolveFilterRooms]).
 func FlowchartBytes(a *app.AppDef, detail DetailLevel, filter FlowchartFilter) ([]byte, error) {
 	var b strings.Builder
 	if a.App.Title != "" {
@@ -602,7 +627,10 @@ func emitFlowchartStates(b *strings.Builder, a *app.AppDef, detail DetailLevel, 
 					label += " (default)"
 				}
 
-				toRoom := rooms.RoomOf[target]
+				toRoom, ok := rooms.RoomOf[target]
+				if !ok {
+					continue
+				}
 				if filtered && !selectedSet[toRoom] {
 					// Emit a stub edge to the external room.
 					stubID := "STUB_" + fcid(toRoom)
@@ -670,7 +698,7 @@ func buildStepLabel(idx int, e app.Effect) string {
 	invokeName := e.Invoke
 	// Strip package prefix for brevity — use last segment after dot.
 	if dot := strings.LastIndex(invokeName, "."); dot >= 0 {
-		// Keep the last two segments for readability (e.g. "host.oracle" → "host.oracle").
+		// Keep the last two segments for readability (e.g. "host.agent" → "host.agent").
 		invokeName = e.Invoke
 	}
 
@@ -727,7 +755,7 @@ func buildStepLabel(idx int, e app.Effect) string {
 func stepClass(e app.Effect) string {
 	invoke := strings.ToLower(e.Invoke)
 	switch {
-	case strings.Contains(invoke, "oracle") || strings.Contains(invoke, ".llm"):
+	case strings.Contains(invoke, "agent") || strings.Contains(invoke, ".llm"):
 		return "llm"
 	case strings.Contains(invoke, ".run") || strings.Contains(invoke, "shell") || strings.Contains(invoke, "exec"):
 		return "shell"

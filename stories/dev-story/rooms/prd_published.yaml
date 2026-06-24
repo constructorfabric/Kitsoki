@@ -1,0 +1,52 @@
+# prd_published — the PRD → Design handoff landing.
+#
+# Reached when an imported `prd` run fires @exit:done: dev-story's
+# imports.prd.exits.done transitions here. prd_file is a host BIND in
+# prd's drafting accept arc, so it commits post-dispatch — too late for a
+# synchronous exit `set:` projection to carry it (contrast bf → pr, whose
+# carried value is a synchronous set). The flat world keeps prd__prd_file
+# once the turn settles, so this room reads world.prd__prd_file directly
+# (settled by render time). The room confirms the PRD shipped and offers
+# two arcs:
+#
+#   continue → the design intake (`proposal` room), seeding
+#              design_seed_idea with a pointer to the published PRD so
+#              the design author reads it as prior art.
+#   go_main  → back to the engineer's-day hub.
+#
+# This room lives in dev-story's composition only — standalone prd
+# (`kitsoki run stories/prd/app.yaml`) just exits `done` and terminates.
+
+states:
+
+  prd_published:
+    description: "PRD published — continue into design, or return to main."
+    relevant_world: [prd__prd_file]
+    view:
+      - banner:
+          text:     "PRD PUBLISHED"
+          subtitle: "Your PRD is written — carry it into design?"
+          color:    "#10B981"
+      - prose: "Your PRD is published at **{{ world.prd__prd_file }}**."
+      - prose: >
+          Continue into **design** to author the design from this PRD —
+          the design intake reads it as prior art — or head back to the
+          main menu.
+      - list:
+          items:
+            - { label: "continue", hint: "author the design from this PRD" }
+            - { label: "main",     hint: "back to the engineer's-day hub" }
+    on:
+      continue:
+        - target: design
+          effects:
+            - set:
+                prev_state:         "landing"
+                last_error:         ""
+                design_seed_idea: "Author a design from the PRD at {{ world.prd__prd_file }}"
+      go_main:
+        - target: landing
+          effects:
+            - set: { prev_state: "landing", last_error: "" }
+      look:
+        - target: .

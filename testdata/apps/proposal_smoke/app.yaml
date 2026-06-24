@@ -99,7 +99,7 @@ states:
   reviewing:
     description: "Review the proposed command before executing."
     # Verdict picker: accept / retry / cancel — the canonical
-    # three-option proposal-review pattern from docs/choice-widget.md
+    # three-option proposal-review pattern from docs/stories/choice-widget.md
     # §2.1. Zero-slot intents render as flat label/hint rows.
     view:
       - prose: "Reviewing proposal. Stage: {{ world.stage }}"

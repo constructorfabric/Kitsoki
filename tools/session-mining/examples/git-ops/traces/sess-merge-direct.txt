@@ -1,0 +1,3 @@
+USER: merge the feature branch into main
+AI: Merging feat-auth into main with a merge commit.
+  > Bash: git merge --no-ff feat-auth

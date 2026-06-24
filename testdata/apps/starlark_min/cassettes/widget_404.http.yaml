@@ -1,0 +1,9 @@
+kind: http_cassette
+exchanges:
+  - match:
+      method: GET
+      url_pattern: "/widgets/[0-9]+$"
+    response:
+      status: 404
+      headers: { Content-Type: application/json }
+      body: '{"error":"not found"}'

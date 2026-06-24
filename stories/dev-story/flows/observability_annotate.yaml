@@ -1,0 +1,63 @@
+# observability_annotate — the notable-but-not-paging branch: signal → query →
+# triage (annotate) → record a dashboard note (host.run) → done → landing.
+#
+# The signal is worth a note but not a page. The triage decide recommends
+# annotate, so the post-bind emit auto-routes there; annotating runs the
+# recorded annotation action (REAL host.run printf), sets obs_status=='annotated'
+# and advances to the read-out. Proves the annotate arc records the action and
+# does NOT page (no transport / inbox calls).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: observability
+initial_world: {}
+
+host_handlers:
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        disposition: "annotate"
+        summary: "checkout latency p95 drifted to 480ms — worth a note."
+        detail: "value 480ms, threshold 600ms — within budget but trending."
+  host.run:
+    by_call:
+      query:
+        data: { ok: true, stdout: "checkout latency p95: value 480ms, threshold 600ms, trend up", exit_code: 0 }
+      annotate:
+        data: { ok: true, stdout: "annotated checkout latency p95: checkout latency p95 drifted to 480ms — worth a note.", exit_code: 0 }
+
+turns:
+  # Name the signal → query → triage → post-bind emit routes on
+  # disposition=='annotate'.
+  - intent: { name: query_signal, slots: { signal: "checkout latency p95" } }
+    expect_state: observability_triaged
+    expect_host_calls:
+      - handler: host.run
+        args: { call: query }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: triage }
+        times: 1
+    expect_world:
+      obs_triage:
+        disposition: "annotate"
+        summary: "checkout latency p95 drifted to 480ms — worth a note."
+        detail: "value 480ms, threshold 600ms — within budget but trending."
+
+  # Annotate → the REAL host.run annotation action runs, sets annotated → done.
+  # No transport / inbox calls — annotate does not page.
+  - intent: { name: annotate_signal, slots: {} }
+    expect_state: observability_done
+    expect_host_calls:
+      - handler: host.run
+        args: { call: annotate }
+        times: 1
+    expect_world:
+      obs_status: "annotated"
+      obs_action: "annotated checkout latency p95: checkout latency p95 drifted to 480ms — worth a note."
+
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

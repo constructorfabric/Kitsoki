@@ -1,8 +1,8 @@
 # trail_guide — persistent chat room with the wagon master.
 #
 # PHASE F scope. mode: conversational compound state backed by
-# host.chat.* + host.oracle.converse. Pattern lifted directly from
-# testdata/apps/dev-story/rooms/oracle.yaml; OT-specific differences:
+# host.chat.* + host.agent.converse. Pattern lifted directly from
+# testdata/apps/dev-story/rooms/agent.yaml; OT-specific differences:
 #
 #   - One room, three leaf substates: list / active (existing chat)
 #     / active_new (fresh chat). active_new is one-shot: its on_enter
@@ -20,7 +20,7 @@
 #     teleport-back (Phase E) — the name is misleading but the key is
 #     generic enough.
 #
-#   - Auto-titling fires on every `host.oracle.converse` via
+#   - Auto-titling fires on every `host.agent.converse` via
 #     host.chat.suggest_title with force=false; the handler itself
 #     no-ops for non-placeholder titles, so once a polished title
 #     lands the call becomes idempotent. wagon_chat_turns is the
@@ -208,7 +208,7 @@ states:
             - target: .
 
       # ── trail_guide_active — existing chat, ask in a loop ───────
-      # on_enter fires host.oracle.converse against the already-known
+      # on_enter fires host.agent.converse against the already-known
       # wagon_chat_id. ask_question re-enters this same state (the
       # self-transition causes on_enter to run again with the new
       # question), so the player can keep asking until they `back`.
@@ -246,7 +246,7 @@ states:
                   intent: look
         relevant_world: [wagon_chat_id, wagon_chat_title, wagon_question, wagon_answer, wagon_chat_turns]
         on_enter:
-          - invoke: host.oracle.converse
+          - invoke: host.agent.converse
             with:
               chat_id:  "{{ world.wagon_chat_id }}"
               question: "{{ world.wagon_question }}"
@@ -276,7 +276,7 @@ states:
             # Self-transition. on_enter does NOT re-fire on self-
             # transitions (machine.go), so the turn counter is
             # incremented in this transition's effects (not in
-            # on_enter) and the host.oracle.converse call is duplicated
+            # on_enter) and the host.agent.converse call is duplicated
             # here so the new question actually triggers a fresh
             # response. wagon_answer is cleared up front so a brief
             # failure doesn't leave a stale answer paired with the
@@ -287,7 +287,7 @@ states:
                     wagon_question: "{{ slots.question }}"
                     wagon_answer:   ""
                 - increment: { wagon_chat_turns: 1 }
-                - invoke: host.oracle.converse
+                - invoke: host.agent.converse
                   with:
                     chat_id:  "{{ world.wagon_chat_id }}"
                     question: "{{ slots.question }}"
@@ -356,7 +356,7 @@ states:
             bind:
               wagon_chat_id:    "chat_id"
               wagon_chat_title: "title"
-          - invoke: host.oracle.converse
+          - invoke: host.agent.converse
             with:
               chat_id:  "{{ world.wagon_chat_id }}"
               question: "{{ world.wagon_question }}"

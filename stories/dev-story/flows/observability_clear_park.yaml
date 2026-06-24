@@ -1,0 +1,65 @@
+# observability_clear_park — the nominal edge: signal → query → triage (clear) →
+# the operator clears it → back at intake with obs_status=='clear'.
+#
+# The branch where the signal is nominal and the right move is no action. The
+# triage decide recommends clear, the post-bind emit routes to the verdict, and
+# the operator takes the `clear_signal` disposition — which loops back to the
+# intake room (no action run) and records the cleared status. Then a SECOND,
+# worse signal is queried from the parked room, re-arming triage (obs_triage
+# cleared) — proving the loop re-triages cleanly after a park.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: observability
+initial_world: {}
+
+host_handlers:
+  # A nominal reading → clear. Serves both the first triage and the re-triage
+  # after the park (same handler/call id, both the `triage` call site).
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        disposition: "clear"
+        summary: "queue depth at 12 — well within budget."
+        detail: ""
+  host.run:
+    data:
+      ok: true
+      stdout: "queue depth: value 12, threshold 500"
+      exit_code: 0
+
+turns:
+  # First signal → query → triage → clear recommended → triaged verdict.
+  - intent: { name: query_signal, slots: { signal: "queue depth" } }
+    expect_state: observability_triaged
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: triage }
+        times: 1
+    expect_world:
+      obs_triage:
+        disposition: "clear"
+        summary: "queue depth at 12 — well within budget."
+        detail: ""
+
+  # Clear it — `clear_signal` loops back to intake, records clear, runs no action.
+  - intent: { name: clear_signal, slots: {} }
+    expect_state: observability
+    expect_world:
+      obs_status: "clear"
+
+  # A worse signal arrives from the parked room — query_signal clears the prior
+  # verdict + status (re-arming the once: query + triage), enters querying, the
+  # decide re-fires, and the post-bind emit routes to the verdict again. Proves
+  # the park is not a dead end: the loop re-triages cleanly.
+  - intent: { name: query_signal, slots: { signal: "queue depth now spiking" } }
+    expect_state: observability_triaged
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: triage }
+        times: 1
+    expect_world:
+      obs_signal: "queue depth now spiking"
+
+expect_no_errors: true

@@ -95,14 +95,14 @@ func TestChatQueue_AddRejectsUnknownChat(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-// TestChatQueue_Dispatch_RunsAndMarksDone wires the fake oracle binary
+// TestChatQueue_Dispatch_RunsAndMarksDone wires the fake agent binary
 // through the dispatcher CLI path. The drive transitions pending →
 // dispatching → done and the assistant reply is persisted.
 func TestChatQueue_Dispatch_RunsAndMarksDone(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
+		t.Skip("fake-agent.sh requires bash")
 	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBinForCmdTest(t))
+	t.Setenv(host.AgentBinEnv, fakeAgentBinForCmdTest(t))
 
 	dbPath := filepath.Join(t.TempDir(), "sessions.db")
 	cs, cleanup := openChatStoreForTest(t, dbPath)

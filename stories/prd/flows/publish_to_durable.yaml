@@ -1,0 +1,62 @@
+# publish_to_durable — accept PUBLISHES the PRD out of the per-PRD workspace
+# into its durable docs home (Gap #4).
+#
+# A focused fixture for the publish-on-accept half of the workspace work:
+# it seeds drafting directly (a workspace already minted at the search gate)
+# so the ONLY moving part is the accept arc's host.run(prd_publish.py) call.
+# The stub mirrors the real script's envelope — prd_publish.py moves
+# 004-prd.md to <publish_durable_path>/<slug>.md and prints {"prd_file": …};
+# the accept arc binds prd_file from stdout_json, so the run ends with the
+# deliverable OUT of the gitignored .artifacts/ scratch tree.
+#
+# Intent-only (no LLM): the author task and the publish script are both
+# stubbed. Companion to slug_collision.yaml (the uniquify half).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  idea:                 "A CLI for X that helps developers do Y."
+  workdir:              "."
+  judge_mode:           "human"
+  publish_durable_path: "docs/prd"
+  # The workspace minted at the search gate (this flow enters at drafting).
+  prd_slug:             "example-cli"
+  prd_workspace:        ".artifacts/prd/example-cli"
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd/example-cli/004-prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+  # accept fires scripts/prd_publish.py; the stub returns the durable path the
+  # real script would compute (docs/prd/<slug-from-title>.md).
+  host.run:
+    by_call:
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"prd_file":"docs/prd/example-cli.md"}'
+          stdout_json: { prd_file: "docs/prd/example-cli.md" }
+
+turns:
+  # accept → publish moves the draft to the durable home and binds prd_file,
+  # then @exit:done. The deliverable now lives under docs/prd/, not .artifacts/.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status:   "done"
+      prd_file: "docs/prd/example-cli.md"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "publish" }
+
+expect_terminal: true
+expect_no_errors: true

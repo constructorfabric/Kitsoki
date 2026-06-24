@@ -37,7 +37,7 @@ var kitsokiBugReporterPrompt string
 // also lets the CLI auto-fill `kitsoki_rev` from `git rev-parse`.
 func kitsokiBugReporter() Agent {
 	return Agent{
-		Name:         "kitsoki-bug-reporter",
+		Name:         NameKitsokiBugReporter,
 		SystemPrompt: kitsokiBugReporterPrompt,
 		Model:        "",
 		Tools: []string{

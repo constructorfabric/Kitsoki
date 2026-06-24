@@ -7,6 +7,7 @@ test_kind: flow
 app: ../app.yaml
 initial_state: idle
 initial_world:
+  bugfix_exit: "open-PR"   # legacy PR-handoff tail (slice 4 default is direct-ship)
   ticket_id:   "TKT-009"
   thread:      "TKT-009"
   judge_mode:  "human"
@@ -22,7 +23,7 @@ host_handlers:
     data: { ok: true, sha: "abc", diff: "" }
   host.local:
     data: { ok: true, log: "PASS", passed: 1, failed: 0 }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -41,7 +42,7 @@ host_handlers:
         lessons:
           - { category: "stub", description: "Walk through the whole pipeline to validating then quit.", severity: "low" }
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -60,7 +61,7 @@ host_handlers:
         lessons:
           - { category: "stub", description: "Walk through the whole pipeline to validating then quit.", severity: "low" }
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

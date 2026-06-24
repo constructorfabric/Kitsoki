@@ -1,0 +1,23 @@
+# Deterministic flow: drive lobby -> order -> confirm -> served by DIRECT
+# intents (by name, no router, no LLM). Also covers the order_another loop
+# back to the lobby and the drink world key being set then cleared.
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+turns:
+  - intent: { name: start_order }
+    expect_state: order
+  - intent: { name: pick_flat_white }
+    expect_state: confirm
+    expect_world: { drink: "flat white" }
+  - intent: { name: order_another }
+    expect_state: lobby
+    expect_world: { drink: "(nothing yet)" }
+  - intent: { name: start_order }
+    expect_state: order
+  - intent: { name: pick_flat_white }
+    expect_state: confirm
+    expect_world: { drink: "flat white" }
+  - intent: { name: done }
+    expect_state: served
+    expect_world: { drink: "flat white" }

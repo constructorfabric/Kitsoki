@@ -1,0 +1,7 @@
+# Large/generated baked artifacts — not committed.
+# deck.html inlines the whole slidey SPA (~4 MB); regenerate with:
+#   slidey bundle deck.json deck.html
+deck.html
+# mp4 renders are heavy and not needed in-repo (the deck renders to HTML now).
+*.mp4
+*.mp4.chapters.json

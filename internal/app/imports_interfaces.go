@@ -1,4 +1,6 @@
-// Package app — host interfaces (§11).
+// Package app — host interfaces.
+//
+// See docs/stories/imports.md "host_interfaces" for the authoring model.
 //
 // A host_interface is a named capability the app depends on. The child
 // declares the operation surface and a default binding; the importer
@@ -31,7 +33,7 @@ type ifaceEntry struct {
 // declaration into def.HostInterfaces (top-level entries plus
 // alias-prefixed entries for imported ifaces).
 //
-// Why this is deferred (proposal §11.2 "bindings compose"): if we
+// Why this is deferred ("bindings compose"): if we
 // rewrote during the child's own load, the immediate parent could
 // override but no grandparent could ever rebind — by the time the
 // grandparent's fold sees it the iface ref is already a concrete
@@ -40,8 +42,8 @@ type ifaceEntry struct {
 //
 // Op-suffix semantics: the binding handler is always extended with
 // `.<op>` to produce the dispatched name (`host.foo` + op `bar` →
-// `host.foo.bar`). This is what makes multi-op interfaces (proposal
-// §11.1 `pr_engine.open_pr` + `pr_engine.close_pr`) work — both
+// `host.foo.bar`). This is what makes multi-op interfaces (e.g.
+// `pr_engine.open_pr` + `pr_engine.close_pr`) work — both
 // resolve to distinct concrete handlers a host registry can keep
 // separate. Single-op interfaces are a special case where the author
 // either (a) registers the host with the op-suffixed name or

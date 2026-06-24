@@ -1,29 +1,31 @@
-// Package orchestrator implements the turn-loop brain (§4.2).
+// Package orchestrator implements the turn-loop brain (see
+// docs/architecture/overview.md "The journey of one turn").
 // It is the ONLY component that calls store.AppendEvents.
 // The machine is pure (no I/O); the harness may call the LLM.
 package orchestrator
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"kitsoki/internal/agent"
 	"kitsoki/internal/app"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/clock"
 	"kitsoki/internal/expr"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
-	"kitsoki/internal/inbox"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/journal"
@@ -38,7 +40,7 @@ import (
 )
 
 // pendingClarify holds the in-flight slot-fill state while the TUI
-// is collecting missing slots from the user (§5.3 option a: in-memory).
+// is collecting missing slots from the user (held in-memory).
 type pendingClarify struct {
 	intentName string
 	slots      map[string]any // already-collected slots
@@ -60,15 +62,53 @@ type Orchestrator struct {
 	// on_complete processing and to post notifications.
 	jobStore *jobs.JobStore
 
-	// chatStore is the SQLite-backed chat store used by chat-aware oracle handlers
+	// chatStore is the SQLite-backed chat store used by chat-aware agent handlers
 	// and the host.chat.* built-ins. Optional; nil disables chat persistence.
 	chatStore host.ChatStore
+
+	// promptRenderer renders agent prompt files through the story's prompt
+	// search path (overlay → story) so a prompt can {% extends %} / {% include %}
+	// the story's base prompts and a project can extend a story without forking
+	// it. Built once from def.BaseDir + def.Prompts; nil when there's no
+	// on-disk story dir (LoadBytes / tests), in which case agent handlers use
+	// the legacy KITSOKI_APP_DIR + render.Pongo path. See docs/stories/prompts.md.
+	promptRenderer *render.AppRenderer
+
+	// promptOverlay is a run-time prompt-overlay dir (kitsoki run
+	// --prompt-overlay) that overrides def.Prompts.Overlay when set.
+	promptOverlay string
+
+	// agentBackendName selects the coding-agent CLI every host.agent.* call
+	// (and the intent-routing harness) forks: "" / "claude" (default) or
+	// "copilot". Installed into the dispatch context via
+	// host.WithAgentBackendNamed alongside the agents/providers maps. Set via
+	// WithAgentBackendName (kitsoki --agent / $KITSOKI_AGENT). When a harness
+	// profile is selected (below) its backend supersedes this per-dispatch; this
+	// remains the fallback for the no-profile path.
+	agentBackendName string
+
+	// harnessProfiles / defaultProfile / selection make the backend/provider/model
+	// a session-mutable, profile-named choice resolved per-dispatch instead of the
+	// static agentBackendName. Seeded by WithHarnessProfiles from .kitsoki.yaml;
+	// empty leaves the legacy static path untouched. selection is read on every
+	// dispatch (resolveSelection) and written from a surface goroutine
+	// (SetSelection) — guarded by selMu. See docs/architecture/harness-profiles.md.
+	harnessProfiles map[string]HarnessProfile
+	defaultProfile  string
+	selection       ProfileSelection
+	selMu           sync.RWMutex
+
+	// modelCache memoises the always-on model ids fetched from a profile's
+	// ModelsEndpoint (keyed by profile name), guarded by its own mutex so a fetch
+	// never blocks the dispatch-hot selMu.
+	modelCache map[string][]string
+	modelMu    sync.Mutex
 
 	// roomEnterSink, when non-nil, receives a pre-rendered banner string
 	// every time a turn transitions into a new room (top-level state).
 	// Fired AFTER the machine collects on_enter side-effects but BEFORE
 	// host calls dispatch, so the banner lands in the TUI transcript
-	// before any oracle / Bash / etc. tool-use breadcrumbs from the
+	// before any agent / Bash / etc. tool-use breadcrumbs from the
 	// on_enter chain stream in. Optional; nil disables the hook.
 	roomEnterSink RoomEnterSink
 
@@ -79,14 +119,21 @@ type Orchestrator struct {
 	// aren't on host.ChatStore. Optional; nil disables the surfacing.
 	chatsConcrete *chats.Store
 
-	// journalWriter is the durable journal writer (continue-mode §4.9 Rule 1).
+	// agentRegistry holds the per-app agent plugin registry.
+	// When non-nil, injected into the dispatch context via host.WithAgentRegistry
+	// so agent handlers can route through Agent.Ask. When nil, handlers fall
+	// through to their existing direct claude-CLI logic (backwards compat).
+	// Set via WithAgentRegistry.
+	agentRegistry *agent.Registry
+
+	// journalWriter is the durable journal writer (continue-mode dual-write).
 	// When nil, callers fall through to the legacy AppendEvents path.
 	// Set via WithJournalWriter; individual turn-write call sites are migrated
 	// by the next agent.
 	journalWriter journal.Writer
 
 	// journalReader is the read-side counterpart to journalWriter, used by the
-	// AttachSession resume path (continue-mode §4.5).  When nil, AttachSession
+	// AttachSession resume path (continue-mode).  When nil, AttachSession
 	// falls back to LoadJourney-only (no transcript / no clarify rehydration).
 	// Set via WithJournalReader.
 	journalReader journal.Reader
@@ -99,6 +146,28 @@ type Orchestrator struct {
 	// in New so orchestrators without a clock/store still get a working
 	// in-memory dispatcher.
 	timeouts *timeoutDispatcher
+
+	// eventSink, when non-nil, receives event writes for every turn.
+	// Set via WithEventSink.  Wave 3-entry seam: kitsoki turn --trace wires a
+	// *store.JSONLSink here so events are appended to the JSONL file.
+	// When sinkIsAuthority is true, loadJourney reads from eventSink.History()
+	// rather than o.store.LoadHistory — this is the pure-JSONL path used by
+	// kitsoki turn --trace.  When sinkIsAuthority is false (dual-write mode for
+	// session continue / TUI), SQLite remains the read source.
+	eventSink       store.EventSink
+	sinkIsAuthority bool // true → JSONL is the sole source of truth for loadJourney
+
+	// decider, when non-nil, is the engine-driven LLM decider config used to
+	// resolve one-shot (or decider:llm) decision gates. nil disables it.
+	decider *DeciderConfig
+
+	// execMode is the run's execution mode.
+	// The zero value (ExecOneShot) preserves the historical behaviour:
+	// synthetic emit_intent chains auto-advance through every gate within a
+	// turn. ExecStaged makes a multi-way decision gate end the turn so a
+	// human decides. Set via WithExecutionMode; the `run` TUI defaults to
+	// staged while `kitsoki turn` / tests stay one-shot.
+	execMode ExecutionMode
 
 	// pending tracks in-flight clarifications keyed by session ID.
 	mu      sync.Mutex
@@ -131,8 +200,13 @@ type Orchestrator struct {
 	obsMu     sync.Mutex
 	observers []SessionObserver
 
-	// matcher is the per-app semantic-routing index (semantic-routing
-	// proposal §2.1 / Phase 2). Compiled lazily on first
+	// embedTier is the optional embedding routing tier (Slice 3). When
+	// non-nil and cfg.Enabled is true, TrySemantic tries it between the
+	// deterministic synonyms miss and the LLM hop. Set via WithEmbedTier.
+	embedTier *EmbedTier
+
+	// matcher is the per-app semantic-routing index (see
+	// docs/architecture/semantic-routing.md). Compiled lazily on first
 	// TrySemantic call; subsequent calls reuse the cached *Matcher.
 	// matcherErr remembers a compile failure so we don't retry on
 	// every turn — the orchestrator surfaces the error once via
@@ -146,8 +220,9 @@ type Orchestrator struct {
 	matcher     *semroute.Matcher
 	matcherErr  error
 
-	// cache is the optional turn-result cache (semantic-routing
-	// proposal §2.2 + §7). Wired via WithTurnCache; nil disables
+	// cache is the optional turn-result cache (see
+	// docs/architecture/semantic-routing.md "Turn cache"). Wired via
+	// WithTurnCache; nil disables
 	// the cache tier entirely. The cache is per-orchestrator (and
 	// therefore per-app), so InvalidateOtherHashes / SweepCold /
 	// TrimLRU run at most once per orchestrator on first turn —
@@ -156,6 +231,146 @@ type Orchestrator struct {
 	cacheSweepOnce sync.Once
 	appHashOnce    sync.Once
 	appHashValue   string
+
+	// ideLink is the process-lifetime IDE connection (an *ide.Link, held as the
+	// host.IDELink interface so orchestrator never imports internal/ide). It is
+	// injected into the host-dispatch ctx via host.WithIDELink so host.ide.*
+	// handlers can resolve the live editor, and its Connected() status seeds the
+	// `ide.connected` world key each turn. nil is the default and is safe:
+	// host.ide.* handlers then return the typed not-connected Result and the
+	// agent env-scrub gate stays off (headless / flow tests are byte-identical
+	// to before). Set by the TUI (slice 2) via SetIDELink once it owns a Link.
+	//
+	// ideMu guards ideLink: the TUI mutates it from its bubbletea Update loop
+	// (on /ide connect|disconnect) while the per-turn dispatch path reads it on
+	// a different goroutine. The interface value is swapped under the lock; the
+	// *ide.Link it points at has its own internal locking for the live socket.
+	ideMu   sync.RWMutex
+	ideLink host.IDELink
+
+	// reloader, when non-nil, supplies the freshly-loaded *app.AppDef that
+	// Reload swaps in — overriding the default app.Load(appPath). It exists so a
+	// config-synthesized root (rung 0/1: no app.yaml on disk) can re-synthesize
+	// from .kitsoki.yaml on /reload, while a file-backed (rung 2) root keeps the
+	// historical app.Load(path) behaviour via the closure
+	// `func() { return app.Load(appPath) }`. A rung-1 edit and a rung-2 edit thus
+	// travel the IDENTICAL Reload + RerunOnEnter path. Set via WithReloader; nil
+	// preserves today's path-based reload exactly. See
+	// docs/stories/imports.md "The blank root that grows".
+	reloader func() (*app.AppDef, error)
+
+	// miner, when non-nil and mining is enabled, is the ambient session miner
+	// (docs/proposals/ambient-session-miner.md). NewSession Starts it (which fires
+	// the first-launch history seed iff the slug is unmined); a finished turn /
+	// landed background job pings Notify so the debounced live pass mines the new
+	// transcripts. Held as the narrow SessionMiner interface so the orchestrator
+	// never imports internal/mining (which would invert the dependency — the wire
+	// adapter package is the only orchestrator↔mining edge). nil ⇒ no ambient
+	// mining; off in every flow/test path, so no fixture ever spends LLM.
+	miner SessionMiner
+	// minerRepoPath is the repo path the miner resolves transcripts for (the
+	// working dir / instance root). Empty ⇒ os.Getwd at Start time.
+	minerRepoPath string
+}
+
+// SessionMiner is the narrow lifecycle seam the orchestrator drives the ambient
+// session miner through (*mining.Miner in production, a fake in tests). Start
+// fires the first-launch seed; Notify debounces a live pass over new
+// transcripts. Both are non-blocking and survive the turn (the pass runs on the
+// background-jobs runner). Kept in the orchestrator package so internal/mining
+// stays free of an orchestrator import edge. See WithMiner.
+type SessionMiner interface {
+	Start(ctx context.Context, sid app.SessionID, repoPath string) error
+	Notify(ctx context.Context)
+}
+
+// SetMiner installs the ambient session miner after construction. Used by the
+// runtime where the orchestrator itself is the miner's EventSink (so the miner
+// cannot be built until the orchestrator exists). repoPath is the dir the miner
+// resolves transcripts for; empty ⇒ the process working dir at Start time. Safe
+// to call before the first NewSession; not safe concurrently with one. Pass a
+// nil miner to disable. See WithMiner for the option-time equivalent.
+func (o *Orchestrator) SetMiner(m SessionMiner, repoPath string) {
+	o.miner = m
+	o.minerRepoPath = repoPath
+}
+
+// HasMiner reports whether an ambient session miner is wired. It exists so the
+// flow/test harness can assert the no-LLM invariant: a flow-posture runtime must
+// build NO miner (no fixture ever spends LLM via ambient mining).
+func (o *Orchestrator) HasMiner() bool { return o.miner != nil }
+
+// SetIDELink installs the process IDE connection so host.ide.* handlers resolve
+// the live editor and the `ide.connected` world key reflects its status. Pass
+// nil to detach (e.g. on /ide disconnect); nil is safe everywhere. Slice 2's
+// TUI calls this with its *ide.Link. Safe to call concurrently with in-flight
+// turns (the swap is guarded by ideMu).
+func (o *Orchestrator) SetIDELink(l host.IDELink) {
+	o.ideMu.Lock()
+	defer o.ideMu.Unlock()
+	o.ideLink = l
+}
+
+// currentIDELink returns the installed IDE link under the read lock. Used by
+// every reader of ideLink (host dispatch, off-path dispatch, seedIDEConnected)
+// so a concurrent SetIDELink can never race the interface value. Returns nil
+// when none is installed (the headless / flow-test default).
+func (o *Orchestrator) currentIDELink() host.IDELink {
+	o.ideMu.RLock()
+	defer o.ideMu.RUnlock()
+	return o.ideLink
+}
+
+// seedIDEConnected reflects the live IDE link's connectivity into the world as
+// a NESTED `ide.connected` gate so stories and views can branch on
+// `world.ide.connected` (expr-lang resolves that path as
+// World["ide"]["connected"], never a flat "ide.connected" key — a flat dotted
+// key is unreachable from the expression engine).
+//
+// This is deliberately EPHEMERAL liveness, not a journaled effect: it is
+// recomputed every turn in loadJourney (after BuildJourney rebuilds the world
+// from the event log) so a mid-session connect/disconnect is always visible,
+// and it is never emitted as an EffectApplied event — so it is not carried into
+// the journaled world or any snapshot built from it (the reconstructed world
+// never contains `ide`; we re-seed it fresh each load). Recomputing live
+// liveness is the correct model here: a stale "connected" pinned from a prior
+// turn would lie about the editor's current state.
+//
+// It merges into any existing `ide` map (e.g. the ambient selection map other
+// code may place there) rather than clobbering it.
+func (o *Orchestrator) seedIDEConnected(w world.World) {
+	if w.Vars == nil {
+		return
+	}
+	l := o.currentIDELink()
+	connected := l != nil && l.Connected()
+	if existing, ok := w.Vars["ide"].(map[string]any); ok {
+		existing["connected"] = connected
+		return
+	}
+	w.Vars["ide"] = map[string]any{"connected": connected}
+}
+
+// seedSessionID projects the orchestrator's per-session SessionID into the
+// world as `world.session_id` so stories can derive a session-scoped identity
+// (e.g. the bugfix story keys its worktree dir on `bf-{ticket}-{session}` so
+// two concurrent sessions on the same ticket can never share one checkout —
+// the destructive shared-tree bug
+// 2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git).
+//
+// Like seedIDEConnected, this is deliberately EPHEMERAL liveness rather than a
+// journaled effect: the SessionID is a stable per-session constant, so
+// re-seeding it fresh on every loadJourney is correct and replay-safe (the
+// reconstructed world never needs to carry it). It only fills the key when
+// absent, so a story that explicitly set `session_id` in world keeps its value.
+func (o *Orchestrator) seedSessionID(w world.World, sid app.SessionID) {
+	if w.Vars == nil {
+		return
+	}
+	if existing, ok := w.Vars["session_id"].(string); ok && existing != "" {
+		return
+	}
+	w.Vars["session_id"] = string(sid)
 }
 
 // New creates an Orchestrator.
@@ -174,14 +389,31 @@ func New(def *app.AppDef, m machine.Machine, s store.Store, h harness.Harness, o
 	for _, opt := range opts {
 		opt(o)
 	}
-	// Construct the timeout dispatcher.  Persistence is enabled iff the
-	// orchestrator has a store with a *sql.DB attached (the production case);
-	// pure-memory test rigs default to in-memory tracking.
-	var db *sql.DB
-	if s != nil {
-		db = s.DB()
+	// Build the prompt renderer from the story's base dir + prompts config so
+	// agent prompt files render through a search-path TemplateSet ({% extends %}
+	// / {% include %}, @story / @shared, overlay-first). nil when there's no
+	// on-disk story dir (LoadBytes / tests) — handlers then use the legacy path.
+	o.promptRenderer = buildPromptRenderer(def, o.promptOverlay)
+	// Construct the timeout dispatcher.  Build a SQLite-backed TimeoutStore
+	// from the session store's shared *sql.DB so pending timeouts survive a
+	// process restart.  If the store has no DB (e.g. in-memory test rig), or
+	// if table creation fails, fall back to the noop store so tests that do
+	// not care about persistence still work.
+	var ts host.TimeoutStore
+	if db := s.DB(); db != nil {
+		if sqlTS, tsErr := host.NewSQLiteTimeoutStore(db); tsErr == nil {
+			ts = sqlTS
+		} else {
+			o.logger.Warn(trace.EvTimeoutError,
+				slog.String("phase", "timeout_store_init"),
+				slog.String("err", tsErr.Error()),
+			)
+			ts = host.NewNoopTimeoutStore()
+		}
+	} else {
+		ts = host.NewNoopTimeoutStore()
 	}
-	td, tdErr := newTimeoutDispatcher(o.clk, db, o.logger)
+	td, tdErr := newTimeoutDispatcher(o.clk, ts, o.logger)
 	if tdErr != nil {
 		// A schema failure is recoverable: log and proceed with no Timeout
 		// support.  Apps that don't use Timeout: still work.
@@ -197,8 +429,83 @@ func New(def *app.AppDef, m machine.Machine, s store.Store, h harness.Harness, o
 	return o
 }
 
+// ExecutionMode selects how the engine resolves intent gates — the set of
+// advancing intents available at the end of a room/phase's turn. Every
+// room/phase ends in an intent gate resolved by a decider (default /
+// LLM / human).
+type ExecutionMode int
+
+const (
+	// ExecOneShot advances autonomously: synthetic emit_intent chains run
+	// through every gate within a turn (the historical behaviour, and the
+	// zero value so existing callers/tests are unaffected). A multi-way gate
+	// with no firing emit still rests, as before.
+	ExecOneShot ExecutionMode = iota
+	// ExecStaged ends the turn at a multi-way decision gate so a human picks
+	// the next intent. Single-intent rooms still auto-advance.
+	ExecStaged
+)
+
+// staged reports whether the run-level mode is staged.
+func (m ExecutionMode) staged() bool { return m == ExecStaged }
+
+// String renders the mode for flags/trace.
+func (m ExecutionMode) String() string {
+	if m == ExecStaged {
+		return "staged"
+	}
+	return "one-shot"
+}
+
 // Option is a functional option for Orchestrator.
 type Option func(*Orchestrator)
+
+// WithExecutionMode sets the run's execution mode (one-shot vs staged).
+func WithExecutionMode(mode ExecutionMode) Option {
+	return func(o *Orchestrator) { o.execMode = mode }
+}
+
+// WithReloader injects the closure Reload uses to fetch the fresh app
+// definition, overriding the default app.Load(appPath). A config-synthesized
+// root passes `func() { cfg, _ := webconfig.Load(...); return
+// app.SynthesizeRoot(cfg.Root.RootSpec(), repoRoot) }` so a /reload after a
+// rung-1 `.kitsoki.yaml` edit re-synthesizes the root; a file-backed root may
+// pass `func() { return app.Load(appPath) }` (or leave it unset for the
+// historical path-based behaviour). Nil is the default and is safe — Reload
+// then re-reads appPath exactly as before. See Reload.
+func WithReloader(fn func() (*app.AppDef, error)) Option {
+	return func(o *Orchestrator) { o.reloader = fn }
+}
+
+// WithMiner injects the ambient session miner (*mining.Miner in production)
+// plus the repo path it resolves transcripts for. NewSession Starts it; a
+// finished turn / landed background job pings Notify. nil (the default) disables
+// ambient mining entirely — the path every flow/test fixture takes, so no
+// fixture ever spends LLM. repoPath empty ⇒ the miner resolves against the
+// process working directory at Start time.
+func WithMiner(m SessionMiner, repoPath string) Option {
+	return func(o *Orchestrator) {
+		o.miner = m
+		o.minerRepoPath = repoPath
+	}
+}
+
+// WithPromptOverlay sets a project prompt-overlay directory for this run,
+// overriding any overlay declared in the app's prompts: block. The overlay's
+// prompt files shadow the story's (resolved overlay-first) and may
+// {% extends "@story/…" %} the base they shadow — letting a project specialize
+// a story's prompts without forking it. Empty is a no-op. See
+// docs/stories/prompts.md.
+func WithPromptOverlay(dir string) Option {
+	return func(o *Orchestrator) { o.promptOverlay = dir }
+}
+
+// WithAgentBackendName selects the coding-agent CLI backend ("claude" default,
+// or "copilot") for every host.agent.* call. An empty/"claude" name keeps the
+// default; an unrecognized name degrades safely to claude.
+func WithAgentBackendName(name string) Option {
+	return func(o *Orchestrator) { o.agentBackendName = name }
+}
 
 // WithLogger sets the logger used for structured tracing.
 func WithLogger(l *slog.Logger) Option {
@@ -248,7 +555,7 @@ func WithJobStore(js *jobs.JobStore) Option {
 	}
 }
 
-// WithChatStore wires a host.ChatStore so that chat-aware oracle calls and the
+// WithChatStore wires a host.ChatStore so that chat-aware agent calls and the
 // host.chat.* built-in handlers have access to the persistent chat transcript.
 // When nil (the default), chat persistence is silently disabled and handlers
 // that require a store return Result{Error: "…no chat store wired"}.
@@ -270,7 +577,7 @@ func WithChatsConcrete(cs *chats.Store) Option {
 }
 
 // WithJournalWriter wires a journal.Writer for durable session journalling
-// (continue-mode §4.9 Rule 1). When nil (the default), turn writes fall through
+// (continue-mode dual-write). When nil (the default), turn writes fall through
 // to the legacy AppendEvents path. Individual call sites are migrated by the
 // next wave agent; this option only stores the writer for later use.
 func WithJournalWriter(w journal.Writer) Option {
@@ -290,6 +597,65 @@ func WithClock(c clock.Clock) Option {
 	}
 }
 
+// WithAgentRegistry wires an agent.Registry into the orchestrator so the
+// dispatch context carries agent plugin resolution. When nil (the default),
+// agent handlers fall through to their existing direct claude-CLI logic.
+// For B-2/B-7: pass a registry built from the app's hosts: declarations.
+func WithAgentRegistry(reg *agent.Registry) Option {
+	return func(o *Orchestrator) {
+		o.agentRegistry = reg
+	}
+}
+
+// WithEmbedTier injects a pre-constructed EmbedTier for the embedding routing
+// tier. If nil or tier.cfg.Enabled is false, TrySemantic skips the embed hop.
+func WithEmbedTier(t *EmbedTier) Option {
+	return func(o *Orchestrator) { o.embedTier = t }
+}
+
+// WithEventSink wires a store.EventSink that receives every event appended
+// during a turn.  When set, appendEventsAndJournal routes writes to this sink
+// instead of constructing a StoreSinkAdapter over the SQLite store; loadJourney
+// reads history from sink.History() instead of o.store.LoadHistory.
+//
+// Wave 3-entry: used by kitsoki turn --trace and (for new sessions) by
+// session continue / the TUI, where the sink is a *store.JSONLSink backed by
+// the default JSONL path.  The SQLite store (o.store) may still be non-nil for
+// subcommands that need it for session metadata (external_keys, locks, etc.);
+// only the event-write and event-read paths are redirected.
+// WithEventSink wires a store.EventSink that receives every event appended
+// during a turn.  When set, events are written to the sink in addition to
+// the SQLite store (dual-write).  loadJourney still reads from SQLite so
+// existing subcommands (session show, attach-session) keep working.
+//
+// To make the JSONL sink the sole authority for loadJourney (pure-JSONL mode,
+// used by kitsoki turn --trace), pass WithEventSinkAuthority(true) as well.
+func WithEventSink(s store.EventSink) Option {
+	return func(o *Orchestrator) {
+		o.eventSink = s
+	}
+}
+
+// WithEventSinkAuthority, when true, instructs loadJourney to read history
+// from the eventSink rather than from SQLite.  Set this for the pure-JSONL
+// path (kitsoki turn --trace) where the JSONL file is the sole trace and the
+// in-memory store has no prior events.  Leave false (the default) for the
+// dual-write path (session continue, TUI) where SQLite is still the read source.
+func WithEventSinkAuthority(auth bool) Option {
+	return func(o *Orchestrator) {
+		o.sinkIsAuthority = auth
+	}
+}
+
+// SetEventSink installs an EventSink after the orchestrator has been
+// constructed.  Safe to call before the first turn; not safe to call
+// concurrently with a running turn.  Used by the TUI run path where the
+// session ID (needed to compute the default trace path) is not known until
+// after orchestrator construction.
+func (o *Orchestrator) SetEventSink(s store.EventSink) {
+	o.eventSink = s
+}
+
 // NewSession opens a session in the store and returns its ID.
 // If a background-job scheduler is configured, it also spawns a per-session
 // listener goroutine that forwards terminal JobEvents to handleJobTerminal.
@@ -300,6 +666,24 @@ func (o *Orchestrator) NewSession(ctx context.Context) (app.SessionID, error) {
 	}
 	if o.scheduler != nil {
 		o.startSessionListener(sid)
+	}
+	if o.miner != nil {
+		repoPath := o.minerRepoPath
+		if repoPath == "" {
+			if wd, wdErr := os.Getwd(); wdErr == nil {
+				repoPath = wd
+			}
+		}
+		// Start fires the first-launch history seed (iff the slug is unmined) as a
+		// detached background job — never blocks NewSession. A resolver/infra
+		// failure is logged, not fatal: a session without ambient mining is still
+		// a working session.
+		if startErr := o.miner.Start(ctx, sid, repoPath); startErr != nil {
+			o.logger.Warn("orchestrator: ambient miner start failed",
+				slog.String("session_id", string(sid)),
+				slog.String("err", startErr.Error()),
+			)
+		}
 	}
 	return sid, nil
 }
@@ -338,12 +722,35 @@ func (o *Orchestrator) RunInitialOnEnter(ctx context.Context, sid app.SessionID)
 	if journey.Turn > 0 {
 		return nil
 	}
-	state := lookupStateByPath(o.def, journey.State)
-	if state == nil || len(state.OnEnter) == 0 {
+	// Fire the on_enter chain for EVERY state entered at boot — the
+	// ancestor compounds AND the leaf, in root→leaf order — not just the
+	// leaf. The initial state is reached by resolving the root compound's
+	// `initial:` chain, not by a transition, so nothing here walks the
+	// compound ancestors the way Machine.Turn's entered-path loop does.
+	// That matters because import-folding parks an import's `world_in:`
+	// setters on the import wrapper's compound on_enter (see app/imports.go
+	// §6). For a NON-root import a real entry transition fires them; for the
+	// ROOT import (`root: core`) there is no such transition, so an instance
+	// that retargets a profile key via the root import's `world_in:` got
+	// none of them — the child kept its own defaults. Walking the prefix
+	// chain here mirrors stateEnterPaths("", journey.State): the same
+	// root→leaf on_enter sequence a real entry transition would fire.
+	p := string(journey.State)
+	if idx := strings.Index(p, "#"); idx >= 0 {
+		p = p[:idx]
+	}
+	var onEnter []app.Effect
+	parts := strings.Split(p, ".")
+	for i := range parts {
+		if anc := lookupStateByPath(o.def, app.StatePath(strings.Join(parts[:i+1], "."))); anc != nil {
+			onEnter = append(onEnter, anc.OnEnter...)
+		}
+	}
+	if len(onEnter) == 0 {
 		return nil
 	}
 
-	resolved, newWorld, hostCalls, _, effEvents, runErr := o.machine.RunEffectsAndState(ctx, journey.State, journey.World, state.OnEnter)
+	resolved, newWorld, hostCalls, _, effEvents, runErr := o.machine.RunEffectsAndState(ctx, journey.State, journey.World, onEnter)
 	if runErr != nil {
 		return fmt.Errorf("orchestrator: RunInitialOnEnter: run on_enter for %q: %w", journey.State, runErr)
 	}
@@ -361,6 +768,31 @@ func (o *Orchestrator) RunInitialOnEnter(ctx context.Context, sid app.SessionID)
 		}
 	}
 
+	// Follow any boot emit_intent whose value / `when:` depends on a world
+	// key the on_enter host calls just bound — e.g. git-ops idle's
+	// `emit_intent: "{{ world.route }}"`, where the detect_context host call
+	// binds world.route. RunEffectsAndState above ran with the pre-host-call
+	// world, so that emit could not yet resolve; without settling it here the
+	// session sits at the router room despite its on_enter promising an
+	// automatic route ("routed to hub automatically"). The normal turn path
+	// runs this same settle after its host calls (see settlePostBindEmits);
+	// mirroring it here lets a fresh interactive session land on the routed
+	// hub at boot with no user turn. settlePostBindEmits is a no-op (empty
+	// res.Events, state unchanged) for the common case of a story with no
+	// boot emit_intent.
+	res := &machine.TurnResult{NewState: resolved, World: newWorld}
+	if emitErr := o.settlePostBindEmits(ctx, sid, res, nil, 0); emitErr != "" {
+		// settlePostBindEmits already recorded a HarnessError into res.Events
+		// and left res at the known pre-emit resting place. Persist what we
+		// have so the session lands on a real state rather than half-bound
+		// limbo.
+		slog.Warn("orchestrator.run_initial_on_enter.settle_emits_failed",
+			"session", string(sid), "state", string(resolved), "err", emitErr)
+	}
+	events = append(events, res.Events...)
+	newWorld = res.World
+	resolved = res.NewState
+
 	// No events to persist? Nothing to do.
 	if len(events) == 0 {
 		return nil
@@ -372,8 +804,12 @@ func (o *Orchestrator) RunInitialOnEnter(ctx context.Context, sid app.SessionID)
 	for i := range events {
 		events[i].Turn = 0
 	}
+	// Stamp state_path so the synthetic turn-0 init events record the active
+	// state (matches the turn paths). finding 2.1.
+	stampStatePathPerEvent(events)
+	stampStatePath(events, journey.State, o.InitialState())
 	jEntries := journalEntriesForEvents(sid, 0, time.Now(), events, journey.World, newWorld, "", resolved, "")
-	if appendErr := o.store.AppendEventsAndJournal(sid, events, jEntries); appendErr != nil {
+	if appendErr := o.appendEventsAndJournal(sid, events, jEntries); appendErr != nil {
 		return fmt.Errorf("orchestrator: RunInitialOnEnter: append events: %w", appendErr)
 	}
 	return nil
@@ -383,10 +819,21 @@ func (o *Orchestrator) RunInitialOnEnter(ctx context.Context, sid app.SessionID)
 // them to handleJobTerminal in a background goroutine. The goroutine exits
 // when the cancel func stored in cancelListeners is called.
 func (o *Orchestrator) startSessionListener(sid app.SessionID) {
+	// The listener must outlive the call that started it: NewSession's request
+	// context is cancelled as soon as NewSession returns, and
+	// EnsureSessionListener has no context at all. There is no orchestrator- or
+	// session-scoped lifetime context to derive from, so we root the listener at
+	// context.Background() and govern its lifetime explicitly via the cancel func
+	// stored in cancelListeners (cancelled by stopSessionListener on session
+	// close). Deriving from a request context here would orphan the cancel path
+	// AND prematurely tear the listener down. See stopSessionListener.
 	listenerCtx, cancel := context.WithCancel(context.Background())
 	o.mu.Lock()
 	o.cancelListeners[sid] = cancel
 	o.mu.Unlock()
+	o.logger.Debug("orchestrator: started session listener",
+		slog.String("session_id", string(sid)),
+	)
 
 	ch, ack, unsub := o.scheduler.SubscribeSession(sid)
 	go func() {
@@ -534,7 +981,7 @@ func WithSupplementSlots(slots world.Slots) TurnOption {
 }
 
 // Turn processes one user utterance and returns a TurnOutcome.
-// Steps (§4.2):
+// Steps:
 //  1. Load journey (state + world) from the store.
 //  2. Call harness.RunTurn → mcp.CallToolParams.
 //  3. Parse the intent call from the params.
@@ -546,7 +993,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		opt(&cfg)
 	}
 
-	// Semantic routing tier (semantic-routing proposal §1 Phase 2):
+	// Semantic routing tier (see docs/architecture/semantic-routing.md):
 	// run BEFORE acquiring the session lock so TrySemantic's own
 	// SubmitDirect call can take the lock without deadlocking. We
 	// skip the semantic tier when the caller passed supplemental
@@ -560,7 +1007,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		} else if hit {
 			return outcome, nil
 		}
-		// Turn-cache tier (semantic-routing proposal §5.4): after
+		// Turn-cache tier: after
 		// semroute misses and before the LLM, check whether this
 		// (state, signature) was resolved on a prior turn. On a
 		// successful re-Validate the cache short-circuits the LLM
@@ -568,6 +1015,25 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		// and we fall through.
 		if outcome, hit, cacheErr := o.tryTurnCache(ctx, sid, input); cacheErr != nil {
 			return nil, cacheErr
+		} else if hit {
+			return outcome, nil
+		}
+		// Default free-text tier: after all match-based tiers miss, if the
+		// state declares a default_intent, sink the whole utterance into it
+		// deterministically (one required string slot) instead of letting the
+		// main-turn LLM classify — which can mis-pick a near-miss command. Only
+		// fires when default_intent is declared; otherwise falls through.
+		if outcome, hit, defErr := o.routeViaDefaultIntent(ctx, sid, input); defErr != nil {
+			return nil, defErr
+		} else if hit {
+			return outcome, nil
+		}
+		// App-level free-form fallback: after command-like tiers and any
+		// room-local default sink miss, send unmatched prose from strict/menu
+		// rooms to the configured work-intake intent before the main LLM can
+		// guess a generic navigation intent.
+		if outcome, hit, fallbackErr := o.routeViaFreeFormFallback(ctx, sid, input); fallbackErr != nil {
+			return nil, fallbackErr
 		} else if hit {
 			return outcome, nil
 		}
@@ -631,13 +1097,52 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		RecentTurns:    recent,
 	}
 
-	// Append TurnStarted event.
-	startEvent := newOrchestratorEvent(store.TurnStarted, map[string]any{
+	// UserInputReceived is emitted at the moment input arrives, with the turn
+	// number it belongs to (same as the TurnStarted that follows). This replaces
+	// the exporter-side synthesised turn.input row.
+	// G6: unified payload {"input": <text>, "intent": <name>} on both the Turn
+	// (chat-text) and SubmitDirect paths. On the Turn path intent is "" (the
+	// harness has not yet resolved the intent); on SubmitDirect both are populated.
+	// SPA consumers can ignore intent when empty.
+	var inputEvent store.Event
+	if input != "" {
+		inputPayload, _ := json.Marshal(map[string]any{"input": input, "intent": ""})
+		inputEvent = store.Event{
+			Kind:      store.UserInputReceived,
+			Turn:      turnNum,
+			Ts:        time.Now(),
+			StatePath: journey.State,
+			Payload:   inputPayload,
+		}
+	}
+
+	// TurnStarted payload. Built here, but the routing provenance is stamped
+	// only AFTER the harness resolves (below), once we know this turn truly
+	// reached the paid main-turn interpreter. The deterministic / semantic /
+	// turn-cache / default / fallback tiers all stamp `routed_by` via
+	// RouteProvenance before they ever reach this code; the main-turn path is
+	// the LAST tier, so without stamping it here a turn that fell through every
+	// earlier tier would persist a TurnStarted with NO routed_by at all — an
+	// unattributable "which tier handled this?" hole in the trace (the bug that
+	// produced the empty `{intent:""}` rows). The event is materialised at the
+	// `prefix` build site once provenance is known; the early-return paths above
+	// (nil harness, clarify, harness error) never persist it.
+	startPayload := map[string]any{
 		"turn":  int64(turnNum),
 		"input": input,
-	}, turnNum)
+	}
 
 	// 3. Call harness.
+	//
+	// A free-text turn requires an interpreter (the harness) to classify the
+	// utterance into an intent. In a no-harness posture — e.g. the deterministic
+	// `kitsoki web --flow` UI, where the operator drives by submitting explicit
+	// intents (SubmitDirect) — there is no interpreter, so a free-text turn is
+	// unsupported. Surface that as a clean error instead of dereferencing a nil
+	// harness and panicking the RPC handler.
+	if o.harness == nil {
+		return nil, fmt.Errorf("free-text turn requires an interpreter harness; none is configured (submit an explicit intent instead)")
+	}
 	harnessStart := time.Now()
 	params, err := o.harness.RunTurn(ctx, in)
 	harnessDur := time.Since(harnessStart)
@@ -653,6 +1158,18 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 				slog.String("outcome", "clarify"),
 				slog.String("error", err.Error()),
 			)
+			// A ClarifyResponse is the LLM/router saying "I couldn't map this
+			// free text to any allowed intent" — a genuine no-match. For a room
+			// that opted into the agent off-ramp, intercept it here and hand the
+			// user's ORIGINAL free text to the off-ramp converse turn instead of
+			// returning the soft clarify. For every other (non-opted-in) room the
+			// behavior below is byte-identical to before: maybeOffRamp is scoped
+			// to off-ramp rooms via the State.AgentOffRamp gate, so it returns
+			// (nil, false) in the common case (see offpath.go's isNoMatchCode).
+			if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, input,
+				codeLLMClarification, 0, allowedNames, turnNum); ok {
+				return outcome, nil
+			}
 			msg := strings.TrimSpace(clarify.Message)
 			if msg == "" {
 				msg = "The router didn't understand. Try rephrasing or pick an action from the menu."
@@ -660,7 +1177,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 			return &TurnOutcome{
 				Mode:         ModeRejected,
 				NewState:     journey.State,
-				ErrorCode:    intent.ErrorCode("LLM_CLARIFICATION"),
+				ErrorCode:    codeLLMClarification,
 				ErrorMessage: msg,
 			}, nil
 		}
@@ -676,11 +1193,12 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		slog.String("outcome", "hit"),
 		slog.String("intent", extractIntentName(params)),
 	)
-	// Semantic-routing proposal §1 / Phase 5 hook: emit a stable
+	// Routing breadcrumb: emit a stable
 	// `turn.llm_routed` breadcrumb so the future turncache writeback
-	// (and the TUI route badges in §8) have a deterministic place to
-	// observe LLM-resolved turns. The field schema is locked by §8 —
-	// don't rename intent/confidence/state_path/model. The model
+	// (and the TUI route badges) have a deterministic place to
+	// observe LLM-resolved turns. The field schema is locked (see
+	// docs/tracing/trace-format.md) — don't rename
+	// intent/confidence/state_path/model. The model
 	// name is empty in Phase 2: the harness owns its model choice
 	// and a future hook will plumb the resolved model up here.
 	tl.Debug(ctx, trace.EvTurnLLMRouted,
@@ -689,7 +1207,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		slog.String("model", ""),
 	)
 
-	// Append LLMCalled/LLMToolCall events.
+	// Append the LLMToolCall event recording the harness's resolved tool call.
 	llmEvent := newOrchestratorEvent(store.LLMToolCall, map[string]any{
 		"tool":   params.Name,
 		"intent": extractIntentName(params),
@@ -718,6 +1236,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// 5. Run the machine.
 	result, machineErr := o.machine.Turn(ctx, journey.State, journey.World, call)
 	if machineErr != nil {
+		o.journalTurnError(ctx, tl, sid, turnNum, journey.State, call, journey.World, machineErr)
 		return nil, fmt.Errorf("orchestrator: machine.Turn: %w", machineErr)
 	}
 
@@ -732,6 +1251,22 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		result.Events[i].Turn = turnNum
 	}
 
+	// This turn reached the main-turn interpreter — every earlier
+	// deterministic/semantic/turn-cache/default/fallback tier missed. Stamp
+	// that on TurnStarted so the persisted trace ALWAYS records the resolving
+	// tier (routed_by:"llm" — the one paid tier), with the interpreter seam as
+	// match_type and the harness's self-reported confidence. This is the
+	// guarantee that no free-text turn lands in the trace without an
+	// attributable route (see the startPayload comment above).
+	llmProv := RouteProvenance{
+		Source:     "llm",
+		MatchType:  "main-turn",
+		Confidence: harnessConfidence(params),
+	}
+	emitRoutingStream(ctx, turnNum, extractIntentName(params), llmProv)
+	llmProv.stampOn(startPayload)
+	startEvent := newOrchestratorEvent(store.TurnStarted, startPayload, turnNum)
+
 	// Build a prefix of orchestrator-level events.
 	prefix := []store.Event{startEvent, llmEvent}
 
@@ -740,7 +1275,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		ve := result.ValidationError
 		switch ve.Code {
 		case intent.ErrMissingSlots:
-			// Do NOT persist events for clarify-required outcomes (§4.2 step 4).
+			// Do NOT persist events for clarify-required outcomes.
 			// Store the pending intent in memory.
 			slotsSoFar := slotsToMap(call.Slots)
 			o.mu.Lock()
@@ -786,6 +1321,15 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 			}, nil
 
 		default:
+			// Agent off-ramp: on a genuine no-match in a room that declared
+			// agent_off_ramp, hand the original free text to a converse turn
+			// instead of persisting a rejection (Task 1.3/1.4). Inert for every
+			// other code flowing through here (GUARD_FAILED, INVALID_SLOT_VALUE,
+			// INTENT_NOT_ALLOWED_IN_STATE, …) and when the room has no off-ramp.
+			if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, input, ve.Code, harnessConfidence(params), allowedNames, turnNum); ok {
+				return outcome, nil
+			}
+
 			// INTENT_NOT_ALLOWED, GUARD_FAILED, etc.: persist the failure events.
 			failureEvents := append(prefix, result.Events...)
 			endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
@@ -793,11 +1337,19 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 				"code":    string(ve.Code),
 			}, turnNum)
 			failureEvents = append(failureEvents, endEvent)
+			if inputEvent.Kind != "" {
+				failureEvents = append([]store.Event{inputEvent}, failureEvents...)
+			}
+			// G5: pre-stamp StateEntered/StateExited with their per-event state.
+			stampStatePathPerEvent(failureEvents)
+			// Finding 2.1: fall back to InitialState when journey.State is "" (e.g. new
+			// session whose AppDef.Root didn't parse) so every event has non-empty state_path.
+			stampStatePath(failureEvents, journey.State, o.InitialState())
 
 			// Site 1: dual-write journal entries for the rejection turn.
 			jEntries := journalEntriesForEvents(sid, turnNum, time.Now(), failureEvents,
 				journey.World, journey.World, "", journey.State, input)
-			if appendErr := o.store.AppendEventsAndJournal(sid, failureEvents, jEntries); appendErr != nil {
+			if appendErr := o.appendEventsAndJournal(sid, failureEvents, jEntries); appendErr != nil {
 				return nil, fmt.Errorf("orchestrator: append failure events: %w", appendErr)
 			}
 
@@ -845,14 +1397,27 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// Success path: dispatch any host calls collected by the machine, apply
 	// their bindings to world, and refresh the view so the user sees the
 	// updated state on the same turn.
-	// Inject the turn number for oracle journal entries (§ oracle tracing).
-	ctxWithTurn := host.WithOracleCallCtx(ctx, host.OracleCallCtx{
+	// Stamp the foreground turn on ctx so every agent.call.* event this turn
+	// emits — including those fired by the post-bind emit recursion
+	// (settlePostBindEmits), which is how the bugfix story advances phase to
+	// phase — carries the real foreground turn rather than turn=0
+	// (turn=0). dispatchHostCalls overwrites StatePath
+	// per call with the destination phase, so only Turn need be set here.
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
 		SessionID: sid,
 		Turn:      turnNum,
 		StatePath: result.NewState,
 	})
-	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctxWithTurn, sid, result.HostCalls, result.World, result.NewState)
+	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
+		// A cancelled execution context (operator hit Stop — see
+		// runstatus.session.cancel) aborts the turn cleanly: persist nothing and
+		// leave the session at its pre-turn state. Without this the turn falls
+		// through to appendEventsAndJournal and bakes the cancelled/partial outcome
+		// into the journal, so every later reopen replays it.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
 	}
 	if len(hostEvents) > 0 {
@@ -869,12 +1434,30 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// turn-end logic targets the redirected state, not the original.
 	if hostRedirect != "" {
 		result.NewState = hostRedirect
+
+		// Usability safety-net: an on_error: redirect routed this turn to a
+		// destination room. If that room's view does not itself surface the
+		// failure (most stories don't reference {{ world.last_error }}), the
+		// operator would see a silently re-rendered room with no clue why the
+		// turn bounced. Append a concise, consistently-formatted banner so the
+		// reason is ALWAYS visible. Gated on (redirect happened AND last_error
+		// is set), and skipped when the view already shows the error text, so
+		// it never fires on success and never double-shows for the good
+		// citizens that already render last_error.
+		if msg, ok := result.World.Vars["last_error"].(string); ok && msg != "" {
+			if !strings.Contains(result.View, msg) {
+				result.View = appendErrorBanner(result.View, msg)
+			}
+		}
 	}
 
 	// Post-bind emit_intent dispatch (see settlePostBindEmits doc).
 	var harnessErrMsg string
 	if hostRedirect == "" && result.ValidationError == nil {
 		harnessErrMsg = o.settlePostBindEmits(ctx, sid, &result, tl, 0)
+		if harnessErrMsg == "" {
+			o.resolveAutoGate(ctx, sid, &result, tl, 0)
+		}
 	}
 
 	// Safety net: if no path along the way set result.View (machine.Turn
@@ -895,21 +1478,37 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	}
 
 	successEvents := append(prefix, result.Events...)
-	endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
-		"outcome": "transitioned",
-		"to":      string(result.NewState),
-	}, turnNum)
+	endEvent := newOrchestratorEvent(store.TurnEnded,
+		transitionedTurnEnd(result.NewState, result.View), turnNum)
 	successEvents = append(successEvents, endEvent)
+	if inputEvent.Kind != "" {
+		successEvents = append([]store.Event{inputEvent}, successEvents...)
+	}
 
 	// Stamp turn number on all events.
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum
 	}
+	// G5: pre-stamp StateEntered/StateExited with their per-event state before
+	// the uniform FROM-state fill, so machine.state_entered carries the TO state.
+	stampStatePathPerEvent(successEvents)
+	// Stamp state_path on events that don't already have one.
+	// Finding 2.1: fall back to InitialState when journey.State is "" so every event has non-empty state_path.
+	stampStatePath(successEvents, journey.State, o.InitialState())
+
+	// Final cancellation chokepoint: if the operator hit Stop while the post-bind
+	// emit recursion or the fallback render was running (after the main host
+	// dispatch returned), bail before persisting so a cancelled turn never lands
+	// in the journal. The host-dispatch guard above catches the common case (Stop
+	// during the agent call itself); this covers the narrow tail.
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 
 	// Site 2: dual-write journal entries for the success turn.
 	jEntries := journalEntriesForEvents(sid, turnNum, time.Now(), successEvents,
 		journey.World, result.World, result.View, result.NewState, input)
-	if appendErr := o.store.AppendEventsAndJournal(sid, successEvents, jEntries); appendErr != nil {
+	if appendErr := o.appendEventsAndJournal(sid, successEvents, jEntries); appendErr != nil {
 		return nil, fmt.Errorf("orchestrator: append events: %w", appendErr)
 	}
 
@@ -918,7 +1517,7 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		slog.String("outcome", "transitioned"),
 	)
 
-	// Cache writeback (semantic-routing proposal §5.4): record this
+	// Cache writeback: record this
 	// LLM-resolved verdict against the original input so subsequent
 	// turns at the same state with the same lexical signature can
 	// short-circuit. We deliberately key on journey.State (the state
@@ -952,6 +1551,13 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 		// Tear down the session's background-job listener goroutine.
 		o.stopSessionListener(sid)
 	}
+
+	// Entering a room whose on_enter binds leaves result.TypedView nil
+	// (machine.Turn skipped its typed render; dispatchHostCalls only
+	// re-rendered the text). Re-render the typed view against the bound
+	// world so the browser gets typed_view instead of falling back to the
+	// 80-col plain-text blob. See refreshTypedViewAfterBind.
+	o.refreshTypedViewAfterBind(&result)
 
 	tl.Debug(ctx, trace.EvTurnDone,
 		slog.String("mode", mode.String()),
@@ -1039,7 +1645,20 @@ func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionI
 		return msg
 	}
 
-	emState, emWorld, emHostCalls, emSay, emEvents, emErr := o.machine.DispatchPostBindEmits(ctx, res.NewState, res.World)
+	// When a live sink is wired, stream each synthetic hop's say-text as a
+	// per-room progress breadcrumb so a one-shot chain narrates what it's
+	// doing instead of jumping silently to the final room. The say is then
+	// NOT prepended to the final view (it already streamed) — see the
+	// `streamed` guard on the renders below.
+	streamed := o.roomEnterSink != nil
+	var onEnter func(state string, say string)
+	if streamed {
+		onEnter = func(state string, say string) {
+			o.roomEnterSink.OnRoomEnter(app.StatePath(state), say)
+		}
+	}
+
+	emState, emWorld, emHostCalls, emSay, emEvents, emErr := o.machine.DispatchPostBindEmits(ctx, res.NewState, res.World, o.execMode.staged(), onEnter)
 	if emErr != nil {
 		msg := emErr.Error()
 		if tl != nil {
@@ -1089,7 +1708,7 @@ func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionI
 				slog.Warn("orchestrator.render_after_bind_failed",
 					"state", string(res.NewState), "err", rErr.Error())
 			} else if v != "" {
-				if emSay != "" {
+				if emSay != "" && !streamed {
 					res.View = emSay + "\n\n" + v
 				} else {
 					res.View = v
@@ -1102,733 +1721,20 @@ func (o *Orchestrator) settlePostBindEmits(ctx context.Context, sid app.SessionI
 	// render error here used to silently zero the view (the user
 	// described it as "dumped into nothingness"). Log it so the
 	// failure is at least visible in the trace; the upstream view
-	// template needs to be hardened — see docs/story-style.md §3.5.
+	// template needs to be hardened — see docs/stories/story-style.md
+	// "The view MUST always render to something visible".
 	v, rErr := o.machine.RenderState(res.NewState, res.World)
 	if rErr != nil {
 		slog.Warn("orchestrator.render_after_bind_failed",
 			"state", string(res.NewState), "err", rErr.Error())
 	} else if v != "" {
-		if emSay != "" {
+		if emSay != "" && !streamed {
 			res.View = emSay + "\n\n" + v
 		} else {
 			res.View = v
 		}
 	}
 	return ""
-}
-
-// dispatchHostCalls invokes each HostInvocation, applies bindings to world,
-// and re-renders the view. Returns the new events, the updated world, the
-// refreshed view (empty if no changes), an override state path (non-empty
-// when an `on_error:` arc fires and the caller must redirect to the error
-// state), and an error only when re-rendering fails.
-//
-// Individual handler failures without `on_error:` are folded into
-// world.last_error and emitted as HostReturned events with error payloads —
-// they do not stop dispatch of the remaining calls.  When an
-// `on_error:` arc IS declared on the failing host call, dispatch of the
-// remaining calls in the same on_enter block is aborted and the named error
-// state is entered: its on_enter chain runs (including any host calls it
-// emits), a TransitionApplied event is appended so replay restores the
-// redirected state, and the view is rendered from the error state.
-//
-// When o.hosts is nil (deterministic flow tests), returns no events and the
-// original world unchanged.
-func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID, calls []machine.HostInvocation, w world.World, state app.StatePath) ([]store.Event, world.World, string, app.StatePath, error) {
-	if o.hosts == nil || len(calls) == 0 {
-		return nil, w, "", "", nil
-	}
-
-	if o.transports != nil {
-		ctx = transport.WithRegistry(ctx, o.transports)
-	}
-	if o.jobStore != nil {
-		ctx = host.WithClarificationAnswerer(ctx, o.jobStore)
-		// Wire host.inbox.add to JobStore.InsertNotification.  The
-		// adapter is per-(orchestrator, session) and is rebuilt for
-		// each dispatch — cheap (two pointer copies) and avoids
-		// holding a stale session ID across long-lived orchestrator
-		// references.  Without this seam every host.inbox.add call
-		// returns persisted:false and the notification is dropped.
-		// (P1-C from the dev-story-bugfix-unify Opus review.)
-		ctx = host.WithInboxAdder(ctx, inbox.NewJobStoreAdder(o.jobStore, sid))
-	}
-	if o.chatStore != nil {
-		ctx = host.WithChatStore(ctx, o.chatStore)
-	}
-	// Inject the agents map so host.oracle.* invocations can resolve
-	// `with: { agent: <name> }` references to a host.Agent value. Built
-	// once per dispatch (cheap — translation is tag-equivalent).
-	ctx = host.WithAgents(ctx, agentsForContext(o.def))
-
-	// Inject journal writer and oracle call context so oracle handlers can
-	// write KindOracleCall journal entries without importing the orchestrator.
-	if o.journalWriter != nil {
-		ctx = host.WithOracleJournalWriter(ctx, o.journalWriter)
-	}
-	// OracleCallCtx carries session/turn/state for journal Entry metadata.
-	// Turn is not directly available here (it lives in the Turn() local), so
-	// we inject a best-effort value of 0 when not provided; callers that
-	// inject the turn via WithOracleCallCtx before dispatchHostCalls override
-	// this default.
-	if existing := host.OracleCallCtxFrom(ctx); existing.SessionID == "" {
-		ctx = host.WithOracleCallCtx(ctx, host.OracleCallCtx{
-			SessionID: sid,
-			StatePath: state,
-		})
-	}
-
-	var events []store.Event
-	applied := false
-	var redirect app.StatePath
-
-	for _, hc := range calls {
-		// Background invocations go to the scheduler; foreground go to the host registry.
-		if hc.Background && o.scheduler != nil {
-			bgEvents, bgWorld, bgErr := o.dispatchBackground(ctx, sid, state, hc, w)
-			if bgErr != nil {
-				o.logger.ErrorContext(ctx, trace.EvJobError,
-					slog.String("session_id", string(sid)),
-					slog.String("namespace", hc.Namespace),
-					slog.String("phase", "dispatch_background"),
-					slog.String("err", bgErr.Error()),
-				)
-				w.Vars["last_error"] = bgErr.Error()
-			} else {
-				w = bgWorld
-			}
-			events = append(events, bgEvents...)
-			applied = true
-			continue
-		}
-
-		// Re-render RawWith against the current world so downstream
-		// effects in the same `on_enter:` block see prior binds.  Falls
-		// back to hc.Args if RawWith isn't set (older HostInvocation
-		// instances or test stubs).  See the corresponding machine-side
-		// note on HostInvocation.RawWith.
-		invokeArgs, fellBack := rerenderHostArgs(hc, w)
-
-		// HostDispatched records the *actual* args the handler is about
-		// to receive (post-rerender), so the event trace is honest even
-		// when rerenderHostArgs had to fall back for one or more leaves.
-		// Unlike HostInvoked (which snapshots pre-bind args at machine
-		// time), this fires immediately before the handler is invoked.
-		// Replay treats it as a no-op (see store/replay.go).
-		events = append(events, newOrchestratorEvent(store.HostDispatched, map[string]any{
-			"namespace":          hc.Namespace,
-			"args":               invokeArgs,
-			"rerender_fell_back": fellBack,
-			"background":         hc.Background,
-		}, 0))
-
-		res, err := o.hosts.Invoke(ctx, hc.Namespace, invokeArgs)
-		if err != nil {
-			// Infrastructure failure (e.g. handler not registered): record and move on.
-			w.Vars["last_error"] = err.Error()
-			events = append(events, newOrchestratorEvent(store.HostReturned, map[string]any{
-				"namespace": hc.Namespace,
-				"error":     err.Error(),
-			}, 0))
-			applied = true
-			// Honour on_error even on infrastructure failure: the
-			// app-author's intent is "if this host call doesn't succeed,
-			// route here", and "never registered" is a stronger failure
-			// than a non-zero exit.  Stop processing further calls.
-			if hc.OnError != "" {
-				o.logger.DebugContext(ctx, trace.EvHostOnErrorRedirect,
-					slog.String("session_id", string(sid)),
-					slog.String("namespace", hc.Namespace),
-					slog.String("from", string(state)),
-					slog.String("to", hc.OnError),
-					slog.String("error", err.Error()),
-					slog.String("phase", "infra"),
-				)
-				redirect = app.StatePath(hc.OnError)
-				break
-			}
-			continue
-		}
-		if res.Error != "" {
-			w.Vars["last_error"] = res.Error
-		}
-
-		// Emit one EffectApplied event per binding so replay reconstructs
-		// the final world deterministically from the event log.
-		//
-		// `dkey` is either a dot-separated path (e.g. `submitted.names[0]`)
-		// resolved against res.Data, or — when it contains `{{` — an
-		// expr-lang template rendered against an env that exposes res.Data
-		// as the `result` root plus the current (post-prior-binds) world.
-		// The template form lets authors derive values at bind time without
-		// a follow-up subprocess (e.g.
-		// `party_names: "{{ join(result.submitted.names, ',') }}"`).
-		bindEnv, hasBindEnv := hc.Env.(expr.Env)
-		for wkey, dkey := range hc.Bind {
-			var (
-				val any
-				ok  bool
-			)
-			if containsTemplate(dkey) {
-				if !hasBindEnv {
-					continue
-				}
-				bindEnv.World = w.Vars
-				bindEnv.Result = res.Data
-				rendered, err := expr.RenderValue(dkey, bindEnv)
-				if err != nil {
-					o.logger.WarnContext(ctx, trace.EvHostBindError,
-						slog.String("session_id", string(sid)),
-						slog.String("namespace", hc.Namespace),
-						slog.String("bind_key", wkey),
-						slog.String("template", dkey),
-						slog.String("err", err.Error()),
-					)
-					continue
-				}
-				val = rendered
-				ok = true
-			} else {
-				if res.Data == nil {
-					continue
-				}
-				val, ok = lookupBindPath(res.Data, dkey)
-				if !ok {
-					continue
-				}
-			}
-			w.Vars[wkey] = val
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{wkey: val},
-			}, 0))
-			applied = true
-		}
-
-		payload := map[string]any{"namespace": hc.Namespace}
-		if res.Error != "" {
-			payload["error"] = res.Error
-		}
-		if res.Data != nil {
-			payload["data"] = res.Data
-		}
-		events = append(events, newOrchestratorEvent(store.HostReturned, payload, 0))
-
-		// If the call failed and the author declared an `on_error:` arc,
-		// abort dispatch of the remaining calls in this on_enter block
-		// and route to the error state.  This is what makes pass/fail
-		// host scripts (the bugfix room's verifier, deploy, etc.)
-		// actually block the pipeline instead of silently advancing.
-		if res.Error != "" && hc.OnError != "" {
-			o.logger.DebugContext(ctx, trace.EvHostOnErrorRedirect,
-				slog.String("session_id", string(sid)),
-				slog.String("namespace", hc.Namespace),
-				slog.String("from", string(state)),
-				slog.String("to", hc.OnError),
-				slog.String("error", res.Error),
-				slog.String("phase", "domain"),
-			)
-			redirect = app.StatePath(hc.OnError)
-			break
-		}
-	}
-
-	if redirect != "" {
-		// Run the error state's on_enter chain and recursively dispatch
-		// any host calls it emits.  Append a TransitionApplied event so
-		// replay correctly lands the journey in the error state after a
-		// process restart.  resolvedRedirect captures the emit_intent-
-		// resolved leaf when the error state's on_enter chain emitted
-		// onward (P1-D); when no emit fired it equals `redirect`.
-		errEvents, errWorld, errView, resolvedRedirect, redirErr := o.enterRedirectState(ctx, sid, state, redirect, w)
-		if redirErr != nil {
-			// Even on cap-fire / infra error, enterRedirectState may have
-			// produced events (notably the HarnessError carrying
-			// reason=on_error.depth_cap_exceeded). Append them so the
-			// failure surfaces in the persisted journal — without this
-			// the SubmitDirect/Turn caller still gets a clean turn-end
-			// event sequence but the operator-visible diagnostic
-			// vanishes.
-			events = append(events, errEvents...)
-			return events, errWorld, "", "", redirErr
-		}
-		events = append(events, errEvents...)
-		w = errWorld
-		applied = true
-		if errView == "" {
-			// Fallback: render the resolved error state's view against the
-			// post-on_enter world so callers always have a refreshed
-			// view to show the user.
-			v, rErr := o.machine.RenderState(resolvedRedirect, w)
-			if rErr != nil {
-				return events, w, "", "", fmt.Errorf("orchestrator: render redirect state %q: %w", resolvedRedirect, rErr)
-			}
-			errView = v
-		}
-		return events, w, errView, resolvedRedirect, nil
-	}
-
-	if !applied {
-		return events, w, "", "", nil
-	}
-
-	view, err := o.machine.RenderState(state, w)
-	if err != nil {
-		return events, w, "", "", fmt.Errorf("orchestrator: re-render after host dispatch: %w", err)
-	}
-	// A nil-error empty view is the silent dead-end mode the user
-	// witnessed on 2026-05-20: the post-bind RenderState returned
-	// ("", nil) and result.View ended up empty (the initial machine.Turn
-	// render skipped because the on_enter chain had host calls that
-	// would bind). Surface the unusual case to the trace so a future
-	// occurrence is diagnosable from the trace alone.
-	if view == "" {
-		o.logger.Warn("orchestrator.post_bind_render_empty",
-			slog.String("state", string(state)),
-			slog.Int("world_keys", len(w.Vars)),
-		)
-	}
-	return events, w, view, "", nil
-}
-
-// redirectDepthKey is the context key holding the current
-// on_error-redirect recursion depth for the active turn-side host
-// dispatch. enterRedirectState increments it on each recursion and
-// surfaces a HarnessError when it exceeds the cap; values at the
-// top-level dispatch entry are zero.
-type redirectDepthKey struct{}
-
-func withRedirectDepth(ctx context.Context, d int) context.Context {
-	return context.WithValue(ctx, redirectDepthKey{}, d)
-}
-
-func redirectDepthFromCtx(ctx context.Context) int {
-	if v, ok := ctx.Value(redirectDepthKey{}).(int); ok {
-		return v
-	}
-	return 0
-}
-
-// enterRedirectState runs the on_enter chain for the named error state and
-// recursively dispatches any host calls it emits.  Used by dispatchHostCalls
-// to land the session in the on_error: target after a host failure.
-//
-// Emits a TransitionApplied event (from prior → target) so the replayer
-// updates the journey state, plus StateExited/StateEntered events to mirror
-// the regular machine.Turn transition shape.  Returns the accumulated
-// events, the post-on_enter world, the rendered view (empty if rendering
-// is left to the caller), the resolved leaf state (which may differ from
-// `target` when the error state's on_enter chain emit_intented onward, or
-// when a nested on_error redirected to a deeper error state), and a
-// non-nil error only on infrastructure failure.
-//
-// Calls RunEffectsAndState (not RunEffects) so emit_intent dispatched
-// inside the error state's on_enter steers the resolved leaf — without
-// this the session would land at `target` even when an emit_intent has
-// already routed it onward.  (P1-D from the dev-story-bugfix-unify Opus
-// review.)
-func (o *Orchestrator) enterRedirectState(ctx context.Context, sid app.SessionID, prior, target app.StatePath, w world.World) ([]store.Event, world.World, string, app.StatePath, error) {
-	// Bound recursion depth. Each on_error redirect that runs an
-	// on_enter chain whose host calls fail with another on_error: arc
-	// recurses through dispatchHostCalls → enterRedirectState. Without
-	// a cap, a host that fails idempotently (e.g.
-	// `git worktree add` against an existing dir) loops forever:
-	// idle.on_enter creates a workspace that fails → on_error: idle →
-	// idle.on_enter runs again → repeat. Cap at 4 redirects per
-	// turn-side dispatch. On overflow we surface a HarnessError and
-	// stay at the deepest resolved state rather than infinite-looping
-	// or popping back to the original on_error target.
-	const maxRedirectDepth = 4
-	depth := redirectDepthFromCtx(ctx)
-	if depth > maxRedirectDepth {
-		o.logger.WarnContext(ctx, "orchestrator.on_error.depth_cap_exceeded",
-			slog.String("session_id", string(sid)),
-			slog.String("prior", string(prior)),
-			slog.String("target", string(target)),
-			slog.Int("depth", depth),
-			slog.Int("cap", maxRedirectDepth),
-		)
-		ev := newOrchestratorEvent(store.HarnessError, map[string]any{
-			"reason":  "on_error.depth_cap_exceeded",
-			"prior":   string(prior),
-			"target":  string(target),
-			"depth":   depth,
-			"cap":     maxRedirectDepth,
-			"message": "on_error redirect chain exceeded depth cap; staying at the originating state. A host call's on_error: arc is looping (likely the same host failing repeatedly).",
-		}, 0)
-		return []store.Event{ev}, w, "", prior, fmt.Errorf("orchestrator: on_error redirect from %q to %q exceeded depth cap %d — host call's on_error chain is looping", prior, target, maxRedirectDepth)
-	}
-	ctx = withRedirectDepth(ctx, depth+1)
-
-	// Resolve `../`-relative on_error targets against the prior state
-	// path. The import rewriter (internal/app/imports.go) rewrites a
-	// bare-name on_error target like `ticket_search` declared inside an
-	// imported sub-story to `../ticket_search` so it resolves to a
-	// sibling of the import wrapper. lookupStateByPath only understands
-	// flat dotted paths, so without resolving the `..` first the
-	// redirect would always fail with "on_error target state not found"
-	// for any import-folded room with an `on_error:` arc — which is
-	// every dev-story room with an on_enter invoke.
-	target = app.StatePath(resolveOnCompleteTarget(string(prior), string(target)))
-
-	// Validate target exists; if not, surface as an infrastructure error.
-	tgtState := lookupStateByPath(o.def, target)
-	if tgtState == nil {
-		return nil, w, "", target, fmt.Errorf("orchestrator: on_error target state %q not found", target)
-	}
-
-	// Self-redirect: the on_error arc points back at the current room.
-	// Re-firing on_enter would re-invoke the host call that just failed,
-	// land here again, and loop. Treat this as "stay in place, surface
-	// the failure via last_error" and return without re-running on_enter.
-	// Authors writing `on_error: <self>` mean "don't bail out" — not
-	// "re-enter and try again forever".
-	if target == prior {
-		o.logger.DebugContext(ctx, "orchestrator.on_error.self_redirect_skipped",
-			slog.String("session_id", string(sid)),
-			slog.String("state", string(target)),
-		)
-		return nil, w, "", target, nil
-	}
-
-	var events []store.Event
-
-	// TransitionApplied is the event the replayer uses to update
-	// js.State, so it must be emitted for the redirect to survive a
-	// process restart.
-	events = append(events, newOrchestratorEvent(store.TransitionApplied, map[string]any{
-		"from":   string(prior),
-		"to":     string(target),
-		"intent": "on_error",
-	}, 0))
-
-	// Mirror the StateExited/StateEntered shape that machine.Turn emits
-	// for a regular transition.  Single-level paths only — compound
-	// state hierarchies are handled as a flat exit/enter pair, which
-	// matches the on_error: arc's flat-target contract.
-	events = append(events, newOrchestratorEvent(store.StateExited, map[string]any{
-		"state": string(prior),
-	}, 0))
-	events = append(events, newOrchestratorEvent(store.StateEntered, map[string]any{
-		"state": string(target),
-	}, 0))
-
-	resolved := target
-
-	// Run the error state's on_enter via the machine.  This collects
-	// any nested host calls so we can recurse below.  RunEffectsAndState
-	// also returns the leaf state path the chain settled at — if the
-	// error state's on_enter contains an emit_intent that fires at
-	// machine time, the resolved leaf differs from target and the
-	// orchestrator must surface it as the post-redirect state.
-	if len(tgtState.OnEnter) > 0 {
-		emitState, newWorld, hostCalls, _, effEvents, runErr := o.machine.RunEffectsAndState(ctx, target, w, tgtState.OnEnter)
-		if runErr != nil {
-			return events, w, "", target, fmt.Errorf("orchestrator: run on_enter for redirect %q: %w", target, runErr)
-		}
-		w = newWorld
-		events = append(events, effEvents...)
-		if emitState != "" && emitState != target {
-			resolved = emitState
-		}
-
-		// Recursively dispatch.  A nested on_error redirect supersedes
-		// this one — the caller will see the deepest target.
-		if len(hostCalls) > 0 {
-			nestedEvents, nestedWorld, nestedView, nestedRedirect, nestedErr := o.dispatchHostCalls(ctx, sid, hostCalls, w, resolved)
-			if nestedErr != nil {
-				// Propagate nested events even on error so the
-				// HarnessError emitted by a deeper cap-fire reaches
-				// the persisted journal. Mirrors the outer
-				// dispatchHostCalls branch.
-				events = append(events, nestedEvents...)
-				return events, nestedWorld, "", resolved, nestedErr
-			}
-			events = append(events, nestedEvents...)
-			w = nestedWorld
-			if nestedRedirect != "" {
-				// A deeper on_error fired; emit one more
-				// TransitionApplied so replay lands at the
-				// deepest target, but otherwise let the
-				// nested events already capture the chain.
-				events = append(events, newOrchestratorEvent(store.TransitionApplied, map[string]any{
-					"from":   string(resolved),
-					"to":     string(nestedRedirect),
-					"intent": "on_error",
-				}, 0))
-				return events, w, nestedView, nestedRedirect, nil
-			}
-			return events, w, nestedView, resolved, nil
-		}
-	}
-
-	return events, w, "", resolved, nil
-}
-
-// rerenderHostArgs re-renders the templates in hc.RawWith against the current
-// world snapshot so a host call that runs after an earlier bind in the same
-// `on_enter:` block sees the post-bind values.
-//
-// Falls back to the up-front-resolved hc.Args when:
-//   - RawWith is empty (no templates to re-render)
-//   - hc.Env is not the expected expr.Env type (older code paths or stubs)
-//
-// On a *leaf* template-render error the leaf is replaced with the
-// corresponding pre-resolved leaf from hc.Args (per-leaf fallback), so a
-// single bad nested template no longer poisons the entire `with:` block —
-// the rest of the leaves still see the post-bind world.  Returns the
-// rerendered args plus a fellBack flag that is true iff any leaf fell back
-// (used by HostDispatched to make the diagnostic story honest).
-//
-// This keeps the behaviour compatible with code that doesn't supply RawWith
-// while letting the bugfix room's 2-step `on_enter:` pattern compose
-// cleanly.  See `internal/machine/machine.go` HostInvocation for the
-// machine-side contract.
-func rerenderHostArgs(hc machine.HostInvocation, w world.World) (map[string]any, bool) {
-	if len(hc.RawWith) == 0 {
-		return hc.Args, false
-	}
-	env, ok := hc.Env.(expr.Env)
-	if !ok {
-		return hc.Args, false
-	}
-	// Snapshot the env with the *current* world.
-	env.World = w.Vars
-	out := make(map[string]any, len(hc.RawWith))
-	fellBack := false
-	for k, raw := range hc.RawWith {
-		// Look up the up-front-resolved leaf-equivalent for this top-level
-		// key so per-leaf failures inside a nested map/slice can fall back
-		// to the corresponding pre-bind leaf.
-		existing, hasExisting := hc.Args[k]
-		resolved, leafFell, err := resolveTemplateValueLeafFallback(raw, existing, hasExisting, env)
-		if err != nil {
-			// Unrecoverable shape mismatch between raw and existing at
-			// the top level; preserve the legacy behaviour of falling
-			// back to the up-front-resolved value for this key.
-			if hasExisting {
-				out[k] = existing
-			} else {
-				out[k] = raw
-			}
-			fellBack = true
-			continue
-		}
-		if leafFell {
-			fellBack = true
-		}
-		out[k] = resolved
-	}
-	return out, fellBack
-}
-
-// resolveTemplateValueLeafFallback recurses into maps/slices and renders any
-// string that looks like an expr-lang template.  On a leaf-template render
-// error it falls back to the corresponding leaf from `existing` (the
-// up-front-resolved value for this position), if one exists and has a
-// matching shape.  The returned bool is true iff any leaf in the subtree
-// fell back to its pre-bind value.
-//
-// The shape-matching rule is:
-//   - string leaf → fall back to `existing` (any type)
-//   - map leaf    → recurse, matching keys against `existing` if it is a map
-//   - slice leaf  → recurse, matching indices against `existing` if it is a
-//     slice of the same length
-//
-// If shapes diverge mid-walk (e.g. raw says map, existing says string), the
-// failing subtree falls back wholesale to `existing` and fellBack is set.
-func resolveTemplateValueLeafFallback(v any, existing any, hasExisting bool, env expr.Env) (any, bool, error) {
-	switch val := v.(type) {
-	case string:
-		if !containsTemplate(val) {
-			return val, false, nil
-		}
-		r, err := expr.RenderValue(val, env)
-		if err != nil {
-			if hasExisting {
-				return existing, true, nil
-			}
-			// No pre-bind leaf available; keep raw so the handler sees
-			// the un-rendered template rather than nil.
-			return val, true, nil
-		}
-		return r, false, nil
-	case map[string]any:
-		exMap, _ := existing.(map[string]any)
-		out := make(map[string]any, len(val))
-		fell := false
-		for k, vv := range val {
-			var (
-				exVal any
-				exOK  bool
-			)
-			if exMap != nil {
-				exVal, exOK = exMap[k]
-			}
-			r, f, err := resolveTemplateValueLeafFallback(vv, exVal, exOK, env)
-			if err != nil {
-				return nil, fell, err
-			}
-			if f {
-				fell = true
-			}
-			out[k] = r
-		}
-		return out, fell, nil
-	case []any:
-		exSlice, _ := existing.([]any)
-		out := make([]any, len(val))
-		fell := false
-		for i, vv := range val {
-			var (
-				exVal any
-				exOK  bool
-			)
-			if exSlice != nil && i < len(exSlice) {
-				exVal, exOK = exSlice[i], true
-			}
-			r, f, err := resolveTemplateValueLeafFallback(vv, exVal, exOK, env)
-			if err != nil {
-				return nil, fell, err
-			}
-			if f {
-				fell = true
-			}
-			out[i] = r
-		}
-		return out, fell, nil
-	default:
-		return v, false, nil
-	}
-}
-
-// resolveTemplateValue mirrors machine.resolveEffectValue but lives here
-// so the orchestrator's late re-render doesn't need to import machine
-// internals.  Recurses into maps and slices and renders any string that
-// looks like an expr-lang template.  Kept for callers that don't have a
-// pre-bind fallback value; rerenderHostArgs uses the leaf-fallback variant
-// above instead.
-func resolveTemplateValue(v any, env expr.Env) (any, error) {
-	switch val := v.(type) {
-	case string:
-		if !containsTemplate(val) {
-			return val, nil
-		}
-		// expr.RenderValue preserves type when the entire string is a
-		// single `{{ ... }}` (e.g. a nested object); falls back to text
-		// rendering for inline interpolation.
-		return expr.RenderValue(val, env)
-	case map[string]any:
-		out := make(map[string]any, len(val))
-		for k, vv := range val {
-			r, err := resolveTemplateValue(vv, env)
-			if err != nil {
-				return nil, err
-			}
-			out[k] = r
-		}
-		return out, nil
-	case []any:
-		out := make([]any, len(val))
-		for i, vv := range val {
-			r, err := resolveTemplateValue(vv, env)
-			if err != nil {
-				return nil, err
-			}
-			out[i] = r
-		}
-		return out, nil
-	default:
-		return v, nil
-	}
-}
-
-func containsTemplate(s string) bool {
-	return strings.Contains(s, "{{")
-}
-
-// lookupBindPath resolves a dot-separated key path (e.g.
-// `submitted.summary_markdown` or `submitted.names[0]`) inside a host
-// result's `Data` map. Returns the leaf value and true on success, or
-// (nil, false) if any segment is missing or hits a non-traversable
-// value. Single-segment keys (the common case) are equivalent to a
-// top-level lookup.
-//
-// Path segments are exact map keys, with an optional trailing `[N]`
-// integer index for array fields (e.g. `names[0]` → first element of
-// the names slice on the current node, or chained `outer[0].inner` to
-// walk into an indexed element). N must be non-negative and in range.
-// Whitespace is not stripped, so app authors should keep paths tight.
-func lookupBindPath(data map[string]any, path string) (any, bool) {
-	if data == nil || path == "" {
-		return nil, false
-	}
-	var cur any = data
-	for _, seg := range strings.Split(path, ".") {
-		key, indices, ok := parseBindSegment(seg)
-		if !ok {
-			return nil, false
-		}
-		if key != "" {
-			m, ok := cur.(map[string]any)
-			if !ok {
-				return nil, false
-			}
-			cur, ok = m[key]
-			if !ok {
-				return nil, false
-			}
-		}
-		for _, idx := range indices {
-			arr, ok := cur.([]any)
-			if !ok {
-				return nil, false
-			}
-			if idx < 0 || idx >= len(arr) {
-				return nil, false
-			}
-			cur = arr[idx]
-		}
-	}
-	return cur, true
-}
-
-// parseBindSegment splits a single dot-segment into its leading key and
-// any trailing [N] indices. Returns (key, indices, true) on success or
-// (_, _, false) on a malformed segment. An empty key (segment starts
-// with `[`) is permitted so chains like `outer.[0]` could in principle
-// work — in practice authors write `outer[0]` so the leading key is
-// present.
-func parseBindSegment(seg string) (string, []int, bool) {
-	if seg == "" {
-		return "", nil, false
-	}
-	openIdx := strings.IndexByte(seg, '[')
-	if openIdx < 0 {
-		return seg, nil, true
-	}
-	key := seg[:openIdx]
-	rest := seg[openIdx:]
-	var indices []int
-	for len(rest) > 0 {
-		if rest[0] != '[' {
-			return "", nil, false
-		}
-		closeIdx := strings.IndexByte(rest, ']')
-		if closeIdx < 0 {
-			return "", nil, false
-		}
-		numStr := rest[1:closeIdx]
-		if numStr == "" {
-			return "", nil, false
-		}
-		n, err := strconv.Atoi(numStr)
-		if err != nil {
-			return "", nil, false
-		}
-		indices = append(indices, n)
-		rest = rest[closeIdx+1:]
-	}
-	return key, indices, true
 }
 
 // SubmitDirect submits an intent call directly to the machine, bypassing the
@@ -1842,7 +1748,82 @@ func parseBindSegment(seg string) (string, []int, bool) {
 // user's original text should call [SubmitDirectFromInput] instead so the
 // recorded input survives into inspect.LastTurns and any replay path.
 func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, intentName string, slots map[string]any) (*TurnOutcome, error) {
-	return o.submitDirect(ctx, sid, intentName, slots, "")
+	return o.submitDirect(ctx, sid, intentName, slots, "", RouteProvenance{})
+}
+
+// RouteProvenance records HOW an intent was resolved before a direct
+// submission — the missing "why" on the audit trail. The auto-routing
+// tiers (deterministic / semantic / turncache) submit an intent without
+// an LLM call and previously left only a bare `direct: true` on the
+// TurnStarted event, so a reader of the persisted session trace could
+// not tell why (say) `quit` fired. Carrying the source, the human-
+// readable match reason, and the confidence onto the journal event lets
+// the trace explain a transition like "a stray 'cancel' token in a paste
+// routed to quit via the semantic tier at 0.90". The zero value (empty
+// Source) records nothing extra — used by genuinely caller-chosen direct
+// submissions (CLI --intent, programmatic) where there is no routing to
+// explain.
+type RouteProvenance struct {
+	// Source is the routing tier: "deterministic", "semantic",
+	// "turncache", "llm", "context_route", etc. Empty means "not routed" (omit).
+	Source string
+	// MatchType is the tier-specific reason, e.g. "display" / "example"
+	// for the deterministic tier or "synonym:cancel" / "example:…" for
+	// the semantic tier. Optional.
+	MatchType string
+	// Confidence is the routing confidence band (0 when not applicable).
+	Confidence float64
+	// ContextRouteClass carries the contextual-router class
+	// (intent|help|room_request|meta_edit) when the contextual tier resolved
+	// this turn. Stamped as "context_route_class" on TurnStarted so the trace
+	// records which class was decided for replay.
+	ContextRouteClass string
+}
+
+// stampOn writes the non-empty provenance fields onto a TurnStarted
+// payload map. A zero-value provenance adds nothing, so the event shape
+// is unchanged for genuinely caller-chosen direct submissions.
+func (p RouteProvenance) stampOn(payload map[string]any) {
+	if p.Source == "" {
+		return
+	}
+	payload["routed_by"] = p.Source
+	if p.MatchType != "" {
+		payload["match_type"] = p.MatchType
+	}
+	if p.Confidence > 0 {
+		payload["confidence"] = p.Confidence
+	}
+	if p.ContextRouteClass != "" {
+		payload["context_route_class"] = p.ContextRouteClass
+	}
+}
+
+func emitRoutingStream(ctx context.Context, turnNum app.TurnNumber, intentName string, prov RouteProvenance) {
+	if prov.Source == "" {
+		return
+	}
+	sink := host.StreamSinkFrom(ctx)
+	if sink == nil {
+		return
+	}
+	sink.OnStreamEvent(ctx, host.StreamEvent{
+		Type:       "routing",
+		Turn:       int64(turnNum),
+		Intent:     intentName,
+		RoutedBy:   prov.Source,
+		MatchType:  prov.MatchType,
+		Confidence: prov.Confidence,
+	})
+}
+
+// SubmitDirectRouted is [SubmitDirectFromInput] plus routing provenance:
+// the resolving tier stamps how the intent was chosen onto the
+// TurnStarted journal event so the persisted trace explains the
+// transition. Internal routing tiers call this; external callers that
+// have no routing to explain use [SubmitDirect] / [SubmitDirectFromInput].
+func (o *Orchestrator) SubmitDirectRouted(ctx context.Context, sid app.SessionID, intentName string, slots map[string]any, userInput string, prov RouteProvenance) (*TurnOutcome, error) {
+	return o.submitDirect(ctx, sid, intentName, slots, userInput, prov)
 }
 
 // SubmitDirectFromInput is identical to [SubmitDirect] except it records
@@ -1855,13 +1836,13 @@ func (o *Orchestrator) SubmitDirect(ctx context.Context, sid app.SessionID, inte
 // Pass userInput="" to fall back to the synthetic marker (equivalent to
 // calling SubmitDirect).
 func (o *Orchestrator) SubmitDirectFromInput(ctx context.Context, sid app.SessionID, intentName string, slots map[string]any, userInput string) (*TurnOutcome, error) {
-	return o.submitDirect(ctx, sid, intentName, slots, userInput)
+	return o.submitDirect(ctx, sid, intentName, slots, userInput, RouteProvenance{})
 }
 
 // submitDirect is the shared implementation behind [SubmitDirect] and
 // [SubmitDirectFromInput]. userInput is recorded verbatim on TurnStarted
 // when non-empty; when empty we fall back to "[direct] intent=<name>".
-func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, intentName string, slots map[string]any, userInput string) (*TurnOutcome, error) {
+func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, intentName string, slots map[string]any, userInput string, prov RouteProvenance) (*TurnOutcome, error) {
 	// Serialise against handleJobTerminal — see Turn for rationale.
 	sessMu := o.sessionLock(sid)
 	sessMu.Lock()
@@ -1878,6 +1859,7 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 		slog.String("intent", intentName),
 		slog.String("mode", "submit-direct"),
 	)
+	emitRoutingStream(ctx, turnNum, intentName, prov)
 
 	call := intent.IntentCall{
 		Intent: intentName,
@@ -1886,11 +1868,28 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 
 	result, machineErr := o.machine.Turn(ctx, journey.State, journey.World, call)
 	if machineErr != nil {
+		o.journalTurnError(ctx, tl, sid, turnNum, journey.State, call, journey.World, machineErr)
 		return nil, fmt.Errorf("orchestrator: SubmitDirect: machine.Turn: %w", machineErr)
 	}
 
 	for i := range result.Events {
 		result.Events[i].Turn = turnNum
+	}
+
+	// Finding 2.6: emit UserInputReceived for --intent mode (SubmitDirect) too.
+	// The Turn() path already emits it; SubmitDirect must also emit it so every
+	// entry point produces a universal UserInputReceived event in the trace.
+	// Payload uses intent + input so the SPA renders a user-input chip regardless
+	// of the entry point used.
+	sdInputPayload, _ := json.Marshal(map[string]any{
+		"input":  userInput,
+		"intent": intentName,
+	})
+	sdInputEvent := store.Event{
+		Kind:      store.UserInputReceived,
+		Turn:      turnNum,
+		StatePath: journey.State,
+		Payload:   sdInputPayload,
 	}
 
 	if result.ValidationError != nil {
@@ -1949,12 +1948,14 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 		if journalUserInput == "" {
 			journalUserInput = intentName
 		}
-		startEvent := newOrchestratorEvent(store.TurnStarted, map[string]any{
+		startPayload := map[string]any{
 			"turn":   int64(turnNum),
 			"input":  recordedInput,
 			"direct": true,
-		}, turnNum)
-		failureEvents := append([]store.Event{startEvent}, result.Events...)
+		}
+		prov.stampOn(startPayload)
+		startEvent := newOrchestratorEvent(store.TurnStarted, startPayload, turnNum)
+		failureEvents := append([]store.Event{sdInputEvent, startEvent}, result.Events...)
 		endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
 			"outcome": "rejected",
 			"code":    string(ve.Code),
@@ -1963,10 +1964,12 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 		for i := range failureEvents {
 			failureEvents[i].Turn = turnNum
 		}
+		stampStatePathPerEvent(failureEvents)
+		stampStatePath(failureEvents, journey.State, o.InitialState())
 		// Site 5: dual-write journal entries for the SubmitDirect rejection turn.
 		sdFailJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), failureEvents,
 			journey.World, journey.World, "", journey.State, journalUserInput)
-		if appendErr := o.store.AppendEventsAndJournal(sid, failureEvents, sdFailJEntries); appendErr != nil {
+		if appendErr := o.appendEventsAndJournal(sid, failureEvents, sdFailJEntries); appendErr != nil {
 			return nil, fmt.Errorf("orchestrator: SubmitDirect: append failure events: %w", appendErr)
 		}
 		allowedNames := make([]string, 0)
@@ -1996,14 +1999,32 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 	if successJournalUserInput == "" {
 		successJournalUserInput = intentName
 	}
-	startEvent := newOrchestratorEvent(store.TurnStarted, map[string]any{
+	successStartPayload := map[string]any{
 		"turn":   int64(turnNum),
 		"input":  successRecordedInput,
 		"direct": true,
-	}, turnNum)
+	}
+	prov.stampOn(successStartPayload)
+	startEvent := newOrchestratorEvent(store.TurnStarted, successStartPayload, turnNum)
 
+	// Stamp the foreground turn on ctx so agent.call.* events fired by the
+	// on_enter chain and the post-bind emit recursion carry the real turn (not
+	// turn=0).
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
+		SessionID: sid,
+		Turn:      turnNum,
+		StatePath: result.NewState,
+	})
 	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
+		// A cancelled execution context (operator hit Stop — see
+		// runstatus.session.cancel) aborts the turn cleanly: persist nothing and
+		// leave the session at its pre-turn state. Without this the turn falls
+		// through to appendEventsAndJournal and bakes the cancelled/partial outcome
+		// into the journal, so every later reopen replays it.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
 	}
 	if len(hostEvents) > 0 {
@@ -2021,22 +2042,25 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 	var harnessErrMsg string
 	if hostRedirect == "" && result.ValidationError == nil {
 		harnessErrMsg = o.settlePostBindEmits(ctx, sid, &result, tl, 0)
+		if harnessErrMsg == "" {
+			o.resolveAutoGate(ctx, sid, &result, tl, 0)
+		}
 	}
 
-	successEvents := append([]store.Event{startEvent}, result.Events...)
-	endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
-		"outcome": "transitioned",
-		"to":      string(result.NewState),
-	}, turnNum)
+	successEvents := append([]store.Event{sdInputEvent, startEvent}, result.Events...)
+	endEvent := newOrchestratorEvent(store.TurnEnded,
+		transitionedTurnEnd(result.NewState, result.View), turnNum)
 	successEvents = append(successEvents, endEvent)
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum
 	}
+	stampStatePathPerEvent(successEvents)
+	stampStatePath(successEvents, journey.State, o.InitialState())
 
 	// Site 6: dual-write journal entries for the SubmitDirect success turn.
 	sdSuccJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), successEvents,
 		journey.World, result.World, result.View, result.NewState, successJournalUserInput)
-	if appendErr := o.store.AppendEventsAndJournal(sid, successEvents, sdSuccJEntries); appendErr != nil {
+	if appendErr := o.appendEventsAndJournal(sid, successEvents, sdSuccJEntries); appendErr != nil {
 		return nil, fmt.Errorf("orchestrator: SubmitDirect: append events: %w", appendErr)
 	}
 
@@ -2066,6 +2090,13 @@ func (o *Orchestrator) submitDirect(ctx context.Context, sid app.SessionID, inte
 		// the equivalent call in Turn's terminal-state branch.
 		o.stopSessionListener(sid)
 	}
+
+	// Entering a room whose on_enter binds leaves result.TypedView nil
+	// (machine.Turn skipped its typed render; dispatchHostCalls only
+	// re-rendered the text). Re-render the typed view against the bound
+	// world so the browser gets typed_view instead of falling back to the
+	// 80-col plain-text blob. See refreshTypedViewAfterBind.
+	o.refreshTypedViewAfterBind(&result)
 
 	tl.Debug(ctx, trace.EvTurnDone,
 		slog.String("mode", mode.String()),
@@ -2221,143 +2252,6 @@ func (o *Orchestrator) OneShot(ctx context.Context, in OneShotInput) (*OneShotRe
 	return out, nil
 }
 
-// dispatchHostCallsDetailed is the same dispatch loop as dispatchHostCalls
-// but additionally returns one HostCallSummary per invocation so callers
-// (currently OneShot) can surface args/data/error to the user. The events
-// returned here are identical to what dispatchHostCalls would have produced.
-//
-// Honours `on_error:` arcs the same way dispatchHostCalls does — when a
-// host call with `on_error:` declared returns Result.Error != "", dispatch
-// of the remaining calls in the batch is aborted and the named error
-// state is entered (its on_enter chain runs and any nested host calls are
-// dispatched).  The returned `redirect` is non-empty in that case so the
-// caller can override `result.NewState`.
-func (o *Orchestrator) dispatchHostCallsDetailed(ctx context.Context, calls []machine.HostInvocation, w world.World, state app.StatePath) ([]HostCallSummary, []store.Event, world.World, string, app.StatePath, error) {
-	if o.hosts == nil || len(calls) == 0 {
-		return nil, nil, w, "", "", nil
-	}
-
-	if o.transports != nil {
-		ctx = transport.WithRegistry(ctx, o.transports)
-	}
-	if o.chatStore != nil {
-		ctx = host.WithChatStore(ctx, o.chatStore)
-	}
-	ctx = host.WithAgents(ctx, agentsForContext(o.def))
-
-	summaries := make([]HostCallSummary, 0, len(calls))
-	var events []store.Event
-	applied := false
-	var redirect app.StatePath
-
-	for _, hc := range calls {
-		// Re-render templates against the current world so chained
-		// `on_enter:` host calls compose — see rerenderHostArgs above.
-		invokeArgs, fellBack := rerenderHostArgs(hc, w)
-		summary := HostCallSummary{Namespace: hc.Namespace, Args: invokeArgs}
-		events = append(events, newOrchestratorEvent(store.HostDispatched, map[string]any{
-			"namespace":          hc.Namespace,
-			"args":               invokeArgs,
-			"rerender_fell_back": fellBack,
-			"background":         hc.Background,
-		}, 0))
-		res, err := o.hosts.Invoke(ctx, hc.Namespace, invokeArgs)
-		if err != nil {
-			summary.Error = err.Error()
-			summaries = append(summaries, summary)
-			w.Vars["last_error"] = err.Error()
-			events = append(events, newOrchestratorEvent(store.HostReturned, map[string]any{
-				"namespace": hc.Namespace,
-				"error":     err.Error(),
-			}, 0))
-			applied = true
-			if hc.OnError != "" {
-				o.logger.DebugContext(ctx, trace.EvHostOnErrorRedirect,
-					slog.String("namespace", hc.Namespace),
-					slog.String("from", string(state)),
-					slog.String("to", hc.OnError),
-					slog.String("error", err.Error()),
-					slog.String("phase", "infra"),
-				)
-				redirect = app.StatePath(hc.OnError)
-				break
-			}
-			continue
-		}
-		if res.Error != "" {
-			w.Vars["last_error"] = res.Error
-			summary.Error = res.Error
-		}
-		if res.Data != nil {
-			summary.Data = res.Data
-		}
-		summaries = append(summaries, summary)
-
-		for wkey, dkey := range hc.Bind {
-			if res.Data == nil {
-				continue
-			}
-			val, ok := lookupBindPath(res.Data, dkey)
-			if !ok {
-				continue
-			}
-			w.Vars[wkey] = val
-			events = append(events, newOrchestratorEvent(store.EffectApplied, map[string]any{
-				"set": map[string]any{wkey: val},
-			}, 0))
-			applied = true
-		}
-
-		payload := map[string]any{"namespace": hc.Namespace}
-		if res.Error != "" {
-			payload["error"] = res.Error
-		}
-		if res.Data != nil {
-			payload["data"] = res.Data
-		}
-		events = append(events, newOrchestratorEvent(store.HostReturned, payload, 0))
-
-		if res.Error != "" && hc.OnError != "" {
-			o.logger.DebugContext(ctx, trace.EvHostOnErrorRedirect,
-				slog.String("namespace", hc.Namespace),
-				slog.String("from", string(state)),
-				slog.String("to", hc.OnError),
-				slog.String("error", res.Error),
-				slog.String("phase", "domain"),
-			)
-			redirect = app.StatePath(hc.OnError)
-			break
-		}
-	}
-
-	if redirect != "" {
-		errEvents, errWorld, errView, resolvedRedirect, redirErr := o.enterRedirectState(ctx, "", state, redirect, w)
-		if redirErr != nil {
-			return summaries, events, w, "", "", redirErr
-		}
-		events = append(events, errEvents...)
-		w = errWorld
-		applied = true
-		if errView == "" {
-			v, rErr := o.machine.RenderState(resolvedRedirect, w)
-			if rErr != nil {
-				return summaries, events, w, "", "", fmt.Errorf("render redirect state %q: %w", resolvedRedirect, rErr)
-			}
-			errView = v
-		}
-		return summaries, events, w, errView, resolvedRedirect, nil
-	}
-
-	if !applied {
-		return summaries, events, w, "", "", nil
-	}
-	view, err := o.machine.RenderState(state, w)
-	if err != nil {
-		return summaries, events, w, "", "", fmt.Errorf("re-render after host dispatch: %w", err)
-	}
-	return summaries, events, w, view, "", nil
-}
-
 // effectsFromEvents flattens EffectApplied events into EffectSummary form.
 func effectsFromEvents(events []store.Event) []EffectSummary {
 	var out []EffectSummary
@@ -2385,7 +2279,7 @@ func allowedNamesFromMachine(m machine.Machine, state app.StatePath, w world.Wor
 }
 
 // ContinueTurn retries the pending intent with supplemental slot values
-// collected from the clarification UI (§4.2 step 4 continuation).
+// collected from the clarification UI (the slot-fill continuation of a turn).
 func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supplementSlots map[string]any) (*TurnOutcome, error) {
 	// Serialise against handleJobTerminal — see Turn for rationale.
 	sessMu := o.sessionLock(sid)
@@ -2434,6 +2328,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 
 	result, machineErr := o.machine.Turn(ctx, journey.State, journey.World, call)
 	if machineErr != nil {
+		o.journalTurnError(ctx, tl, sid, turnNum, journey.State, call, journey.World, machineErr)
 		return nil, fmt.Errorf("orchestrator: machine.Turn (continue): %w", machineErr)
 	}
 
@@ -2477,25 +2372,41 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 				allowedNames = append(allowedNames, a.Name)
 			}
 		}
+		// Agent off-ramp: routed through the same helper so the rejection
+		// sites can't drift (Task 1.3). This is the slot-continuation path —
+		// it carries no fresh free-text utterance, so maybeOffRamp's empty-input
+		// guard makes it inert here; the call exists for parity, not effect.
+		if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, "", ve.Code, call.Confidence, allowedNames, turnNum); ok {
+			return outcome, nil
+		}
 		// Rejection path: TypedView/RenderEnv/Renderer intentionally
 		// omitted. The state did not transition (NewState == journey.State),
 		// so the TUI keeps rendering the current room's typed view from the
 		// last successful outcome. Re-emitting them here would be a no-op at
 		// best and risk shadowing in-progress widget focus at worst.
 		return &TurnOutcome{
-			Mode:         ModeRejected,
-			NewState:     journey.State,
-			Events:       result.Events,
-			GuardHint:    ve.GuardHint,
-			ErrorCode:    ve.Code,
-			ErrorMessage: ve.Message,
-			TurnNumber:   turnNum,
+			Mode:           ModeRejected,
+			NewState:       journey.State,
+			Events:         result.Events,
+			GuardHint:      ve.GuardHint,
+			ErrorCode:      ve.Code,
+			ErrorMessage:   ve.Message,
+			AllowedIntents: allowedNames,
+			TurnNumber:     turnNum,
 		}, nil
 	}
 
 	// Success: dispatch host calls then persist events.
 	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
+		// A cancelled execution context (operator hit Stop — see
+		// runstatus.session.cancel) aborts the turn cleanly: persist nothing and
+		// leave the session at its pre-turn state. Without this the turn falls
+		// through to appendEventsAndJournal and bakes the cancelled/partial outcome
+		// into the journal, so every later reopen replays it.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
 	}
 	if len(hostEvents) > 0 {
@@ -2510,21 +2421,25 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 	}
 
 	startEvent := newOrchestratorEvent(store.TurnStarted, map[string]any{
-		"turn":    int64(turnNum),
-		"input":   fmt.Sprintf("[clarify-continue] intent=%s", call.Intent),
-		"clarify": true,
+		"turn":       int64(turnNum),
+		"input":      fmt.Sprintf("[clarify-continue] intent=%s", call.Intent),
+		"clarify":    true,
+		"routed_by":  "slot-fill",
+		"match_type": "clarify-continue",
 	}, turnNum)
 
 	successEvents := append([]store.Event{startEvent}, result.Events...)
-	endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
-		"outcome": "transitioned",
-		"to":      string(result.NewState),
-	}, turnNum)
+	endEvent := newOrchestratorEvent(store.TurnEnded,
+		transitionedTurnEnd(result.NewState, result.View), turnNum)
 	successEvents = append(successEvents, endEvent)
 
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum
 	}
+	// Stamp state_path so every on-disk event records the active state
+	// (matches the Turn/SubmitDirect paths). finding 2.1.
+	stampStatePathPerEvent(successEvents)
+	stampStatePath(successEvents, journey.State, o.InitialState())
 
 	// Site 7: dual-write journal entries for the ContinueTurn success turn.
 	// Prepend a clarify.answered entry before the standard set.
@@ -2544,7 +2459,7 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 	}
 	ctJEntries = append([]journal.Entry{clarifyAnsweredEntry}, ctJEntries...)
 
-	if appendErr := o.store.AppendEventsAndJournal(sid, successEvents, ctJEntries); appendErr != nil {
+	if appendErr := o.appendEventsAndJournal(sid, successEvents, ctJEntries); appendErr != nil {
 		return nil, fmt.Errorf("orchestrator: append continue events: %w", appendErr)
 	}
 
@@ -2569,6 +2484,11 @@ func (o *Orchestrator) ContinueTurn(ctx context.Context, sid app.SessionID, supp
 	if newStateDef != nil && newStateDef.Terminal {
 		mode = ModeCompleted
 	}
+
+	// See refreshTypedViewAfterBind: a clarify→continue that lands in a
+	// room whose on_enter binds would otherwise ship typed_view=nil and the
+	// browser would fall back to the plain-text view.
+	o.refreshTypedViewAfterBind(&result)
 
 	tl.Debug(ctx, trace.EvTurnDone,
 		slog.String("mode", mode.String()),
@@ -2660,6 +2580,35 @@ func (o *Orchestrator) LoadJourney(sid app.SessionID) (*store.JourneyState, erro
 	return o.loadJourney(sid)
 }
 
+// PatchWorld injects world-key overrides into the session's event log without
+// advancing a turn. Mirrors the flow-test runner's injectWorldOverride
+// mechanism: each key-value pair is written as an EffectApplied event at
+// turn = journey.Turn + 1 so the next RunIntent sees the patched values.
+//
+// Intended for demo/test tooling only (the runstatus web server exposes this
+// as runstatus.session.patch_world). Never call from production story paths.
+func (o *Orchestrator) PatchWorld(ctx context.Context, sid app.SessionID, patch map[string]any) error {
+	if len(patch) == 0 {
+		return nil
+	}
+	j, err := o.loadJourney(sid)
+	if err != nil {
+		return fmt.Errorf("PatchWorld: load journey: %w", err)
+	}
+	overrideTurn := j.Turn + 1
+	events := make([]store.Event, 0, len(patch))
+	for k, v := range patch {
+		payload, _ := json.Marshal(map[string]any{"set": map[string]any{k: v}})
+		events = append(events, store.Event{
+			Kind:    store.EffectApplied,
+			Turn:    overrideTurn,
+			Payload: payload,
+		})
+	}
+	sink := store.NewStoreSinkAdapter(o.store, sid)
+	return sink.AppendBatch(events)
+}
+
 // RenderState renders the view template for (state, world) without touching
 // the store. Thin wrapper around machine.RenderState for symmetry with
 // LoadJourney.
@@ -2667,13 +2616,154 @@ func (o *Orchestrator) RenderState(state app.StatePath, w world.World) (string, 
 	return o.machine.RenderState(state, w)
 }
 
+// refreshTypedViewAfterBind re-renders the typed view for the settled
+// (NewState, World) when the machine left TypedView nil because the
+// transition's on_enter host calls bind. machine.Turn deliberately skips
+// its typed render in that case (see machine.go hostCallsWillBind: the
+// pre-bind world would make bound-field templates error), and the post-bind
+// re-render in dispatchHostCalls only produces the *text* view — so without
+// this step result.TypedView stays nil all the way to the browser. The web
+// surface (newTurnResult) then receives typed_view=null and falls back to
+// the ANSI-stripped 80-col text, collapsing the room's typed elements
+// (banner, kv, prose paragraphs, choice→buttons) into one monospace blob.
+//
+// No-op when a typed view is already present (the non-binding fast path) or
+// when the state has no element-array view (RenderStateTyped returns a nil
+// typed view for legacy string / extends / template_file views — those are
+// served as text by design). Pure render; safe to call after all post-bind
+// settling (emit recursion, auto-gate) has fixed the final state/world.
+func (o *Orchestrator) refreshTypedViewAfterBind(res *machine.TurnResult) {
+	if res == nil || res.TypedView != nil {
+		return
+	}
+	if _, tv, env, rr, err := o.machine.RenderStateTyped(res.NewState, res.World); err == nil && tv != nil {
+		res.TypedView = tv
+		res.RenderEnv = env
+		res.Renderer = rr
+	}
+}
+
+// LookupIntent resolves an intent definition by name scoped to the given state.
+// Read-only wrapper over machine.LookupIntent for callers (the runstatus web
+// surface) that need each allowed intent's slot schema without importing the
+// machine package directly.
+func (o *Orchestrator) LookupIntent(state app.StatePath, name string) (app.Intent, bool) {
+	return o.machine.LookupIntent(state, name)
+}
+
+// StateDefaultIntent returns the resolved (import-folded) name of the given
+// state's free-text sink — its `default_intent` — or "" when the state
+// declares none. The web composer uses this to default its text-input box to
+// the room's free-text sink (e.g. `answer` in the PRD `clarifying` room)
+// rather than to an arbitrary first text-slot intent, so a typed reply routes
+// the way the room author intended. Mirrors resolveDefaultIntentName: the
+// authored name may be bare while the folded machine uses an import-prefixed
+// key, so we resolve through the state's IntentAliases.
+func (o *Orchestrator) StateDefaultIntent(state app.StatePath) string {
+	st := lookupStateByPath(o.def, state)
+	if st == nil {
+		return ""
+	}
+	di := strings.TrimSpace(st.DefaultIntent)
+	if di == "" {
+		return ""
+	}
+	if mapped, ok := st.IntentAliases[di]; ok && strings.TrimSpace(mapped) != "" {
+		return mapped
+	}
+	return di
+}
+
+// CurrentView reconstructs the current state/world for a session and returns a
+// read-only TurnOutcome describing it — the "what does the room look like right
+// now" frame the browser asks for on load (runstatus.session.view) without
+// advancing the session. It never mutates state, world, or the trace.
+//
+// Mode is always ModeTransitioned. When the session sits at the initial state
+// the typed view is surfaced via InitialViewTyped (matching the first frame
+// `kitsoki web` paints); otherwise the text is rendered via RenderState and the
+// typed view is best-effort (RenderStateTyped, which returns a nil TypedView for
+// non-element-array view shapes — acceptable per the contract). AllowedIntents
+// is the menu for the current state.
+func (o *Orchestrator) CurrentView(_ context.Context, sid app.SessionID) (*TurnOutcome, error) {
+	j, err := o.loadJourney(sid)
+	if err != nil {
+		return nil, fmt.Errorf("current view: load journey: %w", err)
+	}
+
+	allowed := o.machine.AllowedIntents(j.State, j.World)
+	allowedNames := make([]string, 0, len(allowed))
+	for _, ai := range allowed {
+		allowedNames = append(allowedNames, ai.Name)
+	}
+
+	out := &TurnOutcome{
+		Mode:           ModeTransitioned,
+		NewState:       j.State,
+		AllowedIntents: allowedNames,
+		TurnNumber:     j.Turn,
+	}
+
+	// Populate View (rendered text) and TypedView (structured elements).
+	// TypedView is now pre-evaluated by newTurnResult before sending to the
+	// browser (Sources evaluated via pongo, when: guards applied), so it is
+	// safe to carry it here for element-array views. Non-element-array views
+	// (extends, source, template_file) leave TypedView nil and the browser
+	// falls back to the ANSI-stripped View text. See tools/runstatus/CLAUDE.md.
+	if j.State == o.InitialState() {
+		text, tv, env, rr, verr := o.InitialViewTyped(j.World)
+		if verr != nil {
+			return nil, fmt.Errorf("current view: initial view: %w", verr)
+		}
+		out.View = text
+		out.TypedView = tv
+		out.RenderEnv = env
+		out.Renderer = rr
+		return out, nil
+	}
+
+	// Arbitrary (non-initial) state: rendered text + optional typed view.
+	if text, tv, env, rr, verr := o.machine.RenderStateTyped(j.State, j.World); verr == nil {
+		out.View = text
+		out.TypedView = tv
+		out.RenderEnv = env
+		out.Renderer = rr
+	} else if text, rerr := o.machine.RenderState(j.State, j.World); rerr == nil {
+		out.View = text
+	} else {
+		return nil, fmt.Errorf("current view: render state %q: %w", j.State, rerr)
+	}
+	return out, nil
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 // loadJourney reconstructs the current state and world from the store.
+//
+// Wave 3-entry: when o.eventSink is non-nil AND o.store is nil (the pure-JSONL
+// path used by kitsoki turn --trace), history is read from o.eventSink.History().
+// When both o.eventSink and o.store are set (the dual-write path used by
+// session continue and the TUI), SQLite remains the read source for backward-
+// compat with session show, attach-session, etc.  The JSONL sink is the
+// write path in both cases; this read preference keeps existing subcommands
+// working until phase B removes SQLite event storage.
 func (o *Orchestrator) loadJourney(sid app.SessionID) (*store.JourneyState, error) {
 	// Determine initial state and world from app defaults.
 	initialState := o.InitialState()
 	initialWorld := o.InitialWorld()
+
+	if o.eventSink != nil && o.sinkIsAuthority {
+		// Pure-JSONL path (kitsoki turn --trace): JSONL is authoritative.
+		// Read history from the in-memory slice kept by JSONLSink.
+		history := o.eventSink.History()
+		js, err := store.BuildJourney(o.def, initialState, initialWorld, history)
+		if err != nil {
+			return nil, fmt.Errorf("build journey (jsonl): %w", err)
+		}
+		o.seedIDEConnected(js.World)
+		o.seedSessionID(js.World, sid)
+		return js, nil
+	}
 
 	// Try to load from the latest snapshot first.
 	snap, hasSnap, err := o.store.LatestSnapshot(sid)
@@ -2700,6 +2790,16 @@ func (o *Orchestrator) loadJourney(sid app.SessionID) (*store.JourneyState, erro
 	if err != nil {
 		return nil, fmt.Errorf("build journey: %w", err)
 	}
+	// A snapshot at turn N means N turns have already happened. BuildJourney
+	// derives js.Turn solely from the post-snapshot events it is handed, so when
+	// a snapshot has no later events (e.g. RewindRoute re-baselines at turnN and
+	// immediately re-dispatches) it would reset the counter to 0 and the next
+	// turn would collide on (session, turn). Floor it at the snapshot turn.
+	if hasSnap && js.Turn < snap.Turn {
+		js.Turn = snap.Turn
+	}
+	o.seedIDEConnected(js.World)
+	o.seedSessionID(js.World, sid)
 
 	return js, nil
 }
@@ -2790,8 +2890,8 @@ func extractIntentName(params mcp.CallToolParams) string {
 
 // harnessConfidence extracts the LLM's self-reported confidence from
 // CallToolParams without erroring. Returns 0 when the field is absent
-// or non-numeric. Used by the EvTurnLLMRouted trace event (semantic-
-// routing proposal §1 / §8) so the TUI route badge can render the
+// or non-numeric. Used by the EvTurnLLMRouted trace event so the
+// TUI route badge can render the
 // LLM's own confidence number next to the magenta ✦ chip.
 func harnessConfidence(params mcp.CallToolParams) float64 {
 	if m, ok := params.Arguments.(map[string]any); ok {
@@ -2812,6 +2912,156 @@ func newOrchestratorEvent(kind store.EventKind, payload map[string]any, turn app
 	}
 }
 
+// transitionedTurnEnd builds the turn.end payload for a successful transition.
+// It records the rendered operator-facing view ("view") alongside the outcome
+// and destination state, so the trace carries the deterministic room narration
+// the operator saw — see the store.TurnEnded doc for why this must live in the
+// trace rather than be reconstructed from the (mutable, un-pinned) story files.
+// The view is omitted when empty so rejected/background turns stay lean.
+//
+// Presentation ANSI is stripped before recording: the view's lipgloss element
+// styling (banner/heading colour) is emitted only when stdout is a colour
+// terminal, so leaving it in would make the same session record different bytes
+// in a TTY vs. headless — a non-deterministic trace. The zero-width
+// source-color sentinels are NOT ANSI and survive the strip, so the recorded
+// narration stays deterministic AND keeps its LLM/template provenance for
+// consumers to re-style. See recordedView.
+func transitionedTurnEnd(to app.StatePath, view string) map[string]any {
+	p := map[string]any{
+		"outcome": "transitioned",
+		"to":      string(to),
+	}
+	if v := recordedView(view); v != "" {
+		p["view"] = v
+	}
+	return p
+}
+
+// recordedView normalises a rendered view for the trace: it strips presentation
+// ANSI (terminal-profile-dependent, hence non-deterministic) while preserving
+// the source-color sentinels. Both trace recording boundaries — turn.end.view
+// and the journal's view.rendered entry — funnel through here so the recorded
+// narration is identical regardless of the color profile it was rendered under.
+func recordedView(view string) string {
+	return ansi.Strip(view)
+}
+
+// stampStatePathPerEvent pre-stamps StateExited and StateEntered events with
+// the state they "happened in", fixing finding G5 (machine.state_entered
+// carrying the FROM state instead of the TO state).
+//
+// Machine events carry the state path in their payload:
+//   - StateExited{state: "foyer"}  → state_path = "foyer"  (the exited state)
+//   - StateEntered{state: "cloakroom"} → state_path = "cloakroom" (the entered state)
+//
+// This must be called BEFORE stampStatePath so these events get the correct
+// per-event value rather than the uniform FROM-state default.
+func stampStatePathPerEvent(evs []store.Event) {
+	for i := range evs {
+		ev := &evs[i]
+		if ev.StatePath != "" {
+			continue // already set
+		}
+		switch ev.Kind {
+		case store.StateExited, store.StateEntered:
+			// Extract the "state" field from the payload.
+			var p struct {
+				State string `json:"state"`
+			}
+			if len(ev.Payload) > 0 {
+				if err := json.Unmarshal(ev.Payload, &p); err == nil && p.State != "" {
+					ev.StatePath = app.StatePath(p.State)
+				}
+			}
+		}
+	}
+}
+
+// stampStatePath sets StatePath on every event in evs that does not already
+// have one set. Called before appendEventsAndJournal so the on-disk JSONL
+// records the active state without exporter-side back-fill.
+//
+// Finding 2.1: when state is "" (rejection before a journey is fully built,
+// e.g. when AppDef.Root is not a valid string), fall back to fallback. Pass
+// o.InitialState() as fallback to ensure every event carries a non-empty
+// state_path on disk.
+//
+// Finding G5: StateEntered and StateExited events should be pre-stamped via
+// stampStatePathPerEvent before this is called, so this only fills events that
+// don't have a per-event state assigned.
+func stampStatePath(evs []store.Event, state, fallback app.StatePath) {
+	effective := state
+	if effective == "" {
+		effective = fallback
+	}
+	for i := range evs {
+		if evs[i].StatePath == "" {
+			evs[i].StatePath = effective
+		}
+	}
+}
+
+// buildPromptRenderer constructs the prompt renderer for a story from its
+// base dir and optional prompts: config. Returns nil when def has no on-disk
+// base dir (LoadBytes / tests) so agent handlers fall back to the legacy
+// KITSOKI_APP_DIR + render.Pongo path. Shared/overlay paths are resolved
+// relative to BaseDir when not absolute. The renderer is uncached so an
+// author's prompt edits take effect on the next turn without a restart, the
+// same hot-reload behavior NewAppRenderer gives views.
+func buildPromptRenderer(def *app.AppDef, overlayOverride string) *render.AppRenderer {
+	if def == nil || def.BaseDir == "" {
+		return nil
+	}
+	pp := render.PromptPath{Story: def.BaseDir}
+	if pc := def.Prompts; pc != nil {
+		for _, s := range pc.Shared {
+			pp.Shared = append(pp.Shared, resolveUnderBase(def.BaseDir, s))
+		}
+		if pc.Overlay != "" {
+			pp.Overlay = resolveUnderBase(def.BaseDir, pc.Overlay)
+		}
+	}
+	// Expose each immediate import's prompt root as @import/<alias>/… so a
+	// parent override prompt can extend the imported story's base instead of
+	// swapping it wholesale (docs/stories/imports.md). SourcePath is the
+	// child manifest; its dir is the child's prompt base.
+	for alias, w := range def.ImportWrappers {
+		if w == nil || w.SourcePath == "" {
+			continue
+		}
+		if pp.Imports == nil {
+			pp.Imports = map[string]string{}
+		}
+		pp.Imports[alias] = filepath.Dir(w.SourcePath)
+	}
+	// A run-time --prompt-overlay wins over a story-declared default. It is
+	// resolved against the process cwd when relative (it's project-supplied,
+	// not part of the shared story).
+	if overlayOverride != "" {
+		if filepath.IsAbs(overlayOverride) {
+			pp.Overlay = overlayOverride
+		} else if abs, err := filepath.Abs(overlayOverride); err == nil {
+			pp.Overlay = abs
+		} else {
+			pp.Overlay = overlayOverride
+		}
+	}
+	r, err := render.NewPromptRenderer(pp, false)
+	if err != nil {
+		return nil
+	}
+	return r
+}
+
+// resolveUnderBase joins a possibly-relative path against base; absolute paths
+// pass through unchanged.
+func resolveUnderBase(base, p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(base, p)
+}
+
 // agentsForContext translates the app-side AgentDef map into the host-side
 // Agent map used by the context shim. Returns nil when the app declares no
 // agents so handlers see a clean "no agents wired" signal rather than an
@@ -2824,9 +3074,12 @@ func agentsForContext(def *app.AppDef) map[string]host.Agent {
 	out := make(map[string]host.Agent, len(def.Agents))
 	for name, a := range def.Agents {
 		agent := host.Agent{
-			SystemPrompt: a.SystemPrompt,
-			Model:        a.Model,
-			DefaultCwd:   a.Cwd,
+			SystemPrompt:         a.SystemPrompt,
+			Model:                a.Model,
+			Effort:               a.Effort,
+			DefaultCwd:           a.Cwd,
+			InheritClaudeDefault: a.InheritClaudeDefault,
+			Provider:             a.Provider,
 		}
 		if len(a.Tools) > 0 {
 			agent.Tools = append([]string(nil), a.Tools...)
@@ -2843,9 +3096,64 @@ func agentsForContext(def *app.AppDef) map[string]host.Agent {
 	return out
 }
 
+// providersForContext translates the app-side ProviderDecl map into the
+// host-side Provider map injected per dispatch (via host.WithProviders) so
+// agent handlers can resolve an agent's Provider / an effect's `provider:` arg
+// to its env overrides + default model. Returns nil when the app declares no
+// providers so handlers see a clean "no providers wired" signal.
+func providersForContext(def *app.AppDef) map[string]host.Provider {
+	if def == nil || len(def.Providers) == 0 {
+		return nil
+	}
+	out := make(map[string]host.Provider, len(def.Providers))
+	for name, p := range def.Providers {
+		if p == nil {
+			continue
+		}
+		prov := host.Provider{Model: p.Model, Effort: p.Effort}
+		if len(p.Env) > 0 {
+			prov.Env = make(map[string]string, len(p.Env))
+			for k, v := range p.Env {
+				prov.Env[k] = v
+			}
+		}
+		out[name] = prov
+	}
+	return out
+}
+
+// projectContextFor translates the app's Layer-2 authoring fields (app.context
+// / context_path) into the host-side ProjectContext injected per dispatch, so
+// every agent call composes the project grounding into its system prompt. A
+// nil def or an app with neither field set yields a zero ProjectContext (the
+// host then falls back to the prompts/_project.md convention, then to no
+// project layer).
+func projectContextFor(def *app.AppDef) host.ProjectContext {
+	if def == nil {
+		return host.ProjectContext{}
+	}
+	return host.ProjectContext{
+		Inline: def.App.Context,
+		Path:   def.App.ContextPath,
+	}
+}
+
 // convertBashProfile translates an app-layer BashProfileDecl into the
 // host-layer BashProfile. The two types are structurally identical; the
 // separation keeps the host package free of an app import.
+// errorBannerFormat is the single, consistent shape for the on_error redirect
+// banner the runtime appends when a redirected room does not surface the
+// failure itself. Kept as one format so every story bounce looks identical.
+const errorBannerFormat = "⚠ Action failed: %s"
+
+func appendErrorBanner(view, msg string) string {
+	banner := fmt.Sprintf(errorBannerFormat, msg)
+	if view == "" {
+		return banner
+	}
+	return view + "\n\n" + banner
+}
+
 func convertBashProfile(d *app.BashProfileDecl) *host.BashProfile {
 	if d == nil {
 		return nil

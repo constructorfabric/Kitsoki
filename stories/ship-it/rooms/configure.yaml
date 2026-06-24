@@ -1,0 +1,72 @@
+# configure — capture the brief + the deterministic gate, then ship.
+#
+# The gate command renders VERBATIM (a code block) — the gate is the contract,
+# re-run identically on the merged commit by `verify`. `ship` projects
+# brief → cherny goal_text and gate_command → cherny's script gate via the
+# maker import's world_in, then transitions into the maker.
+
+states:
+
+  configure:
+    description: "Capture the brief and the deterministic gate; start the loop."
+    relevant_world: [brief, gate_command, base_branch, workspace_id]
+    view:
+      - prose: "Deliver one scoped brief. It will be implemented in an isolated worktree, gated, integrated to main, re-verified on the merged commit, then cleaned up."
+      - kv:
+          pairs:
+            Brief:          '{{ world.brief|default:"(not set)" }}'
+            "Base branch":  '{{ world.base_branch }}'
+            Worktree:       '.worktrees/{{ world.workspace_id }}  (isolated)'
+      - heading: "gate (the deterministic contract — re-run on main)"
+      - code: '{{ world.gate_command|default:"(no gate command set)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "ship brief=<text> gate_command=<cmd>"
+              hint:  "start the loop (maker → integrate → verify → ship)"
+              intent: ship
+              param:
+                slot:        brief
+                type:        string
+                placeholder: "Fix the rate-limit burst off-by-one"
+                required:    false
+            - label: "integrate_existing"
+              hint:  "skip the maker — integrate an existing worktree's branch (work already done)"
+              intent: integrate_existing
+              when:  "world.worktree_path != ''"
+            - label: "quit"
+              hint:  "abandon → needs-human"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      # Skip the maker and integrate a branch whose work is already done in a
+      # worktree (worktree_path + workspace_branch pre-set). The same lost-work-
+      # safe integrate → verify → cleanup → ship pipeline. This is also the seam
+      # a mocked maker uses: the maker's @exit:achieved leaves exactly this
+      # handoff (worktree_path + workspace_branch), so integrating from a
+      # pre-seeded worktree is identical to integrating after a real maker run.
+      integrate_existing:
+        - when: "world.worktree_path != '' && world.gate_command != ''"
+          target: tail
+        - target: configure
+          effects:
+            - say: "Set worktree_path and gate_command first (no maker handoff present)."
+      ship:
+        # Project the brief + gate into world, then enter the maker import.
+        # (The maker import's world_in then projects these into cherny's world.)
+        - target: maker
+          effects:
+            - set:
+                brief:        "{{ slots.brief ?? world.brief }}"
+                gate_command: "{{ slots.gate_command ?? world.gate_command }}"
+                base_branch:  "{{ slots.base_branch ?? world.base_branch }}"
+      quit:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "operator abandoned the brief at configure"
+                status:     "needs-human"
+      look:
+        - target: .

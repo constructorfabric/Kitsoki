@@ -1,0 +1,58 @@
+# GAP 1 gate, STAGED variant (RED before the isDecisionGate alias fix).
+#
+# In staged mode the emit-chain stops at a genuine decision gate. cherny-loop's
+# `gating` room emits mark_achieved / loop_again / mark_*_exhausted — ALL of
+# which are its own `on:` arcs, so it is NOT an operator decision gate and must
+# auto-settle to @exit:achieved even in staged mode. Before the fix,
+# isDecisionGate built its emit-target set from the BARE child names while
+# allowedIntentNames returned the import-rewritten `maker__*` arc keys; the
+# mismatch made every emit look operator-only, so `gating` was misclassified a
+# decision gate and the chain STALLED there. This is the ship-it "maker stalls
+# at gating under import" runtime limitation.
+#
+# baseline IS a legitimate staged gate (reconfigure/accept are real operator
+# forwards), so we drive `maker__proceed` explicitly there; the point of this
+# fixture is that GATING then settles autonomously across the import boundary.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+mode: staged
+
+host_handlers:
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:
+    by_call:
+      gate-0: { data: { ok: false, exit_code: 1, stdout: "--- FAIL: TestAllow_Burst" } }
+      gate-1: { data: { ok: true,  exit_code: 0, stdout: "ok  kitsoki/internal/ratelimit  0.012s" } }
+  host.agent.task:
+    by_call:
+      maker-1: { data: { submitted: { summary: "Initialize the bucket with tokens=burst" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  - intent:
+      name: start
+      slots:
+        brief:        "Get `go test ./internal/ratelimit` green"
+        gate_command: "go test ./internal/ratelimit/"
+    expect_state: maker.configuring
+  # launch settles to the baseline decision gate (a real staged stop).
+  - intent: { name: maker__launch, slots: {} }
+    expect_state: maker.baseline
+  # The operator proceeds; gating must then auto-settle across the import
+  # boundary to the maker's @exit:achieved (projected to done_one) — the
+  # isDecisionGate alias-resolution fix.
+  - intent: { name: maker__proceed, slots: {} }
+    expect_state: done_one
+    expect_world:
+      status: "ran"
+      runs:   1
+      maker__goal_achieved:   true
+      maker__terminal_reason: "achieved"
+      maker__iteration:       1
+  - intent: { name: finish, slots: {} }
+    expect_state: __exit__done
+    expect_world: { status: "done" }
+
+expect_terminal: true
+expect_no_errors: true

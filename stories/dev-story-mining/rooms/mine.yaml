@@ -1,0 +1,110 @@
+# mine — phase 1/5. Run intent-mining over recent transcripts.
+#
+# on_enter runs the `miner` persona (agentic: it drives the session-mining
+# kit and reads the emitted reports), binding `mine_artifact`. `once: true`
+# makes it reload-safe — the stored artifact re-renders without re-running
+# the expensive mining pass; the refine / restart arms clear the bind to
+# force a fresh run. Judge polymorphism (human | llm | llm_then_human)
+# follows stories/bugfix exactly.
+
+states:
+
+  mine:
+    description: "Mine recent transcripts; produce the intent brief for review."
+    view:
+      - banner:
+          text:     "MINE"
+          subtitle: "Phase 1 / 5  ·  intent-mining over recent transcripts"
+          color:    "#06B6D4"
+      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }}"
+      - kv:
+          pairs:
+            Brief:    '{{ world.mine_artifact.brief_path|default:"(pending)" }}'
+            Intents:  '{{ world.mine_artifact.intent_count|default:"(pending)" }}'
+            Split:    '🟢 {{ world.mine_artifact.deterministic|default:"–" }} · 🟡 {{ world.mine_artifact.agent_gated|default:"–" }} · 🔴 {{ world.mine_artifact.irreducible|default:"–" }}'
+      - heading: "Brief"
+      - code: '{{ world.mine_artifact.summary_markdown|default:"(pending — miner has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "accept the brief and map it against dev-story"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-mine with feedback (e.g. widen the sample)"
+              intent: refine
+              param: { slot: feedback, type: string, placeholder: "what to redo", required: false }
+            - label:  "quit"
+              hint:   "abandon the loop"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [job, project_dir, min_intents, judge_mode, judge_confidence_threshold, mine_artifact, llm_verdict, refine_feedback, cycle]
+    on_enter:
+      - invoke: host.agent.task
+        once: true
+        with:
+          agent: miner
+          acceptance:
+            schema: schemas/mine_artifact.json
+          context:
+            prompt: prompts/mine_executing.md
+            args:
+              job:             "{{ world.job }}"
+              project_dir:     "{{ world.project_dir }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+        bind:
+          mine_artifact: submitted
+        on_error: idle
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.agent.decide
+        with:
+          agent: judge
+          prompt: prompts/judge_generic.md
+          schema: schemas/judge_verdict.json
+          args:
+            phase:          "mine"
+            artifact_title: "{{ world.mine_artifact.brief_path }}"
+            artifact_body:  "{{ world.mine_artifact.summary_markdown }}"
+            criterion:      "The brief has at least {{ world.min_intents }} intents from a recency-fresh sample; the determinism split looks plausible."
+            threshold:      "{{ world.judge_confidence_threshold }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        - target: map
+          effects:
+            - say: "Brief accepted ({{ world.mine_artifact.intent_count }} intents) — mapping against {{ world.stories_dir }}."
+            - set: { refine_feedback: "", cycle: 0 }
+      refine:
+        - when: "world.mine_cycle >= world.mine_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "mine_cycle_budget_exhausted", status: "abandoned" }
+        - target: mine
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                mine_cycle:      "{{ world.mine_cycle + 1 }}"
+                cycle:           "{{ world.cycle + 1 }}"
+                mine_artifact:   {}
+      restart_from:
+        - target: mine
+          effects:
+            - set: { refine_feedback: "", mine_cycle: 0, cycle: 0, mine_artifact: {} }
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_at_mine", status: "abandoned" }
+      look:
+        - target: .

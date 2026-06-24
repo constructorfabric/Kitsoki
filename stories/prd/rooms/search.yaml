@@ -1,0 +1,269 @@
+# search — prior-art scout (the early-bail gate).
+#
+# Stage 2 of the PRD pipeline:
+#   idle → search → clarifying → brief → references → drafting
+#
+# on_enter runs ONE agent.decide (once: guarded by its bind):
+#   existing_scan — the `scout` agent identifies overlapping PRDs /
+#   requirement docs and roadmap fit. This is the EARLY GATE: it runs
+#   BEFORE any artifact is written and before the (expensive) multi-round
+#   clarification + reference sweep, so a duplicate idea is caught here
+#   rather than after a long discovery chat and several clarify rounds.
+#
+# This room is purely read-only — no folder, no artifact write. The brief
+# scaffold, the reference sweep, and the draft all live DOWNSTREAM, reached
+# only once the operator has committed to a NEW PRD (or to amending an
+# existing one).
+#
+# Branching on the scout result:
+#   - overlaps present → the view STRONGLY urges continuing the existing
+#     doc. Each overlap renders as its own labelled choice item (up to 3;
+#     a free-form fallback handles the rare case of more). Selecting one
+#     fires `change_existing` with the path pre-bound (→ clarifying, the
+#     amend target captured in prd_change_target); `override_new` is the
+#     discouraged escape hatch. `confirm` is guarded and bounces while
+#     overlaps remain.
+#   - no overlaps → `confirm` advances to clarifying cleanly.
+#   - `regenerate` discards the scan and re-fires on_enter.
+#   - `quit` abandons via @exit:abandoned.
+#
+# Reload-safety: existing_scan is `once: true` keyed off prd_existing_state.
+# A /reload that lands here with the scan already done skips the call.
+#
+# Workspace minting (Gap #4): committing to the pipeline (confirm /
+# change_existing / override_new) runs scripts/prd_slug.py via host.run to
+# mint a unique per-PRD slug + workspace (.artifacts/prd/<slug>) from the
+# distilled idea. Every downstream artifact (001-brief, 003-references,
+# 004-prd.md) then lands under that workspace instead of colliding at flat
+# .artifacts/prd*.md paths, and accept publishes the draft out of the
+# workspace into a durable docs home. The mint is a small deterministic
+# script (no LLM) so it lives in the commit arcs' effects, not on_enter — it
+# fires exactly once per pipeline commit. prd_change_target (the amend doc) is
+# still captured for the publish step (prd_publish.py reuses it in place).
+
+states:
+
+  search:
+    description: "Scanning for prior art before any artifact is written."
+    view:
+      - banner:
+          text:     "SEARCHING"
+          subtitle: "Prior-art scout — checking for an existing PRD first"
+          color:    "#F59E0B"
+      # Error surfacing — the scout (on_enter decide) failed and on_error
+      # routed BACK to idle (the previous stage). last_error is set by the
+      # runtime; regenerate re-arms the scan for a retry.
+      - template: "⚠ **Prior-art scan failed** — {{ world.last_error }}."
+        when: "world.last_error != ''"
+      - kv:
+          pairs:
+            Idea: '{{ world.idea }}'
+        when: "world.idea != ''"
+      - heading: "Overlap scan"
+      - prose: '{{ world.prd_existing_state.roadmap_fit|default:"(running — waiting for scout result)" }}'
+      # ── Overlap detected: strong bail toward the existing doc ───────────
+      - template: "⚠ **A PRD for this already exists.** You have existing draft(s)/PRD(s) for it (listed below). **Continue the existing one — do NOT start a new one.** A fresh PRD here just creates another duplicate to reconcile later."
+        when: "len(world.prd_existing_state.overlaps ?? []) > 0"
+      # One wrapping paragraph per overlap. This is a `template:` (not `code:`
+      # or `prose:`): long prose summaries must reflow, which rules out `code:`
+      # (a non-wrapping monospace box that overflows in the web UI); and the
+      # loop emits a *dynamic* number of entries, which rules out one `prose:`
+      # per entry (prose collapses internal blank lines to a single paragraph).
+      # `template:` runs the post-loop markdown through Glamour in the TUI and
+      # is split on blank lines in the web, so the blank-line-separated entries
+      # render as distinct paragraphs in both. Keep to paragraphs + inline
+      # `code` only — **bold**/`- ` bullets leak as literal text in the web.
+      - template: |
+          {% for o in world.prd_existing_state.overlaps %}[{{ o.recommendation|upper }}] `{{ o.path }}` — {{ o.summary }}{% if not forloop.Last %}
+
+          {% endif %}{% endfor %}
+        when: "len(world.prd_existing_state.overlaps ?? []) > 0"
+      - kv:
+          pairs:
+            "Overlap 1": '{{ world.prd_existing_state.overlaps.0.path }}'
+        when: "len(world.prd_existing_state.overlaps ?? []) >= 1"
+      - kv:
+          pairs:
+            "Overlap 2": '{{ world.prd_existing_state.overlaps.1.path }}'
+        when: "len(world.prd_existing_state.overlaps ?? []) >= 2"
+      - kv:
+          pairs:
+            "Overlap 3": '{{ world.prd_existing_state.overlaps.2.path }}'
+        when: "len(world.prd_existing_state.overlaps ?? []) >= 3"
+      - prose: "→ Select the matching draft below to amend it — the `AMEND`-tagged one is recommended. Only use `override_new` if you are certain none applies."
+        when: "len(world.prd_existing_state.overlaps ?? []) > 0"
+      # ── No overlap: clean path ──────────────────────────────────────────
+      - prose: "No overlapping work found — `confirm` to proceed to clarifying questions."
+        when: "len(world.prd_existing_state.overlaps ?? []) == 0 && world.prd_existing_state.roadmap_fit != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            # ── Per-overlap amend items (up to 3) ──────────────────────────
+            # Each item is shown only when the corresponding overlap exists.
+            # Labels and slots are pongo-expanded at render time; the when:
+            # guard fires before expansion so index access is always safe.
+            - label:  "{{ world.prd_existing_state.overlaps.0.recommendation }} (recommended)"
+              hint:   "{{ world.prd_existing_state.overlaps.0.path }}"
+              intent: change_existing
+              when: "len(world.prd_existing_state.overlaps ?? []) >= 1"
+              slots:
+                target: "{{ world.prd_existing_state.overlaps.0.path }}"
+            - label:  "{{ world.prd_existing_state.overlaps.1.recommendation }} (2)"
+              hint:   "{{ world.prd_existing_state.overlaps.1.path }}"
+              intent: change_existing
+              when: "len(world.prd_existing_state.overlaps ?? []) >= 2"
+              slots:
+                target: "{{ world.prd_existing_state.overlaps.1.path }}"
+            - label:  "{{ world.prd_existing_state.overlaps.2.recommendation }} (3)"
+              hint:   "{{ world.prd_existing_state.overlaps.2.path }}"
+              intent: change_existing
+              when: "len(world.prd_existing_state.overlaps ?? []) >= 3"
+              slots:
+                target: "{{ world.prd_existing_state.overlaps.2.path }}"
+            # Fallback for the rare case of more than 3 overlaps.
+            - label:  "amend existing…"
+              hint:   "more than 3 overlaps — enter the path of the doc to amend"
+              intent: change_existing
+              when: "len(world.prd_existing_state.overlaps ?? []) > 3"
+              param:
+                slot:        target
+                type:        string
+                placeholder: "docs/..."
+                required:    true
+            - label:  "confirm"
+              hint:   "no overlap — proceed to clarifying"
+              intent: confirm
+            - label:  "override_new"
+              hint:   "start a NEW PRD despite the overlap (discouraged)"
+              intent: override_new
+            - label:  "regenerate"
+              hint:   "re-run the prior-art scout from scratch"
+              intent: regenerate
+            - label:  "quit"
+              hint:   "abandon this PRD"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [idea, prd_existing_state, prd_overlap_decision, prd_change_target, prd_slug, prd_workspace, upstream_paths, workdir, last_error]
+    on_enter:
+      # Scout: check for overlapping PRDs + roadmap fit. THE EARLY GATE —
+      # runs before any artifact is written. once: keyed off prd_existing_state.
+      - invoke: host.agent.decide
+        once: true
+        id: existing_scan
+        with:
+          agent: scout
+          prompt_path: prompts/prd_existing_state.md
+          schema: schemas/prd_existing_state.json
+          working_dir: "{{ world.workdir }}"
+          args:
+            idea:           "{{ world.idea }}"
+            upstream_paths: "{{ world.upstream_paths }}"
+        bind:
+          prd_existing_state: submitted
+        on_error: idle
+    on:
+      # No overlap: commit to a new PRD → clarifying.
+      # GUARDED: while overlaps remain, confirm bounces (the operator must
+      # either change_existing or explicitly override_new).
+      confirm:
+        - when: "len(world.prd_existing_state.overlaps ?? []) > 0"
+          target: .
+          effects:
+            - set:
+                prd_overlap_decision: ""
+        - target: clarifying
+          effects:
+            # Mint the per-PRD workspace from the distilled idea (deterministic
+            # slug + uniquify). Binds prd_slug + prd_workspace; downstream rooms
+            # write their numbered artifacts under prd_workspace. on_error holds
+            # the operator in search so the failure is visible (last_error).
+            - invoke: host.run
+              id: mint_workspace
+              with:
+                cmd: python3
+                args:
+                  - "stories/prd/scripts/prd_slug.py"
+                  - "{{ world.idea }}"
+                  - "{{ world.workdir }}"
+                  - "{{ world.publish_durable_path }}"
+              bind:
+                prd_slug:      stdout_json.slug
+                prd_workspace: stdout_json.workspace
+              on_error: search
+            - set:
+                prd_overlap_decision: "new"
+                prd_change_target:    ""
+                # Leaving cleanly → clear any stale error so it doesn't leak
+                # into clarifying's view.
+                last_error:           ""
+
+      # Overlap found: amend an existing doc. The amend target is captured
+      # for auditability + the downstream workspace work (Gap #4); the
+      # pipeline still continues through clarifying so the operator can
+      # sharpen the amendment.
+      change_existing:
+        - target: clarifying
+          effects:
+            # Even on the amend path a workspace is minted to hold the check
+            # artifacts (001-brief, 003-references); publish reuses the amend
+            # target in place (prd_publish.py) rather than moving 004-prd.md.
+            - invoke: host.run
+              id: mint_workspace
+              with:
+                cmd: python3
+                args:
+                  - "stories/prd/scripts/prd_slug.py"
+                  - "{{ world.idea }}"
+                  - "{{ world.workdir }}"
+                  - "{{ world.publish_durable_path }}"
+              bind:
+                prd_slug:      stdout_json.slug
+                prd_workspace: stdout_json.workspace
+              on_error: search
+            - set:
+                prd_overlap_decision: "change_existing"
+                prd_change_target:    "{{ slots.target }}"
+                last_error:           ""
+
+      # Override: create a new PRD despite the overlap (recorded for audit).
+      override_new:
+        - target: clarifying
+          effects:
+            - invoke: host.run
+              id: mint_workspace
+              with:
+                cmd: python3
+                args:
+                  - "stories/prd/scripts/prd_slug.py"
+                  - "{{ world.idea }}"
+                  - "{{ world.workdir }}"
+                  - "{{ world.publish_durable_path }}"
+              bind:
+                prd_slug:      stdout_json.slug
+                prd_workspace: stdout_json.workspace
+              on_error: search
+            - set:
+                prd_overlap_decision: "new"
+                prd_change_target:    ""
+                last_error:           ""
+
+      # Re-run the scout from scratch.
+      # Explicit target (not ".") so on_enter re-fires and the scout runs.
+      regenerate:
+        - target: search
+          effects:
+            - set:
+                prd_existing_state:   {}
+                prd_overlap_decision: ""
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_search"
+                status:         "abandoned"
+      look:
+        - target: .

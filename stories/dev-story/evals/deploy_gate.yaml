@@ -1,0 +1,52 @@
+# Traceability:
+# - Source call site: stories/dev-story/rooms/deploy.yaml, host.agent.decide id `gate`.
+# - Prompt: stories/dev-story/prompts/deploy_gate.md.
+# - Schema: stories/dev-story/schemas/deploy-gate.json.
+# - Purpose: go/no-go deployment gate after deterministic preflight.
+kind: agent_eval
+app: ../app.yaml
+call: gate
+agent: gate_reviewer
+
+task:
+  goal: "Classify whether a deployment target is safe to ship after preflight."
+  boundedness:
+    max_turns: 1
+    tool_policy: none
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.98
+    max_p95_latency_ms: 5000
+    max_avg_cost_usd: 0.001
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low]
+  repeat: 5
+
+comparator:
+  kind: enum
+  field: verdict
+
+examples:
+  - name: clean-preflight-go
+    args:
+      target: "staging"
+      preflight: "preflight ok for staging: tests green, tree clean"
+    expect:
+      verdict: go
+      summary: "Preflight is clean for staging; safe to deploy."
+      blocking: []
+  - name: dirty-tree-no-go
+    args:
+      target: "prod"
+      preflight: "preflight failed for prod: dirty working tree and failing migration check"
+    expect:
+      verdict: no_go
+      summary: "Prod deploy is blocked by dirty working tree and failing migration check."
+      blocking: ["dirty working tree", "failing migration check"]

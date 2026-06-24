@@ -1,0 +1,18 @@
+# Sidecar for weather_report.star — the authoritative, typed I/O contract.
+#
+# The engine validates the effect's with.inputs against `inputs:` BEFORE the
+# script runs (wrong type / missing required → on_error: arc), and validates the
+# script's return dict against `outputs:` AFTER it runs (every declared output
+# must be returned; no undeclared key may be). The INPUTS / OUTPUTS dicts inside
+# the .star file are documentation only — THIS file is what the engine enforces.
+inputs:
+  location: { type: string, required: true }   # free-text place name
+  mode:     { type: string, required: true }   # "forecast" | "climate"
+
+outputs:
+  place:           { type: string }
+  coords:          { type: string }
+  headline:        { type: string }
+  current:         { type: object }   # forecast: {temp, humidity, …}; climate: {}
+  rows:            { type: list }     # forecast: per-day; climate: per-month
+  climate_summary: { type: object }   # climate: {year, annual_mean, …}; forecast: {}

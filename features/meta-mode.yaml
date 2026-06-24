@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=feature.schema.json
+id: meta-mode
+kind: feature
+title: Meta-mode — the machine edits its own story
+tagline: Ask the running FSM about its own graph, then have it rewrite and hot-reload its YAML — live.
+summary: "Meta-mode is the off-path agent attached to every surface. Ask kitsoki how it works (cross-app, no session needed); ask a running story to explain its own rooms and transitions (read-only); or hand the story-author mode an instruction and watch it edit the story's YAML, commit, and hot-reload the live session in place — the edit recorded as a story.changed trace event. An FSM rewriting its own definition while it runs has no analog in a general coding agent."
+promo:
+  order: 15
+  highlight: true
+docs:
+  - docs/tracing/trace-format.md
+related:
+  - story-editor
+  - trace-features
+demo:
+  spec: tests/playwright/meta-mode.spec.ts
+  artifactDir: meta-mode
+  videoBase: meta-mode-demo
+  story: stories/prd
+  flow: stories/prd/flows/happy_path.yaml
+qa:
+  scenarios:
+    - id: home-meta-cross-app
+      title: Meta works with no session; story modes gated until a story runs
+      required: true
+      steps:
+        - On the home view the Meta button opens a mode menu
+        - The kitsoki-ask (cross-app help) mode is enabled with no session
+        - The story-edit / story-ask modes are disabled until a story is running
+    - id: story-self-explain
+      title: A running story answers questions about its own graph
+      required: true
+      steps:
+        - With a PRD session running, the story-ask meta mode is enabled
+        - Asking about the story returns an agent reply in the meta transcript
+    - id: story-self-edit-reload
+      title: Story-edit rewrites the YAML and hot-reloads the live session
+      required: true
+      steps:
+        - The story-edit mode accepts an instruction and runs an agent
+        - A reload note appears naming the changed file
+        - The running session continues against the reloaded story

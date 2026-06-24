@@ -28,8 +28,9 @@ import (
 // remaining suffix, parsing stops. The returned Consumed range
 // covers tokens[firstItemStart:lastItemEnd) (extended through any
 // already-eaten "and" tokens between items). Everything past
-// lastItemEnd is left for the caller — matching the §2.4
-// "list of [6, 12] · Consumed stops before 'then'" contract.
+// lastItemEnd is left for the caller — matching the
+// "list of [6, 12] · Consumed stops before 'then'" contract for
+// list slots in docs/architecture/semantic-routing.md.
 //
 // All elements fail. When inner cannot parse a single item starting
 // at any non-stop position, ParseList returns OK=false with the
@@ -37,7 +38,7 @@ import (
 // distinguish a structural miss from a partial parse.
 //
 // One element fails mid-stream. The clean choice this implementation
-// pins (matching the proposal's "list of [6, 12]" example) is
+// pins (matching the "list of [6, 12]" example) is
 // PREFIX wins: every item that parsed before the first failure is
 // kept; the failure ends the list. This is friendlier to authors
 // than "all-or-nothing" — "6, 12, blue, 3" gives [6, 12] rather than

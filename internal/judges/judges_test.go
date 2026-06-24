@@ -75,7 +75,7 @@ func TestShouldAutoFireUncertainIntent(t *testing.T) {
 }
 
 func TestShouldAutoFireAtThreshold(t *testing.T) {
-	// Contract §6 uses >= semantics. A verdict whose confidence equals
+	// The gate uses >= semantics. A verdict whose confidence equals
 	// the threshold exactly must auto-fire.
 	v := judges.Verdict{
 		Verdict:    "pass",

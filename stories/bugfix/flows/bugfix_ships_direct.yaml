@@ -1,0 +1,117 @@
+# bugfix_ships_direct — slice 4 headline: bugfix COMPOSES the ship-it tail.
+#
+# Walk the maker (reproducing → proposing → implementing → testing) with every
+# agent stubbed, then accept from testing into the IMPORTED ship-it tail:
+# integrate (rebase onto current main + build-check + merge) → verify (re-run the
+# SAME regression gate on the MERGED commit — GREEN) → cleanup → @exit:shipped.
+# Proves the tail is REUSED, not reinvented. Zero LLM.
+#
+# The RED→GREEN discipline: testing runs the regression gate on the PRE-FIX
+# snapshot (regression_gate_exec, RED) and the tail's verify re-runs the SAME
+# gate on the MERGED commit (verify-rerun, GREEN). Same gate, two evaluation
+# sites — RED before the fix, GREEN after — AND the trust-the-gate discipline.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-SHIP-1"
+  ticket_title:     "Off-by-one in the rate-limit burst"
+  thread:           "TKT-SHIP-1"
+  workspace_id:     "burst-fix"
+  workdir:          ".worktrees/burst-fix"
+  worktree_path:    ".worktrees/burst-fix"
+  feature_branch:   "burst-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true        # park idle; the flow drives `start`
+  bugfix_exit:      "direct-ship"
+  gate_command:     "go test ./internal/ratelimit/"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/burst-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  # Every maker agent (reproducer / proposer / implementer / test_author) — the
+  # test_author artifact carries status=passed so testing's accept advances.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Regression test added; fix applied"
+        summary_markdown: "TestAllow_Burst fails pre-fix, passes post-fix; fix in burst accounting."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        files_changed:    ["internal/ratelimit/bucket.go", "internal/ratelimit/bucket_test.go"]
+  host.agent.ask:
+    data:
+      ok: true
+      submitted: { summary_title: "Fix proposal", summary_markdown: "Decrement once.", fix_description: "x", root_cause: "y", affected_files: ["internal/ratelimit/bucket.go"] }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # testing's PRE-FIX regression gate — RED (the bug is present on HEAD~1).
+      regression_gate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            red:     true
+            checked: true
+            log:     "--- FAIL: TestAllow_Burst (0.00s)  bucket drained one token early"
+      # the ship-it tail: integrate (rebase onto current main + merge), clean.
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "e4f5a6b"
+            last_op_ok:     true
+            last_error:     ""
+      # the tail's verify: the IDENTICAL gate re-run on the MERGED commit — GREEN.
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok  internal/ratelimit  0.012s" } }
+      # the tail's cleanup: worktree removed + branch -D.
+      cleanup_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:    cleaned
+            last_op_ok: true
+            last_error: ""
+
+turns:
+  - intent: { name: start,  slots: {} }
+    expect_state: reproducing
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    # testing's on_enter fired on arrival: the regression gate ran on the pre-fix
+    # snapshot and bound RED.
+    expect_world:
+      regression_red_pre_fix:  true
+      regression_gate_checked: true
+  # accept from testing: gate was RED pre-fix → enter the ship-it tail; the whole
+  # tail (integrate → verify → cleanup → report) settles to @exit:shipped.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:                  shipped
+      regression_red_pre_fix:  true
+      shipped_sha:             "e4f5a6b"
+      tail__integrate_outcome: integrated
+      tail__verify_ok:         true
+      tail__cleanup_outcome:   cleaned
+
+expect_terminal: true
+expect_no_errors: true

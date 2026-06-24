@@ -1,0 +1,13 @@
+# BuildKit-scoped ignore for test/e2e/Dockerfile. Keeps the build context lean
+# so the faithful `make install` rebuilds the SPA + binary from source rather
+# than shipping host artifacts into the image.
+.git
+.worktrees
+.context
+**/node_modules
+tools/runstatus/dist
+internal/runstatus/web/assets/index.html
+kitsoki
+*.test
+**/*.gif
+**/*.mp4

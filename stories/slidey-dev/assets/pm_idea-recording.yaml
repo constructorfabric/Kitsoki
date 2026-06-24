@@ -1,0 +1,70 @@
+# pm_idea replay recording (slidey-dev) — free-text → intent routing for the
+# slidey PM/PRD rrweb tour. Under `kitsoki web --harness replay`, the operator
+# TYPES each line below; the recording maps it (by state) to the slot-bearing
+# intent the live router would extract. Host.* calls are backed by
+# pm_idea-host.cassette.yaml. No LLM at replay time.
+#
+# Only the TYPED turns need entries — the tour's other advances are explicit
+# intent-button clicks (core__prd__start / confirm / accept), which never reach
+# the harness. Entry inputs match the type-and-send texts in the
+# slidey-dev-prd-design tour manifest verbatim.
+#
+# The routing here was authored to mirror the pm_idea.yaml flow's slot-bearing
+# turns (the project's canonical authentic stubs, passing `test flows` 3/3) and
+# spot-validated against the live local-claude router (see .context).
+kind: recording
+app_id: slidey-dev
+app_version: "0.1.0"
+generated_at: "2026-06-24T00:00:00Z"
+generator: "authored from pm_idea.yaml + live-router spot-check (no LLM at replay)"
+min_confidence: 0.80
+
+entries:
+  # 1. The idea, typed at the PRD intake room.
+  - state: core.prd.idle
+    input: "I would love a way for slidey to give presenters a printable per-scene speaker-notes handout so they can rehearse a talk without rendering the whole video first"
+    intent:
+      name: core__prd__discuss
+      slots:
+        message: "I want a slidey --notes speaker-notes export: a printable per-scene speaker-notes handout exported straight from the deck spec, so presenters can rehearse without rendering the video."
+    confidence: 0.92
+    majority_of: 1
+
+  # 2. The clarifying answer (actor + success metric), typed.
+  - state: core.prd.clarifying
+    input: "presenters rehearsing a talk; the metric is decks-exported-to-notes-without-rendering-video"
+    intent:
+      name: core__prd__answer
+      slots:
+        text: "presenters rehearsing a talk; metric is decks-exported-to-notes-without-rendering-video"
+    confidence: 0.90
+    majority_of: 1
+
+  # 3. "submit" — the operator types submit to send the gathered answers.
+  - state: core.prd.clarifying
+    input: "submit"
+    intent:
+      name: core__prd__submit_answers
+      slots: {}
+    confidence: 0.95
+    majority_of: 1
+
+  # 4. "ready" — at idle, the operator signals discovery is done; routes to
+  #    `start` (the idle room has NO start button — it names `ready` in prose).
+  - state: core.prd.idle
+    input: "ready"
+    intent:
+      name: core__prd__start
+      slots: {}
+    confidence: 0.95
+    majority_of: 1
+
+  # 5. "confirm" — at search (prior-art scan), the operator confirms to proceed
+  #    to clarifying (search room names `confirm` in prose, no button).
+  - state: core.prd.search
+    input: "confirm"
+    intent:
+      name: core__prd__confirm
+      slots: {}
+    confidence: 0.95
+    majority_of: 1

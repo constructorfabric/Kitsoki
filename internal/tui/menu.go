@@ -10,7 +10,7 @@ import (
 	"kitsoki/internal/orchestrator"
 )
 
-// menuModel renders the §7.2 available-actions menu (primary + blocked intents).
+// menuModel renders the available-actions menu (primary + blocked intents).
 //
 // The primary list scroll-follows the selection: when the list of items is
 // taller than the pane, View() renders a sliding window around the selected
@@ -73,9 +73,8 @@ func (m menuModel) Update(msg tea.Msg) (menuModel, tea.Cmd) {
 			if m.selected < len(m.items)-1 {
 				m.selected++
 			}
-			// Numeric quick-select was removed in phase 4 — numbers
-			// are normal text in the prompt now (proposal §"Input
-			// fixes"). The menu sub-model no longer needs to handle
+			// Numeric quick-select was removed — numbers are normal
+			// text in the prompt now. The menu sub-model no longer needs to handle
 			// "1".."9" because it isn't rendered after phase 3.
 		}
 		m.topIdx = m.scrollToSelected(m.topIdx, m.primaryCapacity())

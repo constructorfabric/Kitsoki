@@ -1,0 +1,31 @@
+# landing_take_route_no_ticket — the bail still respects the pipeline's
+# own guards. When the agent suggests a `drive` route but identified no
+# ticket (route.ticket_id unset) and none is picked, take_route emits
+# drive, whose no-ticket arm bounces back to landing with the standard
+# "pick a ticket first" hint — proving the bail reuses the existing
+# routing/guards rather than forcing entry. The emit firing at all is the
+# point: it lands on drive's default arm, not a re-render of the note.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  landing_note:
+    summary: "Looks like pipeline work."
+    route:
+      intent: "drive"
+      label:  "Drive it through its pipeline"
+      reason: "This is pipeline-shaped work."
+
+turns:
+  - intent: { name: take_route, slots: {} }
+    expect_state: landing
+    expect_world:
+      last_error: |
+        No ticket selected — pick one before entering the pipeline.
+
+        Suggestions:
+        - `tickets` — search and pick a ticket
+        - `workspaces` — resume an in-progress workspace
+
+expect_no_errors: true

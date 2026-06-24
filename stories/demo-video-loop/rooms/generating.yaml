@@ -1,0 +1,184 @@
+states:
+  # generating — the MAKER half of one autonomous loop step PLUS the deterministic
+  # video-validation gate. on_enter (when last_error == '') computes the added-diff
+  # + proposal (once:), stamps the turn epoch, runs the maker (authors the demo
+  # video + the qa feature.md/scenarios.yaml), then runs scripts/validate-video.sh
+  # and routes on the verdict + budgets via guarded emit_intents — all with no
+  # operator input, so the loop advances itself. A valid video → to_qa; an invalid
+  # one with budget left → loop_again (carrying the validate reason as feedback);
+  # otherwise a budget guard ends the run.
+  #
+  # Maker != checker: the maker is an agent; the video gate is deterministic code
+  # (it cannot be talked into passing). The whole maker sequence is guarded on
+  # last_error == '' so an on_error re-entry surfaces the error + offers retry/abort
+  # without double-counting the iteration.
+  generating:
+    description: "Loop step — maker authors the demo, then the video gate"
+    relevant_world: [feature_slug, worktree_path, iteration, iteration_budget, session_cost_usd, maker_summary, video_path, video_validate_reason, last_error]
+    on_enter:
+      # 1. Count a real maker turn (guarded so an error re-entry doesn't double-count).
+      - increment: { iteration: 1 }
+        when: "world.last_error == ''"
+      # 2. (once) compute the added-diff + proposal. compute-diff runs the committed
+      #    contract script; read-proposal only when a proposal_path was supplied.
+      - invoke: host.run
+        id: "compute-diff"
+        once: true
+        when: "world.last_error == ''"
+        with:
+          cmd: "bash stories/demo-video-loop/scripts/added-diff.sh \"{{ world.base_ref }}\""
+          cwd: "{{ world.worktree_path }}"
+          fail_on_error: false
+        bind:
+          added_diff: stdout
+      - invoke: host.run
+        id: "read-proposal"
+        once: true
+        when: "world.last_error == '' && world.proposal_path != ''"
+        with:
+          cmd: "cat \"{{ world.proposal_path }}\""
+          cwd: "{{ world.worktree_path }}"
+          fail_on_error: false
+        bind:
+          proposal_text: stdout
+      # 3. Stamp the turn epoch so the validate gate can require the video was
+      #    (re)written THIS turn (covers both new and update).
+      - invoke: host.run
+        id: "stamp-epoch"
+        when: "world.last_error == ''"
+        with:
+          cmd: "date +%s"
+          cwd: "{{ world.worktree_path }}"
+          fail_on_error: false
+        bind:
+          iteration_start_epoch: stdout
+      # 4. Maker — authors the demo video AND the qa feature.md + scenarios.yaml.
+      #    working_dir pins the maker's cwd to the input worktree. qa_feedback is
+      #    whichever reason drove the loop-back (the QA report, or the video gate's
+      #    reason), so the maker acts on it first.
+      - invoke: host.agent.task
+        id: "maker-{{ world.iteration }}"
+        when: "world.last_error == ''"
+        with:
+          agent: maker
+          working_dir: "{{ world.worktree_path }}"
+          acceptance:
+            schema: schemas/maker_output.json
+          context:
+            prompt: prompts/maker.md
+            args:
+              proposal_text:     "{{ world.proposal_text }}"
+              added_diff:        "{{ world.added_diff }}"
+              feature_slug:      "{{ world.feature_slug }}"
+              video_expectation: "{{ world.video_expectation }}"
+              iteration:         "{{ world.iteration }}"
+              qa_feedback:       "{{ world.qa_report != '' ? world.qa_report : (world.video_validate_reason != '' ? world.video_validate_reason : '(first iteration — no prior feedback)') }}"
+        bind:
+          maker_summary:   submitted.summary
+          video_path:      submitted.video_path
+          frames_dir:      submitted.frames_dir
+          chapters_path:   submitted.chapters_path
+          feature_md_path: submitted.feature_md_path
+          scenarios_path:  submitted.scenarios_path
+        on_error: generating
+      # 5. Deterministic video-validation gate — the committed contract script.
+      #    fail_on_error:false so a non-zero exit binds video_valid:false (not an
+      #    error bounce); stdout carries the one-line failure reason.
+      - invoke: host.run
+        id: "validate-{{ world.iteration }}"
+        when: "world.last_error == ''"
+        with:
+          cmd: "bash stories/demo-video-loop/scripts/validate-video.sh \"{{ world.video_path }}\" \"{{ world.frames_dir }}\" \"{{ world.video_expectation }}\" \"{{ world.iteration_start_epoch }}\""
+          cwd: "{{ world.worktree_path }}"
+          fail_on_error: false
+        bind:
+          video_valid:           ok
+          video_validate_reason: stdout
+      # 6. Persist the iteration record (the run trail).
+      - invoke: host.artifacts_dir
+        when: "world.last_error == ''"
+        with:
+          thread: "iteration-{{ world.iteration }}"
+          title:  "Iteration {{ world.iteration }}"
+          body:   "**Maker:** {{ world.maker_summary }}\n\n**Video:** {{ world.video_path }}\n\n**Gate:** {{ world.video_validate_reason }}"
+          phase_id: "demo-video-loop"
+      # 7. Breadcrumb.
+      - say: "Iteration {{ world.iteration }}/{{ world.iteration_budget }} · {{ world.maker_summary }}"
+        when: "world.last_error == ''"
+      # 8. Guarded routing — each reads video_valid, so all are false pre-bind and
+      #    exactly one fires post-bind (the decision-emit discipline).
+      - when: "world.last_error == '' && world.video_valid == true"
+        emit_intent: to_qa
+      - when: "world.last_error == '' && world.video_valid == false && world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd"
+        emit_intent: mark_cost_exhausted
+      - when: "world.last_error == '' && world.video_valid == false && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration >= world.iteration_budget"
+        emit_intent: mark_iter_exhausted
+      - when: "world.last_error == '' && world.video_valid == false && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration < world.iteration_budget"
+        emit_intent: loop_again
+        slots:
+          feedback: "{{ world.video_validate_reason }}"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - banner:
+              text:     "GENERATING"
+              subtitle: "Maker authors the demo · the deterministic gate validates it"
+              color:    "#8B5CF6"
+          - kv:
+              pairs:
+                Feature:   "{{ world.feature_slug }}"
+                Worktree:  '{{ world.worktree_path|default:"(none)" }}'
+                Iteration: "{{ world.iteration }} of {{ world.iteration_budget }}"
+                Cost:      "${{ world.session_cost_usd }}{% if world.cost_budget_usd > 0 %} of ${{ world.cost_budget_usd }}{% endif %}"
+          - heading: "Maker"
+          - prose: '{{ world.maker_summary|default:"(pending — maker has not returned)" }}'
+          - heading: "Video gate"
+          - code: '{{ world.video_validate_reason|default:"(pending)" }}'
+          - heading: "Error"
+          - code: '{{ world.last_error }}'
+            when: "world.last_error != ''"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "retry"
+                  hint:  "clear the error and run the step again"
+                  when:  "world.last_error != ''"
+                - label: "abort"
+                  hint:  "abandon the loop"
+                - label: "look"
+    on:
+      to_qa:
+        - target: qa
+      # The video gate failed with budget left: carry the gate reason forward and
+      # route THROUGH the thin `looping` room (not a self-target — see looping.yaml)
+      # so generating's on_enter re-fires for the next maker turn.
+      loop_again:
+        - target: looping
+          effects:
+            - set:
+                video_validate_reason: "{{ slots.feedback }}"
+      mark_cost_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - set: { terminal_reason: "cost_budget" }
+      mark_iter_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - set: { terminal_reason: "iteration_budget" }
+      retry:
+        - target: generating
+          effects:
+            - set: { last_error: "" }
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted", abandon_reason: "operator aborted" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "The loop runs itself — `abort` to stop it, or `look`."

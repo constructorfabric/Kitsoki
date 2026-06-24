@@ -30,7 +30,7 @@ host_handlers:
       comments: ""
   host.local_files.ticket:
     data: { ok: true }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -45,7 +45,7 @@ host_handlers:
         verdict:    "pass"
         intent:     "accept"
         reason:     "Docs PR; LGTM."
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       stdout: "LGTM."

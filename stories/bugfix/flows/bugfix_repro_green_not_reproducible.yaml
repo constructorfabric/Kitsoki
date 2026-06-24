@@ -1,0 +1,83 @@
+# bugfix_repro_green_not_reproducible — the repro RED-gate GREEN trap (no LLM).
+#
+# bugfix-repro-gate slice. A ticket carries a `repro_command:` (projected into
+# world.gate_command at ticket-load). The `reproducing` room runs it RED-first
+# on the unchanged (pre-fix) worktree BEFORE the LLM reproducer:
+#
+#   start → reproducing.on_enter runs repro_gate_exec → ZERO exit (GREEN, the
+#           command PASSES): regression_red_pre_fix=false, repro_checked=true.
+#           The GREEN guarded emit fires `not_reproducible` → the LLM reproducer
+#           is SKIPPED → @exit:not-reproducible carrying the gate output.
+#
+# This is the discipline a pure-LLM reproducer cannot enforce: a bug that does
+# NOT currently reproduce never spends maker budget — it routes to needs-human
+# (never proposing, never shipped). Mirrors the cherny baseline's "gate proves
+# nothing" branch, applied to the ticket-driven bugfix pipeline.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-RP-2"
+  ticket_title:     "Cannot login (intermittent — already fixed upstream?)"
+  thread:           "TKT-RP-2"
+  workspace_id:     "rp-nr"
+  workdir:          ".worktrees/rp-nr"
+  feature_branch:   "rp-nr"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "open-PR"
+  gate_command:     "go test ./internal/auth/ -run TestLogin"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/rp-nr" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  # The LLM reproducer must NOT be reached on the GREEN branch; stub present so
+  # an accidental call surfaces (the assertions below pin the exit, not proposing).
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "(should not run)"
+        summary_markdown: "(should not run)"
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        files_changed:    []
+  host.agent.ask:
+    data: { ok: true, submitted: { summary_title: "p", summary_markdown: "p", fix_description: "x", root_cause: "y", affected_files: [] } }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # The repro RED-gate: ZERO exit on the unchanged worktree — the command
+      # PASSES (GREEN). The bug does not currently reproduce.
+      repro_gate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            red:     false
+            checked: true
+            log:     "ok  internal/auth  0.004s   (PASSED on the unchanged worktree — cannot reproduce)"
+
+turns:
+  # start → reproducing.on_enter: gate GREEN → not_reproducible emit →
+  # @exit:not-reproducible. The LLM reproducer never runs.
+  - intent: { name: start, slots: {} }
+    expect_state: __exit__not-reproducible
+    expect_world:
+      regression_red_pre_fix:  false
+      repro_checked:           true
+      status:                  not-reproducible
+    expect_world_final:
+      status: not-reproducible
+
+expect_terminal: true
+expect_no_errors: true

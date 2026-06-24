@@ -1,0 +1,119 @@
+# triaging — triage-only mode (no fix pipeline).
+#
+# Entered from idle when world.bugfix_mode == 'triage' (idle autostarts into
+# here instead of reproducing, and creates NO worktree). One read-only agent
+# (triager) inspects the current working tree and answers ONE question: does
+# the reported bug still exist? It emits a STANDARDIZED verdict
+# (schemas/triage_verdict.json) — ALREADY-FIXED | STILL-LIVE | PARTIAL |
+# UNCLEAR — with concrete code evidence (file:line / function / regression
+# test). The verdict IS the deliverable; there is no judge, no proposing, no
+# implementing. Terminal: @exit:triaged carrying world.triage_verdict.
+#
+# Autonomy: in any non-human judge_mode the room auto-fires `accept` once the
+# verdict binds (the verdict needs no second opinion). In human mode the
+# operator reads the verdict and accepts / refines / quits.
+
+states:
+
+  triaging:
+    description: "Triage-only: assess whether the bug still exists; emit a standardized verdict. No fix."
+    view:
+      - banner:
+          text:     "TRIAGE"
+          subtitle: "read-only verdict — does this bug still exist in the current tree?"
+          color:    "#8B5CF6"   # violet — distinct from the cyan pipeline
+      - prose: "{{ world.ticket_id|default:'(no ticket)' }} · triage-only · judge {{ world.judge_mode }}"
+      - kv:
+          pairs:
+            Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Verdict:    '{{ world.triage_verdict.verdict|default:"(pending)" }}'
+            Confidence: '{{ world.triage_verdict.confidence|default:"(pending)" }}'
+            Action:     '{{ world.triage_verdict.suggested_action|default:"(pending)" }}'
+      - heading: "Evidence"
+      - code: '{{ world.triage_verdict.evidence|default:"(pending — triager has not returned yet)" }}'
+      - heading: "Summary"
+      - code: '{{ world.triage_verdict.summary_markdown|default:"(pending)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "record the verdict and finish (→ @exit:triaged)"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-run triage with feedback"
+              intent: refine
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what to reconsider"
+                required:    false
+            - label:  "quit"
+              hint:   "abandon"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [judge_mode, ticket_id, ticket_title, workdir, triage_verdict, refine_feedback, cycle]
+    on_enter:
+      # 1. Produce the standardized triage verdict. Read-only agent; working_dir
+      #    defaults to "." (the current checkout) — triage needs no worktree.
+      #    `once: true` keyed off its own bind so a reload re-renders without
+      #    re-running the agent; refine clears the bind to re-arm.
+      - invoke: host.agent.task
+        once: true
+        with:
+          agent: triager
+          working_dir: "{{ world.workdir }}"
+          acceptance:
+            schema: schemas/triage_verdict.json
+          context:
+            prompt: prompts/triaging.md
+            args:
+              ticket_id:       "{{ world.ticket_id }}"
+              ticket_title:    "{{ world.ticket_title }}"
+              workdir:         "{{ world.workdir }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+        bind:
+          triage_verdict: submitted
+        on_error: idle
+
+      # 2. Autonomous terminal: the verdict needs no second opinion. In any
+      #    non-human mode, auto-fire `accept` once the verdict has bound.
+      #    Guard reads triage_verdict.verdict so the bind settles before routing.
+      - when: "world.judge_mode != 'human' && world.triage_verdict.verdict != nil && world.triage_verdict.verdict != ''"
+        emit_intent: accept
+    on:
+      # accept — record the verdict to the transport and finish.
+      accept:
+        - target: "@exit:triaged"
+          effects:
+            - invoke: iface.transport.post
+              with:
+                thread:   "{{ world.thread }}"
+                title:    "Triage verdict [{{ world.triage_verdict.verdict }}]: {{ world.ticket_id }}"
+                body:     "{{ world.triage_verdict.summary_markdown }}"
+                phase_id: "triaging_{{ world.ticket_id }}"
+            - set:
+                # Echo the on_enter-bound verdict so the @exit:triaged
+                # `requires: [triage_verdict]` static check is satisfied on this
+                # transition (no-op at runtime — the value is already bound).
+                triage_verdict:  "{{ world.triage_verdict }}"
+                status:          "triaged"
+                refine_feedback: ""
+
+      # refine — re-run triage with feedback. Human-only (no judge auto-fires
+      # refine here), so it is naturally bounded by operator intent. Clears the
+      # once: bind so on_enter re-runs the triager.
+      refine:
+        - target: triaging
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? '' }}"
+                cycle:           "{{ world.cycle + 1 }}"
+                triage_verdict:  {}
+
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

@@ -1,0 +1,219 @@
+# Curated from the real slidey cards-timing-drift bug-fix run. Clean happy-path,
+# one agent artifact per phase (replayed verbatim); the diff + node --test log
+# are the real merged change (slidey main commit 19c8798).
+kind: host_cassette
+app_id: slidey-bugfix
+app_version: '1'
+record_mode: none
+match_on:
+- handler
+episodes:
+- id: append_any
+  match:
+    handler: host.append_to_file
+  response:
+    data:
+      ok: true
+      message_id: msg-1
+  replay: any
+- id: inbox_any
+  match:
+    handler: host.inbox.add
+  response:
+    data:
+      ok: true
+      id: ib-1
+  replay: any
+- id: worktree_any
+  match:
+    handler: host.git_worktree
+  response:
+    data:
+      ok: true
+      path: .worktrees/bf-slidey-128
+      log: synced
+  replay: any
+- id: commit_any
+  match:
+    handler: host.git.commit
+  response:
+    data:
+      ok: true
+      sha: 19c8798
+  replay: any
+- id: diff_any
+  match:
+    handler: host.git.diff
+  response:
+    data:
+      diff: ''
+      files: null
+  replay: any
+- id: run_tests_any
+  match:
+    handler: host.local.run_tests
+  response:
+    data:
+      failed: 0.0
+      junit: ''
+      log: "\nTAP version 13\n# Subtest: cards grid variant reveals one item per card\nok 10 - cards grid variant reveals one item per card\n# Subtest: cards grid item reveals match the renderer per-item hold beyond the table\nok 11 - cards grid item reveals match the renderer per-item hold beyond the table\n# Subtest: table clamps revealed rows to MAX_ROWS (8)\nok 12 - table clamps revealed rows to MAX_ROWS (8)\n1..19\n# tests 19\n# suites 0\n# pass 19\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 41.9\n"
+      ok: true
+      passed: 19.0
+  replay: any
+- id: build_any
+  match:
+    handler: host.local.build
+  response:
+    data:
+      ok: true
+      log: "no build step required — timing.js is pure CommonJS exercised directly by node --test"
+  replay: any
+- id: ticket_any
+  match:
+    handler: host.local_files.ticket
+  response:
+    data:
+      ok: true
+  replay: any
+- id: reproduce_host_agent_task_1
+  match:
+    handler: host.agent.task
+  response:
+    data:
+      files_changed:
+      - test/timing.test.js
+      final_diff: "diff --git a/test/timing.test.js b/test/timing.test.js\nindex 5363cc8..79dc093 100644\n--- a/test/timing.test.js\n+++ b/test/timing.test.js\n@@ -91,6 +91,22 @@ test('cards grid variant reveals one item per card', () => {\n     + TIMING.cards_hold + TIMING.inter_scene);\n });\n \n+// Regression: the estimator's per-item reveal cost MUST match what the renderer\n+// actually holds (renderer.js setState: `TIMING[stepName] ?? 20`). A grid cards\n+// scene with more items than the table has `cards_item_N` keys (0..5) used to\n+// drift — the renderer held the generic fallback (20 frames) for cards_item_6+,\n+// while the estimator counted 30. estimateScene must stay in lock-step with the\n+// real reveal sequence, so narration timing for >6-item grids stays exact.\n+test('cards grid item reveals match the renderer per-item hold beyond the table', () => {\n+  const eight = [{}, {}, {}, {}, {}, {}, {}, {}];\n+  const f = estimateScene({ type: 'cards', cards: eight });\n+  // Mirror the renderer: one cards_item_<i> setState per card, each holding\n+  // TIMING['cards_item_'+i] ?? 20 frames (the renderer's generic fallback).\n+  let reveal = 0;\n+  for (let i = 0; i < eight.length; i++) reveal += TIMING[`cards_item_${i}`] ?? 20;\n+  assert.equal(f, reveal + TIMING.cards_hold + TIMING.inter_scene);\n+});\n+\n test('table clamps revealed rows to MAX_ROWS (8)', () => {\n"
+      replay_mode: file_diff
+      submitted:
+        actual_outcome: "For a grid `cards` scene with 8 items, estimateScene() returns 484 frames while the renderer actually emits 464. The renderer's setState holds TIMING[stepName] ?? 20 (renderer.js:129) for the un-keyed cards_item_6 / cards_item_7 reveals; the estimator (timing.js:330) used ?? 30. The 20-frame overcount per >6-item grid silently desyncs narration audio against the rendered frames."
+        bug_verified: true
+        environment_check:
+          notes: "Reproduction is a pure unit test against the timing estimator; no Puppeteer/ffmpeg render needed. node --test test/timing.test.js runs offline against the worktree source."
+        evidence_paths:
+        - test/timing.test.js
+        - src/timing.js
+        - src/renderer.js
+        expected_outcome: "estimateScene() for an N-item grid `cards` scene equals the renderer's true frame total: one cards_item_<i> reveal per card, each holding TIMING['cards_item_'+i] ?? 20 frames — the same generic fallback the renderer uses for items beyond cards_item_5."
+        involved_components:
+        - name: timing.estimateScene
+          reason: "src/timing.js:330 sums per-item reveal frames as T[`cards_item_${i}`] ?? 30 for grid variants, with n = (scene.cards||[]).length (unbounded). The table only defines cards_item_0..cards_item_5, so items 6+ fall to the 30 fallback."
+        - name: renderer.setState
+          reason: "src/renderer.js:129 holds frames = TIMING[stepName] ?? 20 for each reveal step. cards_item_6+ are not in the table, so the renderer holds 20 — not 30. The estimator and renderer must stay in lock-step (timing.js's own NOTE)."
+        - name: cards scene
+          reason: "src/scenes/cards.js:77 iterates itemCount(scene) reveals; for grid variants that is the full (unbounded) card count, so a deck with a 7+ item grid triggers the drift."
+        steps:
+        - cd .worktrees/bf-slidey-128
+        - 'Add a regression test asserting estimateScene matches the renderer per-item hold for an 8-item grid.'
+        - 'Run: node --test test/timing.test.js'
+        - Observe the new test fails with "484 == 464" — the estimator overcounts by 20 frames (10 per item beyond cards_item_5).
+        summary_markdown: "## Bug Verified: slidey-128 — grid `cards` scenes with >6 items desync narration\n\n### What is broken\n\nThe frame estimator (`estimateScene` in `src/timing.js`) and the real renderer (`src/renderer.js`) must produce the **same** frame total per scene — `timing.js`'s own NOTE says they must stay in lock-step, because narration audio is laid against the estimated boundaries.\n\nFor a grid `cards` scene the estimator sums `T['cards_item_'+i] ?? 30` over every card (`src/timing.js:330`). The TIMING table only defines `cards_item_0` … `cards_item_5`. So for the 7th card onward the estimator uses the **30**-frame fallback.\n\nThe renderer, however, holds `TIMING[stepName] ?? 20` per reveal step (`src/renderer.js:129`) — a **20**-frame generic fallback. For every card beyond `cards_item_5` the estimate is **10 frames too long**, so a deck with an 8-item grid drifts 20 frames (~0.67 s @ 30 fps) and the narration slips out of sync.\n\n### Root cause location\n\n`src/timing.js`, line 330:\n\n```js\nfor (let i = 0; i < n; i++) f += T[`cards_item_${i}`] ?? 30;\n```\n\nThe `?? 30` fallback disagrees with the renderer's `?? 20`.\n\n### How it was reproduced\n\nA deterministic unit test was added to `test/timing.test.js` that computes the renderer-true total (one `cards_item_<i>` reveal per card, each `TIMING['cards_item_'+i] ?? 20`) for an 8-item grid and asserts `estimateScene` equals it. It fails:\n\n```\nnot ok 11 - cards grid item reveals match the renderer per-item hold beyond the table\n  expected: 464\n  actual:   484\n```\n\nThe 20-frame gap is exactly the two over-counted cards (`cards_item_6`, `cards_item_7`) at 10 frames each.\n"
+        summary_title: 'slidey-128 CONFIRMED: grid cards estimator over-counts items beyond cards_item_5 by 10 frames each'
+      task_trace_id: a1f07e13-7076-4ee0-8192-62bea54f0001
+- id: implement_host_agent_task_7
+  match:
+    handler: host.agent.task
+  response:
+    data:
+      files_changed:
+      - src/timing.js
+      - test/timing.test.js
+      final_diff: "diff --git a/src/timing.js b/src/timing.js\nindex 484455b..9be168b 100644\n--- a/src/timing.js\n+++ b/src/timing.js\n@@ -327,7 +327,11 @@ function estimateScene(scene, opts = {}) {\n       const n = (v === 'qa' || twoCol) ? 2 : (scene.cards || []).length;\n       let f = 0;\n       if (scene.title) f += T.cards_title;\n-      for (let i = 0; i < n; i++) f += T[`cards_item_${i}`] ?? 30;\n+      // Items beyond cards_item_5 have no table key; the renderer's setState\n+      // holds the generic fallback (20 frames, see renderer.js), so the estimate\n+      // must use the same 20 to stay in lock-step with the real reveal sequence\n+      // for >6-item grids (otherwise narration desyncs by 10f per extra card).\n+      for (let i = 0; i < n; i++) f += T[`cards_item_${i}`] ?? 20;\n       if (scene.caption) f += T.cards_caption;\n       f += scene.hold ?? T.cards_hold ?? T.thread_hold;\n       f += T.inter_scene;\ndiff --git a/test/timing.test.js b/test/timing.test.js\nindex 5363cc8..79dc093 100644\n--- a/test/timing.test.js\n+++ b/test/timing.test.js\n@@ -91,6 +91,22 @@ test('cards grid variant reveals one item per card', () => {\n     + TIMING.cards_hold + TIMING.inter_scene);\n });\n \n+test('cards grid item reveals match the renderer per-item hold beyond the table', () => {\n+  const eight = [{}, {}, {}, {}, {}, {}, {}, {}];\n+  const f = estimateScene({ type: 'cards', cards: eight });\n+  let reveal = 0;\n+  for (let i = 0; i < eight.length; i++) reveal += TIMING[`cards_item_${i}`] ?? 20;\n+  assert.equal(f, reveal + TIMING.cards_hold + TIMING.inter_scene);\n+});\n+\n test('table clamps revealed rows to MAX_ROWS (8)', () => {\n"
+      replay_mode: file_diff
+      submitted:
+        applied: true
+        files_changed:
+        - src/timing.js
+        - test/timing.test.js
+        notes: "Single-line behavioural change plus the guarding regression test. The in-table cards (0..5) are unaffected — only the overflow fallback changes from 30 to 20 to match the renderer."
+        summary_markdown: "## Changes applied\n\n### 1. `src/timing.js` — align the grid-cards overflow fallback (line 330)\n\nChanged the estimator's per-item fallback from `?? 30` to `?? 20` so items beyond `cards_item_5` are estimated with the **same** 20-frame generic hold the renderer's `setState` uses (`src/renderer.js:129`). A comment documents the lock-step contract.\n\n### 2. `test/timing.test.js` — regression test\n\nAdded `cards grid item reveals match the renderer per-item hold beyond the table`: for an 8-item grid it computes the renderer-true total and asserts `estimateScene` equals it. RED before the fix (484 vs 464), GREEN after.\n\nThe minimal fix touches exactly the one disagreeing fallback; in-table grids (≤6 cards) and all other scene types are untouched."
+        summary_title: 'slidey-128: align grid cards estimator fallback (30→20) with the renderer per-item hold'
+      task_trace_id: b2d6e73e-6fea-41f0-ab98-399f8b9a0002
+- id: test_host_agent_task_15
+  match:
+    handler: host.agent.task
+  response:
+    data:
+      files_changed: null
+      final_diff: ''
+      replay_mode: file_diff
+      submitted:
+        blockers: []
+        status: passed
+        summary_markdown: "## Tests\n\n**File:** `test/timing.test.js`\n\n| Test | Role |\n|---|---|\n| `cards grid item reveals match the renderer per-item hold beyond the table` | Primary regression — an 8-item grid; asserts `estimateScene` equals the renderer-true total (one `cards_item_<i>` reveal per card, each `TIMING['cards_item_'+i] ?? 20`). RED before the fix (484 vs 464), GREEN after. |\n| `cards grid variant reveals one item per card` (pre-existing) | Guards the ≤6-item path — unchanged by the fix. |\n\n## Test run\n\nCommand: `node --test test/timing.test.js`\n\n```\n# tests 19\n# pass 19\n# fail 0\n```\n\nFull suite: `node --test` → 94 passed, 0 failed, 3 skipped (pre-existing)."
+        summary_title: 'slidey-128: grid cards timing drift — regression test green'
+        tests_added:
+        - name: cards grid item reveals match the renderer per-item hold beyond the table
+          path: test/timing.test.js
+        tests_run:
+          failed: 0.0
+          log: "# tests 19\n# pass 19\n# fail 0\n# skipped 0\n# duration_ms 41.9"
+          passed: 19.0
+          skipped: 0.0
+      task_trace_id: c0af02c0-7dac-4133-8ef8-e5c0ad3c0003
+- id: validate_host_agent_task_31
+  match:
+    handler: host.agent.task
+  response:
+    data:
+      files_changed: null
+      final_diff: ''
+      replay_mode: file_diff
+      submitted:
+        evidence:
+          build: "no build step — src/timing.js is pure CommonJS, exercised directly by node --test"
+          logs: "# tests 97\n# pass 94\n# fail 0\n# skipped 3\n# duration_ms 4852\n\ntiming.test.js: # tests 19 # pass 19 # fail 0"
+        next_action_hint: Fix is complete and validated. No further action needed — advance to done.
+        outcome: pass
+        summary_markdown: "## Test run\n\n`node --test` (whole suite)\n\n```\n# tests 97\n# pass 94\n# fail 0\n# skipped 3\n```\n\nAll non-skipped tests pass; the 3 skips are pre-existing (unrelated env-gated cases). The targeted timing suite is 19/19 green, including the new regression.\n\n## slidey-128 regression\n\n| Test | Result |\n|---|---|\n| `cards grid item reveals match the renderer per-item hold beyond the table` | ✅ ok |\n| `cards grid variant reveals one item per card` | ✅ ok |\n\nThe primary regression confirms `estimateScene` now matches the renderer's per-item hold (`?? 20`) for grids beyond `cards_item_5`, so narration no longer drifts on >6-item grid cards scenes.\n\n## Conclusion\n\nThe fix is complete, correct, and scoped to one estimator fallback; no regressions surfaced in the full suite."
+        summary_title: slidey-128 fix validated — 94/94 tests pass, regression green
+      task_trace_id: d9ca7ad8-447f-4097-996a-54c475ee0004
+- id: propose_host_agent_decide_3
+  match:
+    handler: host.agent.decide
+  response:
+    data:
+      claude_session_id: 34947afe-c2d5-4d4a-807d-510f6cb80001
+      exit_code: 0.0
+      ok: true
+      rationale: "Submitted. Root cause: the grid-cards estimator (timing.js:330) sums `T['cards_item_'+i] ?? 30` over an unbounded card count, but the TIMING table only defines cards_item_0..5. The renderer's setState (renderer.js:129) holds `?? 20` for those un-keyed reveals. So every card beyond the 6th is estimated 10 frames too long, drifting narration. Fix: change the estimator fallback from 30 to 20 to match the renderer. Single line, plus a regression test. Confidence 0.95."
+      submitted:
+        affected_files:
+        - src/timing.js
+        - test/timing.test.js
+        alternative_approaches:
+        - "Add cards_item_6 / cards_item_7 (and more) keys to the TIMING table at 30 each AND change the renderer's generic fallback to 30. Keeps a per-item dwell of 30 but is a wider change touching the renderer's default and the table, and still leaves an unbounded tail (a 20-card grid would re-drift). Aligning the single fallback is minimal and bound-safe."
+        - "Clamp the grid reveal count to 6 in both the estimator and the renderer. Changes visible behaviour (later cards would never get their own reveal step), so rejected."
+        confidence: 0.95
+        fix_description: "In `estimateScene` (src/timing.js, ~line 330), change the grid-cards per-item fallback from `?? 30` to `?? 20`:\n\n```js\n// Items beyond cards_item_5 have no table key; the renderer's setState\n// holds the generic fallback (20 frames, see renderer.js), so the estimate\n// must use the same 20 to stay in lock-step with the real reveal sequence.\nfor (let i = 0; i < n; i++) f += T[`cards_item_${i}`] ?? 20;\n```\n\nAdd a regression test in `test/timing.test.js` asserting `estimateScene` for an 8-item grid equals the renderer-true total."
+        reasoning: "The estimator and renderer share an explicit lock-step contract (the NOTE above estimateScene). The renderer's per-step hold is `TIMING[stepName] ?? 20`; the only place the estimator disagrees is the grid-cards fallback `?? 30`. Aligning it to 20 makes the two agree for any card count, is a one-line change, and cannot regress the in-table path (cards_item_0..5 keep their table values)."
+        root_cause: "`estimateScene` sums per-item reveal frames as `T['cards_item_'+i] ?? 30` for grid `cards`, but the TIMING table only defines cards_item_0..cards_item_5. For items 6+ the 30-frame fallback is used. The renderer holds `TIMING[stepName] ?? 20` (renderer.js:129) for those same un-keyed reveals, so each over-the-table card is estimated 10 frames too long and narration drifts."
+        summary_markdown: "## Bug\n\nGrid `cards` scenes with more than 6 items desync their narration: the frame estimator over-counts each card beyond `cards_item_5` by 10 frames (uses a 30-frame fallback where the renderer holds 20).\n\n## Root Cause\n\n`src/timing.js:330` — `T['cards_item_'+i] ?? 30` disagrees with the renderer's `TIMING[stepName] ?? 20` (`src/renderer.js:129`) for items the TIMING table doesn't key (cards_item_6+).\n\n## Fix\n\nChange the estimator's grid-cards fallback from `?? 30` to `?? 20` so it matches the renderer for any card count. Add a regression test computing the renderer-true total for an 8-item grid.\n\n## Files\n\n- `src/timing.js` — one-line fallback change + comment\n- `test/timing.test.js` — regression test\n\n## Confidence\n\n0.95 — the disagreement is unambiguous and the fix is the minimal reconciliation of two fallbacks that share a documented lock-step contract."
+        summary_title: 'Fix slidey-128: align grid cards estimator fallback (30→20) with the renderer per-item hold'
+- id: done_host_agent_decide_33
+  match:
+    handler: host.agent.decide
+  response:
+    data:
+      claude_session_id: b81feed0-7a77-4ae4-a155-60d5dfb00005
+      exit_code: 0.0
+      ok: true
+      rationale: "Done. The done_artifact captures: the bug was a fallback mismatch between the frame estimator (??30) and the renderer (??20) for grid cards beyond cards_item_5, silently drifting narration on >6-item grids. The fix aligns the single fallback to 20 and adds an 8-item regression test. 0 refinement cycles."
+      submitted:
+        lessons:
+        - category: failure-patterns
+          description: "When two code paths must produce identical numbers (an estimator and the thing it estimates), every shared default/fallback value must be literally identical — not just 'close'. A divergent fallback (30 vs 20) is invisible until the input range that exercises the un-keyed tail (here, >6 grid cards) appears in a real deck."
+          phase: reproducing
+          severity: high
+        - category: test-patterns
+          description: "Lock-step invariants between two modules should be tested by computing one side's result FROM the other side's rule, not by hard-coding an expected constant. The regression derives the renderer-true total via `TIMING['cards_item_'+i] ?? 20` and asserts the estimator matches — so it stays correct even if the table grows."
+          phase: testing
+          severity: medium
+        - category: api-patterns
+          description: "An unbounded index into a sparse lookup table (cards_item_0..5 but n = card count) is a latent drift source. Prefer either a bounded reveal count or a single shared fallback so the over-the-table tail is well-defined on both sides."
+          phase: proposing
+          severity: medium
+        metrics:
+          checkpoint_comments: 0.0
+          cycles: 0.0
+        summary_markdown: "## Bug\n\nslidey lays narration audio against the per-scene frame boundaries produced by `estimateScene` (`src/timing.js`). For a grid `cards` scene the estimator sums `T['cards_item_'+i] ?? 30` over every card, but the TIMING table only defines `cards_item_0`…`cards_item_5`. The renderer holds `TIMING[stepName] ?? 20` (`src/renderer.js:129`) for those same un-keyed reveals. So every card beyond the 6th was estimated 10 frames too long, and a deck with a 7+ item grid drifted its narration out of sync.\n\n## Fix\n\nCommit `19c8798` changes the estimator's grid-cards fallback from `?? 30` to `?? 20`, matching the renderer for any card count. In-table grids (≤6 cards) and every other scene type are untouched.\n\n## Test coverage added\n\n- **`cards grid item reveals match the renderer per-item hold beyond the table`** — primary regression: for an 8-item grid, asserts `estimateScene` equals the renderer-true total (one `cards_item_<i>` reveal per card, each `?? 20`). RED before (484 vs 464), GREEN after.\n\n## Outcome\n\nWhole suite: 94 passed, 0 failed, 3 skipped (pre-existing). The targeted timing suite is 19/19. Zero refinement cycles — correct on the first attempt."
+        summary_title: 'slidey-128: grid cards narration drift fixed via estimator/renderer fallback alignment'

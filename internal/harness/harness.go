@@ -1,6 +1,3 @@
-// Package harness defines the Harness interface and its type dependencies.
-// Three implementations are planned (§12.1): Live (anthropic-sdk-go or claude -p
-// subprocess), Replay (YAML recording for Mode 2 tests), and Recording (wraps Live).
 package harness
 
 import (
@@ -31,7 +28,9 @@ type TurnInput struct {
 	World world.World `json:"world"`
 	// AllowedIntents lists the intent names currently valid.
 	AllowedIntents []string `json:"allowed_intents"`
-	// SystemPrompt is the rendered system prompt (including app context and §7 surfaces).
+	// SystemPrompt is an extra rendered prompt fragment the orchestrator may
+	// pass through (e.g. Agent-Room surfaces); harnesses append it verbatim
+	// to the dynamic suffix.
 	SystemPrompt string `json:"system_prompt,omitempty"`
 	// RecentTurns is an ordered tail (oldest → newest) of the most recent N
 	// completed turns in this session, included so the LLM can resolve
@@ -77,8 +76,12 @@ type TurnSummary struct {
 	Rejected bool `json:"rejected,omitempty"`
 }
 
-// Harness is the pluggable LLM runner (§12.1).
-// This is one of the five core interfaces from §12.1.
+// Harness is the pluggable LLM runner: the routing tier that consults a
+// language model after the deterministic and semantic tiers miss. Every
+// implementation (Live, ClaudeCLI, Replay, Recording) satisfies this two-method
+// contract so the orchestrator can swap backends without knowing which one it
+// holds. Implementations are not required to be safe for concurrent RunTurn
+// calls; the orchestrator serialises turns per session.
 type Harness interface {
 	// RunTurn pipes the user utterance and app context to the LLM; blocks until
 	// the LLM makes a tool call or exits. The returned CallToolParams is validated

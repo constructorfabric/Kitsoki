@@ -1,0 +1,42 @@
+# summary — the fan-out read-out → @exit:done.
+#
+# Renders shipped_count shipped, parked_count parked (with each parked brief's
+# last_error), and the per-brief table. fleet_summary set; @exit:done
+# (requires [fleet_summary]). Every parked brief's error surfaces here — never a
+# swallowed failure.
+
+states:
+
+  summary:
+    description: "Fan-out complete — the per-brief read-out."
+    relevant_world: [fleet_briefs, shipped_count, parked_count, fleet_summary]
+    view:
+      - heading: "Fan-out complete."
+      - kv:
+          pairs:
+            Shipped: '{{ world.shipped_count }}'
+            Parked:  '{{ world.parked_count }}'
+      - prose: "{{ world.fleet_summary }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # Build the summary string deterministically (counts + parked errors).
+      - set:
+          fleet_summary: '{{ world.shipped_count }} shipped, {{ world.parked_count }} parked.'
+      - emit_intent: to_summary
+    on:
+      to_summary:
+        - target: "@exit:done"
+          effects:
+            # fleet_summary is also built in on_enter (so the view renders it
+            # before the auto-advance), but the transition must carry it too so
+            # the import-requires invariant check passes when fleet is imported
+            # by a parent story (e.g. deliver).
+            - set:
+                fleet_summary: '{{ world.shipped_count }} shipped, {{ world.parked_count }} parked.'
+      look:
+        - target: .

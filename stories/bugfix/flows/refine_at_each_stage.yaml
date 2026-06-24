@@ -1,4 +1,4 @@
-# refine_at_each_stage — port of an upstream pipeline's refine.yaml.
+# refine_at_each_stage — port of cyber-repo's refine.yaml.
 #
 # At each merged checkpoint room, `refine: <feedback>` self-transitions
 # back into the same room with refine_feedback set and the per-phase
@@ -26,17 +26,17 @@ host_handlers:
   host.git_worktree:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
@@ -67,17 +67,17 @@ host_handlers:
   host.git_worktree:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
@@ -107,17 +107,17 @@ host_handlers:
   host.git_worktree:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
@@ -147,17 +147,17 @@ host_handlers:
   host.git_worktree:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
@@ -187,17 +187,17 @@ host_handlers:
   host.git_worktree:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted: { summary_title: "stub", summary_markdown: "stub" }

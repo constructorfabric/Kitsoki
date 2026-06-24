@@ -1,0 +1,495 @@
+# init -- deterministic project onboarding.
+#
+# The flow is deliberately boring and auditable:
+#   landing -> init_discover -> init(review) -> init_apply -> init_done
+#
+# Discovery and apply are host.run scripts that emit JSON. Flow fixtures stub
+# both calls, so this remains no-LLM and cost-free in tests. The review room is
+# the operator checkpoint: no files are written until confirm_init enters the
+# apply room.
+
+states:
+
+  init_discover:
+    description: "Discover a project profile from the target checkout before any writes happen."
+    relevant_world:
+      - init_request
+      - init_target_path
+      - init_profile_status
+      - init_run_output
+      - workdir
+      - repo_root
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "discovering profile"
+          color:    "#14B8A6"
+      - kv:
+          pairs:
+            Request: "{{ world.init_request|default:'(current project)' }}"
+            Target:  "{{ world.init_target_path|default:world.repo_root|default:world.workdir|default:'.' }}"
+            Status:  "{{ world.init_profile_status }}"
+      - prose: "Inspecting local project files to infer commands, stack, and the Kitsoki instance shape."
+        when: "world.init_project_id == ''"
+      - kv:
+          pairs:
+            Project: "{{ world.init_project_title }}"
+            ID:      "{{ world.init_project_id }}"
+            Stack:   "{{ world.init_stack }}"
+        when: "world.init_project_id != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "review the discovered profile"
+              intent: init_discovered
+              when:   "world.init_project_id != ''"
+            - label:  "retry"
+              hint:   "rerun deterministic discovery"
+              intent: init_discovered
+              when:   "world.init_project_id == ''"
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        once: true
+        id: discover
+        with:
+          cmd: bash
+          args:
+            - "-lc"
+            - 'python3 "$KITSOKI_APP_DIR/scripts/init_discover.py" "$@"'
+            - "init_discover"
+            - "{{ world.init_request }}"
+            - "{{ world.workdir }}"
+            - "{{ world.repo_root }}"
+        bind:
+          init_run_ok:        "ok"
+          init_run_output:    "stdout"
+          init_discovery:     "stdout_json"
+          init_target_path:   "stdout_json.target_path"
+          init_project_id:    "stdout_json.project_id"
+          init_project_title: "stdout_json.project_title"
+          init_stack:         "stdout_json.stack"
+          init_dev_command:   "stdout_json.dev_command"
+          init_test_command:  "stdout_json.test_command"
+          init_build_command: "stdout_json.build_command"
+          init_conventions:   "stdout_json.conventions"
+          init_tracker:       "stdout_json.tracker"
+        on_error: init_discover_failed
+    on:
+      init_discovered:
+        - when: "world.init_project_id != ''"
+          target: init
+          effects:
+            - set:
+                init_profile_status: "draft"
+                last_error: ""
+        - default: true
+          target: init_discover_failed
+          effects:
+            - set:
+                init_profile_status: "discovery-failed"
+                last_error: "project discovery failed"
+      quit:
+        - target: landing
+          effects:
+            - set:
+                last_error: "project onboarding closed"
+                prev_state: "init_discover"
+      look:
+        - target: .
+
+  init_discover_failed:
+    description: "Project discovery failed before a reviewable profile was available."
+    relevant_world:
+      - init_request
+      - init_target_path
+      - init_profile_status
+      - init_run_output
+      - workdir
+      - repo_root
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "discovery failed"
+          color:    "#EF4444"
+      - prose: "Discovery did not produce a usable project profile. No files were written."
+      - kv:
+          pairs:
+            Request: "{{ world.init_request|default:'(current project)' }}"
+            Target:  "{{ world.init_target_path|default:world.repo_root|default:world.workdir|default:'.' }}"
+            Status:  "{{ world.init_profile_status }}"
+      - heading: "Output"
+        when: "world.init_run_output != ''"
+      - code: "{{ world.init_run_output }}"
+        when: "world.init_run_output != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "retry"
+              hint:   "rerun deterministic discovery"
+              intent: init_discovered
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      init_discovered:
+        - target: init_discover
+          effects:
+            - set:
+                init_discovery: {}
+                init_run_ok: false
+                init_run_output: ""
+                init_profile_status: "discovering"
+                last_error: ""
+      quit:
+        - target: landing
+          effects:
+            - set:
+                last_error: "project onboarding closed"
+                prev_state: "init_discover_failed"
+      look:
+        - target: .
+
+  init:
+    description: "Review the discovered project onboarding profile before applying local setup files."
+    default_intent: revise_init
+    relevant_world:
+      - init_request
+      - init_discovery
+      - init_target_path
+      - init_project_id
+      - init_project_title
+      - init_stack
+      - init_dev_command
+      - init_test_command
+      - init_build_command
+      - init_conventions
+      - init_tracker
+      - init_profile_status
+      - init_feedback
+      - workdir
+      - repo_root
+
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "review profile before writes"
+          color:    "#14B8A6"
+      - prose: >
+          Review the project profile Kitsoki discovered. Accepting writes the
+          local Kitsoki config, project profile, and story instance into the
+          target checkout; feedback is recorded before another discovery pass.
+      - kv:
+          pairs:
+            Target:      "{{ world.init_target_path|default:world.repo_root|default:world.workdir|default:'.' }}"
+            Project:     "{{ world.init_project_title|default:'(not yet inferred)' }}"
+            ID:          "{{ world.init_project_id|default:'(not yet inferred)' }}"
+            Stack:       "{{ world.init_stack|default:'(not yet inferred)' }}"
+            Status:      "{{ world.init_profile_status }}"
+      - heading: "Commands"
+      - kv:
+          pairs:
+            Dev server:  "{{ world.init_dev_command|default:'(not yet inferred)' }}"
+            Test:        "{{ world.init_test_command|default:'(not yet inferred)' }}"
+            Build:       "{{ world.init_build_command|default:'(not yet inferred)' }}"
+      - heading: "Setup"
+      - kv:
+          pairs:
+            Conventions: "{{ world.init_conventions }}"
+            Tracker:     "{{ world.init_tracker }}"
+            Writes:      ".kitsoki.yaml, .kitsoki/project-profile.yaml, stories/{{ world.init_project_id }}-dev/app.yaml"
+      - heading: "Feedback"
+        when: "world.init_feedback != ''"
+      - prose: "{{ world.init_feedback }}"
+        when: "world.init_feedback != ''"
+      - heading: "Actions"
+      - prose: "Type feedback in your own words to revise the draft, or use an action below."
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "accept"
+              hint:   "write the local Kitsoki onboarding files"
+              intent: confirm_init
+            - label:  "revise"
+              hint:   "record feedback for the next profile draft"
+              intent: revise_init
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what should change"
+                required:    true
+            - label:  "rediscover"
+              hint:   "rerun deterministic discovery"
+              intent: init_discovered
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+
+    on:
+      confirm_init:
+        - when: "world.init_project_id == ''"
+          target: .
+          guard_hint: "Discovery has not produced a project profile yet."
+          effects:
+            - set:
+                last_error: "Cannot apply onboarding until discovery produces a project id."
+        - target: init_apply
+          effects:
+            - set:
+                init_profile_status: "applying"
+                init_apply_result: {}
+                init_apply_ok: false
+                init_apply_output: ""
+                last_error: ""
+      revise_init:
+        - target: .
+          effects:
+            - set:
+                init_profile_status: "needs-revision"
+                init_feedback: "{{ slots.feedback }}"
+            - say: "Onboarding feedback recorded."
+      init_discovered:
+        - target: init_discover
+          effects:
+            - set:
+                init_discovery: {}
+                init_run_ok: false
+                init_run_output: ""
+                init_apply_result: {}
+                init_apply_ok: false
+                init_apply_output: ""
+                init_profile_status: "discovering"
+                last_error: ""
+      quit:
+        - target: landing
+          effects:
+            - set:
+                last_error: "project onboarding closed"
+                prev_state: "init"
+      look:
+        - target: .
+
+  init_apply:
+    description: "Apply the reviewed onboarding files to the target checkout."
+    relevant_world:
+      - init_discovery
+      - init_apply_result
+      - init_target_path
+      - init_project_id
+      - init_project_title
+      - init_profile_status
+      - init_apply_output
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "applying local setup"
+          color:    "#14B8A6"
+      - kv:
+          pairs:
+            Target:  "{{ world.init_target_path }}"
+            Project: "{{ world.init_project_title }}"
+            Status:  "{{ world.init_profile_status }}"
+      - prose: "Writing local Kitsoki onboarding files. No agents or project tests run in this step."
+        when: "world.init_apply_result.status != 'applied'"
+      - kv:
+          pairs:
+            Config:   "{{ world.init_apply_result.config_path|default:'' }}"
+            Profile:  "{{ world.init_apply_result.profile_path|default:'' }}"
+            Instance: "{{ world.init_apply_result.instance_path|default:'' }}"
+        when: "world.init_apply_result.status == 'applied'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "show the applied onboarding result"
+              intent: init_applied
+              when:   "world.init_apply_result.status == 'applied'"
+            - label:  "retry"
+              hint:   "rerun apply"
+              intent: init_applied
+              when:   "world.init_apply_result.status != 'applied'"
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        once: true
+        id: apply
+        with:
+          cmd: bash
+          args:
+            - "-lc"
+            - 'python3 "$KITSOKI_APP_DIR/scripts/init_apply.py" "$@"'
+            - "init_apply"
+            - "{{ world.init_target_path }}"
+            - "{{ world.init_project_id }}"
+            - "{{ world.init_project_title }}"
+            - "{{ world.init_stack }}"
+            - "{{ world.init_dev_command }}"
+            - "{{ world.init_test_command }}"
+            - "{{ world.init_build_command }}"
+            - "{{ world.init_conventions }}"
+            - "{{ world.init_tracker }}"
+        bind:
+          init_apply_ok: "ok"
+          init_apply_output: "stdout"
+          init_apply_result: "stdout_json"
+        on_error: init_apply_failed
+    on:
+      init_applied:
+        - when: "world.init_apply_result.status == 'applied'"
+          target: init_done
+          effects:
+            - set:
+                init_profile_status: "{{ world.init_apply_result.status ?? 'applied' }}"
+                last_error: ""
+            - say: "Project onboarding files applied."
+        - default: true
+          target: init_apply_failed
+          effects:
+            - set:
+                init_profile_status: "apply-failed"
+                last_error: "project onboarding apply failed"
+      quit:
+        - target: landing
+          effects:
+            - set:
+                last_error: "project onboarding closed"
+                prev_state: "init_apply"
+      look:
+        - target: .
+
+  init_apply_failed:
+    description: "Project onboarding apply failed before all files were written."
+    relevant_world:
+      - init_apply_result
+      - init_apply_output
+      - init_target_path
+      - init_project_id
+      - init_project_title
+      - init_profile_status
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "apply failed"
+          color:    "#EF4444"
+      - prose: "Apply did not complete successfully. Review the output, then retry or return to the profile review."
+      - kv:
+          pairs:
+            Target:  "{{ world.init_target_path }}"
+            Project: "{{ world.init_project_title }}"
+            Status:  "{{ world.init_profile_status }}"
+      - heading: "Output"
+        when: "world.init_apply_output != ''"
+      - code: "{{ world.init_apply_output }}"
+        when: "world.init_apply_output != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "retry"
+              hint:   "rerun apply"
+              intent: confirm_init
+            - label:  "review"
+              hint:   "return to the profile review"
+              intent: revise_init
+              slots:
+                feedback: "review after apply failure"
+            - label:  "quit"
+              hint:   "back to the workbench"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      confirm_init:
+        - target: init_apply
+          effects:
+            - set:
+                init_apply_result: {}
+                init_apply_ok: false
+                init_apply_output: ""
+                init_profile_status: "applying"
+                last_error: ""
+      revise_init:
+        - target: init
+          effects:
+            - set:
+                init_feedback: "{{ slots.feedback }}"
+                init_profile_status: "needs-revision"
+      quit:
+        - target: landing
+          effects:
+            - set:
+                last_error: "project onboarding closed"
+                prev_state: "init_apply_failed"
+      look:
+        - target: .
+
+  init_done:
+    description: "Show the applied project onboarding result."
+    relevant_world:
+      - init_apply_result
+      - init_target_path
+      - init_project_id
+      - init_project_title
+      - init_profile_status
+    view:
+      - banner:
+          text:     "PROJECT ONBOARDING"
+          subtitle: "applied"
+          color:    "#22C55E"
+      - kv:
+          pairs:
+            Target:        "{{ world.init_target_path }}"
+            Project:       "{{ world.init_project_title }}"
+            Status:        "{{ world.init_profile_status }}"
+            Config:        "{{ world.init_apply_result.config_path|default:'' }}"
+            Profile:       "{{ world.init_apply_result.profile_path|default:'' }}"
+            Instance:      "{{ world.init_apply_result.instance_path|default:'' }}"
+            Gitignore:     "{{ world.init_apply_result.gitignore_path|default:'' }}"
+      - heading: "Writes"
+        when: "world.init_apply_result.writes"
+      - template: |
+          {% for path in world.init_apply_result.writes %}- {{ path }}
+          {% endfor %}
+        when: "world.init_apply_result.writes"
+      - heading: "Actions"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "workbench"
+              hint:   "return to the dev-story workbench"
+              intent: go_main
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      go_main:
+        - target: landing
+          effects:
+            - set:
+                prev_state: "init_done"
+                last_error: "project onboarding complete"
+      look:
+        - target: .

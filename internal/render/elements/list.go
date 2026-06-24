@@ -22,6 +22,9 @@ import (
 // Items whose `when:` guard evaluates to false are filtered out BEFORE
 // the column-width measurement, so a guard'd-away long row doesn't
 // reserve a wide column for the survivors.
+//
+// The zero value (nil Items, empty Marker) is usable and renders to "";
+// an empty Marker falls back to defaultMarker.
 type List struct {
 	Items  []app.ListItem
 	Marker string
@@ -29,8 +32,8 @@ type List struct {
 
 // defaultMarker is the bullet marker applied when Marker is empty.
 //
-// The proposal §2.2 spec originally said "\"-\"". We use the Unicode
-// bullet "•" instead because the typed-element output is composed
+// We use the Unicode bullet "•" rather than an ASCII "-" because the
+// typed-element output is composed
 // into a glamour-styled markdown document downstream (the TUI's
 // transcript pane runs the entire view through glamour after the
 // dispatcher pre-renders blocks — see element.go::RenderAll). When
@@ -49,7 +52,7 @@ const defaultMarker = "•"
 
 // gutterWidth is the column gap between the label column and the hint
 // column in a two-column list. Two spaces matches the cloak / dev-story
-// hand-tuned spacing that the proposal §1 motivates replacing.
+// hand-tuned spacing this element exists to replace.
 const gutterWidth = 2
 
 // minHintWidth is the floor the two-column layout keeps for the hint

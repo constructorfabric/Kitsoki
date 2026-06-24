@@ -1,4 +1,4 @@
-# PROJ-89912 — Code Review Report (Phase 08)
+# PLTFRM-89912 — Code Review Report (Phase 08)
 
 ## Verdict: **BLOCKED**
 
@@ -9,7 +9,7 @@ Phase 8 was invoked with **no diff and no bug description**. Both
 empty in the rendered prompt:
 
 ```
-Ticket ID: PROJ-89912
+Ticket ID: PLTFRM-89912
 Bug description: 
 
 Git diff (main...HEAD):
@@ -20,7 +20,7 @@ There is no implementation artifact in the ticket folder either — the
 expected `06.5-impl-summary.json` is missing:
 
 ```
-.bug-fix/PROJ-89912/
+.bug-fix/PLTFRM-89912/
 ├── 03-fix-proposal.md
 ├── 06-implementation-plan.md
 ├── 07-test-review-report.json
@@ -28,7 +28,7 @@ expected `06.5-impl-summary.json` is missing:
 └── test_pltfrm_89912_api.py
 ```
 
-The active fix worktree (`.bug-fix/PROJ-89912-011/worktree`,
+The active fix worktree (`.bug-fix/PLTFRM-89912-011/worktree`,
 branch `fix/pltfrm-89912-011`) shows a single 3-line commit modifying
 `stories/devstory/app.yaml` — unrelated to the
 `ASK/presentation-service` SSRF that this ticket targets. Files the
@@ -68,7 +68,7 @@ upstream context and produce a real diff for review.
   Route back to phase_6_5 so the implementation actually runs and
   produces a non-empty diff against `main`. Before re-entering phase
   8, verify:
-    1. `06.5-impl-summary.json` exists in `.bug-fix/PROJ-89912/`.
+    1. `06.5-impl-summary.json` exists in `.bug-fix/PLTFRM-89912/`.
     2. The active worktree branch (`fix/pltfrm-89912-NNN`) has
        commits beyond `main` touching the files listed in
        `06-implementation-plan.md` (especially

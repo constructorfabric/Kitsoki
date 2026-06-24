@@ -1,14 +1,14 @@
 ─── welcome ───
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃  * kitsoki · cypilot                                                         ┃
-┃    v1.2.0 · by brad                                                          ┃
-┃                                                                              ┃
-┃    /help        list commands                                                ┃
-┃    /world       inspect current state                                        ┃
-┃    /quit        exit                                                         ┃
-┃                                                                              ┃
-┃    session sess_42… · state idle                                             ┃
+┃    \  |  /    * kitsoki · cypilot                                            ┃
+┃   ── ███ ──     v1.2.0 · by brad                                             ┃
+┃      ███                                                                     ┃
+┃      ▟█▙        /help        list commands                                   ┃
+┃     ▟███▙       /world       inspect current state                           ┃
+┃    ▟█████▙      /quit        exit                                            ┃
+┃    ███████                                                                   ┃
+┃   █████████     session sess_42… · state idle                                ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
 ─── header ───

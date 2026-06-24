@@ -1,0 +1,179 @@
+# fixing — one agent.task instance applies the fix for groups[cursor].
+#
+# on_enter:
+#   1. Set current = groups[cursor] (starlark; once: true keyed on current)
+#   2. host.agent.task applies the minimal fix (once: true keyed on fix_result)
+#
+# Checkpoint: accept → verifying; refine (with feedback) → re-run within budget;
+# skip → record in skipped, advance cursor; quit → @exit:abandoned.
+
+states:
+
+  fixing:
+    description: "Apply the minimal fix for the current pattern group."
+    relevant_world: [groups, cursor, current, fix_result, group_cycle, group_budget, refine_feedback, src_root]
+    view:
+      - prose: "UI fix pipeline · fixing · group {{ world.cursor + 1 }}/{{ world.groups.items|length }} · cycle {{ world.group_cycle }}/{{ world.group_budget }}"
+      - kv:
+          pairs:
+            Group:    '{{ world.current.title|default:"(loading…)" }}'
+            Severity: '{{ world.current.severity|default:"—" }}'
+            Pattern:  '{{ world.current.pattern|default:"(loading…)" }}'
+      - heading: "Recommendation"
+      - prose: '{{ world.current.recommendation|default:"(loading…)" }}'
+      - heading: "Fix result"
+      - when: "world.fix_result.applied != nil"
+        kv:
+          pairs:
+            Applied: '{{ world.fix_result.applied }}'
+            Files:   '{{ world.fix_result.files|join:", " }}'
+      - template: |
+          {% if world.fix_result.summary %}
+          {{ world.fix_result.summary }}
+          {% endif %}
+          {% if world.fix_result.diff_excerpt %}
+          {{ world.fix_result.diff_excerpt }}
+          {% endif %}
+      - list:
+          items:
+            - label: "accept"
+              hint:  "run the deterministic verify pass"
+            - label: "refine feedback=…"
+              hint:  "re-apply with guidance (cycle {{ world.group_cycle }}/{{ world.group_budget }})"
+            - label: "skip"
+              hint:  "skip this group"
+            - label: "quit"
+              hint:  "abandon the pipeline"
+            - label: "look"
+              hint:  "re-render"
+    on_enter:
+      # Step 1: bind current group. once: true keyed on current.
+      # Cleared by skip/refine/next in transition effects.
+      - invoke: host.starlark.run
+        once: true
+        with:
+          script: scripts/get_current.star
+          inputs:
+            groups: "{{ world.groups }}"
+            cursor: "{{ world.cursor }}"
+        bind:
+          current: item
+        on_error: idle
+
+      # Step 2: apply the fix. once: true keyed on fix_result.
+      # refine clears fix_result to re-arm.
+      - invoke: host.agent.task
+        once: true
+        with:
+          working_dir: "{{ world.src_root }}"
+          acceptance:
+            schema: schemas/fix_verdict.json
+          context:
+            prompt: prompts/apply_fix.md
+            args:
+              group_id:        "{{ world.current.id }}"
+              group_title:     "{{ world.current.title }}"
+              pattern:         "{{ world.current.pattern }}"
+              root_cause:      "{{ world.current.root_cause }}"
+              recommendation:  "{{ world.current.recommendation }}"
+              member_ids:      "{{ world.current.member_ids }}"
+              before_frames:   "{{ world.current.before_frames }}"
+              frames_dir:      "{{ world.frames_dir }}"
+              src_root:        "{{ world.src_root }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+              group_cycle:     "{{ world.group_cycle }}"
+        bind:
+          fix_result: submitted
+        on_error: idle
+    on:
+      accept:
+        - target: verifying
+          effects:
+            - set: { refine_feedback: "" }
+
+      refine:
+        # Budget exhausted: skip the group, advance cursor.
+        - when: "world.group_cycle >= world.group_budget && world.cursor + 1 < len(world.groups.items)"
+          target: fixing
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/accumulate.star
+                inputs:
+                  bucket_key: skipped
+                  reason:     refine_budget_exhausted
+              bind:
+                skipped: bucket
+            - set:
+                cursor:          "{{ world.cursor + 1 }}"
+                current:         {}
+                fix_result:      {}
+                refine_feedback: ""
+                group_cycle:     0
+            - say: "Refine budget exhausted — skipping this group."
+        - when: "world.group_cycle >= world.group_budget"
+          target: done
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/accumulate.star
+                inputs:
+                  bucket_key: skipped
+                  reason:     refine_budget_exhausted
+              bind:
+                skipped: bucket
+            - set:
+                cursor:          "{{ world.cursor + 1 }}"
+                current:         {}
+                fix_result:      {}
+                refine_feedback: ""
+                group_cycle:     0
+            - say: "Refine budget exhausted — skipping last group."
+        - target: fixing
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback }}"
+                fix_result:      {}
+                group_cycle:     "{{ world.group_cycle + 1 }}"
+
+      skip:
+        - when: "world.cursor + 1 < len(world.groups.items)"
+          target: fixing
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/accumulate.star
+                inputs:
+                  bucket_key: skipped
+                  reason:     skipped
+              bind:
+                skipped: bucket
+            - set:
+                cursor:          "{{ world.cursor + 1 }}"
+                current:         {}
+                fix_result:      {}
+                refine_feedback: ""
+                group_cycle:     0
+        - target: done
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/accumulate.star
+                inputs:
+                  bucket_key: skipped
+                  reason:     skipped
+              bind:
+                skipped: bucket
+            - set:
+                cursor:          "{{ world.cursor + 1 }}"
+                current:         {}
+                fix_result:      {}
+                refine_feedback: ""
+                group_cycle:     0
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_at_fixing" }
+      look:
+        - target: .

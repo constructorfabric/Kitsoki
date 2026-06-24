@@ -55,9 +55,9 @@ func (m *Matcher) IsEmpty() bool {
 // cancellation checks through what is otherwise a hot path.
 //
 // statePath is currently unused at the matching level: Phase 2 has
-// no state-scoped synonyms (see proposal §11 open question 1). It's
-// accepted on the signature because callers already have it, and
-// reserving the slot avoids a Phase-4 API change.
+// no state-scoped synonyms (an open design question). It's accepted on
+// the signature because callers already have it, and reserving the
+// slot avoids a Phase-4 API change.
 func (m *Matcher) Match(ctx context.Context, statePath string, allowed []string, input string) (Verdict, error) {
 	if err := ctx.Err(); err != nil {
 		return Verdict{}, err
@@ -80,8 +80,8 @@ func (m *Matcher) Match(ctx context.Context, statePath string, allowed []string,
 	}
 
 	// Try the bare-string path first. A whole-utterance synonym hit
-	// (Confidence 0.90) outranks any template hit (0.80/0.65) per
-	// §2.1, so we only consult templates when bare matching missed.
+	// (Confidence 0.90) outranks any template hit (0.80/0.65), so we
+	// only consult templates when bare matching missed.
 	// We keep the bare-string fast-path inline (a separate helper
 	// would split state across two methods unnecessarily).
 	if v, ok := m.matchBare(allow, input); ok {
@@ -91,6 +91,20 @@ func (m *Matcher) Match(ctx context.Context, statePath string, allowed []string,
 	// Bare-string miss. Try templates.
 	return m.matchTemplates(allow, input)
 }
+
+// bareMaxUncoveredDefault bounds how many input content stems may fall
+// outside a matched bare-string synonym and still count as a
+// "whole-utterance" hit. The bare-string tier deliberately fires when a
+// synonym is a SUBSET of the input ("wade across" → ford via the synonym
+// "wade"), but without a bound a one-word synonym wins on an arbitrarily
+// long paste that merely happens to contain it. That is exactly the
+// dogfood game-over this guards: a pasted bug report containing the
+// choice footer "Esc cancel" routed to the quit intent (synonym
+// "cancel") at 0.90 and exited the session. 6 comfortably clears every
+// legitimate superset in the corpus (max 1-2 uncovered stems) while
+// rejecting prose pastes (tens-to-hundreds of uncovered stems), which
+// then fall through to the LLM router — the safe path.
+const bareMaxUncoveredDefault = 6
 
 // matchBare runs the Phase-2 bare-string subset check. Returns the
 // Verdict (and ok=true) when at least one allowed intent matched or
@@ -122,9 +136,8 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 	// We use MatchThreadSafe because [github.com/cloudflare/ahocorasick]
 	// .Matcher.Match mutates internal per-node bookkeeping that is
 	// safe in single-threaded use but races under concurrent reads.
-	// The proposal commits to a per-app cached Matcher that any
-	// goroutine can call; MatchThreadSafe is the documented form
-	// for that pattern.
+	// The Matcher is a per-app cached index that any goroutine can
+	// call; MatchThreadSafe is the documented form for that pattern.
 	joined := strings.Join(inputBag, " ")
 	hits := m.idx.ac.MatchThreadSafe([]byte(joined))
 
@@ -178,6 +191,14 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 		if !subsetOf(entry.stemSet, inputSet) {
 			continue
 		}
+		// Whole-utterance guard. The synonym's stems are a subset of the
+		// input bag (checked above), so the number of input content stems
+		// the synonym does NOT cover is exactly len(inputSet)-len(stemSet).
+		// Reject when that exceeds the bound: a stray synonym token buried
+		// in a long paste is not a command. See bareMaxUncoveredDefault.
+		if maxUncov := m.idx.bareMaxUncovered; maxUncov > 0 && len(inputSet)-len(entry.stemSet) > maxUncov {
+			continue
+		}
 		if _, exists := matched[entry.Intent]; exists {
 			continue
 		}
@@ -200,6 +221,39 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 			MatchKind:    entry.Kind.cacheKind(),
 		}, true
 	default:
+		// Leading-verb tie-break. Bag-of-stems subset matching ignores word
+		// order, so an imperative like "commit the staged fix" ties commit
+		// (via "commit") against stage (via the "staged"→stage stem) even
+		// though a human reads "commit" as the command and "staged fix" as its
+		// object. We recover that signal from the ONE structural cue a typed
+		// command reliably carries: the verb leads. If the input's first
+		// content stem belongs to exactly one tied candidate's matched entry,
+		// that candidate is the command and the others are incidental — resolve
+		// to it at the whole-synonym band. When the leading stem is in zero or
+		// ≥2 candidates' entries the cue is absent or itself ambiguous, so the
+		// tie stands and the disambiguation card below fires (preserving the
+		// "ties signal authored ambiguity the user should disambiguate"
+		// contract for genuinely ambiguous input).
+		if lead := leadingContentStem(input, m.idx.stopExtras); lead != "" {
+			winner, hits := "", 0
+			for _, intentID := range intentOrder {
+				if _, ok := m.idx.entries[matched[intentID]].stemSet[lead]; ok {
+					winner, hits = intentID, hits+1
+				}
+			}
+			if hits == 1 {
+				entry := m.idx.entries[matched[winner]]
+				return Verdict{
+					Intent:       winner,
+					Slots:        map[string]any{},
+					Confidence:   ConfidenceWholeSynonym,
+					MatchReason:  "leading-verb:" + lead,
+					MatchPattern: entry.Source,
+					MatchKind:    entry.Kind.cacheKind(),
+				}, true
+			}
+		}
+
 		// Tie. Build a stable Candidate list ordered by intent id so
 		// the disambiguation card is deterministic.
 		sort.Strings(intentOrder)
@@ -218,6 +272,22 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 			MatchReason: fmt.Sprintf("ambiguous:%d", len(cands)),
 		}, true
 	}
+}
+
+// leadingContentStem returns the Norm (Porter2 stem) of the first
+// non-stopword, non-numeric token in input — the imperative verb that
+// opens a typed command. Returns "" when the input has no content token
+// (all stopwords/numbers/empty), which disables the leading-verb
+// tie-break for that input. Uses the same lex pipeline + stopword regime
+// the index was compiled with so the stem matches entry stem sets.
+func leadingContentStem(input string, stopExtras []string) string {
+	for _, tok := range lex.Tokenize(input, stopExtras) {
+		if tok.IsStop || tok.IsNum {
+			continue
+		}
+		return tok.Norm
+	}
+	return ""
 }
 
 // matchTemplates is the Phase-4 path. For each allowed intent that
@@ -239,9 +309,9 @@ func (m *Matcher) matchBare(allow map[string]struct{}, input string) (Verdict, b
 // (3) is a deliberate guardrail. A template that fills more slots
 // on intent A than the matched template on intent B is not
 // automatically a "better" match — it might just be that A's
-// templates declare more slots. The proposal §4.3 only commits to
-// most-specific-wins within an intent; we keep cross-intent ties as
-// ties so the disambiguation card surfaces both options.
+// templates declare more slots. Most-specific-wins applies only
+// within an intent; we keep cross-intent ties as ties so the
+// disambiguation card surfaces both options.
 func (m *Matcher) matchTemplates(allow map[string]struct{}, input string) (Verdict, error) {
 	if len(m.idx.templateIntents) == 0 {
 		return Verdict{}, nil
@@ -315,7 +385,7 @@ func (m *Matcher) matchTemplates(allow map[string]struct{}, input string) (Verdi
 // template hit. All-captures-parsed → 0.80; ≥1 missing → 0.65.
 //
 // MatchPattern carries the verbatim template source so the
-// orchestrator's §7.6 hit-tracking can key by the author's string
+// orchestrator's hit-tracking can key by the author's string
 // (e.g. "buy {items} for {total_cost}"). MatchKind is always
 // "template" for this path — the bare-string path is the only place
 // "bare" and "example" originate.

@@ -1,0 +1,17 @@
+# Sidecar for enrich_user.star — the authoritative, typed I/O contract.
+#
+# The engine validates the effect's with.inputs against `inputs:` BEFORE the
+# script runs (wrong type / missing required → on_error: arc), and validates
+# the script's return dict against `outputs:` AFTER it runs (every declared
+# output must be returned; no undeclared key may be returned). The INPUTS /
+# OUTPUTS dicts inside the .star file are documentation only — THIS file is
+# what the engine enforces.
+inputs:
+  user_id:  { type: int,    required: true }
+  api_base: { type: string, required: true }
+
+outputs:
+  display_name: { type: string }
+  contact:      { type: string }
+  domain:       { type: string }
+  is_complete:  { type: bool }

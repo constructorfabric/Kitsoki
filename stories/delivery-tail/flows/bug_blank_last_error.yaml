@@ -1,0 +1,53 @@
+# bug_blank_last_error (FIXED) — proves the integrate room never stalls with a
+# blank last_error when integrate_exec produces no parseable JSON result.
+#
+# Before the fix: when the script aborted before emitting JSON (e.g. a git
+# checkout failed → set -e fired → no jq output), the stdout_json.* binds were
+# SKIPPED, integrate_outcome stayed "", neither routing guard fired, and the
+# machine STALLED at `integrate` with a featureless view (no outcome, no error).
+#
+# The fix is defense in depth:
+#   (a) an EXIT trap makes the real bash ALWAYS emit JSON, and
+#   (b) the room binds the raw exit_code/stdout and, when no JSON outcome is
+#       produced, routes to @exit:needs-human via `integrate_aborted`, synthesizing
+#       a non-blank last_error from the raw run.
+#
+# This flow mocks integrate_exec returning {ok:false, exit_code:1, stdout:"fatal…",
+# stdout_json ABSENT} — the host.run-produced-no-JSON case that layer (b) handles.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      # Simulate: the run produced no parseable JSON (a checkout failed, OOM-kill,
+      # jq missing). exit_code + stdout are still bound (run_exit / run_stdout).
+      integrate_exec:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: "fatal: unable to checkout 'main': index file open failed: No such file or directory\n"
+          # stdout_json deliberately ABSENT — the case the room must NOT stall on.
+
+turns:
+  - intent: { name: begin, slots: {} }
+    # FIXED: routes to needs-human with a synthesized, non-blank last_error.
+    expect_state: __exit__needs-human
+    expect_world:
+      status:            needs-human
+      integrate_outcome: ""
+      integrated_sha:    ""
+      run_exit:          "1"
+      last_error:        "integrate produced no result (exit 1): fatal: unable to checkout 'main': index file open failed: No such file or directory\n"
+
+expect_terminal: true

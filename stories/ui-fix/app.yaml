@@ -1,0 +1,184 @@
+# ui-fix — review a UI audit into patterns, fix each group, prove it on-screen.
+#
+# Rooms: idle → review → fixing → verifying → showcase → done
+#
+# Three interpretive/deterministic splits:
+#   idle       deterministic: host.starlark.run deduplicates verdict.json
+#   review     interpretive:  host.agent.decide clusters findings into groups
+#   fixing     interpretive:  host.agent.task applies one group's minimal fix
+#   verifying  deterministic: host.run re-audits; host.starlark.run computes delta
+#   showcase   deterministic: host.contact_sheet (or host.slidey.render) + host.artifacts_dir
+#   done       gallery of before/after artifacts
+
+app:
+  id: ui-fix
+  version: 0.1.0
+  title: "UI fix pipeline"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.starlark.run
+  - host.agent.decide
+  - host.agent.task
+  - host.contact_sheet
+  - host.slidey.render
+  - host.artifacts_dir
+
+world:
+  # ── Inputs ───────────────────────────────────────────────────────────────
+  repo_root:       { type: string,  default: "" }   # absolute git root; detected in idle on_enter
+  verdict_path:    { type: string,  default: ".artifacts/ui-review/verdict.json" }
+  frames_dir:      { type: string,  default: ".artifacts/ui-review/frames" }
+  src_root:        { type: string,  default: "tools/runstatus/src" }
+  severity_floor:  { type: string,  default: "warn" }  # error | warn | info
+  media_format:    { type: string,  default: "slideshow" }  # slideshow | video
+
+  # ── Pipeline data ────────────────────────────────────────────────────────
+  # deduped findings from idle; passed to agent.decide in review
+  verdict_raw:     { type: object,  default: {} }  # full parsed verdict.json
+  findings:        { type: object,  default: {} }  # { items:[...], total_before, total_after }
+
+  # ranked pattern groups from review agent; cursor walks them
+  groups:          { type: object,  default: {} }  # { items:[{id,title,pattern,root_cause,...}] }
+  cursor:          { type: int,     default: 0 }
+  current:         { type: object,  default: {} }  # groups.items[cursor]
+
+  # per-group pipeline results
+  fix_result:      { type: object,  default: {} }  # { applied, files, summary, diff_excerpt, notes }
+  verify_result:   { type: object,  default: {} }  # { cleared, remaining, regressions, after_frames }
+  verify_raw:      { type: object,  default: {} }  # parsed fresh audit.json (scratch; cleared after each verify)
+  media_handle:    { type: string,  default: "" }  # artifact handle for this group's before/after
+  showcase_path:   { type: string,  default: "" }  # path of the assembled before/after media file
+  showcase_mime:   { type: string,  default: "" }
+  showcase_kind:   { type: string,  default: "" }
+
+  # accumulators
+  fixed:           { type: object,  default: {} }  # { items:[{group, media_handle}] }
+  skipped:         { type: object,  default: {} }  # { items:[{group, reason}] }
+  still_failing:   { type: object,  default: {} }  # { items:[...] }
+
+  # per-group refine loop
+  refine_feedback: { type: string,  default: "" }
+  group_cycle:     { type: int,     default: 0 }
+  group_budget:    { type: int,     default: 5 }
+
+  # misc
+  abandon_reason:  { type: string,  default: "" }
+  last_error:      { type: string,  default: "" }
+
+  # re_review feedback carried into the decide prompt
+  review_feedback: { type: string,  default: "" }
+
+intents:
+  # ── idle room ─────────────────────────────────────────────────────────────
+  run_audit:
+    description: "Run the geometry+axe capture and produce a verdict.json (no LLM, ~2 min)."
+    examples: ["run audit", "generate verdict", "audit", "capture", "run the audit"]
+    priority: 85
+  audit_done:
+    description: "Synthetic: background audit completed; reload idle."
+    priority: 5
+
+  path:
+    description: "Set the path to verdict.json, then reload."
+    examples: ["path /abs/path/to/verdict.json", "path /home/user/repo/.artifacts/ui-review/verdict.json"]
+    priority: 90
+    slots:
+      file: { type: string, required: true, description: "Absolute path to verdict.json" }
+
+  # ── review room ──────────────────────────────────────────────────────────
+  start:
+    description: "Accept the proposed groups and begin the fix loop."
+    examples: ["start", "begin", "go", "looks good"]
+    priority: 90
+  reorder:
+    description: "Reorder the groups (highest-leverage first)."
+    examples: ["reorder g1,g2,g3", "reorder ids=g2,g1,g3"]
+    priority: 70
+    slots:
+      ids: { type: string, required: true, description: "comma-separated group IDs in desired order" }
+  drop:
+    description: "Drop a group — remove it from the fix scope."
+    examples: ["drop g3", "drop id=g3"]
+    priority: 70
+    slots:
+      id: { type: string, required: true }
+  merge:
+    description: "Merge two groups into one (they share a root cause)."
+    examples: ["merge g1 g2", "merge a=g1 b=g2"]
+    priority: 70
+    slots:
+      a: { type: string, required: true }
+      b: { type: string, required: true }
+  floor:
+    description: "Raise the severity floor and re-dedupe."
+    examples: ["floor error", "floor level=error"]
+    priority: 60
+    slots:
+      level: { type: string, required: true, description: "error | warn | info" }
+  re_review:
+    description: "Re-run the pattern-identification agent with guidance."
+    examples: ["re_review", "redo the review", "re_review feedback=split the a11y group"]
+    priority: 60
+    slots:
+      feedback: { type: string, required: false }
+
+  # ── fixing room ──────────────────────────────────────────────────────────
+  accept:
+    description: "Accept the fix and run the deterministic verify pass."
+    examples: ["accept", "looks right", "continue", "lgtm"]
+    priority: 85
+  refine:
+    description: "Re-apply the fix with guidance."
+    examples: ["refine feedback=use the shared token", "refine"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: true }
+  skip:
+    description: "Skip this group; advance the cursor."
+    examples: ["skip", "skip this one", "pass"]
+    priority: 55
+  quit:
+    description: "Abandon the pipeline."
+    examples: ["quit", "abort", "bail"]
+    priority: 50
+
+  # ── showcase room ────────────────────────────────────────────────────────
+  next:
+    description: "Record this group as fixed and advance to the next."
+    examples: ["next", "advance", "continue"]
+    priority: 85
+
+  # ── synthetic (emit_intent only — never typed by an operator) ───────────
+  loaded:
+    description: "Synthetic: idle found non-empty findings → route to review."
+    priority: 5
+  empty:
+    description: "Synthetic: idle found no findings at floor → route to done."
+    priority: 5
+  cleared:
+    description: "Synthetic: verifying found all member fingerprints cleared."
+    priority: 5
+  regressed:
+    description: "Synthetic: verifying found members still present; route back to fixing."
+    priority: 5
+  verify_exhausted:
+    description: "Synthetic: verifying hit group_budget; skip this group."
+    priority: 5
+
+  # ── shared ───────────────────────────────────────────────────────────────
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "refresh", "?"]
+    priority: 10
+
+exits:
+  done:        { description: "All groups processed; gallery ready." }
+  abandoned:   { description: "Operator quit mid-loop." }
+
+root: idle
+
+include:
+  - rooms/*.yaml

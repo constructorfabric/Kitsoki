@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kitsoki/session-mining/report.schema.json",
+  "title": "session-mining report",
+  "description": "One contributor's redacted, shareable pattern report for a mining run. Aggregates with others by patterns[].id.",
+  "type": "object",
+  "required": ["schema_version", "vocab_version", "patterns"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "vocab_version": { "type": "string", "description": "controlled-vocabulary version the cataloged ids come from" },
+    "prompt_version": { "type": "string", "description": "extractor prompt version that produced this report" },
+    "redaction": {
+      "type": "object",
+      "description": "safety receipt — proves the scrubber ran",
+      "required": ["share_gate"],
+      "properties": {
+        "redactions": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "share_gate": { "enum": ["pass", "fail"] }
+      }
+    },
+    "context": {
+      "type": "object",
+      "description": "OPTIONAL, COARSE, opt-in. No repo/employer/host/identity.",
+      "additionalProperties": false,
+      "properties": {
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "domain": { "type": "string" },
+        "sessions_analyzed": { "type": "integer", "minimum": 0 },
+        "session_selection": { "type": "string" }
+      }
+    },
+    "contributor": {
+      "description": "null, or an opaque self-chosen salt. NEVER name/email/identity.",
+      "type": ["string", "null"]
+    },
+    "patterns": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pattern" }
+    }
+  },
+  "$defs": {
+    "pattern": {
+      "type": "object",
+      "required": ["id", "source", "occurrences"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "source": { "enum": ["cataloged", "novel"] },
+        "occurrences": { "type": "integer", "minimum": 1 },
+        "corroboration": { "type": "integer", "minimum": 1, "description": "distinct traces in this run that showed it" },
+        "sessions_seen": { "type": "integer", "minimum": 1 },
+        "mechanical_fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pain": { "enum": ["low", "med", "high"] },
+        "decision_density": { "type": "integer", "minimum": 0 },
+        "decision_points": { "type": "array", "items": { "type": "string" } },
+        "determinism_priority": { "type": "number", "minimum": 0, "maximum": 1 },
+        "ladder_now": { "type": "string", "pattern": "^L[0-4]$" },
+        "ladder_target": { "type": "string", "pattern": "^L[0-4]$" },
+        "example_signatures": {
+          "type": "array",
+          "description": "GENERICIZED tool-call sequences only. No verbatim prose, no real names/paths/values.",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

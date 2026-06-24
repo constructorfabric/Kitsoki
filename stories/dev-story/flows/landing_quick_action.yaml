@@ -1,0 +1,80 @@
+# landing_quick_action — from the workbench, a quick action reaches a pipeline.
+#
+# Proves the re-homed `main` navigation is intact on the landing: the
+# `go_ticket_search` quick action opens ticket_search, a search → pick →
+# `drive` routes (by ticket_type) into the bugfix pipeline. Replaces the
+# former ticket_search_smoke.yaml and extends it through the pipeline reach
+# so the demo can show "quick action → real pipeline" in one walk.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir:        ".worktrees/tkt-001"
+  workspace_id:   "ws-001"
+  base_branch:    "main"
+  feature_branch: "fix/tkt-001"
+  judge_mode:     "human"
+
+host_handlers:
+  # iface.ticket.search → host.local_files.ticket. The bug ticket is tagged
+  # ticket_type=bug at pick time so `drive` routes into bf.
+  host.local_files.ticket:
+    by_op:
+      search:
+        data:
+          ok: true
+          tickets: "TKT-001: Esc hangs the TUI [bug]"
+      get:
+        data:
+          ok: true
+          id: "TKT-001"
+          title: "Esc hangs the TUI"
+          type: "bug"
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.git:
+    data: { ok: true, sha: "abc", diff: "", state: "success", url: "", pr_id: "" }
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.local:
+    data: { ok: true, state: "success", log: "" }
+  # bf.reproducing.on_enter dispatches the reproducer task; stub it.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "Stub artifact body."
+        bug_verified:     true
+        involved_components: []
+
+turns:
+  # landing → ticket_search (the `tickets` quick action / go_ticket_search).
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+    expect_world:
+      prev_state: "landing"
+
+  # Run a search via iface.ticket.search.
+  - intent: { name: search_tickets, slots: { query: "open kitsoki bugs" } }
+    expect_state: ticket_searching
+    expect_world:
+      ticket_query: "open kitsoki bugs"
+
+  # Pick the bug ticket — ticket_id / thread / ticket_type populated.
+  - intent: { name: pick_ticket, slots: { id: "TKT-001", type: "bug" } }
+    expect_state: ticket_search
+    expect_world:
+      ticket_id:   "TKT-001"
+      thread:      "TKT-001"
+      ticket_type: "bug"
+
+  # The `drive` quick action routes by ticket_type into the bugfix pipeline.
+  # bf.idle.on_enter auto-fires `start`, so we land at bf.reproducing.
+  - intent: { name: drive, slots: {} }
+    expect_state: bf.reproducing
+    expect_world:
+      bf__ticket_id: "TKT-001"
+
+expect_no_errors: true

@@ -18,7 +18,7 @@ states:
           pairs:
             PR: "{{ world.pr_id }} — {{ world.pr_title }}"
       - heading: "Draft"
-      - code: '{{ world.draft_comment|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.draft_comment|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -44,8 +44,12 @@ states:
     on_enter:
       # LLM drafts the comment body. The draft itself is a free-form
       # string (no schema); the LLM may take cues from
-      # review_summary_artifact.blockers / nits.
-      - invoke: host.oracle.ask
+      # review_summary_artifact.blockers / nits. `once: true` for
+      # reload-safety: keyed off its own bind (draft_comment), so /reload
+      # (and the refine self-loop) skips the redraft and re-renders the stored
+      # draft. The `refine` arc below clears draft_comment to re-arm it.
+      - invoke: host.agent.ask
+        once: true
         with:
           prompt: prompts/comment_executing.md
           args:
@@ -87,6 +91,9 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: bind (a string) so the LLM redrafts the
+                # comment with the feedback instead of re-rendering the cache.
+                draft_comment:   ""
       quit:
         - target: "@exit:abandoned"
       look:

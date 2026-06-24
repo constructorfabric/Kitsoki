@@ -1,0 +1,25 @@
+# landing_smoke — boot, land in the free-form workbench, look around, go home.
+#
+# Smallest possible flow on the new root. Proves dev-story loads with
+# root: landing, the import resolution still works (bf + pr + impl + cyp +
+# rev + prd fold cleanly under the new root), landing's flat view renders,
+# and `go_main` now self-loops the workbench floor (the re-homed home arc).
+# Replaces the former main_smoke.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+host_handlers: {}
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: landing
+
+  # `go_main` is the re-homed "home" arc — it now self-targets the workbench
+  # floor (landing), not the retained `main` catalog.
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

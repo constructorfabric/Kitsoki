@@ -1,0 +1,3 @@
+{"type": "user", "message": {"content": "merge the feature branch into main"}}
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "Merging feat-auth into main with a merge commit."}, {"type": "tool_use", "id": "tu1", "name": "Bash", "input": {"command": "git merge --no-ff feat-auth"}}]}}
+{"type": "user", "toolUseResult": {"stdout": "Merge made by the 'ort' strategy.\n internal/auth/session.go | 24 ++++++++++++++++++++++++\n 1 file changed, 24 insertions(+)", "stderr": "", "interrupted": false}, "message": {"content": [{"type": "tool_result", "tool_use_id": "tu1", "is_error": false, "content": "Merge made by the 'ort' strategy.\n 1 file changed, 24 insertions(+)"}]}}

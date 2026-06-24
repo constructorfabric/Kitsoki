@@ -1,0 +1,10 @@
+{
+  "_comment": "MCP config for the ONE gated live capture (see README → Record once). Launch `claude` from the kitsoki repo root with `--mcp-config tools/mcp-demo/mcp.capture.json`; the studio server resolves story.* writes under --stories-dir. Defaults to harness:replay (no LLM inside kitsoki) — the only model in the loop is the external `claude` agent being captured.",
+  "mcpServers": {
+    "kitsoki": {
+      "type": "stdio",
+      "command": "go",
+      "args": ["run", "./cmd/kitsoki", "mcp", "--stories-dir", "tools/mcp-demo/capture-ws", "--workspace", "tools/mcp-demo/capture-ws/barista/app.yaml"]
+    }
+  }
+}

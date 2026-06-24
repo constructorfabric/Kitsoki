@@ -1,0 +1,93 @@
+# review — play the rendered video inline + drain web feedback notes; checkpoint.
+#
+# on_enter drains feedback.jsonl from the workspace (the notes the slice-2
+# /review web panel appends — soft dep) into feedback_batch. With no panel the
+# drain returns an empty batch and the operator drives the loop with inline
+# `refine feedback="…"`.
+#
+# View: a media() element on video_handle, a kv: of the brief, a pointer to
+# the web /review surface, and the checkpoint list.
+#
+# Checkpoint:
+#   accept  (requires video_handle) → done
+#   refine  (inline feedback or the drained batch) → refining
+#   rerender → rendering (clears the render binds)
+#   quit    → @exit:abandoned
+
+states:
+
+  review:
+    description: "Review the walkthrough; flag scenes to refine, or accept."
+    relevant_world: [video_handle, chapters_handle, brief, feedback_batch, refine_feedback, iterations, cycle]
+    view:
+      - heading: "Mockup video studio · review"
+      - kv:
+          pairs:
+            Feature:   '{{ world.brief.feature|default:"—" }}'
+            Scenarios: '{{ world.brief.scenarios|length }}'
+            Cycle:     "{{ world.cycle }}"
+            Flags:     '{{ world.feedback_batch.items|length }}'
+      - heading: "Walkthrough"
+      - media:
+          handle:  "{{ world.video_handle }}"
+          kind:    video
+          caption: "{{ world.brief.feature }} — walkthrough"
+      - prose: "Use the **Open in review** button on the video above to scrub it, flag a scene or time range, grab the frame, and dispatch a feedback note — then `refine` here to act on the flagged moments."
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "accept"
+              hint:  "this walkthrough is good — finish"
+            - label: "refine feedback=…"
+              hint:  "edit the source behind flagged moments (inline note or drained web notes)"
+            - label: "rerender"
+              hint:  "re-render the current source unchanged"
+            - label: "quit"
+              hint:  "abandon the studio"
+            - label: "look"
+              hint:  "re-render"
+    on_enter:
+      # Drain feedback.jsonl (slice 2 web notes). Empty batch when no panel.
+      # once: keyed on feedback_batch so reload/self-entry don't re-drain.
+      - invoke: host.run
+        id: drain_feedback
+        once: true
+        with:
+          argv:
+            - "stories/mockup-video/scripts/drain_feedback.sh"
+            - "{{ world.workspace }}"
+        bind:
+          feedback_batch: stdout_json
+        on_error: review
+    on:
+      accept:
+        - when: "world.video_handle == ''"
+          target: .
+          effects:
+            - say: "No video to accept yet — render first."
+        - target: done
+      refine:
+        - when: "world.cycle >= world.refine_budget"
+          target: .
+          effects:
+            - say: "Refine budget exhausted ({{ world.refine_budget }} cycles) — accept, rerender, or quit."
+        - target: refining
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? '' }}"
+      rerender:
+        - target: rendering
+          effects:
+            - set:
+                # Clear the render binds so rendering's once: invokes re-run.
+                video_handle:    ""
+                chapters_handle: ""
+                video_path:      ""
+                chapters_path:   ""
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_review"
+      look:
+        - target: .

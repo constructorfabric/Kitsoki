@@ -1,0 +1,148 @@
+# happy_path — idle → clarifying → brief → references → drafting → @exit:done.
+#
+# Intent-only (no LLM). The clarifying/references on_enter agent calls
+# are served by the same stubbed host.agent.decide; the brief/references
+# artifact writes by stubbed host.artifacts_dir. judge_mode=human so no
+# judge runs.
+#
+# Note on the shared decide stub: clarifying binds the whole `submitted`
+# into world.clarifications (it reads `.questions`) and references binds
+# the whole `submitted` into world.references (it reads `.items`). This
+# flow stubs the questions shape, so references just sees an empty
+# `.items` — a valid "no references found" state — which is fine because
+# this flow does not assert references CONTENT (see brief_references_path
+# for that). It asserts the end-to-end graph reaches @exit:done.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "A CLI for X that helps developers do Y.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    # Shared decide stub: scout (search), analyst (clarifying), researcher
+    # (references), brief_judge — all fall through to this questions-shaped
+    # envelope. The clarifying `answer` arc's matcher (id: match_answer) is
+    # intercepted by by_call below.
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+    by_call:
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q1: developers\nQ2: time-to-first-success\n"
+            answered_ids_append: "|1||2|"
+            matched_count:       2
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd/example-cli/001-brief.md", message_id: "001-brief#1" }
+  # search-confirm mints the workspace; accept publishes the draft.
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "example-cli", workspace: ".artifacts/prd/example-cli" }
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { prd_file: "docs/prd/example-cli.md" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd/example-cli/004-prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  # Discovery conversation: the operator sends a message; the interviewer
+  # replies (stubbed). Stays in idle (self-transition).
+  - intent: { name: discuss, slots: { message: "I want a CLI for X" } }
+    expect_state: idle
+    expect_world:
+      idea_message: "I want a CLI for X"
+      idea_turns:   1
+
+  # `start` distills the conversation into world.idea and advances to the
+  # prior-art gate (search). The scout (on_enter decide) runs and finds no
+  # overlap (the shared decide stub binds the questions shape, whose
+  # `.overlaps` is absent ⇒ empty), so the gate is clean.
+  - intent: { name: start, slots: {} }
+    expect_state: search
+    expect_world:
+      idea: "A CLI for X that helps developers do Y."
+
+  # No overlap → confirm proceeds to clarifying and records the decision.
+  - intent: { name: confirm, slots: {} }
+    expect_state: clarifying
+    expect_world:
+      prd_overlap_decision: "new"
+
+  # Answer the questions in free text — the matcher (stubbed) maps the one
+  # reply to both q1 and q2. Stays in clarifying.
+  - intent: { name: answer, slots: { text: "developers, and the metric is time-to-first-success" } }
+    expect_state: clarifying
+    expect_world:
+      answered_count:        2
+      clarification_answers: "Q1: developers\nQ2: time-to-first-success\n"
+
+  # `submit` (a pure verb, no payload) → brief. The round is appended to the
+  # transcript and clarifying_cycle increments. Entering brief writes the
+  # brief artifact (stubbed host.artifacts_dir).
+  - intent: { name: submit_answers, slots: {} }
+    expect_state: brief
+    expect_world:
+      clarifying_cycle:      1
+      clarification_answers: "Q1: developers\nQ2: time-to-first-success\n"
+    expect_host_calls:
+      - handler: host.artifacts_dir
+        args: { thread: "001-brief" }
+
+  # Confirm the brief → references. Entering references runs the
+  # researcher (stubbed decide) and writes the references artifact.
+  - intent: { name: confirm, slots: {} }
+    expect_state: references
+    expect_host_calls:
+      - handler: host.artifacts_dir
+        args: { thread: "003-references" }
+
+  # Confirm the references → drafting (writes the PRD via stubbed task).
+  - intent: { name: confirm, slots: {} }
+    expect_state: drafting
+
+  # Accept the draft → @exit:done. requires: [prd_artifact] is satisfied
+  # by the re-pin on the accept arc.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status:   "done"
+      prd_file: "docs/prd/example-cli.md"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "publish" }
+
+expect_terminal: true
+expect_no_errors: true

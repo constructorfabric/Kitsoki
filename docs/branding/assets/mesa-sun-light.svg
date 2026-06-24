@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Kitsoki mesa sun (light, for dark backgrounds)">
+  <circle cx="100" cy="70" r="30" fill="#f0e3c8"/>
+  <g stroke="#f0e3c8" stroke-width="5" stroke-linecap="round">
+    <line x1="150" y1="70" x2="138" y2="70"/>
+    <line x1="135" y1="35" x2="127" y2="43"/>
+    <line x1="100" y1="20" x2="100" y2="32"/>
+    <line x1="65" y1="35" x2="73" y2="43"/>
+    <line x1="50" y1="70" x2="62" y2="70"/>
+  </g>
+  <path d="M20 150 L20 120 L60 120 L60 105 L140 105 L140 120 L180 120 L180 150 Z" fill="#e0a23a"/>
+  <path d="M20 150 L180 150 L180 168 L20 168 Z" fill="#c97b4a"/>
+  <rect x="92" y="120" width="16" height="30" fill="#7d2e1c"/>
+</svg>

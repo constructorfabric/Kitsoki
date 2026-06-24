@@ -1,4 +1,6 @@
-// parallel.go implements `type: parallel` runtime support (proposal §9.4).
+// parallel.go implements `type: parallel` runtime support. The author-facing
+// model is the "Parallel state" section of docs/stories/state-machine.md; this
+// file is the runtime encoding and dispatch.
 //
 // # State-path encoding
 //
@@ -21,7 +23,7 @@
 // flow tests) — no struct changes to `app.StatePath`.
 //
 // Example: a parallel state `world_clock` with regions `calendar` and
-// `weather` (the canonical OT use case, §5.1) currently in `calendar.day1`
+// `weather` (the canonical Oregon Trail use case) currently in `calendar.day1`
 // and `weather.dry` encodes as:
 //
 //	"world_clock#world_clock.calendar.day1|world_clock.weather.dry"
@@ -203,26 +205,6 @@ func validateParallelStates(prefix string, states map[string]*app.State) error {
 }
 
 // ─── runtime helpers ─────────────────────────────────────────────────────────
-
-// findParallelAncestor walks from leafPath up the dotted path and returns
-// the deepest parallel-typed ancestor (if any).
-//
-// Returns ("", false) when no ancestor is parallel.
-func (m *machineImpl) findParallelAncestor(leafPath string) (string, bool) {
-	path := leafPath
-	for path != "" {
-		cs, ok := m.states[path]
-		if ok && cs.s != nil && cs.s.Type == "parallel" {
-			return path, true
-		}
-		idx := strings.LastIndexByte(path, '.')
-		if idx < 0 {
-			break
-		}
-		path = path[:idx]
-	}
-	return "", false
-}
 
 // resolveParallelEntry takes a parallel state's path and returns the
 // encoded parallel state-path with each region resolved to its initial leaf.

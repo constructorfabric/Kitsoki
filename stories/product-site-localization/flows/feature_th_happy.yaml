@@ -1,0 +1,56 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      translate_site_copy:
+        data:
+          ok: true
+          submitted:
+            summary: "Localized complete-product-tour feature overlay into Thai."
+            locale: "th"
+            target: "feature/complete-product-tour"
+            files_changed:
+              - "tools/site/i18n/th/features/complete-product-tour.json"
+            notes:
+              - "Preserved YAML, LLM, trace, and cassette terminology."
+  host.run:
+    by_call:
+      validate_site:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: "site built -> tools/site/.vitepress/dist"
+
+turns:
+  - intent:
+      name: start
+      slots:
+        locale: th
+        target_kind: feature
+        target_id: complete-product-tour
+    expect_state: translating
+    expect_world:
+      locale: th
+      target_kind: feature
+      target_id: complete-product-tour
+      source_path: features/complete-product-tour.yaml
+      output_path: tools/site/i18n/th/features/complete-product-tour.json
+      validation_ok: true
+      translation_artifact:
+        summary: "Localized complete-product-tour feature overlay into Thai."
+        locale: "th"
+        target: "feature/complete-product-tour"
+        files_changed:
+          - "tools/site/i18n/th/features/complete-product-tour.json"
+        notes:
+          - "Preserved YAML, LLM, trace, and cassette terminology."
+
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      status: localized
+
+expect_no_errors: true

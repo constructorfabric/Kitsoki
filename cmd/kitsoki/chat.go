@@ -4,7 +4,7 @@
 // (not session-scoped) and outlive individual sessions.
 //
 // `kitsoki chat continue` drives one turn synchronously by invoking the
-// chat-aware host.oracle.talk handler. The chat-singleton lock guarantees
+// chat-aware host.agent.talk handler. The chat-singleton lock guarantees
 // that a TUI driving the same chat will not race; on lock contention the
 // command exits 75 (EX_TEMPFAIL) so wrappers can back off and retry.
 //
@@ -285,17 +285,17 @@ Exit codes:
 				return fmt.Errorf("get chat: %w", getErr)
 			}
 
-			// Wire the chat store into context so OracleConverseHandler picks it up.
+			// Wire the chat store into context so AgentConverseHandler picks it up.
 			adapter := chathost.NewAdapter(rawStore)
 			handlerCtx := host.WithChatStore(ctx, adapter)
 
-			res, hostErr := host.OracleConverseHandler(handlerCtx, map[string]any{
+			res, hostErr := host.AgentConverseHandler(handlerCtx, map[string]any{
 				"question":    raw,
 				"chat_id":     chatID,
 				"working_dir": workingDir,
 			})
 			if hostErr != nil {
-				return fmt.Errorf("oracle talk: %w", hostErr)
+				return fmt.Errorf("agent talk: %w", hostErr)
 			}
 
 			// ErrChatBusy surfaces as Result.Error. Translate to EX_TEMPFAIL

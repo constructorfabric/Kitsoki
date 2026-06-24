@@ -1,40 +1,3 @@
-// Package chatattach owns the lifecycle for handing a kitsoki user's
-// terminal to an interactive `claude --resume <id>` session hosted in
-// tmux. Two callers:
-//
-//   - cmd/kitsoki/chat_attach.go's `kitsoki chat attach <chat-id>` —
-//     the operator surface for power users / scripting.
-//
-//   - internal/tui/meta_attach.go's `/attach` slash command inside
-//     meta-mode — the primary UX, where the user never types a chat
-//     ID. bubbletea's tea.Exec / tea.ExecCommand suspends the TUI,
-//     hands the terminal to tmux, and resumes on detach.
-//
-// Both callers share the same lifecycle:
-//
-//  1. Acquire the per-chat singleton lock (chats.Store.WithLock).
-//  2. Mint claude_session_id if the chat has none.
-//  3. Ensure a tmux session named "kitsoki-chat-<chat-id>" is alive
-//     running `claude --resume <claude-session-id>` — reuse a live
-//     pty_background session, spawn fresh otherwise.
-//  4. Record pty_attached.
-//  5. Start a goroutine that heartbeats the chat lock every few
-//     seconds so cross-host observers can see liveness.
-//  6. Call the caller-supplied runTmux callback. It blocks until the
-//     user detaches (tmux prefix+d) or claude exits inside the pane.
-//     This is the seam where the CLI runs tmux.AttachStreaming and
-//     the TUI runs a bubbletea-orchestrated exec.Cmd with injected
-//     stdio.
-//  7. Stop the heartbeat.
-//  8. Flip pty_attached → pty_background (unless an external
-//     `kitsoki chat detach --mode {headless,stop}` already removed
-//     the row).
-//
-// runTmux is provided by the caller because bubbletea's Exec
-// machinery requires a *exec.Cmd whose Stdin/Stdout/Stderr it owns —
-// chatattach can't construct that *exec.Cmd from the inside without
-// knowing about bubbletea. Keeping the tmux-attach exec at the call
-// site keeps this package free of bubbletea / cmd/kitsoki imports.
 package chatattach
 
 import (
@@ -65,10 +28,12 @@ var kitsokiTmuxConf string
 // so tests can crank it down without touching exec wiring.
 var HeartbeatInterval = 5 * time.Second
 
-// TmuxSessionPrefix is the convention proposal §6.5 fixes: tmux
-// sessions kitsoki owns are named kitsoki-chat-<chat-id>. Exposed so
-// the CLI's argument-parsing helper can strip it without duplicating
-// the literal.
+// TmuxSessionPrefix is the naming convention for tmux sessions kitsoki
+// owns: kitsoki-chat-<chat-id>. The fixed prefix keeps the namespace
+// kitsoki manages disjoint from the user's own tmux sessions and lets
+// the CLI's argument-parsing helper strip it without duplicating the
+// literal. See docs/architecture/overview.md for where this sits in the
+// runtime.
 const TmuxSessionPrefix = "kitsoki-chat-"
 
 // Options carries the inputs for Run. ChatID + Store + Tmux are
@@ -88,7 +53,8 @@ type Options struct {
 	Workspace string
 	// PermissionMode is the value passed as `claude --permission-mode`.
 	// Defaults to "default" (interactive prompts; claude prompts the
-	// human in the pane) — see proposal §11.2.
+	// human in the pane). The permission-mode story is documented in
+	// docs/stories/meta-mode.md.
 	PermissionMode string
 	// ClaudeBin lets callers override the resolved claude executable.
 	// Empty means "claude" (relies on $PATH).
@@ -133,13 +99,13 @@ func Run(ctx context.Context, opts Options, runTmux func(sessionName string) err
 		return fmt.Errorf("chatattach.Run: get chat: %w", err)
 	}
 
-	// Mint claude_session_id on first attach. The proposal §0 spike
-	// (A3) confirms that --session-id is required only on the first
-	// invocation against a brand-new id; --resume works for every
-	// subsequent invocation. Track whether we just minted so the
-	// claude command line uses the correct flag — passing --resume
-	// against a never-seen id fails with "No conversation found"
-	// and produces what looks like a crashed attach pane.
+	// Mint claude_session_id on first attach. --session-id is required
+	// only on the first invocation against a brand-new id; --resume
+	// works for every subsequent invocation. Track whether we just
+	// minted so the claude command line uses the correct flag — passing
+	// --resume against a never-seen id fails with "No conversation
+	// found" and produces what looks like a crashed attach pane. See
+	// the /attach notes in docs/stories/meta-mode.md.
 	claudeSID := chatRow.ClaudeSessionID
 	minted := false
 	if claudeSID == "" {
@@ -163,12 +129,13 @@ func Run(ctx context.Context, opts Options, runTmux func(sessionName string) err
 	cmdLine := buildClaudeCommand(claudeBin, claudeSID, permissionMode, minted)
 
 	return opts.Store.WithLock(ctx, opts.ChatID, func(lockedCtx context.Context) error {
-		// Inside the lock: ensure tmux is alive for this chat. The
-		// proposal §10 (Persistence and recovery) lists four cases:
-		// fresh attach (no row), live row+live tmux (re-attach),
-		// row+dead-tmux (stale row from host reboot), cross-host row
-		// (rare). Each path lands at "session exists and is reachable
-		// from this host."
+		// Inside the lock: ensure tmux is alive for this chat. Four
+		// persistence-and-recovery cases collapse here: fresh attach (no
+		// row), live row+live tmux (re-attach), row+dead-tmux (stale row
+		// from host reboot), cross-host row (rare). Each path lands at
+		// "session exists and is reachable from this host." The
+		// chat_pty_sessions lifecycle is described in
+		// docs/architecture/overview.md.
 		if err := ensureTmuxSession(lockedCtx, opts, sessionName, cmdLine); err != nil {
 			return err
 		}
@@ -183,10 +150,22 @@ func Run(ctx context.Context, opts Options, runTmux func(sessionName string) err
 		}
 
 		// Heartbeat the chat lock until the runTmux callback returns.
+		//
+		// The heartbeat runs on an independent context, NOT lockedCtx:
+		// lockedCtx is cancelled when the interactive tmux attach is
+		// interrupted (e.g. the CLI caller gets SIGINT), and we still
+		// want the lock kept fresh until we genuinely release it below
+		// via `close(stop)`. Sharing lockedCtx would let an interrupted
+		// attach kill the heartbeat and leave the lock to go stale. The
+		// TUI /attach path already runs on context.Background() for the
+		// same reason. hbCancel guarantees the goroutine still exits on
+		// genuine release/shutdown.
+		hbCtx, hbCancel := context.WithCancel(context.Background())
+		defer hbCancel()
 		stop := make(chan struct{})
 		var hbWG sync.WaitGroup
 		hbWG.Add(1)
-		go heartbeatLoop(lockedCtx, opts.Store, opts.ChatID, stop, &hbWG, stderr)
+		go heartbeatLoop(hbCtx, opts.Store, opts.ChatID, stop, &hbWG, stderr)
 
 		attachErr := runTmux(sessionName)
 

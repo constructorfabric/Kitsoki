@@ -1,0 +1,74 @@
+# decompose — invoke the decomposer agent to break the epic into a brief manifest.
+#
+# on_enter invokes host.agent.task (agent: decomposer, once:true). The agent
+# reads the epic at epic_path and WRITES the decomposition YAML to
+# decomposition_path (in the format fleet's load room expects: top-level
+# `briefs:` list). It then submits structured output conforming to
+# schemas/decomposition.json (briefs list).
+#
+# Success   → emit decomposition_done → lint
+# Host error → decompose_error room → @exit:needs-human (last_error set by engine)
+
+states:
+
+  decompose:
+    description: "Decompose the epic into an ordered brief manifest via the decomposer agent."
+    relevant_world: [epic_path, decomposition_path, decomposition_briefs]
+    view:
+      - prose: "Decomposing {{ world.epic_path }} into independently-shippable briefs…"
+      - prose: "{{ world.decomposition_briefs|length }} brief(s) returned."
+        when: "world.decomposition_briefs"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # once:true — if decomposition_briefs is already set (non-empty list), the
+      # invoke is skipped on re-entry (reload-safe, resume-safe). Clear
+      # decomposition_briefs to force a fresh decompose.
+      - invoke: host.agent.task
+        id: decomposer
+        once: true
+        with:
+          agent: decomposer
+          acceptance:
+            schema: schemas/decomposition.json
+          context:
+            prompt: prompts/decompose.md
+            args:
+              epic_path:          "{{ world.epic_path }}"
+              decomposition_path: "{{ world.decomposition_path }}"
+        bind:
+          decomposition_briefs: submitted.briefs
+        on_error: decompose_error
+      - emit_intent: decomposition_done
+    on:
+      decomposition_done:
+        - target: lint
+      look:
+        - target: .
+
+  # decompose_error — decomposer host-call failed; auto-routes to @exit:needs-human.
+  # The engine automatically sets last_error to the host error message when
+  # on_error fires, so @exit:needs-human's requires:[last_error] is satisfied.
+  decompose_error:
+    description: "Decomposer agent failed — routing to @exit:needs-human."
+    relevant_world: [last_error, epic_path]
+    view:
+      - prose: "The decomposer failed for epic {{ world.epic_path }}."
+      - code: '{{ world.last_error|default:"(no error detail)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      - emit_intent: bail
+    on:
+      bail:
+        - target: "@exit:needs-human"
+      look:
+        - target: .

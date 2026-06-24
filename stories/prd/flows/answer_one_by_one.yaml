@@ -1,0 +1,72 @@
+# answer_one_by_one — answer clarifying questions in free text, then submit.
+# Proves:
+#   - `answer` is a self-transition (stays in clarifying, does NOT regenerate),
+#   - the answer_matcher maps a free-text reply to the question(s) it answers
+#     — here ONE reply answers TWO questions, out of order (q3 before q1),
+#     and both land via the matcher's delta (no numbers typed),
+#   - the delta APPENDS to clarification_answers (newest after prior) and
+#     bumps answered_count by the matched count,
+#   - submit_answers with no payload advances using the ACCUMULATED answers.
+#
+# The matcher is STUBBED (no real LLM), keyed by the invoke id `match_answer`.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: clarifying
+initial_world:
+  idea:        "A CLI for X"
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+  clarifications:
+    questions:
+      - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+      - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+      - { id: "q3", question: "What is explicitly out of scope?", why: "bounds the work" }
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    # on_enter analyst (id: analyst_questions) → falls through to this envelope.
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+          - { id: "q3", question: "What is explicitly out of scope?", why: "bounds the work" }
+    by_call:
+      # One reply answers TWO questions, out of order (q3 then q1) — the
+      # matcher returns both lines and both positions in one delta.
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q3: internal tooling is out of scope\nQ1: platform developers\n"
+            answered_ids_append: "|3||1|"
+            matched_count:       2
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd_brief.md", message_id: "prd_brief#1" }
+
+turns:
+  # A single free-text reply that covers scope AND the primary user. The
+  # matcher attributes it to q3 and q1 (out of order, no numbers typed).
+  - intent: { name: answer, slots: { text: "internal tooling is out of scope; the users are platform developers" } }
+    expect_state: clarifying
+    expect_world:
+      answered_count:        2
+      answered_ids:          "|3||1|"
+      clarification_answers: "Q3: internal tooling is out of scope\nQ1: platform developers\n"
+
+  # Done — submit with NO payload advances on the accumulated answers,
+  # landing at the brief review (the confirm-gated step before references).
+  - intent: { name: submit_answers, slots: {} }
+    expect_state: brief
+    expect_world:
+      clarifying_cycle:      1
+      clarification_answers: "Q3: internal tooling is out of scope\nQ1: platform developers\n"
+
+expect_no_errors: true

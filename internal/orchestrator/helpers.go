@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/machine"
@@ -218,6 +220,22 @@ func (o *Orchestrator) SetLogger(l *slog.Logger) {
 // If you are writing user-facing conversation handling, use Turn instead so the
 // LLM harness participates in routing.
 func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentName string, slots map[string]any) (*TurnOutcome, error) {
+	return o.RunIntentWithInput(ctx, sid, intentName, slots, "")
+}
+
+// RunIntentWithInput is RunIntent with an optional displayInput override for the
+// recorded user-input string. When displayInput is non-empty, the emitted
+// turn.input (store.UserInputReceived) and turn.start (store.TurnStarted) events
+// record displayInput instead of the synthetic "[intent] <name>" string. This is
+// purely cosmetic for the recorded trace: the intent name + slots still drive the
+// transition deterministically (no LLM routing). When displayInput is empty the
+// behaviour is identical to RunIntent — the synthetic "[intent] <name>" string is
+// used — so existing fixtures and callers are unaffected.
+//
+// The trace→flow converter (internal/testrunner/fromtrace.go) sets displayInput
+// from the original session's turn.input payload so a reconstructed trace shows
+// the operator's real words in the user bubble rather than "[intent] answer".
+func (o *Orchestrator) RunIntentWithInput(ctx context.Context, sid app.SessionID, intentName string, slots map[string]any, displayInput string) (*TurnOutcome, error) {
 	// Serialise against handleJobTerminal — see Turn for rationale.
 	sessMu := o.sessionLock(sid)
 	sessMu.Lock()
@@ -242,6 +260,7 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 
 	result, machineErr := o.machine.Turn(ctx, journey.State, journey.World, call)
 	if machineErr != nil {
+		o.journalTurnError(ctx, tl, sid, turnNum, journey.State, call, journey.World, machineErr)
 		return nil, fmt.Errorf("orchestrator: RunIntent: machine.Turn: %w", machineErr)
 	}
 
@@ -250,12 +269,37 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 		result.Events[i].Turn = turnNum
 	}
 
+	// The recorded user-input string. Defaults to the synthetic "[intent] <name>"
+	// marker, but when the caller supplies displayInput (the trace→flow converter
+	// threading the operator's original utterance) that real text is recorded
+	// instead. Routing is unaffected either way — intentName + slots drive the
+	// transition; only the emitted turn.input / turn.start string changes.
+	inputStr := fmt.Sprintf("[intent] %s", intentName)
+	if displayInput != "" {
+		inputStr = displayInput
+	}
+
 	// Build a minimal prefix event (no LLMToolCall since no harness was involved).
 	startEvent := newOrchestratorEvent(store.TurnStarted, map[string]any{
 		"turn":   int64(turnNum),
-		"input":  fmt.Sprintf("[intent] %s", intentName),
+		"input":  inputStr,
 		"direct": true,
 	}, turnNum)
+
+	// Emit turn.input on the flow/RunIntent path
+	// too, mirroring the live Turn() and SubmitDirect() entry points, so a
+	// flow-driven trace carries the same user-input row a live session would.
+	// Payload uses the unified {input, intent} shape SubmitDirect emits.
+	riInputPayload, _ := json.Marshal(map[string]any{
+		"input":  inputStr,
+		"intent": intentName,
+	})
+	inputEvent := store.Event{
+		Kind:      store.UserInputReceived,
+		Turn:      turnNum,
+		StatePath: journey.State,
+		Payload:   riInputPayload,
+	}
 
 	allowedNames := allowedNamesFromMachine(o.machine, journey.State, journey.World)
 
@@ -298,7 +342,17 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 			}, nil
 		}
 
-		failureEvents := append([]store.Event{startEvent}, result.Events...)
+		// Agent off-ramp: on a genuine no-match in an off-ramp room, route the
+		// original free text to converse instead of rejecting (Task 1.3/1.4).
+		// On this direct-intent path the genuine utterance is displayInput (the
+		// synthetic "[intent] <name>" marker is not free text), so pass that;
+		// an empty displayInput makes maybeOffRamp inert. Inert for every
+		// non-no-match code flowing through here.
+		if outcome, ok := o.maybeOffRamp(ctx, sid, journey.State, displayInput, ve.Code, call.Confidence, allowedNames, turnNum); ok {
+			return outcome, nil
+		}
+
+		failureEvents := append([]store.Event{inputEvent, startEvent}, result.Events...)
 		endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
 			"outcome": "rejected",
 			"code":    string(ve.Code),
@@ -307,10 +361,16 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 		for i := range failureEvents {
 			failureEvents[i].Turn = turnNum
 		}
+		// Stamp state_path so every on-disk event records the active state
+		// (matches the Turn/SubmitDirect paths). Without this the cassette /
+		// RunIntent flow path writes events with empty state_path, which breaks
+		// the runstatus trace UI's per-phase grouping. finding 2.1.
+		stampStatePathPerEvent(failureEvents)
+		stampStatePath(failureEvents, journey.State, o.InitialState())
 		// Site 3: dual-write journal entries for the RunIntent rejection turn.
 		riFailJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), failureEvents,
 			journey.World, journey.World, "", journey.State, intentName)
-		if appendErr := o.store.AppendEventsAndJournal(sid, failureEvents, riFailJEntries); appendErr != nil {
+		if appendErr := o.appendEventsAndJournal(sid, failureEvents, riFailJEntries); appendErr != nil {
 			return nil, fmt.Errorf("orchestrator: RunIntent: append failure events: %w", appendErr)
 		}
 		newAllowed := allowedNamesFromMachine(o.machine, journey.State, journey.World)
@@ -327,6 +387,15 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 	}
 
 	// Success path: dispatch host calls, persist events.
+	// Stamp the foreground turn on ctx so agent.call.* events fired by the
+	// on_enter chain and the post-bind emit recursion carry the real turn (not
+	// turn=0). dispatchHostCalls rewrites the
+	// StatePath per call to the destination phase.
+	ctx = host.WithAgentCallCtx(ctx, host.AgentCallCtx{
+		SessionID: sid,
+		Turn:      turnNum,
+		StatePath: result.NewState,
+	})
 	hostEvents, hostWorld, hostView, hostRedirect, hostErr := o.dispatchHostCalls(ctx, sid, result.HostCalls, result.World, result.NewState)
 	if hostErr != nil {
 		tl.Debug(ctx, trace.EvHarnessError, slog.String("host_dispatch_error", hostErr.Error()))
@@ -340,28 +409,49 @@ func (o *Orchestrator) RunIntent(ctx context.Context, sid app.SessionID, intentN
 	}
 	if hostRedirect != "" {
 		result.NewState = hostRedirect
+		if msg, ok := result.World.Vars["last_error"].(string); ok && msg != "" {
+			if !strings.Contains(result.View, msg) {
+				result.View = appendErrorBanner(result.View, msg)
+			}
+		}
 	}
 
 	// Post-bind emit_intent dispatch — see settlePostBindEmits doc.
 	var harnessErrMsg string
 	if hostRedirect == "" && result.ValidationError == nil {
 		harnessErrMsg = o.settlePostBindEmits(ctx, sid, &result, tl, 0)
+		if harnessErrMsg == "" {
+			o.resolveAutoGate(ctx, sid, &result, tl, 0)
+		}
 	}
 
-	successEvents := append([]store.Event{startEvent}, result.Events...)
-	endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
-		"outcome": "transitioned",
-		"to":      string(result.NewState),
+	// The intent passed Validate (no
+	// ValidationError on the success path), so record machine.intent_accepted —
+	// what advanced this turn — between the user-input/turn-start prefix and the
+	// machine's transition events. Payload carries the accepted intent + slots.
+	acceptedEvent := newOrchestratorEvent(store.IntentAccepted, map[string]any{
+		"intent": intentName,
+		"slots":  map[string]any(call.Slots),
 	}, turnNum)
+
+	successEvents := append([]store.Event{inputEvent, startEvent, acceptedEvent}, result.Events...)
+	endEvent := newOrchestratorEvent(store.TurnEnded,
+		transitionedTurnEnd(result.NewState, result.View), turnNum)
 	successEvents = append(successEvents, endEvent)
 	for i := range successEvents {
 		successEvents[i].Turn = turnNum
 	}
+	// Stamp state_path so every on-disk event records the active state
+	// (matches the Turn/SubmitDirect paths). Without this the cassette /
+	// RunIntent flow path writes events with empty state_path, which breaks
+	// the runstatus trace UI's per-phase grouping. finding 2.1.
+	stampStatePathPerEvent(successEvents)
+	stampStatePath(successEvents, journey.State, o.InitialState())
 
 	// Site 4: dual-write journal entries for the RunIntent success turn.
 	riSuccJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), successEvents,
 		journey.World, result.World, result.View, result.NewState, intentName)
-	if appendErr := o.store.AppendEventsAndJournal(sid, successEvents, riSuccJEntries); appendErr != nil {
+	if appendErr := o.appendEventsAndJournal(sid, successEvents, riSuccJEntries); appendErr != nil {
 		return nil, fmt.Errorf("orchestrator: RunIntent: append events: %w", appendErr)
 	}
 

@@ -14,7 +14,7 @@
 //
 //	WithLock(chat_id):
 //	    ClaimDrive(drive_id)            pending → dispatching
-//	    doOracleChatTurn(chat_id, …)    runs claude, appends messages
+//	    doAgentChatTurn(chat_id, …)    runs claude, appends messages
 //	    MarkDriveDone(drive_id, seq)    dispatching → done
 //	    (or MarkDriveFailed on error)
 //
@@ -28,12 +28,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
 // DispatchDriveRetryInterval is the poll cadence DispatchDriveWithTimeout
-// uses while waiting for a busy chat lock to free. Matches the proposal
-// §12 default heartbeat (5 s) — the lock holder refreshes its row at the
+// uses while waiting for a busy chat lock to free. Matches the
+// default heartbeat (5 s) — the lock holder refreshes its row at the
 // same cadence, so polling more frequently is wasted DB load. Exposed
 // (lower-cased copy on the package) for tests to drive faster.
 var dispatchDriveRetryInterval = 1 * time.Second
@@ -107,7 +108,7 @@ func DispatchDriveWithTimeout(ctx context.Context, cs ChatStore, driveID, workin
 // Go error in that case (matches the established host pattern).
 //
 // workingDir is the cwd passed to the claude subprocess. Empty string
-// means the directory of the resolved prompt (whatever doOracleChatTurn
+// means the directory of the resolved prompt (whatever doAgentChatTurn
 // chooses).
 func DispatchDrive(ctx context.Context, cs ChatStore, driveID, workingDir string) (*DispatchResult, error) {
 	if cs == nil {
@@ -137,8 +138,8 @@ func DispatchDrive(ctx context.Context, cs ChatStore, driveID, workingDir string
 			return claimErr
 		}
 
-		// Run the turn through the same code path host.oracle.converse uses
-		// for chat-aware turns. doOracleChatTurn assumes it is being
+		// Run the turn through the same code path host.agent.converse uses
+		// for chat-aware turns. doAgentChatTurn assumes it is being
 		// called inside WithLock — which we are.
 		//
 		// systemPrompt/model are left empty: a drive's payload is
@@ -146,13 +147,22 @@ func DispatchDrive(ctx context.Context, cs ChatStore, driveID, workingDir string
 		// preamble the enqueuer chose to attach), and there is no
 		// per-drive agent override yet. When future revisions plumb
 		// agent metadata onto the drive row, thread it through here.
-		turn, runErr := doConverseChatTurn(lockedCtx, cs, drive.ChatID, drive.Payload, workingDir, "", "", "bypassPermissions", nil)
+		turn, runErr := doConverseChatTurn(lockedCtx, cs, drive.ChatID, drive.Payload, workingDir, "", "", "", "bypassPermissions", nil, nil, false)
 		if runErr != nil {
 			// Infra failure: mark the drive failed with the underlying
 			// error so the row carries forensics, then re-surface to the
 			// caller as a Go error (the dispatcher itself is broken,
-			// not the drive).
-			_ = cs.MarkDriveFailed(lockedCtx, driveID, runErr.Error())
+			// not the drive). If the failed-mark itself errors we cannot
+			// recover the row here, but we must not silently swallow it:
+			// a stranded 'dispatching' row blocks the chat indefinitely,
+			// so log it at error level with enough context to find it.
+			if markErr := cs.MarkDriveFailed(lockedCtx, driveID, runErr.Error()); markErr != nil {
+				slog.ErrorContext(lockedCtx, "host.DispatchDrive: mark failed after infra error; drive may be stranded in 'dispatching'",
+					slog.String("drive_id", driveID),
+					slog.String("chat_id", drive.ChatID),
+					slog.String("run_err", runErr.Error()),
+					slog.String("mark_err", markErr.Error()))
+			}
 			return runErr
 		}
 
@@ -178,7 +188,7 @@ func DispatchDrive(ctx context.Context, cs ChatStore, driveID, workingDir string
 
 		// Success path. The Result.Data carries answer + transcript_seq.
 		if turn.Data == nil {
-			return fmt.Errorf("host.DispatchDrive: doOracleChatTurn succeeded but returned nil Data")
+			return fmt.Errorf("host.DispatchDrive: doAgentChatTurn succeeded but returned nil Data")
 		}
 		answer, _ := turn.Data["answer"].(string)
 		seq, _ := turn.Data["transcript_seq"].(int)

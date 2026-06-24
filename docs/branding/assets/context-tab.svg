@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 110" width="300" height="110" role="img" aria-label="Kitsoki in window / browser-tab chrome">
+  <rect x="0" y="0" width="300" height="110" rx="12" fill="#1c140d"/>
+  <path d="M0 40 L0 12 Q0 0 12 0 L288 0 Q300 0 300 12 L300 40 Z" fill="#3a2a1a"/>
+  <g transform="translate(12.4 10.4) scale(0.20)">
+    <circle cx="50" cy="32" r="18" fill="#e0a23a"/>
+    <g stroke="#e0a23a" stroke-width="6" stroke-linecap="round">
+      <line x1="78" y1="32" x2="71" y2="32"/>
+      <line x1="70" y1="12" x2="65" y2="17"/>
+      <line x1="50" y1="4" x2="50" y2="11"/>
+      <line x1="30" y1="12" x2="35" y2="17"/>
+      <line x1="22" y1="32" x2="29" y2="32"/>
+    </g>
+    <path d="M8 84 L8 74 L36 74 L36 59 L64 59 L64 74 L92 74 L92 84 Z" fill="#a8492b"/>
+    <rect x="8" y="84" width="84" height="8" fill="#7d2e1c"/>
+  </g>
+  <text x="42" y="26" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="16" fill="#e8d6b3">Kitsoki</text>
+</svg>

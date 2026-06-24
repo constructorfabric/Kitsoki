@@ -1,0 +1,44 @@
+# resolve_rerere_lands — a conflict the rerere cache clears with NO agent:
+# resolve checkpoints → re-rebase replays the recorded resolution → rebased →
+# re-enter integrate → integrated → verify → cleanup → @exit:shipped.
+#
+# Starts at `resolve` (begin_resolve) so integrate_exec is called exactly once
+# (on the retry) — the flow harness has a single envelope per call id.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+  resolve_attempts:   1   # integrate already counted this landing attempt
+
+host_handlers:
+  host.run:
+    by_call:
+      resolve_checkpoint:
+        data: { stdout_json: { checkpoint_outcome: saved, checkpoint_ref: "refs/kitsoki/checkpoints/land-burst-fix", checkpoint_label: "land-burst-fix", checkpoint_sha: "ckpt123", checkpoint_dirty: false } }
+      resolve_rebase:
+        data: { stdout_json: { resolve_outcome: rebased, resolve_output: "conflicts auto-resolved from rerere cache" } }
+      integrate_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "e4f5a6b", last_op_ok: true, last_error: "" } }
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok  internal/ratelimit  0.012s" } }
+      cleanup_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: cleaned, last_op_ok: true, last_error: "" } }
+
+turns:
+  - intent: { name: begin_resolve, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:             shipped
+      shipped_sha:        "e4f5a6b"
+      integrate_outcome:  integrated
+      checkpoint_outcome: saved
+
+expect_terminal: true
+expect_no_errors: true

@@ -1,0 +1,160 @@
+# worktree_list — audit and classify existing worktrees.
+
+states:
+
+  worktree_list:
+    description: "List and classify existing worktrees. Prune stale refs or remove specific worktrees."
+    relevant_world: [worktree_list, integration_branch, working_dir]
+    view:
+      - heading: "Worktrees"
+      - template: '{{ world.worktree_list.report|default:"(none — no worktrees found)" }}'
+      - prose: "Last operation failed: {{ world.last_op_output }}"
+        when: "world.last_op_ok == false"
+      - prose: "Pruned stale refs."
+        when: "world.last_op_outcome == 'pruned'"
+      - prose: "Worktree removed: {{ world.last_op_output }}"
+        when: "world.last_op_outcome == 'removed'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "prune"
+              hint:  "git worktree prune (clear stale refs)"
+              intent: prune
+            - label: "remove_worktree path=<path>"
+              hint:  "remove a specific worktree (keep branch)"
+              intent: remove_worktree
+              param:
+                slot:        path
+                type:        string
+                placeholder: ".worktrees/feat-x"
+                required:    false
+            - label: "remove_all path=<path>"
+              hint:  "remove worktree and delete its branch"
+              intent: remove_all
+              param:
+                slot:        path
+                type:        string
+                placeholder: ".worktrees/feat-x"
+                required:    false
+            - label: "back"
+              hint:  "return to hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: list_worktrees
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              INTEGRATION="{{ world.integration_branch }}"
+              REPORT=""
+              while IFS= read -r line; do
+                if [[ "$line" == worktree\ * ]]; then
+                  WT="${line#worktree }"
+                  BR=""
+                  HEAD=""
+                elif [[ "$line" == branch\ * ]]; then
+                  BR="${line#branch refs/heads/}"
+                elif [[ "$line" == HEAD\ * ]]; then
+                  HEAD="${line#HEAD }"
+                elif [[ -z "$line" ]] && [[ -n "$WT" ]]; then
+                  if [ -z "$BR" ]; then
+                    CLASS="(bare)"
+                  elif [ "$BR" = "$INTEGRATION" ]; then
+                    CLASS="integration"
+                  else
+                    UNIQUE=$(git rev-list --count "${INTEGRATION}..${HEAD}" 2>/dev/null || echo "?")
+                    DIRTY=$(git -C "$WT" status --porcelain 2>/dev/null | grep -c . || true)
+                    AGENT=""
+                    if [[ "$WT" == */.worktrees/agent-* ]]; then
+                      AGENT="(agent wt)"
+                    fi
+                    if [ "$UNIQUE" = "0" ]; then
+                      CLASS="clean-merged"
+                    elif [ "$DIRTY" -gt 0 ]; then
+                      CLASS="dirty ($UNIQUE unique commits)"
+                    else
+                      CLASS="has-unique-commits ($UNIQUE)"
+                    fi
+                    [ -n "$AGENT" ] && CLASS="$CLASS $AGENT"
+                  fi
+                  REPORT="${REPORT}${WT} [${BR:-bare}] ${CLASS}\n"
+                  WT=""
+                fi
+              done < <(git worktree list --porcelain 2>/dev/null; echo "")
+              jq -n --arg report "$(printf "%b" "$REPORT")" '{report:$report}'
+          cwd: "{{ world.working_dir }}"
+        bind:
+          worktree_list: "stdout_json"
+        on_error: worktree_list
+    on:
+      prune:
+        - target: worktree_list
+          effects:
+            - invoke: host.run
+              id: prune_worktrees
+              with:
+                cmd: git
+                args: ["worktree", "prune"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: worktree_list
+            - set:
+                worktree_list:   {}
+                last_op_outcome: "pruned"
+      remove_worktree:
+        - target: worktree_list
+          effects:
+            - invoke: host.run
+              id: remove_wt_only
+              with:
+                cmd: git
+                args: ["worktree", "remove", "{{ slots.path }}"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: worktree_list
+            - set:
+                worktree_list:   {}
+                last_op_outcome: "removed"
+      remove_all:
+        - target: worktree_list
+          effects:
+            - invoke: host.run
+              id: remove_wt_and_branch
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    set -e
+                    export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+                    WT="{{ slots.path }}"
+                    BR=$(git worktree list --porcelain 2>/dev/null | awk "/^worktree $WT\$/{found=1} found && /^branch /{print substr(\$0,15); exit}")
+                    git worktree remove "$WT" 2>&1
+                    [ -n "$BR" ] && git branch -d "$BR" 2>&1 || true
+                    git worktree prune 2>&1
+                    echo "Removed $WT and branch $BR"
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: worktree_list
+            - set:
+                worktree_list:   {}
+                last_op_outcome: "removed"
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

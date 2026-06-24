@@ -1,0 +1,60 @@
+# conflict_second_round — verifies a second conflict round is handled as a loop, not dead end.
+# Uses guide twice to simulate two resolution rounds.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: conflict
+initial_world:
+  integration_branch:       main
+  current_branch:           feat/x
+  on_integration:           false
+  working_dir:              "."
+  conflict_origin:          rebase
+  conflict_files:           "internal/foo.go "
+  conflict_verdict:         { resolved: false, confidence: 0.4, unresolvable_files: ["internal/foo.go"], resolution_summary: "Could not resolve first round.", reason: "Incompatible." }
+  conflict_intent_guidance: ""
+  build_check_cmd:          "echo 'build ok'"
+  rebase_done:              false
+
+host_handlers:
+  host.run:
+    by_call:
+      gather_conflict_files:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            conflict_files: "internal/bar.go "
+            gosum_only:     false
+      rebase_continue_cmd:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            output:       "Successfully rebased."
+            ok:           true
+            new_conflict: false
+      build_check_after_rebase:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "build ok"
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        resolved:           true
+        confidence:         0.88
+        unresolvable_files: []
+        resolution_summary: "Resolved second round."
+        reason:             null
+
+turns:
+  # guide clears state, re-enters conflict (second round)
+  # on_enter: gather new files ("bar.go"), agent resolves → rebase_continue → branch_ops
+  - intent: { name: guide, slots: { intent: "take ours" } }
+    expect_state: branch_ops
+    expect_world:
+      rebase_done: true
+
+expect_no_errors: true

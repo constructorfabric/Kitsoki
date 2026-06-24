@@ -1,0 +1,42 @@
+# Host cassette stubbing the off-ramp's voice for the demo.
+#
+# The off-ramp answers an off-menu question by firing a single
+# host.agent.converse turn (orchestrator.AskOffPath). This cassette returns a
+# fixed, on-theme answer for that call so the demo is deterministic and the
+# rendered frames are byte-stable. The orchestrator reads the answer from
+# Result.Data.answer (offpath.go); `agent.response` mirrors it for the trace.
+#
+# match_on: [handler] — one episode keyed only by the handler name, so it backs
+# the single converse call the off-ramp makes. Combinable with
+# `--harness replay --recording assets/recording.yaml` (the recording supplies
+# the no-match that fires the off-ramp; this cassette supplies the answer).
+kind: host_cassette
+app_id: off-ramp-demo
+app_version: "0.1.0"
+match_on: [handler]
+
+episodes:
+  - id: trust_answer
+    match: { handler: host.agent.converse }
+    response:
+      data:
+        ok: true
+        answer: >-
+          Fair question — you shouldn't trust it blindly. kitsoki is built so
+          you don't have to: every action an agent can take is a declared
+          intent on an explicit state machine, so the AI can only do what the
+          story permits, and each turn is recorded as a replayable trace you
+          can inspect after the fact. Start small on a low-stakes story, watch
+          what it does in the trace, and widen its scope only as it earns it.
+    agent:
+      verb: converse
+      agent: ""
+      model: ""
+      duration_ms: 640
+      response: >-
+        Fair question — you shouldn't trust it blindly. kitsoki is built so
+        you don't have to: every action an agent can take is a declared
+        intent on an explicit state machine, so the AI can only do what the
+        story permits, and each turn is recorded as a replayable trace you
+        can inspect after the fact. Start small on a low-stakes story, watch
+        what it does in the trace, and widen its scope only as it earns it.

@@ -1,0 +1,78 @@
+# commands — the single dev-command room.
+#
+# Each command intent fires a synchronous host.run (a benign `echo` standing in
+# for the real `git rebase` / `go test` / `gh pr create`), binds the command's
+# stdout into world.last_output, records which command ran, says the outcome,
+# and self-loops back to `commands`. There is no terminal state — the room is a
+# REPL of dev commands, which is exactly the surface the intercept gate drives.
+#
+# The host.run cmd is an `echo` so the EXECUTE path is safe to run for real in a
+# CLI smoke test (no git/test/gh side effects); flow tests stub host.run outright.
+
+states:
+
+  commands:
+    description: "Dev-command REPL — rebase, run tests, open a PR."
+    relevant_world: [last_command, last_output]
+    view:
+      - prose: "Type a dev command. The router matches it without a model and runs it."
+      - kv:
+          pairs:
+            "Last command": "{{ world.last_command }}"
+            "Last output":  '{{ world.last_output|default:"(none)" }}'
+      - choice:
+          mode: single
+          prompt: "Commands"
+          items:
+            - label: "rebase this onto main"
+              hint:  "git rebase origin/main"
+              intent: rebase
+            - label: "run the tests"
+              hint:  "go test ./..."
+              intent: run_tests
+            - label: "open a PR"
+              hint:  "gh pr create"
+              intent: open_pr
+            - label: "look"
+              intent: look
+    on:
+      rebase:
+        - target: .
+          effects:
+            - invoke: host.run
+              id: rebase_exec
+              with:
+                # Representative of `git rebase origin/main`; an echo keeps a real
+                # (non-mocked) run harmless and deterministic.
+                cmd: "echo 'rebased onto origin/main'"
+              bind:
+                last_output: "stdout"
+            - set:
+                last_command: "git rebase origin/main"
+            - say: "Rebased the working branch onto origin/main."
+      run_tests:
+        - target: .
+          effects:
+            - invoke: host.run
+              id: run_tests_exec
+              with:
+                cmd: "echo 'ok  ./...  (12 tests)'"
+              bind:
+                last_output: "stdout"
+            - set:
+                last_command: "go test ./..."
+            - say: "Ran the test suite."
+      open_pr:
+        - target: .
+          effects:
+            - invoke: host.run
+              id: open_pr_exec
+              with:
+                cmd: "echo 'https://example.test/pr/1'"
+              bind:
+                last_output: "stdout"
+            - set:
+                last_command: "gh pr create"
+            - say: "Opened a pull request."
+      look:
+        - target: .

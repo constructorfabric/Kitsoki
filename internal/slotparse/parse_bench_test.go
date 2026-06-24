@@ -1,6 +1,7 @@
 // Benchmarks for the slotparse public surface. Pinned so contributors
-// can measure the routing-tier latency claim (proposal §1: "~3 µs"
-// per synonym hit) without re-deriving the numbers from a clean tree.
+// can measure the routing-tier latency claim ("~3 µs" per synonym
+// hit; see docs/architecture/semantic-routing.md) without re-deriving
+// the numbers from a clean tree.
 //
 // Run:
 //
@@ -21,7 +22,8 @@ import (
 
 // Pre-tokenise the bench inputs once, outside the timed loop. This
 // isolates the parser's cost from lex's; the orchestrator already
-// caches token lists per turn anyway (proposal §5).
+// caches token lists per turn anyway (the turn cache in
+// docs/architecture/semantic-routing.md).
 var (
 	benchIntDigit   = lex.Tokenize("six", nil)
 	benchIntSpelled = lex.Tokenize("two hundred fifty", nil)

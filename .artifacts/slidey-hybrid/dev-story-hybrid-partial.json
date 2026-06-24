@@ -1,0 +1,64 @@
+{
+  "meta": {
+    "title": "Kitsoki — a dev story on the slidey repo (bug fix + refine)",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": "rose-pine-moon",
+    "narration": {
+      "voice": "en-AU-NatashaNeural"
+    },
+    "mode": "pitch"
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Kitsoki · dev story",
+      "title": "From a bug to a refined feature",
+      "subtitle": "two phases of one dev story, end to end, on the slidey repo",
+      "narration": "Two phases of a dev story on the slidey repository — a bug fixed end to end, and a feature refined by pointing right at it — with kitsoki driving every step."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The interrupt",
+      "lede": "A bug lands — triage says one-shot.",
+      "body": "A new bug is opened against slidey: grid-card decks with more than six cards drift their narration. The bug-fix room triages it as a one-shot, unsupervised fix. The developer says go, and kitsoki reproduces it, proposes a root-cause fix, implements it in an isolated worktree, runs the real test suite, self-reviews, and validates — closing out PR-ready.",
+      "narration": "A bug is opened against slidey: grid-card decks drift their narration past six cards. The bug-fix room triages it as a one-shot fix. The developer says go, and kitsoki reproduces, fixes, tests, reviews, and validates it."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "Developer · bug fix",
+      "title": "Bug → reproduce → fix → validate",
+      "rrweb": "clips/slidey-bugfix.rrweb.json",
+      "chapters": "auto",
+      "caption": "The bug-fix pipeline on a real slidey bug",
+      "narration": "Every room is a deterministic state-machine beat: reproduce, propose, implement in a worktree, run the real test suite, self-review, and validate."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The refine",
+      "lede": "A demo video arrives — refine by pointing at it.",
+      "body": "As feature work completes, a demo deck is produced and lands for review. Instead of describing a change in prose, the developer points at an exact element on the rendered frame — a semantic anchor — and that anchor flows into a refine pass that edits precisely the scene that was pointed at. The before and after re-render in place.",
+      "narration": "A demo deck arrives for review. The developer points at an exact element on the rendered frame, and that anchor flows into a refine pass that edits precisely what was pointed at — before and after re-rendered in place."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "Developer · spatial refine",
+      "title": "Annotate the frame → anchored refine",
+      "rrweb": "clips/feature-refine.rrweb.json",
+      "chapters": "auto",
+      "caption": "Location-tied review → an anchored refine pass",
+      "narration": "Location-tied feedback: point at the element, and the refine edits exactly that scene — no ambiguity about what to change."
+    },
+    {
+      "type": "cta",
+      "narration": "And the whole film is a no-LLM, byte-deterministic replay: the runtime is a state machine, and the model is just a traceable callee.",
+      "wordmark": "Kitsoki",
+      "tagline": "Every frame is a deterministic, no-LLM replay",
+      "url": "the runtime is a state machine; the model is a traceable callee"
+    }
+  ]
+}

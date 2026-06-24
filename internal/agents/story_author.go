@@ -13,7 +13,7 @@ var storyAuthorPrompt string
 // to think about version control.
 func storyAuthor() Agent {
 	return Agent{
-		Name:         "story-author",
+		Name:         NameStoryAuthor,
 		SystemPrompt: storyAuthorPrompt,
 		Model:        "",
 		// Tools list is informational — every claude subprocess runs

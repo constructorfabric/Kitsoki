@@ -2,7 +2,9 @@ package host_test
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"kitsoki/internal/host"
 )
@@ -235,6 +237,83 @@ func TestRunHandler_FailOnError(t *testing.T) {
 	}
 }
 
+// TestRunHandler_Timeout pins the fix for the silent session wedge: a child
+// that never returns (here a `sleep` far longer than the cap, standing in for
+// an HTTP client blocked on a half-closed proxy socket) must be killed and
+// surfaced as an on_error-routable Result.Error, NOT block the handler — which
+// would hold the session driver lock and freeze every subsequent turn.
+func TestRunHandler_Timeout(t *testing.T) {
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+
+	done := make(chan struct{})
+	var result host.Result
+	var err error
+	go func() {
+		result, err = r.Invoke(context.Background(), "host.run", map[string]any{
+			"cmd":     "sleep 30",
+			"timeout": 1, // seconds
+		})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("host.run with timeout=1 did not return — the timeout did not kill the child (the wedge bug)")
+	}
+
+	if err != nil {
+		t.Fatalf("timeout should be a domain error, not infra error: %v", err)
+	}
+	if result.Error == "" {
+		t.Fatal("expected non-empty Result.Error on timeout so the on_error arc fires")
+	}
+	if !strings.Contains(result.Error, "timed out") {
+		t.Fatalf("expected a 'timed out' error, got %q", result.Error)
+	}
+	if to, _ := result.Data["timed_out"].(bool); !to {
+		t.Fatal("expected Data.timed_out=true")
+	}
+}
+
+// TestRunHandler_TimeoutNotHit confirms the cap is transparent when the
+// command finishes inside it: normal success, no timeout flag.
+func TestRunHandler_TimeoutNotHit(t *testing.T) {
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+
+	result, err := r.Invoke(context.Background(), "host.run", map[string]any{
+		"cmd":     "echo quick",
+		"timeout": "5s",
+	})
+	if err != nil {
+		t.Fatalf("unexpected infra error: %v", err)
+	}
+	if result.Error != "" {
+		t.Fatalf("expected no error well inside the cap, got %q", result.Error)
+	}
+	if to, _ := result.Data["timed_out"].(bool); to {
+		t.Fatal("did not expect timed_out=true for a fast command")
+	}
+}
+
+func TestRunHandler_BadTimeout(t *testing.T) {
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+
+	result, err := r.Invoke(context.Background(), "host.run", map[string]any{
+		"cmd":     "echo hi",
+		"timeout": "not-a-duration",
+	})
+	if err != nil {
+		t.Fatalf("unexpected infra error: %v", err)
+	}
+	if result.Error == "" {
+		t.Fatal("expected a loud domain error for an unparseable timeout")
+	}
+}
+
 func TestRunHandler_FailOnError_ZeroExit(t *testing.T) {
 	r := host.NewRegistry()
 	host.RegisterBuiltins(r)
@@ -333,6 +412,75 @@ func TestRunHandler_StdoutJSONBinding_MalformedJSON(t *testing.T) {
 	}
 	if msg, _ := result.Data["stdout_json_parse_error"].(string); msg == "" {
 		t.Fatal("stdout_json_parse_error should be populated when last line looks JSON-ish but won't parse")
+	}
+}
+
+// TestRunHandler_StdoutJSONBinding_PrettyPrinted is the regression guard for
+// the silent-binding-loss footgun that stranded git-ops's real (non-mocked)
+// host.run routing: a script that emits a PRETTY-PRINTED JSON envelope (the
+// default `jq -n '{...}'` output spans multiple lines and ends with a bare
+// "}") used to bind nothing, because only stdout's last non-empty line was
+// parsed. The whole-blob fallback now parses the multi-line object. This is
+// exactly the shape git-ops/rooms/idle.yaml's detect_context emits.
+func TestRunHandler_StdoutJSONBinding_PrettyPrinted(t *testing.T) {
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+
+	// jq's default (no -c) pretty-prints; mimic that exactly.
+	cmd := `echo '2026-06-20 INFO  detecting' >&2
+echo '{'
+echo '  "route": "on_branch",'
+echo '  "branch": "feature",'
+echo '  "commits_ahead": 1'
+echo '}'`
+
+	result, err := r.Invoke(context.Background(), "host.run", map[string]any{"cmd": cmd})
+	if err != nil {
+		t.Fatalf("host.run infra error: %v", err)
+	}
+	if result.Error != "" {
+		t.Fatalf("unexpected domain error: %v", result.Error)
+	}
+	parsed, ok := result.Data["stdout_json"].(map[string]any)
+	if !ok {
+		t.Fatalf("pretty-printed JSON must bind to stdout_json; got %T %v",
+			result.Data["stdout_json"], result.Data["stdout_json"])
+	}
+	if parsed["route"] != "on_branch" {
+		t.Fatalf("stdout_json.route: want on_branch, got %v", parsed["route"])
+	}
+	if _, present := result.Data["stdout_json_parse_error"]; present {
+		t.Fatalf("no parse error expected on a valid multi-line envelope; got %v",
+			result.Data["stdout_json_parse_error"])
+	}
+}
+
+// TestRunHandler_StdoutJSONBinding_LogsThenPretty confirms the trailing
+// extraction finds the envelope amid preceding prose: leading log lines on
+// stdout (whether from stderr via CombinedOutput, or a script that logs to
+// stdout) followed by a pretty-printed JSON block bind to that trailing
+// block. This is the whole point of the contract — pluck the JSON envelope
+// out of mixed log+JSON output.
+func TestRunHandler_StdoutJSONBinding_LogsThenPretty(t *testing.T) {
+	r := host.NewRegistry()
+	host.RegisterBuiltins(r)
+
+	cmd := `echo 'work in progress on stdout'
+echo '{'
+echo '  "route": "on_branch"'
+echo '}'`
+
+	result, err := r.Invoke(context.Background(), "host.run", map[string]any{"cmd": cmd})
+	if err != nil {
+		t.Fatalf("host.run infra error: %v", err)
+	}
+	parsed, ok := result.Data["stdout_json"].(map[string]any)
+	if !ok {
+		t.Fatalf("trailing JSON envelope must be extracted from amid prose; got %T %v",
+			result.Data["stdout_json"], result.Data["stdout_json"])
+	}
+	if parsed["route"] != "on_branch" {
+		t.Fatalf("stdout_json.route: want on_branch, got %v", parsed["route"])
 	}
 }
 

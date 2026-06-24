@@ -2,8 +2,8 @@
 //
 // Runs an MCP stdio server that exposes a single `Bash` tool. The server reads
 // a profile config (written by host.BuildBashMCPEntry) and applies the
-// BashProfile to every Bash invocation before exec. Used by host.oracle.ask /
-// host.oracle.decide to route claude's Bash tool through kitsoki-side argv
+// BashProfile to every Bash invocation before exec. Used by host.agent.ask /
+// host.agent.decide to route claude's Bash tool through kitsoki-side argv
 // gating rather than letting the built-in run unrestricted.
 package main
 
@@ -22,12 +22,12 @@ func mcpBashCmd() *cobra.Command {
 		Use:   "mcp-bash",
 		Short: "Run the kitsoki Bash MCP server with an applied profile",
 		Long: `mcp-bash is the stdio MCP server entry point for the wrapped Bash tool
-used by host.oracle.ask and host.oracle.decide. It reads a profile config file
+used by host.agent.ask and host.agent.decide. It reads a profile config file
 (written by the caller, owned by the kitsoki host package) and applies the
 BashProfile via host.ApplyBashProfile to every incoming Bash invocation.
 
 Not intended to be invoked by hand; the caller writes the config file as a
-tempfile and exec's this subcommand via the MCP server map of an oracle call.`,
+tempfile and exec's this subcommand via the MCP server map of an agent call.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if profileConfigPath == "" {
 				return fmt.Errorf("mcp-bash: --profile-config is required")

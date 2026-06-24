@@ -55,7 +55,7 @@ type inboxItemSelected struct {
 	notification jobs.Notification
 }
 
-// inboxModel renders the §2.2 Inbox panel.
+// inboxModel renders the Inbox panel.
 type inboxModel struct {
 	notifications []jobs.Notification
 	selected      int

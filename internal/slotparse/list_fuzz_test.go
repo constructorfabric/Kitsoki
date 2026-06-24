@@ -6,7 +6,7 @@
 //     ≥1 element; on OK=false, Value must be nil and the Reason
 //     must be "list:miss" (the sentinel for structural misses).
 //
-// We seed with the §2.4 worked examples plus the trickier shapes from
+// We seed with the list worked examples plus the trickier shapes from
 // list_test.go so the fuzzer starts from cases we already understand.
 package slotparse
 
@@ -15,7 +15,7 @@ import (
 )
 
 var listFuzzCorpus = []string{
-	// §2.4 worked examples.
+	// list worked examples.
 	"6",
 	"6, 12, 3",
 	"6 and 12 and 3",

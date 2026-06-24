@@ -9,8 +9,8 @@ import (
 	"kitsoki/internal/tui/blocks"
 )
 
-// clarifyModel tracks the state of an in-progress slot-fill clarification
-// (§7.3). It no longer owns the prompt area — the user types values into
+// clarifyModel tracks the state of an in-progress slot-fill clarification.
+// It no longer owns the prompt area — the user types values into
 // the normal textarea with the `?` prefix, and the inline "Clarification
 // needed" block is rendered into the transcript. The legacy huh.Select /
 // embedded textinput rendering paths have been removed; enum / bool slots
@@ -28,12 +28,6 @@ func newClarifyModel() clarifyModel {
 	return clarifyModel{
 		collected: make(map[string]any),
 	}
-}
-
-// isEnumSlot returns true if the slot should render as a numbered choice
-// list (Sub-mode A per §7.3). Free-form slots return false.
-func isEnumSlot(slot orchestrator.SlotNeed) bool {
-	return len(slot.Values) > 0 || slot.Type == "bool"
 }
 
 // Open activates the clarify model with the given slot needs.

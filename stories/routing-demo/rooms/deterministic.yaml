@@ -1,0 +1,57 @@
+states:
+  deterministic:
+    description: "Lessons 1 & 2 — deterministic tiers (synonyms, examples, slot_template)"
+    relevant_world: [lamp, budget, last_action]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "These tiers match your text against each intent's declared synonyms, menu examples, and slot_templates. No model runs — it's instant and works fully offline. Every action here ALSO has the tier-4 fallback, so a paraphrase that misses below is still handed to the local model."
+          - heading: "The lamp — synonyms + examples"
+          - list:
+              items:
+                - label: "lamp on"
+                  hint: "a declared example → deterministic, high-confidence, direct route"
+                - label: "illuminate"
+                  hint: "a bare synonym → deterministic"
+                - label: "could you brighten this place up"
+                  hint: "a paraphrase → misses deterministic → agent.local routes it to lamp_on"
+                - label: "lamp off / darken"
+                  hint: "the off side, same idea"
+          - heading: "A budget — slot_template (fills a slot)"
+          - list:
+              items:
+                - label: "budget 200"
+                  hint: "matches 'budget {amount}' → fills amount=200 with no model"
+                - label: "spend 350"
+                  hint: "another template surface for the same intent"
+          - heading: "State"
+          - kv:
+              pairs:
+                Lamp:   '{% if world.lamp %}on{% else %}off{% endif %}'
+                Budget: "{{ world.budget }}"
+        choices:
+          - list:
+              items:
+                - label: "back"
+                  hint: "return to the hub"
+                - label: "look"
+    on:
+      lamp_on:
+        - target: .
+          effects:
+            - set: { lamp: true, last_action: "lamp_on" }
+      lamp_off:
+        - target: .
+          effects:
+            - set: { lamp: false, last_action: "lamp_off" }
+      set_budget:
+        - target: .
+          effects:
+            - set:
+                budget:      "{{ slots.amount ?? '(no amount given)' }}"
+                last_action: "set_budget"
+      back:
+        - target: hub
+      look:
+        - target: .

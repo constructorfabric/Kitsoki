@@ -1,0 +1,103 @@
+# once_reload_safe — on_enter is idempotent: a room whose result is already
+# present does NOT re-run its agent call.
+#
+# This is the reload-safety contract behind `once: true`. /reload re-fires
+# on_enter; the `once:` flag makes the expensive decide/task a no-op when ALL
+# its bind targets are already set. We prove it here without a real reload by
+# entering a room with its bind targets ALREADY populated by distinctive
+# presets, while the stubs return DIFFERENT (SHOULD-NOT-RUN) values — so if
+# `once:` failed and the call re-ran, the preset would be overwritten.
+# Asserting the preset survives proves the call was skipped.
+#
+# Two rooms exercised:
+#   references — preset references (researcher bind) + references_path
+#                (artifacts_dir bind). Both on_enter invokes are once:, so the
+#                stub list / stub path must NOT replace the presets.
+#   drafting   — preset prd_artifact (author bind). The once: task is skipped,
+#                so the stub draft must NOT replace the preset.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: brief
+initial_world:
+  idea:              "A CLI for X that helps developers do Y."
+  workdir:           "."
+  output_path:       ".artifacts/prd.md"
+  judge_mode:        "human"
+  clarification_log: "── Round 1 ──\nQuestions: {\"questions\":[]}\nAnswers: none\n\n"
+  # References already curated — the presets the `once:` guard must preserve
+  # when we enter the references room on confirm.
+  references_path: ".artifacts/PRESET-references.md"
+  references:
+    items:
+      - { path: "docs/PRESET-SURVIVED.md", sections: "Preset", rationale: "preset reference that once: must preserve" }
+  # PRD already drafted — the preset the drafting room's once: task must keep.
+  prd_artifact:
+    title:               "PRD: PRESET-SURVIVED"
+    summary_markdown:    "## PRD: PRESET-SURVIVED\n\nA sufficiently long preset summary body that the once: task must preserve verbatim rather than overwrite with the stub draft, covering problem, users, goals, and metrics."
+    file_path:           ".artifacts/PRESET-prd.md"
+    confidence:          0.91
+    needs_clarification: false
+    follow_up_questions: []
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    by_call:
+      # references room's researcher — if once: failed this would overwrite
+      # the preset references with the SHOULD-NOT-RUN list.
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/SHOULD-NOT-RUN.md", sections: "x", rationale: "this list should never replace the preset" }
+  host.agent.task:
+    # drafting author — if once: failed this would overwrite the preset draft.
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: SHOULD-NOT-RUN"
+        summary_markdown:    "## PRD: SHOULD-NOT-RUN\n\nThis stub draft body should never replace the preset prd_artifact because the once: task is skipped when prd_artifact is already set; padding to satisfy the schema minimum length requirement here."
+        file_path:           ".artifacts/SHOULD-NOT-RUN.md"
+        confidence:          0.10
+        needs_clarification: false
+        follow_up_questions: []
+  host.artifacts_dir:
+    # A DIFFERENT path than the preset references_path — if the references
+    # write re-ran, references_path would change to this value.
+    data: { ok: true, path: ".artifacts/SHOULD-NOT-RUN.md", message_id: "out#1" }
+
+turns:
+  # Confirm the brief → references. references on_enter fires, but both its
+  # invokes are once: and their binds (references / references_path) are
+  # already set ⇒ the researcher decide AND the artifacts_dir write are
+  # SKIPPED. The presets survive verbatim — NOT the SHOULD-NOT-RUN stubs.
+  - intent: { name: confirm, slots: {} }
+    expect_state: references
+    expect_world:
+      references_path: ".artifacts/PRESET-references.md"
+      references:
+        items:
+          - { path: "docs/PRESET-SURVIVED.md", sections: "Preset", rationale: "preset reference that once: must preserve" }
+
+  # Confirm references → drafting. drafting on_enter fires; its once: author
+  # task is skipped because prd_artifact is already set, so the preset draft
+  # survives rather than being replaced by the SHOULD-NOT-RUN stub.
+  - intent: { name: confirm, slots: {} }
+    expect_state: drafting
+    expect_world:
+      prd_artifact:
+        title:               "PRD: PRESET-SURVIVED"
+        summary_markdown:    "## PRD: PRESET-SURVIVED\n\nA sufficiently long preset summary body that the once: task must preserve verbatim rather than overwrite with the stub draft, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/PRESET-prd.md"
+        confidence:          0.91
+        needs_clarification: false
+        follow_up_questions: []
+
+expect_no_errors: true

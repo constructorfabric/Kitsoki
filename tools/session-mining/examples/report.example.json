@@ -1,0 +1,146 @@
+{
+  "schema_version": "1.0",
+  "vocab_version": "2026-05-31",
+  "redaction": {
+    "redactions": { "HOME": 4046, "REPO": 4447, "EMAIL": 1, "URL": 12, "TICKET": 1, "LONG_B64": 42, "LONG_HEX": 2 },
+    "share_gate": "pass"
+  },
+  "context": {
+    "languages": ["go", "yaml"],
+    "domain": "backend-cli-and-tui",
+    "sessions_analyzed": 12,
+    "session_selection": "top-12-by-size"
+  },
+  "contributor": null,
+  "patterns": [
+    {
+      "id": "build-compile-fix-loop",
+      "source": "cataloged",
+      "occurrences": 27,
+      "sessions_seen": 6,
+      "mechanical_fraction": 0.87,
+      "pain": "med",
+      "decision_density": 1,
+      "decision_points": ["which fix class for this error (import vs signature vs type)"],
+      "determinism_priority": 0.58,
+      "ladder_now": "L1",
+      "ladder_target": "L3",
+      "example_signatures": [
+        "go build ./... (read errors) → Edit <file> → go build ./... (repeat until clean)"
+      ]
+    },
+    {
+      "id": "fix-failing-tests",
+      "source": "cataloged",
+      "occurrences": 15,
+      "sessions_seen": 5,
+      "mechanical_fraction": 0.77,
+      "pain": "high",
+      "decision_density": 1,
+      "decision_points": ["fix code vs fix test expectation", "regression test vs fixture expansion"],
+      "determinism_priority": 0.54,
+      "ladder_now": "L1",
+      "ladder_target": "L2",
+      "example_signatures": [
+        "go test ./<pkg>/... -run <Test> (read failure) → Edit <file> → go test (rerun until green)"
+      ]
+    },
+    {
+      "id": "verify-change-by-running-app",
+      "source": "cataloged",
+      "occurrences": 21,
+      "sessions_seen": 6,
+      "mechanical_fraction": 0.69,
+      "pain": "high",
+      "decision_density": 2,
+      "decision_points": ["which fixture/scenario exercises the change", "interpret output as pass/fail"],
+      "determinism_priority": 0.51,
+      "ladder_now": "L1",
+      "ladder_target": "L2",
+      "example_signatures": [
+        "go run ./<cmd> <args> --trace <file> → grep <file> for events → read result",
+        "<build> → run app → capture frame/screenshot → read image → assess"
+      ]
+    },
+    {
+      "id": "fan-out-agents-and-reconcile",
+      "source": "novel",
+      "occurrences": 9,
+      "sessions_seen": 4,
+      "mechanical_fraction": 0.45,
+      "pain": "high",
+      "decision_density": 3,
+      "decision_points": ["safe-to-parallelize (disjoint files)?", "wait vs kill stalled agent", "merge/reconcile partial work"],
+      "determinism_priority": 0.42,
+      "ladder_now": "L0",
+      "ladder_target": "L2",
+      "example_signatures": [
+        "TaskCreate xN → Agent xN (parallel) → detect stall → TaskStop → assess partial state → finish manually → go test ./..."
+      ]
+    },
+    {
+      "id": "debug-from-error-or-trace",
+      "source": "cataloged",
+      "occurrences": 17,
+      "sessions_seen": 4,
+      "mechanical_fraction": 0.64,
+      "pain": "high",
+      "decision_density": 3,
+      "decision_points": ["which subsystem owns the symptom", "symptom vs root cause", "add instrumentation vs read existing trace"],
+      "determinism_priority": 0.39,
+      "ladder_now": "L0",
+      "ladder_target": "L2",
+      "example_signatures": [
+        "grep <trace> for error/fail → read <trace> → locate <file> → Edit → fresh trace to confirm"
+      ]
+    },
+    {
+      "id": "explore-codebase-to-answer-question",
+      "source": "cataloged",
+      "occurrences": 37,
+      "sessions_seen": 6,
+      "mechanical_fraction": 0.90,
+      "pain": "low",
+      "decision_density": 2,
+      "decision_points": ["search by string/symbol/type?", "canonical impl vs dead code"],
+      "determinism_priority": 0.36,
+      "ladder_now": "L1",
+      "ladder_target": "L2",
+      "example_signatures": [
+        "grep -rn <term> → Read <file> → follow call chain → answer with <file>:<line> refs"
+      ]
+    },
+    {
+      "id": "rebase-or-resolve-conflicts",
+      "source": "cataloged",
+      "occurrences": 4,
+      "sessions_seen": 2,
+      "mechanical_fraction": 0.78,
+      "pain": "high",
+      "decision_density": 2,
+      "decision_points": ["ours vs theirs per hunk", "test each step vs batch"],
+      "determinism_priority": 0.23,
+      "ladder_now": "L1",
+      "ladder_target": "L3",
+      "example_signatures": [
+        "git rebase <base> → grep '<<<<<<' <file> → Edit resolve → git add → git rebase --continue → go build/test"
+      ]
+    },
+    {
+      "id": "visual-frame-qc-loop",
+      "source": "novel",
+      "occurrences": 6,
+      "sessions_seen": 3,
+      "mechanical_fraction": 0.45,
+      "pain": "high",
+      "decision_density": 3,
+      "decision_points": ["which frames to sample", "CSS-timing vs flex-layout vs structure", "good enough?"],
+      "determinism_priority": 0.28,
+      "ladder_now": "L0",
+      "ladder_target": "L1",
+      "example_signatures": [
+        "render → ffmpeg extract frame → read image → Edit CSS/template → re-render → re-extract → compare"
+      ]
+    }
+  ]
+}

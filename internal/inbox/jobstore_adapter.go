@@ -1,6 +1,6 @@
-// Package inbox — jobstore_adapter.go: production-side host.InboxAdder
+// jobstore_adapter.go holds the production-side host.InboxAdder
 // implementation that fans host.inbox.add invocations into the
-// SQLite-backed jobs.JobStore.
+// SQLite-backed jobs.JobStore. (The package overview lives in doc.go.)
 //
 // Background.  internal/host/inbox_add.go defines the InboxAdder seam
 // consumed by host.inbox.add.  In tests the seam is filled by
@@ -15,24 +15,20 @@
 // imports host — so the adapter can't live in host.  inbox already
 // imports both, so it's the natural home.
 //
-// # Session-ID plumbing
-//
-// host.inbox.add carries no session ID in its YAML args (the author
-// should not have to know one).  We bind the session ID into the
-// adapter at orchestrator-dispatch time: the orchestrator builds
+// Session-ID plumbing.  host.inbox.add carries no session ID in its YAML
+// args (the author should not have to know one).  We bind the session ID
+// into the adapter at orchestrator-dispatch time: the orchestrator builds
 // inbox.NewJobStoreAdder(store, sid) per turn and installs it via
-// host.WithInboxAdder(ctx, adapter).  The handler retrieves it
-// from ctx and calls AddInbox, which knows which session to write into.
+// host.WithInboxAdder(ctx, adapter).  The handler retrieves it from ctx and
+// calls AddInbox, which knows which session to write into.
 //
-// # Severity mapping
+// Severity mapping.  host.inbox.add's `kind:` argument (one of checkpoint /
+// ack / info / action_required) translates to jobs.NotificationSeverity:
 //
-// host.inbox.add's `kind:` argument (one of checkpoint / ack / info /
-// action_required) translates to jobs.NotificationSeverity:
-//
-//   checkpoint       → SeverityActionRequired (operator should review)
-//   action_required  → SeverityActionRequired (operator must act)
-//   ack              → SeveritySuccess        (positive ack)
-//   info / unknown   → SeverityInfo           (default)
+//	checkpoint       → SeverityActionRequired (operator should review)
+//	action_required  → SeverityActionRequired (operator must act)
+//	ack              → SeveritySuccess        (positive ack)
+//	info / unknown   → SeverityInfo           (default)
 //
 // "checkpoint" maps to SeverityActionRequired rather than a distinct
 // "Attention" tier because the inbox UI surfaces both as "needs your

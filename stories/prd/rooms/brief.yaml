@@ -1,0 +1,278 @@
+# brief — formalize + confirm the inputs before any drafting.
+#
+# The "brief" is not a new synthesis: it is exactly what the first two
+# phases produced — world.idea (distilled in idle) plus the accumulated
+# clarification transcript (clarifying). This room COMPOSES those into a
+# durable artifact and gates on the operator's confirmation before the
+# pipeline goes looking for reference material and writes the PRD.
+#
+# on_enter runs three calls (golden design_refine shape):
+#   1. scaffold the brief — host.artifacts_dir (thread=prd_brief) writes
+#      the operator-EDITABLE .artifacts/prd_brief.md; bind → brief_path.
+#      once: keyed off brief_path (non-empty ⇒ already ran) so a re-fire —
+#      /reload's RerunOnEnter, or a re-entry via the `ready` self-loop —
+#      does NOT clobber the operator's hand-edits on disk. (This replaces
+#      the old mode:replace-every-entry behaviour, which silently
+#      overwrote edits — least surprise.) The `clarify` / `restart_from`
+#      arcs clear brief_path to deliberately re-arm a fresh scaffold.
+#   2. host.ide.open_file — opens the brief in the operator's editor so
+#      they can edit it directly. Not once-guarded (idempotent open).
+#   3. brief judge — host.agent.decide (id: brief_check, agent:
+#      brief_judge). GUARDED: only fires when brief_cycle > 0 (first entry
+#      skips the judge; `ready` increments the cycle and re-enters, arming
+#      it). A `continue` verdict fires the synthetic `advance_brief` intent
+#      via post-bind emit_intent → auto-advance to references.
+#
+# The `ready` intent increments brief_cycle (arming the judge) and
+# self-transitions (full YAML target) so on_enter re-fires with the new
+# cycle value.
+#
+# A `choice:` selector is fine here (unlike idle/clarifying): this is a
+# checkpoint room that does NOT self-loop on free-text answers, so the
+# picker widget opening on entry is the desired affordance, same as
+# drafting.
+
+states:
+
+  brief:
+    description: "Review the brief — the idea plus everything clarified — then confirm to build the reference list."
+    view:
+      - banner:
+          text:     "BRIEF"
+          subtitle: "Confirm the formalized idea + clarifications before drafting"
+          color:    "#10B981"   # green — a settled input
+      # Error surfacing — the brief WRITE (on_enter host.artifacts_dir)
+      # failed; on_error held us here (target: .) rather than bouncing to
+      # idle. The brief is deterministic (no agent), so a failure is an
+      # artifact-write problem (permissions, disk) the operator can fix and
+      # re-confirm. last_error is set by the runtime.
+      - template: "⚠ **Brief save failed** — {{ world.last_error }}. Fix the issue and **confirm** to retry."
+        when: "world.last_error != ''"
+      - prose: "cycle {{ world.cycle }} · clarify rounds {{ world.clarifying_cycle }} · brief checks {{ world.brief_cycle }} · judge {{ world.judge_mode }}"
+      # The saved-file path is a kv value holding the BARE path: the web UI
+      # linkifies a kv value ending in .md into a clickable file preview
+      # (prose/template/code never linkify — same idiom as dev-story's
+      # design_refine Brief row and this story's search-room Overlap rows).
+      # The pending placeholder ends in "…)" so it stays plain text.
+      - kv:
+          pairs:
+            Brief:    '{{ world.brief_path|default:"(writing 001-brief.md into the per-PRD workspace…)" }}'
+            Idea:     '{{ world.idea|default:"(none)"|truncatechars:80 }}'
+            Upstream: '{{ world.upstream_paths|default:"(none)" }}'
+      - heading: "Idea"
+      - code: '{{ world.idea|default:"(none captured — restart from idle to re-pitch)" }}'
+      - heading: "Clarifications"
+      - code: |
+          {{ world.clarification_log|default:"(none recorded — you can restart from clarifying to add questions, or confirm to proceed)" }}
+      # Brief quality judge — rendered only once armed (brief_cycle > 0 and a
+      # verdict came back). A `continue` shows the approval line + the
+      # "advance to references" button below; a `clarify` lists the specific
+      # gaps to fix in the brief on disk before re-running `ready`.
+      - kv:
+          pairs:
+            Judge: '{{ world.brief_decision.verdict }} — {{ world.brief_decision.reason }}'
+        when: "world.brief_decision.verdict != '' ?? false"
+      - code: |
+          {% for q in world.brief_decision.questions %}- {{ q }}
+          {% empty %}{% endfor %}
+        when: "world.brief_decision.verdict == 'clarify' ?? false"
+      - prose: "Edit the brief on disk, then say **ready** to run the quality check. A passing brief advances to the reference list automatically."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            # Shown only after the judge passed — the explicit operator
+            # affordance for the auto-advance the `continue` verdict triggers.
+            - label:  "advance to references"
+              hint:   "brief approved — build the reference list"
+              intent: advance_brief
+              when: "world.brief_decision.verdict == 'continue' ?? false"
+            - label:  "ready"
+              hint:   "run the brief quality check"
+              intent: ready
+            - label:  "confirm"
+              hint:   "the brief is right — build the reference list (skips the quality check)"
+              intent: confirm
+            - label:  "clarify"
+              hint:   "answer more / refine the questions — KEEPS your answers so far"
+              intent: clarify
+            - label:  "restart from clarifying"
+              hint:   "discard the clarification record and re-question from scratch"
+              intent: restart_from
+              slots:  { stage: clarifying }
+            - label:  "restart from idle"
+              hint:   "re-pitch from scratch (wipes the clarification log)"
+              intent: restart_from
+              slots:  { stage: idle }
+            - label:  "quit"
+              hint:   "abandon PRD authoring"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [idea, upstream_paths, workdir, prd_workspace, brief_path, clarification_log, clarifying_cycle, cycle, judge_mode, last_error, brief_cycle, brief_decision]
+    on_enter:
+      # Compose the brief from world.idea + the clarification transcript
+      # and persist it. artifacts_root pins the file under the operator's
+      # working tree (the handler defaults to kitsoki's cwd otherwise).
+      # The body leads with a literal `## Idea` line — a value that BOTH
+      # starts with `{{` and ends with `}}` short-circuits to a typed expr
+      # (and fails to compile here); a literal prefix keeps it pongo.
+      # once: keyed off brief_path — a re-fire (reload, or the `ready`
+      # self-loop) skips the write so the operator's hand-edits survive.
+      # mode: replace still applies on the FIRST write (so a stale file from
+      # a prior run is overwritten, not appended to); the `clarify` /
+      # `restart_from` arcs clear brief_path to deliberately re-arm a fresh
+      # scaffold from the (now-changed) idea + transcript.
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          artifacts_root: "{{ world.workdir }}/{{ world.prd_workspace }}"
+          thread:         "001-brief"
+          mode:           "replace"
+          title:          "PRD Brief"
+          body: |
+            ## Idea
+
+            {{ world.idea }}
+
+            ## Clarifications
+
+            {{ world.clarification_log }}
+        bind:
+          brief_path: "path"
+        # Stay HERE on a failed write (don't bounce back to idle, discarding
+        # the brief review) — a self-redirect on_error surfaces last_error
+        # without re-firing on_enter (so the failing write isn't retried in a
+        # loop; the runtime treats `on_error: .` as "stay put"). The operator
+        # fixes the underlying issue and re-confirms.
+        on_error: .
+      # Open the editable brief in the operator's editor. Idempotent — not
+      # once-guarded — so a re-entry re-opens the (possibly edited) file.
+      # on_error: . — a missing editor connection holds here rather than
+      # bouncing; the brief is still on disk and editable by hand.
+      - invoke: host.ide.open_file
+        with:
+          path: "{{ world.brief_path }}"
+        on_error: .
+      # Brief quality judge — GUARDED on brief_cycle > 0 (the `ready` intent
+      # arms it). Reads the brief from disk and emits a continue|clarify
+      # verdict; a `continue` fires the synthetic advance_brief intent via
+      # emit_intent → auto-advance to references. on_error: . holds here so
+      # the operator can examine a failed check (last_error rendered above).
+      - invoke: host.agent.decide
+        id: brief_check
+        when: "world.brief_cycle > 0"
+        with:
+          agent: brief_judge
+          prompt_path: prompts/brief_check.md
+          schema: schemas/brief-check.json
+          working_dir: "{{ world.workdir }}"
+          args:
+            brief_path: "{{ world.brief_path }}"
+            idea:       "{{ world.idea }}"
+        bind:
+          brief_decision: submitted
+        emit_intent: "{{ world.brief_decision.verdict == 'continue' ? 'advance_brief' : '' }}"
+        on_error: .
+    on:
+      # Arm the judge: increment brief_cycle and self-transition (full target)
+      # so on_enter re-fires and the now-armed brief_check judge runs against
+      # the brief as currently saved on disk. The scaffold is once-guarded
+      # (brief_path already set) so it does NOT clobber the operator's edits.
+      ready:
+        - target: brief
+          effects:
+            - set:
+                brief_cycle: "{{ world.brief_cycle + 1 }}"
+
+      # advance_brief is synthetic — emitted by the judge on a `continue`
+      # verdict. Same destination as confirm; clears the stale error too.
+      advance_brief:
+        - target: references_seed
+          effects:
+            - set:
+                last_error: ""
+
+      # Confirmed — go find the reference material (via the semantic pre-seed).
+      confirm:
+        - target: references_seed
+          effects:
+            # Leaving cleanly → clear any stale brief-write error.
+            - set:
+                last_error: ""
+
+      # Extend, not redo: go back to clarifying for another round while
+      # PRESERVING clarification_log (the accumulated Q&A). Only this round's
+      # working answer state is cleared so the new round starts fresh; the
+      # analyst re-runs with the full transcript and is told to ask only
+      # genuinely-new / refined questions (combining where it helps). This is
+      # the non-destructive counterpart to `restart_from clarifying` below.
+      # Same effect shape as the drafting room's `clarify` arc.
+      clarify:
+        - target: clarifying
+          effects:
+            # Clear clarifications (clarifying's analyst-decide bind) so its
+            # `once:` re-arms and a NEW round of questions is generated against
+            # the preserved transcript — without this the re-fired on_enter
+            # no-ops and re-shows the prior round's questions.
+            - set:
+                clarifications:        {}
+                refine_feedback:       ""
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+                # Re-arm a fresh brief scaffold + judge: another clarify round
+                # changes the transcript, so the brief on disk is stale.
+                brief_path:            ""
+                brief_decision:        {}
+                brief_cycle:           0
+
+      # Redo, not extend (the drafting room's restart_from semantics):
+      # idle re-pitches and wipes the log; clarifying discards the record
+      # and re-questions. references_cycle is reset too so a redo starts
+      # the reference budget fresh.
+      restart_from:
+        - when: "slots.stage == 'idle'"
+          target: idle
+          effects:
+            - set:
+                clarifications:        {}
+                clarification_log:     ""
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+                refine_feedback:       ""
+                clarifying_cycle:      0
+                references_cycle:      0
+                drafting_cycle:        0
+                cycle:                 0
+                brief_path:            ""
+                brief_decision:        {}
+                brief_cycle:           0
+        - target: clarifying
+          effects:
+            # Clear clarifications (analyst-decide bind) so its `once:` re-arms
+            # and re-questions from scratch.
+            - set:
+                clarifications:        {}
+                clarification_log:     ""
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+                refine_feedback:       ""
+                clarifying_cycle:      0
+                references_cycle:      0
+                cycle:                 0
+                brief_path:            ""
+                brief_decision:        {}
+                brief_cycle:           0
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_brief"
+                status:         "abandoned"
+      look:
+        - target: .

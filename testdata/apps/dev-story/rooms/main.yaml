@@ -16,7 +16,7 @@ states:
               items:
                 - { label: "Start a new task",          hint: "jira search" }
                 - { label: "Continue existing task",    hint: "workspace manager" }
-                - { label: "Consult the Oracle",        hint: "general Q&A with Claude" }
+                - { label: "Consult the Agent",        hint: "general Q&A with Claude" }
                 - { label: "Review a teammate's PR",    hint: "code review" }
                 - { label: "Check my inbox",            hint: "notifications, background jobs" }
                 - { label: "Prep for standup",          hint: "daily summary" }
@@ -38,8 +38,8 @@ states:
           effects:
             - set: { prev_state: "main" }
 
-      go_oracle:
-        - target: oracle
+      go_agent:
+        - target: agent
           push_history: false
           effects:
             - set: { prev_state: "main" }

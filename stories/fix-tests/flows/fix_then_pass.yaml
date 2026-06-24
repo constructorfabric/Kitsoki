@@ -1,0 +1,49 @@
+# fix_then_pass — first run red, one fix cycle, re-run green.
+# running_executing (exit 1) -> fixing_executing (needs_decision=false)
+# -> verifying_executing (exit 0) -> done_clean. All background jobs;
+# one advance_clock drains the whole chain.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  test_cmd:   "make test"
+  max_cycles: 3
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 1, ok: false, stdout: "--- FAIL: TestFoo\nFAIL\n" }
+        delay: "20ms"
+      verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\n" }
+        delay: "20ms"
+      write_report:
+        data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-fixed.md" }
+  host.agent.task:
+    by_call:
+      fix:
+        delay: "20ms"
+        data:
+          submitted:
+            summary_title:      "Fix off-by-one in Add()"
+            summary_markdown:   "TestFoo expected 2 but Add() returned 1; corrected the off-by-one."
+            files_changed:      ["internal/foo/foo.go"]
+            fixed_tests:        ["TestFoo"]
+            remaining_failures: []
+            needs_decision:     false
+            confidence:         0.9
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: start }
+    advance_clock: "2s"
+    expect_state: done_clean
+    expect_world:
+      tests_passed: true
+      outcome:      "fixed"
+      cycle:        1
+      report_path:  ".artifacts/fix-tests/report-fixed.md"
+
+expect_no_errors: true

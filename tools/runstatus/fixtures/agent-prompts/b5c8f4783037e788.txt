@@ -1,0 +1,90 @@
+# Reviewing tests & implementation — produce the testing artifact
+
+You are reviewing the implementation of the fix for **TKT-001** —
+*TUI hangs on ESC*.
+
+The proposed fix was:
+
+> ## Bug
+
+When a user presses **ESC while an LLM turn is in flight** (`ModeAwaitingLLM`, spinner active), the keypress is silently discarded. No system menu opens, no transcript hint is shown, and the in-flight turn is not cancelled. The TUI appears completely frozen.
+
+## Root Cause
+
+`routeKey()` in `internal/tui/tui.go:1251` gates the ESC→menu transition on `ModeOnPath | ModeOffPath` only:
+
+```go
+if msg.Type == tea.KeyEsc {
+    if m.mode == ModeOnPath || m.mode == ModeOffPath {
+        m.mode = ModeMenu
+        m.menuSystem.Open()
+        return m, nil
+    }
+}
+```
+
+When `m.mode == ModeAwaitingLLM` the guard is not entered, the key falls through to `m.prompt.Update(msg)` (the `charmbracelet/bubbles/textarea` widget), which has no ESC binding and silently drops it.
+
+Ctrl+C is handled correctly at line 1187 — it calls `m.inFlightCancel()` and returns — but ESC has no equivalent branch for this mode.
+
+## Fix
+
+Add a `ModeAwaitingLLM` case immediately inside the existing ESC block at `tui.go:1252`. The branch should (a) call `m.inFlightCancel()` if non-nil, (b) transition to `ModeMenu`, and (c) call `m.menuSystem.Open()`. This mirrors what Ctrl+C does for cancellation, and what the existing ESC branch does for menu entry:
+
+```go
+if msg.Type == tea.KeyEsc {
+    if m.mode == ModeOnPath || m.mode == ModeOffPath {
+        m.mode = ModeMenu
+        m.menuSystem.Open()
+        return m, nil
+    }
+    // NEW: ESC during an in-flight turn cancels the turn and opens the menu.
+    if m.mode == ModeAwaitingLLM {
+        if m.inFlightCancel != nil {
+            m.inFlightCancel()
+        }
+        m.mode = ModeMenu
+        m.menuSystem.Open()
+        return m, nil
+    }
+}
+```
+
+The comment on the existing guard ("It deliberately does not fire during ModeAwaitingLLM — Ctrl+C cancels the turn first") should be removed or updated, as this constraint is lifted by the fix.
+
+## Files
+
+- `internal/tui/tui.go` — the only change site (lines 1247–1257)
+
+## Verification
+
+The existing reproduction test at `internal/tui/tkt001_esc_repro_test.go` fully covers the fix. After the patch, `TestTKT001_EscSilentlySwallowedDuringInFlight`'s three `assert.*` calls will all fail (proving correct behaviour), while the positive-control test `TestTKT001_ControlEscFromOnPathOpensMenu` must continue to pass.
+
+## Confidence: 0.95
+
+The ESC guard condition is the sole code path involved; the fix is a direct extension of the existing guard pattern. The only uncertainty is how `turnOutcomeMsg` arrives while `ModeMenu` is active — but the menu mode is already exercised by the positive-control test and by normal interactive use, so no new edge case is introduced.
+
+The CI / test run produced:
+
+```
+PASS: 12 tests
+```
+
+
+
+## Constraints
+
+- `status` must be `passed` only if the tests actually ran and the bug
+  reproduction now produces the expected outcome. `blocked` is for
+  unrunnable suites (compile error, missing dependency); `failed` is for
+  ran-but-broken.
+- `tests_added` must list new / modified test files. Reuse existing tests
+  where possible; only add fresh ones if no existing test covers the bug.
+- `blockers` are review-grade objections that must be fixed before the
+  PR can advance.
+
+## Output
+
+Submit an `implement_review_artifact` (see `schemas/testing_artifact.json`).
+The `summary_markdown` should walk the reviewer through tests-added,
+tests-run results, and any blockers in plain prose.

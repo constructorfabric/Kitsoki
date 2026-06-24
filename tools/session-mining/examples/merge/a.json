@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "vocab_version": "2026-05-31",
+  "prompt_version": "1.0",
+  "context": { "languages": ["go"], "domain": "backend-cli", "sessions_analyzed": 4 },
+  "contributor": "salt-aaaa",
+  "patterns": [
+    { "id": "fix-failing-tests", "source": "cataloged", "occurrences": 9, "sessions_seen": 3, "mechanical_fraction": 0.80, "pain": "high", "decision_points": ["fix code vs fix test"], "example_signatures": ["go test -run <Test> → Edit <file> → rerun"] },
+    { "id": "build-compile-fix-loop", "source": "cataloged", "occurrences": 12, "sessions_seen": 4, "mechanical_fraction": 0.88, "pain": "med", "decision_points": ["which fix class"], "example_signatures": ["go build ./... → Edit → rebuild"] },
+    { "id": "ci-log-triage", "source": "novel", "occurrences": 3, "corroboration": 2, "mechanical_fraction": 0.55, "pain": "high", "decision_points": ["which failing job to open first"], "example_signatures": ["fetch CI log → grep failure → locate <file> → fix"] },
+    { "id": "warp-debug-flag", "source": "novel", "occurrences": 1, "corroboration": 1, "mechanical_fraction": 0.7, "pain": "low", "decision_points": [], "example_signatures": ["add --warp flag → run"] }
+  ]
+}

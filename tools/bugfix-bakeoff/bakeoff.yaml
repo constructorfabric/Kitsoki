@@ -1,0 +1,107 @@
+# Bugfix bake-off manifest — kitsoki `bugfix` pipeline vs naive single-prompt,
+# across a harness/model candidate matrix. A 2 (treatment) x 4 (candidate) grid
+# per bug, all from a hermetic baseline = the real fix's PARENT commit.
+#
+# Consumed by: prepare.sh, run_cell.sh, score.py, aggregate.py.
+# Shaped after internal/agenteval Dataset/Matrix. See README.md + SCHEMA.md.
+kind: bugfix_bakeoff
+version: 1
+
+# Where each cell runs. baseline_sha = `<fix_sha>^` (bug present, hermetic).
+# oracle_test = the regression test ADDED by the fix; it is the grader's hidden
+# oracle (NOT placed in the candidate's tree until scoring): RED at baseline,
+# must be GREEN after a real fix. oracle_kind picks the runner.
+bugs:
+  - id: bug1
+    ticket: issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md
+    title: "TUI view templates render BEFORE on_enter binds — first frame shows '(pending)'"
+    severity: P2
+    component: tui
+    fix_sha: 031c8bda
+    baseline_sha: 0b4ac40d
+    oracle_test: internal/orchestrator/render_before_bind_repro_test.go
+    oracle_kind: go            # `go test -run` the added test
+    affected_test_pkgs: [./internal/app/..., ./internal/orchestrator/...]
+  - id: bug2
+    ticket: issues/bugs/2026-05-14T120000Z-glamour-cap-prose-views.md
+    title: "Prose view blocks don't expand past their hand-wrapped width on wide terminals"
+    severity: P3
+    component: tui
+    fix_sha: e0f77582
+    baseline_sha: 2c62f06b
+    oracle_test: internal/tui/repro_glamour_cap_prose_test.go
+    oracle_kind: go
+    affected_test_pkgs: [./internal/tui/..., ./internal/render/...]
+  - id: bug8
+    ticket: issues/bugs/2026-06-03T121407Z-agent-decide-silent-abandon-empty-artifact.md
+    title: "agent.decide with no submit routes to success with an empty artifact instead of failing"
+    severity: P1
+    component: runtime
+    fix_sha: 82734e37
+    baseline_sha: f4f322ea
+    oracle_test: internal/host/agent_decide_empty_artifact_repro_test.go
+    oracle_kind: go
+    affected_test_pkgs: [./internal/host/..., ./internal/mcp/...]
+  - id: bug12
+    ticket: issues/bugs/2026-06-10T141756Z-decide-postcmd-captured-submit-reported-abandoned.md
+    title: "host.agent.decide with validator.post_cmd reports 'abandoned' when the payload WAS captured"
+    severity: P1
+    component: runtime
+    fix_sha: ea2ca55a
+    baseline_sha: 45276b88
+    oracle_test: internal/host/agent_decide_postcmd_captured_abandon_repro_test.go
+    oracle_kind: go
+    affected_test_pkgs: [./internal/host/...]
+  - id: bug14
+    ticket: issues/bugs/2026-06-12T022703Z-web-transport-hides-background-completion-failure.md
+    title: "Web transport doesn't surface a background_completion turn's failure (looks hung)"
+    severity: P2
+    component: web
+    fix_sha: 45276b88
+    baseline_sha: 85ff4917
+    oracle_test: tools/runstatus/tests/unit/run-background-completion.test.ts
+    oracle_kind: vitest        # pnpm --filter runstatus test <file>
+    affected_test_pkgs: [tools/runstatus]
+
+# The harness/model axis — the SAME candidates run under both treatments.
+# Verified against .kitsoki.yaml / .kitsoki.local.yaml + provider CLIs.
+candidates:
+  - key: glm-5.2
+    profile: synthetic-claude
+    model: hf:zai-org/GLM-5.2
+    effort: medium
+    provider: synthetic.new
+    invoker: session         # single-prompt runs via kitsoki session_new
+  - key: opus-4.8
+    profile: claude-native
+    model: opus
+    effort: medium
+    provider: anthropic
+    invoker: claude_p        # single-prompt runs via `claude -p --model opus`
+  - key: sonnet-4.6
+    profile: claude-native
+    model: sonnet
+    effort: medium
+    provider: anthropic
+    invoker: claude_p
+  - key: gpt-5.5
+    profile: codex-native
+    model: gpt-5.5           # add to codex-native models: in .kitsoki.local.yaml
+    effort: medium
+    provider: openai-codex
+    invoker: session
+
+# The structure axis.
+treatments:
+  - kitsoki     # drive stories/bugfix pipeline under the candidate (maker=model)
+  - single      # one multi-stage prompt + up to max_guidance_turns nudges
+
+run:
+  max_guidance_turns: 5      # `single` treatment: oracle-gated feedback turns
+  worktree_root: .worktrees  # one worktree per cell: bakeoff-<bug>-<candidate>-<treatment>
+  story: stories/bugfix/app.yaml
+
+# Pass/fail bar for the report (agenteval AdherenceBar shape).
+adherence_bar:
+  min_pass_rate: 1.0         # outcome: oracle must pass for a cell to "pass"
+  max_avg_cost_usd: 0        # informational; cost is reported, not gated

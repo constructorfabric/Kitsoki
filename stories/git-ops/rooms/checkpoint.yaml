@@ -1,0 +1,136 @@
+# checkpoint — save a restorable snapshot of the current branch state.
+#
+# WHY: in a multi-step workflow you want to "go back to a certain step and try
+# again, retaining the previous state somewhere safe." A checkpoint parks BOTH
+# committed HEAD and any dirty TRACKED working tree under a namespaced ref —
+#   refs/kitsoki/checkpoints/<slug>        → the snapshot (a commit object)
+#   refs/kitsoki/checkpoints/<slug>.base   → HEAD at checkpoint time
+# — WITHOUT touching the working tree or the stash stack. `git stash create`
+# returns a commit object for the dirty tree without pushing onto the single
+# stash stack (which is why two parallel agents stashing on a shared worktree
+# clobber each other — checkpoints don't). Restore (rooms/restore.yaml) resets
+# back to it.
+#
+# SINGLE-SHOT: the save runs once per entry (once: keyed on checkpoint_sha) so a
+# `look` refresh never re-snapshots. JSON envelope + EXIT trap mirror
+# integrate.yaml so the room never stalls with a blank error.
+#
+# LIMITATION: `git stash create` captures tracked modifications only, not
+# untracked files. Commit or `git add` new files before checkpointing if you need
+# them preserved.
+#
+#   checkpoint_outcome: "saved" | "error"
+#   checkpoint_ref:     the ref written (refs/kitsoki/checkpoints/<slug>)
+#   checkpoint_sha:     the snapshot commit
+#   checkpoint_dirty:   true if a dirty tracked tree was captured
+
+states:
+
+  checkpoint:
+    description: "Save a restorable checkpoint of the current branch state."
+    relevant_world: [checkpoint_label, checkpoint_ref, checkpoint_sha,
+                     checkpoint_dirty, checkpoint_outcome, checkpoint_list,
+                     current_branch, on_integration]
+    view:
+      - kv:
+          pairs:
+            "Branch":     '{{ world.current_branch|default:"(unknown)" }}'
+            "Checkpoint": '{{ world.checkpoint_label|default:"(branch name)" }}'
+      - heading: "Checkpoint saved"
+        when: "world.checkpoint_outcome == 'saved'"
+      - prose: "Saved {{ world.checkpoint_ref }} at {{ world.checkpoint_sha }}{% if world.checkpoint_dirty %} (including dirty tracked changes){% else %} (clean tree){% endif %}. Restore it later with restore label={{ world.checkpoint_label }}."
+        when: "world.checkpoint_outcome == 'saved'"
+      - prose: "Checkpoint failed: {{ world.last_error }}"
+        when: "world.checkpoint_outcome == 'error'"
+      - prose: "Existing checkpoints: {{ world.checkpoint_list.raw|default:'(none)' }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "restore label=…"
+              hint:  "restore the branch to a saved checkpoint"
+              intent: restore
+            - label: "back"
+              hint:  "return to the hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      # Save the checkpoint once per entry. once: keyed on checkpoint_sha so a
+      # `look` re-render never re-snapshots. The label is passed as $1 (a verbatim
+      # positional param to bash -c), never interpolated into the script text.
+      - invoke: host.run
+        once: true
+        id: checkpoint_save
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              EMITTED=0
+              emit() { jq -n "$@"; EMITTED=1; exit 0; }
+              trap 'rc=$?; if [ "$EMITTED" != "1" ]; then jq -n --arg rc "$rc" "{checkpoint_outcome:\"error\",checkpoint_ref:\"\",checkpoint_label:\"\",checkpoint_sha:\"\",checkpoint_dirty:false,last_error:(\"checkpoint aborted (exit \"+\$rc+\")\")}"; fi; exit 0' EXIT
+              LABEL="$1"
+              BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+              [ -z "$LABEL" ] && LABEL="$BRANCH"
+              # ref-safe slug: collapse runs of non-[A-Za-z0-9._/-] to '-', then
+              # squeeze/trim slashes so the ref path is well-formed.
+              SLUG=$(printf '%s' "$LABEL" | tr -c 'A-Za-z0-9._/-' '-' | sed 's#//*#/#g; s#^[/-]*##; s#[/-]*$##')
+              [ -z "$SLUG" ] && SLUG="$BRANCH"
+              REF="refs/kitsoki/checkpoints/$SLUG"
+              HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+              [ -z "$HEAD_SHA" ] && emit '{checkpoint_outcome:"error",checkpoint_ref:"",checkpoint_label:"",checkpoint_sha:"",checkpoint_dirty:false,last_error:"no commits yet — nothing to checkpoint"}'
+              # Capture dirty TRACKED state as a commit object WITHOUT touching the
+              # working tree or the stash stack. Empty string when the tree is clean.
+              WIP=$(git stash create 2>/dev/null || echo "")
+              SNAP="${WIP:-$HEAD_SHA}"
+              git update-ref "$REF" "$SNAP"
+              git update-ref "${REF}.base" "$HEAD_SHA"
+              DIRTY=false; [ -n "$WIP" ] && DIRTY=true
+              emit --arg ref "$REF" --arg slug "$SLUG" --arg sha "$SNAP" --argjson dirty "$DIRTY" \
+                '{checkpoint_outcome:"saved",checkpoint_ref:$ref,checkpoint_label:$slug,checkpoint_sha:$sha,checkpoint_dirty:$dirty,last_error:""}'
+            - "kitsoki-checkpoint"
+            - "{{ world.checkpoint_label }}"
+          cwd: "{{ world.working_dir }}"
+        bind:
+          checkpoint_outcome: "stdout_json.checkpoint_outcome"
+          checkpoint_ref:     "stdout_json.checkpoint_ref"
+          checkpoint_label:   "stdout_json.checkpoint_label"
+          checkpoint_sha:     "stdout_json.checkpoint_sha"
+          checkpoint_dirty:   "stdout_json.checkpoint_dirty"
+          last_error:         "stdout_json.last_error"
+        on_error: checkpoint
+      # Refresh the list of existing checkpoints for the view (every entry).
+      - invoke: host.run
+        id: checkpoint_list
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              LIST=$(git for-each-ref --format='%(refname)' refs/kitsoki/checkpoints 2>/dev/null \
+                | grep -v '\.base$' \
+                | sed 's#refs/kitsoki/checkpoints/##' \
+                | tr '\n' ' ')
+              jq -n --arg list "$LIST" '{raw:$list}'
+          cwd: "{{ world.working_dir }}"
+        bind:
+          checkpoint_list: "stdout_json"
+        on_error: checkpoint
+    on:
+      restore:
+        - target: restore
+          effects:
+            - set:
+                restore_label:   "{{ slots.label }}"
+                restore_outcome: ""
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

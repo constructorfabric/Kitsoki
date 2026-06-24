@@ -167,7 +167,7 @@ states:
           cmd:    "true # scouting"
           # Prompt file the importer may override via overrides.prompts:
           # to swap the scout-brief prose. host.run ignores the prompt
-          # arg; LLM-shaped handlers (override binding to host.oracle.ask)
+          # arg; LLM-shaped handlers (override binding to host.agent.ask)
           # would consume it.
           prompt: "prompts/scout_brief.md"
     on:

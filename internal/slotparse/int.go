@@ -6,6 +6,15 @@ import (
 	"kitsoki/internal/lex"
 )
 
+// maxSpelledWindow bounds how many consecutive alpha tokens the
+// spelled-cardinal scan will fold into one number ("two hundred fifty"
+// is three). The cap is an arbitrary upper bound that rejects
+// word-problem-length inputs: a legitimate spelled cardinal in this
+// dialect is a handful of words, so a 16-token run is far more likely
+// to be prose than a number. [ParseMoney]'s spelled+unit scan reuses
+// the same window.
+const maxSpelledWindow = 16
+
 // ParseInt accepts the first int-shaped run in tokens. It tries two
 // strategies in order:
 //
@@ -56,8 +65,8 @@ func ParseInt(tokens []lex.Token) Result {
 	// Strategy 2 — spelled cardinal. Walk every potential starting
 	// position; at each, grow a pure-alpha window forward and find
 	// the longest SpelledNumber-accepting prefix. The greedy growth
-	// is bounded to 16 tokens — spelled cardinals beyond that mean
-	// the user pasted a word problem at us. We take the FIRST start
+	// is bounded to maxSpelledWindow tokens — spelled cardinals
+	// beyond that mean the user pasted a word problem at us. We take the FIRST start
 	// position that produces an accepting run so that "buy six oxen"
 	// matches "six" without scanning forward past it.
 	for start := 0; start < len(tokens); start++ {
@@ -77,7 +86,7 @@ func ParseInt(tokens []lex.Token) Result {
 			continue
 		}
 		end := start
-		for end < len(tokens) && end-start < 16 && isAlphaSurface(tokens[end].Surface) {
+		for end < len(tokens) && end-start < maxSpelledWindow && isAlphaSurface(tokens[end].Surface) {
 			end++
 		}
 		for hi := end; hi > start; hi-- {

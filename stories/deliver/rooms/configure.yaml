@@ -1,0 +1,39 @@
+# configure — entry point. Captures epic_path and routes into decompose.
+#
+# The user types `start epic_path=<path>` to provide the epic or proposal
+# markdown. The decomposition_path is auto-set to .artifacts/deliver/
+# decomposition.yaml (overridable via initial_world for tests/rewarp).
+
+states:
+
+  configure:
+    description: "Configure the epic to deliver — provide the path to the epic or proposal."
+    relevant_world: [epic_path, decomposition_path]
+    view:
+      - prose: "Deliver an epic end-to-end: decompose it into briefs → lint → fan ship-it over every brief."
+      - kv:
+          pairs:
+            Epic:          '{{ world.epic_path|default:"(not set)" }}'
+            Decomposition: '{{ world.decomposition_path|default:"(auto: .artifacts/deliver/decomposition.yaml)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start epic_path=<path>"
+              hint:  "set the epic path and begin decomposition"
+              intent: start
+            - label: "look"
+              intent: look
+    on:
+      start:
+        - when: "slots.epic_path == '' && world.epic_path == ''"
+          target: .
+          effects:
+            - say: "Please provide epic_path=<path>."
+        - target: decompose
+          effects:
+            - set:
+                epic_path:          "{{ slots.epic_path != '' ? slots.epic_path : world.epic_path }}"
+                decomposition_path: "{{ world.decomposition_path != '' ? world.decomposition_path : '.artifacts/deliver/decomposition.yaml' }}"
+      look:
+        - target: .

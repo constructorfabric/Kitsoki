@@ -8,10 +8,19 @@ import "os"
 // injection step only fills entries that aren't already present.
 //
 // Keys follow the `group.verb` convention: `story.{edit,ask,bug}` and
-// `kitsoki.{edit,ask,bug}`. The pre-grouping single-token `bug` and
-// `self` keys were removed without aliases. Triggers stay scoped to
-// their group, so `story.bug` Trigger=`bug` and `kitsoki.bug`
-// Trigger=`bug` coexist.
+// `kitsoki.{edit,ask,bug}`. Triggers stay scoped to their group, so
+// `story.bug` Trigger=`bug` and `kitsoki.bug` Trigger=`bug` coexist.
+//
+// The keys are deliberately grouped rather than flat: the TUI resolver
+// (`resolveMetaName` → `metaVerbKey`) lets a bare `/meta <verb>` —
+// `/meta bug`, `/meta ask`, `/meta edit` — resolve to the matching verb
+// while PREFERRING the `story` group, so the one-token form targets the
+// running story. A flat, un-namespaced builtin key (`bug`) could not do
+// this safely: `validateMetaModes` forbids an un-namespaced meta trigger
+// from colliding with a story's intent of the same name, and stories
+// routinely declare `ask`/`bug` intents. Grouping is what keeps the verb
+// and the intent namespaces independent. The legacy single-token `self`
+// key was removed (use `/meta kitsoki edit`).
 //
 // Each group has exactly one mode flagged `Default: true` — the verb
 // `/meta <group>` (no second token) resolves to. `edit` is the default
@@ -27,13 +36,15 @@ import "os"
 // `issues/bugs/`. No special-case needed.
 //
 // `kitsoki.*` is only injected when $KITSOKI_REPO is set, because the
-// engineer / explainer agents need an unambiguous cwd. Without the env
-// var, failing app loads everywhere (tests, CI, anyone running kitsoki
-// on a release binary without dev workspace) would be a worse outcome
-// than silently dropping the modes. Users who want them set the env
-// var; apps that want them without the env var declare them explicitly.
-// kitsoki.bug could in principle work via --target-dir, but for
-// symmetry and discoverability we gate the whole group together.
+// engineer / explainer agents need an unambiguous cwd. Without it,
+// failing app loads everywhere (tests, CI, anyone running kitsoki on a
+// release binary without a dev workspace) would be a worse outcome than
+// silently dropping the modes. The operator rarely needs to set the env
+// var by hand, though: the root command resolves the repo via
+// kitrepo.Resolve (which auto-detects a dev checkout and remembers it
+// under ~/.kitsoki/repo) and exports $KITSOKI_REPO before app load, so
+// after the first run from the source tree these modes light up
+// everywhere. Apps that want them regardless declare them explicitly.
 func builtinMetaModes() map[string]*MetaModeDef {
 	onpath := &MetaReturnDef{Intent: "onpath"}
 	roTools := []string{"Read", "Glob", "Grep"}
@@ -99,6 +110,13 @@ func builtinMetaModes() map[string]*MetaModeDef {
 	}
 	return out
 }
+
+// InjectBuiltinMetaModes is the exported entrypoint to injectBuiltinMetaModes,
+// for callers outside the loader that need the builtin meta_modes on a
+// synthetic AppDef the loader never produced — specifically `kitsoki web`'s
+// home-screen "self" meta controller, which serves the cross-app `kitsoki.*`
+// modes without a running story behind them. Same KITSOKI_REPO gating applies.
+func InjectBuiltinMetaModes(def *AppDef) { injectBuiltinMetaModes(def) }
 
 // injectBuiltinMetaModes adds any builtin meta mode whose name isn't
 // already present in def.MetaModes. Called between merge and validate

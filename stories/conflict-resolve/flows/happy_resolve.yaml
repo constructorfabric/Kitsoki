@@ -1,0 +1,36 @@
+# happy_resolve — agent resolves the conflict, continue + build green → @exit:resolved.
+# No LLM: host.run (gather / continue / build) and host.agent.task are stubbed.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  current_branch:     "fix/x"
+  integration_branch: "main"
+  working_dir:        "."
+  auto_escalate:      true
+
+host_handlers:
+  host.run:
+    by_call:
+      gather_conflict_files:
+        data: { stdout_json: { conflict_files: "foo.go bar.go", gosum_only: false } }
+      rebase_continue_cmd:
+        data: { stdout_json: { output: "Successfully rebased and updated.", ok: true, new_conflict: false } }
+      build_check_after_rebase:
+        data: { stdout: "ok", ok: true }
+  host.agent.task:
+    data:
+      submitted:
+        resolved:           true
+        confidence:         0.92
+        resolution_summary: "Took main as base, re-applied the incoming additive hunks."
+        unresolvable_files: []
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__resolved
+    expect_world:
+      rebase_done: true
+
+expect_no_errors: true

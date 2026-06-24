@@ -1,20 +1,3 @@
-// Package blocks owns the per-block string renderers for the single-pane
-// chat TUI.
-//
-// Every block kind in the chat transcript — user turn, routing status,
-// agent turn, system notice, menu, inbox, routing trace, footer — has a
-// renderer here. The transcript model is a thin caller that stitches
-// these strings together; the preview CLI (kitsoki ui preview) calls the
-// same renderers against static fixtures so design changes are visible
-// without spinning up the state machine.
-//
-// Each renderer takes a Renderer (width, theme, colour-profile knobs)
-// and returns a string. No Bubble Tea, no viewport, no orchestrator —
-// the package can be linked from cobra commands and unit tests cheaply.
-//
-// Themes own the lipgloss palette. Switching themes (default →
-// meta-blue → meta-amber → off-path) swaps the colours every block
-// renderer reaches for; the layout stays put.
 package blocks
 
 import (

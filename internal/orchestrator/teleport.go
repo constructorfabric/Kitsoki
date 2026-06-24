@@ -14,7 +14,7 @@ import (
 
 // Teleport jumps the session to the given target state with the slot bag
 // restored. Stackless: does not push the current state onto the room
-// history stack — used by inbox notifications and the Oracle Room banner,
+// history stack — used by inbox notifications and the Agent Room banner,
 // where the source room remains the conceptual "where the user came from"
 // for any subsequent back-pop. Returns the new TurnOutcome with
 // re-rendered view and updated allowed intents.
@@ -121,7 +121,7 @@ func (o *Orchestrator) Teleport(ctx context.Context, sid app.SessionID, target i
 	// Pre-world is journey.World (before slot merge); post-world is the merged w.
 	tpJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), events,
 		journey.World, w, view, target.State, "")
-	if appendErr := o.store.AppendEventsAndJournal(sid, events, tpJEntries); appendErr != nil {
+	if appendErr := o.appendEventsAndJournal(sid, events, tpJEntries); appendErr != nil {
 		return nil, fmt.Errorf("orchestrator.Teleport: append events: %w", appendErr)
 	}
 

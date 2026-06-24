@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fake-oneshot-mcp.sh — emulates `claude -p` for host.oracle.ask_with_mcp tests.
+# fake-oneshot-mcp.sh — emulates `claude -p` for host.agent.ask_with_mcp tests.
 #
 # Inspects argv for --mcp-config and --output-format. Echoes back a JSON object
 # containing both the stdin text and the path of any --mcp-config file it
@@ -14,11 +14,14 @@ set -uo pipefail
 # retry-loop tests need to see --resume / --session-id.
 orig_argv=("$@")
 
-# When KITSOKI_FAKE_ARGV_DUMP is set, append the argv (space-joined +
-# newline) to that path. Tests use this to assert which session flag
-# (--session-id vs --resume) the host passed on a given call.
+# When KITSOKI_FAKE_ARGV_DUMP is set, append the argv (space-joined) as ONE
+# line per invocation to that path. Tests use this to assert which session flag
+# (--session-id vs --resume) the host passed on a given call. Newlines/tabs
+# inside an arg value (the composed --system-prompt is multi-line) are collapsed
+# to spaces so each invocation stays a single line for the test's line split.
 if [ -n "${KITSOKI_FAKE_ARGV_DUMP:-}" ]; then
-  printf '%s\n' "${orig_argv[*]}" >> "$KITSOKI_FAKE_ARGV_DUMP"
+  printf '%s' "${orig_argv[*]}" | tr '\n\t' '  ' >> "$KITSOKI_FAKE_ARGV_DUMP"
+  printf '\n' >> "$KITSOKI_FAKE_ARGV_DUMP"
 fi
 
 mcp_config=""
@@ -54,7 +57,7 @@ fi
 # If the prompt contains the sentinel "SIMULATE_SUBMIT={...}" the fake
 # binary writes that JSON to the validator's --output path, simulating
 # what claude would do when it calls the validator's submit() tool.
-# This exercises host.oracle.ask_with_mcp's read-back of Result.Data["submitted"]
+# This exercises host.agent.ask_with_mcp's read-back of Result.Data["submitted"]
 # without needing a real MCP roundtrip.
 sentinel="$(printf '%s' "$stdin" | grep -o 'SIMULATE_SUBMIT=.*' || true)"
 if [ -n "$sentinel" ] && [ -n "$mcp_body" ]; then

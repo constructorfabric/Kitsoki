@@ -1,0 +1,213 @@
+# cleanup — remove a worktree (and optionally its branch) after merge.
+#
+# Operand-as-slot: remove_all / remove_worktree take their target from the
+# `worktree` slot (a path under .worktrees/, or a branch name), NOT ambient
+# world.worktree_path. The branch to delete is resolved from the worktree
+# itself (git -C <wt> rev-parse --abbrev-ref HEAD), never from the ambient
+# world.current_branch — that ambient leak is ux-review #2.
+#
+# No swallowed failures: the remove scripts do NOT use `|| true` on the
+# load-bearing git commands. `set -e` trips on a failing remove, the real
+# exit + stderr bind to last_op_ok / last_op_output, and last_op_outcome
+# only flips to "cleaned" behind `when: world.last_op_ok == true`. A no-op
+# remove can therefore never report a false "cleaned" (the smoking gun,
+# git-ops-smoothing.md §Why).
+#
+# Force / confirm: force=true uses `git worktree remove --force` + `git
+# branch -D`. Without force, an unmerged branch fails the safe `git branch
+# -d` and routes to a confirm interstitial (the confirm_add_all pattern).
+
+states:
+
+  cleanup:
+    description: "Remove a linked worktree and optionally its branch."
+    relevant_world: [worktree_branch_name, working_dir, worktree_path, worktree, last_op_outcome, last_op_ok, last_op_output]
+    view:
+      - prose: "Remove a worktree (and optionally its branch). Name the target with `remove_all worktree=<path|branch>` or omit it to act on the ambient worktree."
+      - kv:
+          pairs:
+            "Target worktree": '{{ world.worktree|default:world.worktree_path|default:"(ambient / current dir)" }}'
+            Branch:            '{{ world.worktree_branch_name|default:"(resolved from worktree)" }}'
+      - heading: "Branch not fully merged — confirm forced delete"
+        when: "world.last_op_outcome == 'unmerged_branch'"
+      - prose: "The worktree was removed but its branch is not fully merged, so `git branch -d` refused. Use `force=true` (→ `git branch -D`) to delete it anyway, or `back` to keep it."
+        when: "world.last_op_outcome == 'unmerged_branch'"
+      - prose: "Operation failed: {{ world.last_op_output }}"
+        when: "world.last_op_ok == false"
+      - prose: "Cleanup complete: {{ world.last_op_output }}"
+        when: "world.last_op_outcome == 'cleaned'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "remove_all worktree=<path|branch> [force=<bool>]"
+              hint:  "git worktree remove + git branch -d (or -D with force) + prune"
+              intent: remove_all
+              param:
+                slot:        worktree
+                type:        string
+                placeholder: ".worktrees/feat-x"
+                required:    false
+            - label: "remove_worktree worktree=<path> [force=<bool>]"
+              hint:  "remove only the worktree, keep the branch"
+              intent: remove_worktree
+              param:
+                slot:        worktree
+                type:        string
+                placeholder: ".worktrees/feat-x"
+                required:    false
+            - label: "force delete branch"
+              hint:  "git branch -D the unmerged branch (after the -d refusal)"
+              intent: confirm_force_delete
+              when:  "world.last_op_outcome == 'unmerged_branch'"
+            - label: "back"
+              hint:  "return to hub without removing anything"
+              intent: back
+            - label: "look"
+              intent: look
+    # Post-bind routing: only a "cleaned" outcome leaves for main_ops. An
+    # unmerged_branch outcome (worktree gone, branch refused) STAYS in cleanup
+    # so the force-delete interstitial renders; a hard failure stays so the
+    # error view renders. The guards are FALSE under default world.
+    on_enter:
+      - when: "world.last_op_outcome == 'cleaned'"
+        emit_intent: cleanup_done
+    on:
+      cleanup_done:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      remove_all:
+        # Carry the named operand (slot wins; falls back to ambient
+        # worktree_path, then working_dir) into world.worktree so the
+        # script and the view both read one resolved target. Self-target so
+        # the post-bind emit decides whether to leave (cleaned) or stay
+        # (unmerged_branch interstitial / error view).
+        - target: cleanup
+          effects:
+            - set:
+                worktree: '{{ slots.worktree ?? slots.path ?? world.worktree_path ?? world.working_dir }}'
+                force_cleanup: "{{ slots.force }}"
+            - invoke: host.run
+              id: remove_wt_and_br
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    set -e
+                    export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+                    WT="{{ world.worktree }}"
+                    FORCE="{{ world.force_cleanup }}"
+                    if [ -z "$WT" ]; then
+                      echo "no worktree target named (slot omitted, no ambient worktree)" >&2
+                      exit 2
+                    fi
+                    # Resolve the branch from the worktree ITSELF — never the
+                    # ambient world.current_branch (ux-review #2 branch leak).
+                    BR=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+                    if [ "$FORCE" = "true" ]; then
+                      git worktree remove --force "$WT"
+                    else
+                      git worktree remove "$WT"
+                    fi
+                    git worktree prune
+                    BR_STATE="kept"
+                    if [ -n "$BR" ] && [ "$BR" != "HEAD" ]; then
+                      if [ "$FORCE" = "true" ]; then
+                        git branch -D "$BR"
+                        BR_STATE="force-deleted"
+                      else
+                        # Safe delete; capture the refusal without tripping set -e
+                        DEL_EXIT=0
+                        DEL_OUT=$(git branch -d "$BR" 2>&1) || DEL_EXIT=$?
+                        if [ "$DEL_EXIT" -ne 0 ]; then
+                          jq -n --arg wt "$WT" --arg br "$BR" --arg out "$DEL_OUT" \
+                            '{outcome:"unmerged_branch",last_op_ok:true,last_op_output:("Removed worktree "+$wt+"; branch "+$br+" not fully merged: "+$out)}'
+                          exit 0
+                        fi
+                        BR_STATE="deleted"
+                      fi
+                    fi
+                    jq -n --arg wt "$WT" --arg br "$BR" --arg st "$BR_STATE" \
+                      '{outcome:"cleaned",last_op_ok:true,last_op_output:("Removed worktree "+$wt+"; branch "+$br+" "+$st)}'
+                cwd: "{{ world.main_worktree_path }}"
+              bind:
+                last_op_outcome: "stdout_json.outcome"
+                last_op_output:  "stdout_json.last_op_output"
+                last_op_ok:      ok
+              on_error: cleanup
+      remove_worktree:
+        - target: cleanup
+          effects:
+            - set:
+                worktree: '{{ slots.worktree ?? slots.path ?? world.worktree_path ?? world.working_dir }}'
+                force_cleanup: "{{ slots.force }}"
+            - invoke: host.run
+              id: remove_wt_only
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    set -e
+                    export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+                    WT="{{ world.worktree }}"
+                    FORCE="{{ world.force_cleanup }}"
+                    if [ -z "$WT" ]; then
+                      echo "no worktree target named (slot omitted, no ambient worktree)" >&2
+                      exit 2
+                    fi
+                    if [ "$FORCE" = "true" ]; then
+                      git worktree remove --force "$WT"
+                    else
+                      git worktree remove "$WT"
+                    fi
+                    git worktree prune
+                    jq -n --arg wt "$WT" \
+                      '{outcome:"cleaned",last_op_ok:true,last_op_output:("Removed worktree "+$wt+" (branch kept)")}'
+                cwd: "{{ world.main_worktree_path }}"
+              bind:
+                last_op_outcome: "stdout_json.outcome"
+                last_op_output:  "stdout_json.last_op_output"
+                last_op_ok:      ok
+              on_error: cleanup
+      confirm_force_delete:
+        # The unmerged-branch interstitial confirm: re-run remove on the
+        # resolved worktree's branch with -D. The worktree is already gone,
+        # so just force-delete the branch.
+        - when: "world.last_op_outcome == 'unmerged_branch'"
+          target: cleanup
+          effects:
+            - invoke: host.run
+              id: force_delete_branch
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    set -e
+                    export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+                    WT="{{ world.worktree }}"
+                    # The worktree is gone; recover the branch name from the
+                    # last_op_output message tail (… branch <BR> not fully merged).
+                    BR=$(printf '%s' "{{ world.last_op_output }}" | sed -n 's/.*branch \([^ ]*\) not fully merged.*/\1/p')
+                    if [ -z "$BR" ]; then
+                      echo "could not resolve branch to force-delete" >&2
+                      exit 2
+                    fi
+                    git branch -D "$BR"
+                    jq -n --arg br "$BR" \
+                      '{outcome:"cleaned",last_op_ok:true,last_op_output:("Force-deleted unmerged branch "+$br)}'
+                cwd: "{{ world.main_worktree_path }}"
+              bind:
+                last_op_outcome: "stdout_json.outcome"
+                last_op_output:  "stdout_json.last_op_output"
+                last_op_ok:      ok
+              on_error: cleanup
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

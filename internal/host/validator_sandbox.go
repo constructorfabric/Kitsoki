@@ -1,5 +1,5 @@
-// Package host — read-only subprocess sandbox for host.oracle.decide /
-// host.oracle.extract validators (oracle-split proposal §2.2).
+// Package host — read-only subprocess sandbox for host.agent.decide /
+// host.agent.extract validators.
 //
 // ValidatorSandbox runs a subprocess in a best-effort read-only environment so
 // a validator that attempts to mutate state outside /tmp fails with EACCES
@@ -22,7 +22,7 @@
 // Windows: write isolation is not supported in Phase 1. Callers must set
 // UnsafeNoSandbox: true in ValidatorSandboxOptions or the run returns an error.
 // The loader emits a warn-line when an app is loaded on Windows and a validator
-// is declared without this opt-out (oracle-split proposal D2).
+// is declared without this opt-out (decision D2: Windows requires explicit opt-out).
 //
 // All platforms: the subprocess inherits a curated environment (no HOME,
 // HTTP_PROXY set to an invalid value) and runs with its cwd set to the
@@ -52,6 +52,13 @@ type ValidatorSandboxOptions struct {
 	// ScratchDir is the writable working directory for the subprocess. When
 	// empty, a fresh TempDir is created and cleaned up after the run.
 	ScratchDir string
+	// Cwd, when non-empty, is the working directory the subprocess runs in
+	// (cmd.Dir). When empty the subprocess runs in ScratchDir. This lets a
+	// verifier READ its import root (e.g. tools/loopy, so `python3 -m bugfix`
+	// resolves) while the macOS/Linux write-sandbox profile stays scoped to
+	// ScratchDir — the process may read Cwd but still cannot write outside
+	// scratch.
+	Cwd string
 	// UnsafeNoSandbox, when true, skips sandbox setup and runs the subprocess
 	// directly. Required on Windows (no sandbox support in Phase 1). The
 	// loader emits a warn-line when this is absent on Windows apps.
@@ -97,12 +104,19 @@ func RunValidatorSandboxed(ctx context.Context, opts ValidatorSandboxOptions) (V
 		defer os.RemoveAll(scratchDir)
 	}
 
+	// UnsafeNoSandbox is honoured uniformly on EVERY platform — run the
+	// subprocess directly with no sandbox setup (its documented contract).
+	// Checked before the per-OS switch so macOS/Linux don't fall through to
+	// their sandbox paths (the darwin branch previously ignored the flag and
+	// always invoked sandbox-exec, so an opt-out validator still hit the
+	// sandbox — and failed where sandbox-exec is unavailable).
+	if opts.UnsafeNoSandbox {
+		return runUnsandboxed(ctx, opts, scratchDir)
+	}
+
 	switch runtime.GOOS {
 	case "windows":
-		if !opts.UnsafeNoSandbox {
-			return ValidatorResult{}, fmt.Errorf("validator_sandbox: Windows does not support sandbox isolation in Phase 1; set unsafe_validator_no_sandbox: true on the validator declaration to opt out (oracle-split proposal D2)")
-		}
-		return runUnsandboxed(ctx, opts, scratchDir)
+		return ValidatorResult{}, fmt.Errorf("validator_sandbox: Windows does not support sandbox isolation in Phase 1; set unsafe_validator_no_sandbox: true on the validator declaration to opt out (decision D2)")
 	case "darwin":
 		return runMacOSSandbox(ctx, opts, scratchDir)
 	default:
@@ -161,7 +175,7 @@ func tryLinuxUnshare(ctx context.Context, opts ValidatorSandboxOptions, scratchD
 	// -n: new network namespace (no network access for the subprocess tree)
 	cmdArgs := append([]string{"-rn", opts.Cmd}, opts.Args...)
 	cmd := exec.CommandContext(ctx, unshare, cmdArgs...)
-	cmd.Dir = scratchDir
+	cmd.Dir = sandboxCwd(opts, scratchDir)
 	cmd.Env = buildSandboxEnv(opts.Env, scratchDir)
 	if opts.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opts.Stdin)
@@ -214,7 +228,7 @@ func runMacOSSandbox(ctx context.Context, opts ValidatorSandboxOptions, scratchD
 
 	execArgs := append([]string{"-f", profileFile.Name(), opts.Cmd}, opts.Args...)
 	cmd := exec.CommandContext(ctx, sandboxExec, execArgs...)
-	cmd.Dir = scratchDir
+	cmd.Dir = sandboxCwd(opts, scratchDir)
 	cmd.Env = buildSandboxEnv(opts.Env, scratchDir)
 	if opts.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opts.Stdin)
@@ -226,7 +240,7 @@ func runMacOSSandbox(ctx context.Context, opts ValidatorSandboxOptions, scratchD
 // but no OS-level isolation. Used on Windows and as a fallback.
 func runUnsandboxed(ctx context.Context, opts ValidatorSandboxOptions, scratchDir string) (ValidatorResult, error) {
 	cmd := exec.CommandContext(ctx, opts.Cmd, opts.Args...)
-	cmd.Dir = scratchDir
+	cmd.Dir = sandboxCwd(opts, scratchDir)
 	cmd.Env = buildSandboxEnv(opts.Env, scratchDir)
 	if opts.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opts.Stdin)
@@ -256,6 +270,18 @@ func runAndCapture(ctx context.Context, cmd *exec.Cmd) (ValidatorResult, error) 
 		return ValidatorResult{}, fmt.Errorf("validator_sandbox: exec: %w", runErr)
 	}
 	return res, nil
+}
+
+// sandboxCwd selects the subprocess working directory: opts.Cwd when the caller
+// declared one (e.g. the verifier's import root, tools/loopy), falling back to
+// scratchDir otherwise. The write-sandbox profile remains scoped to scratchDir
+// regardless, so a process pointed at a read-only Cwd may READ that tree but
+// still cannot WRITE outside scratch.
+func sandboxCwd(opts ValidatorSandboxOptions, scratchDir string) string {
+	if strings.TrimSpace(opts.Cwd) != "" {
+		return opts.Cwd
+	}
+	return scratchDir
 }
 
 // buildSandboxEnv constructs the subprocess environment: start from a minimal

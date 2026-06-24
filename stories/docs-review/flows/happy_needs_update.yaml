@@ -1,0 +1,30 @@
+# happy_needs_update — the agent says docs are stale. Walks
+# idle → reviewing (auto-fires `done` after the three host calls) →
+# reviewed (auto-fires `fix_docs` because decision==needs_update) →
+# fixing (docs_writer applies edits, then artifacts_dir persists the
+# fix artifact, then emit_intent fix_done) → fixed → @exit:done.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+
+host_cassette: cassettes/needs_update.cassette.yaml
+
+turns:
+  # start → reviewing → reviewed → fixing → fixed in a single turn.
+  # Every emit_intent fires post-bind, so the room cascade collapses.
+  - intent: { name: start, slots: {} }
+    expect_state: fixed
+    expect_world:
+      commit_sha:       "deadbeefcafefeed"
+      artifact_path:    "/tmp/.artifacts/docs-review-deadbeefcafefeed.md"
+      verdict_decision: "needs_update"
+      fix_summary:      "Patched docs/hosts.md by appending a host.bar row to the registry table at lines 80-92."
+
+  # quit cleanly exits.
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__done
+
+expect_terminal: true
+expect_no_errors: true

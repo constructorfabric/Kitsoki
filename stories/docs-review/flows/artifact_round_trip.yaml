@@ -1,0 +1,105 @@
+# artifact_round_trip — exercises the FULL bind-to-disk path that
+# none of the other fixtures cover. Stubs host.run + host.agent.decide
+# inline (via host_handlers), but DOES NOT stub host.artifacts_dir so
+# the real handler runs and writes a file to KITSOKI_ARTIFACTS_ROOT.
+#
+# Catches the silent-failure class where:
+#   - agent.decide returns ok with Data["submitted"] = full verdict
+#   - bind: verdict: submitted is supposed to copy that map into world
+#   - body: "{{ world.verdict }}" templates the map
+#   - bodyArg in artifacts_dir pretty-prints to JSON
+# If ANY step in that chain drops or stringifies the verdict (an empty
+# map, a `<map[...]interface{}>` go-stringification, a missing bind),
+# the artifact file content will not contain "needs_update" and the
+# expect_files content_matches regex will fail.
+#
+# This is the regression test for the live bug where the agent
+# submitted successfully but the artifact came out `{}`.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+
+# Trigger RegisterBuiltins so host.artifacts_dir is wired to its real
+# handler. The runner only registers builtins when host_bindings is
+# non-empty (see buildOrchestratorRig in internal/testrunner/flows.go);
+# we rebind artifacts_dir to itself as a no-op trigger.
+host_bindings:
+  host.artifacts_dir: host.artifacts_dir
+
+# Inline stubs for hosts we don't want to run live. host.artifacts_dir
+# is intentionally absent so the real handler runs against the temp
+# $KITSOKI_ARTIFACTS_ROOT set by the wrapping Go test.
+host_handlers:
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: |
+        {"sha":"abc1234","commit_count":"2","recent_log":"abc1234 sub","recent_changes":"","working_tree_diff":""}
+      stdout_json:
+        sha: "abc1234"
+        commit_count: "2"
+        recent_log: "abc1234 sub"
+        recent_changes: ""
+        working_tree_diff: ""
+  host.agent.decide:
+    data:
+      ok: true
+      exit_code: 0
+      submitted:
+        decision: "needs_update"
+        summary: "docs/foo.md is stale relative to abc1234."
+        confidence: 0.7
+        commits:
+          - sha: "abc1234"
+            subject: "sub"
+            change: "introduces a new public flag"
+        stale_docs:
+          - path: "docs/foo.md"
+            lines: "10-20"
+            anchor: "§2"
+            invalidations:
+              - commit: "abc1234"
+                source: "cmd/foo/main.go"
+                change: "new --bar flag"
+                reason: "the flag table does not list --bar"
+        recommended_actions:
+          - "document --bar in §2"
+  # The needs_update verdict auto-routes through `fixing`, which calls
+  # host.agent.task and a second host.artifacts_dir write. Stub the
+  # task call inline; the artifacts_dir write goes through the real
+  # handler (same temp $KITSOKI_ARTIFACTS_ROOT). The fix artifact path
+  # is asserted by the wrapping Go test.
+  host.agent.task:
+    data:
+      ok: true
+      exit_code: 0
+      submitted:
+        applied: true
+        summary: "Documented --bar in §2 of docs/foo.md."
+        files_changed:
+          - path: "docs/foo.md"
+            change: "added --bar flag row to §2 table"
+        unresolved: []
+        blockers: []
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: fixed
+    expect_world:
+      commit_sha:       "abc1234"
+      verdict_decision: "needs_update"
+      fix_summary:      "Documented --bar in §2 of docs/foo.md."
+
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__done
+
+expect_terminal: true
+
+# The real artifacts_dir handler writes under $KITSOKI_ARTIFACTS_ROOT,
+# which the wrapping Go test (TestDocsReview_ArtifactRoundTrip) sets to
+# a t.TempDir() before calling RunFlows. The artifact assertions live
+# in the Go test (expect_files: doesn't expand env vars), so we skip
+# them here.

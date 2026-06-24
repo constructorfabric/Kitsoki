@@ -1,0 +1,118 @@
+# code_artifact_round_trip — exercises the bind-to-disk chain that
+# stub-only fixtures never cover.
+#
+# Catches the silent-failure class where:
+#   - world.code_artifact is bound (from a prior iface.artifact.create)
+#   - code_awaiting_reply.on_enter calls iface.transport.post with
+#     body: "{{ world.code_artifact.summary_markdown }}"
+#   - host.artifacts_dir bodyArg templates the field and pretty-prints to disk
+# If the bind or template chain drops summary_markdown the sentinel string
+# "CYPILOT-ROUND-TRIP-SENTINEL" will not appear in the artifact file and
+# the wrapping Go test (TestCypilot_CodeArtifactRoundTrip) fails.
+#
+# Why initial_state: code_executing and code_artifact pre-seeded:
+#   The testrunner's orchestrator path fires on_enter only when the
+#   orchestrator processes a real state TRANSITION (not for the seeded
+#   initial state). Starting at code_executing and sending proceed
+#   triggers the transition to code_awaiting_reply, whose on_enter fires
+#   via dispatchHostCalls. code_executing.on_enter (iface.artifact.create)
+#   is bypassed — code_artifact is pre-seeded in initial_world instead.
+#   This mirrors how prd_to_feature.yaml bypasses the seeded idle state.
+#
+# host_bindings: rebinds iface.transport → host.artifacts_dir (real handler).
+# host.artifacts_dir is intentionally absent from host_handlers: so the
+# real handler runs against $KITSOKI_ARTIFACTS_ROOT set by the Go test.
+#
+# Two stubs (well within the 8-stub budget):
+#   host.local    — iface.ci.run_tests in code_executing.on_enter
+#                   (this fires as part of the machine's effects resolution,
+#                    not as an orchestrator host call, so it may or may not
+#                    be needed; stubbed defensively)
+#   host.inbox.add — code_awaiting_reply.on_enter checkpoint post
+#   (agent.decide suppressed by judge_mode: "human")
+
+test_kind: flow
+app: ../app.yaml
+initial_state: code_executing
+initial_world:
+  ticket_id:    "CYPILOT-RT-001"
+  ticket_title: "Round-trip sentinel feature"
+  feature_slug: "round-trip-sentinel"
+  thread:       "CYPILOT-RT-001"
+  workdir:      ".worktrees/rt-001"
+  judge_mode:   "human"
+  judge_confidence_threshold: 0.8
+  feature_index: 0
+  feature_count: 1
+  cycle: 0
+  validate_ok: true
+  validate_report: "PASS"
+  # code_artifact pre-seeded: code_executing.on_enter (iface.artifact.create)
+  # does not fire for the seeded initial state so we inject the value directly.
+  # summary_markdown carries the sentinel that must reach the artifact file.
+  code_artifact:
+    id:               "art-code-rt-001"
+    kind:             "code"
+    summary_title:    "Round-trip sentinel code artifact"
+    summary_markdown: "CYPILOT-ROUND-TRIP-SENTINEL — code artifact body for bind-to-disk test."
+    pr_title:         "CYPILOT-RT-001: Round-trip sentinel feature"
+    pr_body:          "Implements the round-trip sentinel feature."
+    tests_passed:     1
+    tests_failed:     0
+  feature_artifact:
+    id: "art-feature-rt-001"
+
+# Rebind iface.transport → real host.artifacts_dir handler.
+# Also triggers RegisterBuiltins so the real handler is wired.
+host_bindings:
+  transport: host.artifacts_dir
+
+host_handlers:
+  # iface.ci.run_tests via iface.ci → host.local (code_executing.on_enter).
+  # The machine may dispatch this as part of the transition; stub defensively.
+  host.local:
+    data: { ok: true, log: "PASS: 1 test", passed: 1, failed: 0 }
+
+  # host.inbox.add in code_awaiting_reply.on_enter.
+  host.inbox.add:
+    data: { ok: true, id: "ib-rt-1" }
+
+  # iface.artifact.create → host.cypilot_artifacts (code_executing.on_enter).
+  # Should not be called since we bypass code_executing.on_enter, but
+  # stub defensively so the builtin (real cpt CLI) doesn't shell out.
+  host.cypilot_artifacts:
+    data:
+      ok: true
+      id:   "art-code-rt-001"
+      path: "cypilot/artifacts/round-trip-sentinel-code.md"
+      artifact:
+        id:               "art-code-rt-001"
+        kind:             "code"
+        summary_title:    "Round-trip sentinel code artifact"
+        summary_markdown: "CYPILOT-ROUND-TRIP-SENTINEL — code artifact body for bind-to-disk test."
+        pr_title:         "CYPILOT-RT-001: Round-trip sentinel feature"
+        pr_body:          "Implements the round-trip sentinel feature."
+        tests_passed:     1
+        tests_failed:     0
+
+turns:
+  # proceed: code_executing → code_awaiting_reply.
+  # code_awaiting_reply.on_enter fires:
+  #   1. iface.transport.post (real host.artifacts_dir) with
+  #      body: "{{ world.code_artifact.summary_markdown }}" → writes
+  #      CYPILOT-RT-001.md under $KITSOKI_ARTIFACTS_ROOT
+  #   2. host.inbox.add (stubbed)
+  #   judge_mode=human suppresses agent.decide
+  - intent: { name: proceed, slots: {} }
+    expect_state: code_awaiting_reply
+
+  # quit → __exit__abandoned (terminal)
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__abandoned
+
+expect_terminal: true
+expect_no_errors: true
+
+# host.artifacts_dir writes thread="CYPILOT-RT-001" →
+# <KITSOKI_ARTIFACTS_ROOT>/CYPILOT-RT-001.md.
+# The Go test asserts the sentinel and guards against {} / <map[ shapes.

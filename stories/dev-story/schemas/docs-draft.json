@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "docs_draft",
+  "description": "The doc writer's close-out note after drafting a documentation target: a one-line summary, the path it wrote (or would write), and the headings it covered.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One line describing what the draft covers."
+    },
+    "file_path": {
+      "type": "string",
+      "description": "Path the doc markdown was written to (empty when headless / not written)."
+    },
+    "headings": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The section headings the draft covers."
+    }
+  },
+  "required": ["summary"]
+}

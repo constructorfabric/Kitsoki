@@ -13,7 +13,7 @@ func SetAskStructuredForTest(fn func(ctx context.Context, opts AskStructuredOpti
 	return func() { askStructuredFunc = prev }
 }
 
-// ── Phase 4 oracle-split task exports ────────────────────────────────────
+// ── agent.task exports ────────────────────────────────────
 
 // InferReplayModeExport is the test-visible wrapper for inferReplayMode.
 func InferReplayModeExport(agent Agent, tools []string) ReplayMode {
@@ -57,11 +57,11 @@ func KitsokiSessionIDFromCtxExport(ctx context.Context) string {
 	return kitsokiSessionIDFromCtx(ctx)
 }
 
-// OracleStreamerRunExport is the test-visible wrapper for OracleStreamer.Run.
+// AgentStreamerRunExport is the test-visible wrapper for AgentStreamer.Run.
 // Used by host_test to verify that the returned sessionID from system.init
 // is captured for --resume across iterations (H5).
-func OracleStreamerRunExport(ctx context.Context, bin string, cliArgs []string, stdin, workingDir string) (ClaudeRun, string, error) {
-	return OracleStreamer{
+func AgentStreamerRunExport(ctx context.Context, bin string, cliArgs []string, stdin, workingDir string) (ClaudeRun, string, error) {
+	return AgentStreamer{
 		Bin:        bin,
 		CLIArgs:    cliArgs,
 		Stdin:      stdin,
@@ -89,7 +89,7 @@ func TarballDirectoryExport(dir string) ([]byte, error) {
 	return tarballDirectory(dir)
 }
 
-// ── oracle_decide sandbox exports ─────────────────────────────────────────────
+// ── agent_decide sandbox exports ─────────────────────────────────────────────
 
 // ValidatorOptions is the test-visible surface of validatorOptions
 // (used only for constructing RunDecideSandboxValidatorExport calls).
@@ -99,8 +99,8 @@ type ValidatorOptions struct {
 }
 
 // RunDecideSandboxValidatorExport exposes runDecideSandboxValidator for tests.
-// Returns (rejection, contractErr) matching the internal signature.
-func RunDecideSandboxValidatorExport(ctx context.Context, outputPath string, opts *ValidatorOptions) (rejection, contractErr string) {
+// Returns (rejection, contractErr, infraErr) matching the internal signature.
+func RunDecideSandboxValidatorExport(ctx context.Context, outputPath string, opts *ValidatorOptions) (rejection, contractErr, infraErr string) {
 	if opts == nil {
 		return runDecideSandboxValidator(ctx, outputPath, nil)
 	}
@@ -119,4 +119,16 @@ func IsSandboxContractViolationExport(vr ValidatorResult) bool {
 // RewriteToolsForBashMCPExport exposes rewriteToolsForBashMCP for tests.
 func RewriteToolsForBashMCPExport(tools []string) []string {
 	return rewriteToolsForBashMCP(tools)
+}
+
+// ApplyReadOnlyFloorCLIArgsExport exposes applyReadOnlyFloorCLIArgs for tests
+// (the write_mode: read_only dispatch rewrite).
+func ApplyReadOnlyFloorCLIArgsExport(cliArgs []string) []string {
+	return applyReadOnlyFloorCLIArgs(cliArgs)
+}
+
+// ReadOnlyDeniedToolsExport exposes the read-only deny set for the write-mode
+// floor assertion.
+func ReadOnlyDeniedToolsExport() []string {
+	return append([]string(nil), readOnlyDeniedTools...)
 }

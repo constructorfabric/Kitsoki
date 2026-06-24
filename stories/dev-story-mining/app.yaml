@@ -1,0 +1,170 @@
+# dev-story-mining — turn real Claude Code transcripts into dev-story gates.
+#
+# The repeatable process from .context/dev-story-from-transcripts.md, made
+# first-class and runnable as a kitsoki story. Five phase rooms walk the
+# operator (or an LLM judge, in autonomous mode) through the loop:
+#
+#   mine    → run intent-mining over recent transcripts            (host.agent.task: miner)
+#   map     → cross-reference the brief's gates vs dev-story's      (host.agent.task: mapper)
+#             existing gate inventory; classify ALREADY / ENRICH / GAP
+#   decide  → rank ENRICH/GAP items, select what to ticket          (host.agent.ask: ranker + judge gate)
+#   author  → author the gate + a flow fixture; verify flows green  (host.agent.task: author)
+#   record  → check whether recorded decisions let a gate climb a   (host.agent.ask: recorder)
+#             determinism rung (L2→L3→L4)
+#
+# Each room produces a schema-validated artifact in its on_enter (idempotent
+# via `once:`), renders it for review, and gates advancement on accept /
+# refine / restart_from / quit — the same checkpoint shape as stories/bugfix.
+#
+# # One YAML, three modes — judge polymorphism (mirrors bugfix)
+#
+#   human          — operator answers every checkpoint (no judge LLM call)
+#   llm            — run the judge; capture a confident verdict, hold on uncertain
+#   llm_then_human — run the judge; confident verdict auto-advances, uncertain
+#                    falls through to the human view
+#
+# This is a META / dogfood story: kitsoki improving the very state machine
+# (dev-story) it runs its own development on. See
+# docs/proposals/session-pattern-mining/ and tools/session-mining/.
+
+app:
+  id: dev-story-mining
+  version: 0.1.0
+  title: "dev-story-mining — mine transcripts into dev-story gates"
+  author: "Kitsoki"
+  license: "CC0"
+
+# Host allow-list.
+hosts:
+  - host.run            # mining pipeline, gate-inventory scan, `kitsoki test flows`
+  - host.agent.task    # agentic producers (miner, mapper, author)
+  - host.agent.ask     # read-only producers (ranker, recorder)
+  - host.agent.decide  # the checkpoint judge
+
+# Personas — one class of LLM work each. The verb at every call site matches
+# the persona's declared surface (ask = read-only, task = agentic, decide =
+# typed verdict). Mirrors stories/bugfix's persona table.
+agents:
+  miner:
+    system_prompt: "You run the session-mining intent pipeline (tools/session-mining). Distill recent transcripts, run the strict-agent pass, ground and emit the two linked reports, then summarise the resulting brief: job id, intent count, determinism split. You do not invent numbers — read them from the emitted reports."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
+    external_side_effect: false
+  mapper:
+    system_prompt: "You cross-reference mined decision gates against an existing kitsoki story's gate inventory. Regenerate the inventory by grepping host.agent.decide / host.agent.task across the target rooms, cluster the brief's in-scope gates into decision themes, and classify each ALREADY-MODELED / ENRICH / GAP with the home room file path and the brief's validator."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
+    external_side_effect: false
+  ranker:
+    system_prompt: "You rank ENRICH/GAP enrichment items by (# distinct intents × how mechanical the surrounding recipe is) and select the highest-value item to ticket next, with a one-line rationale and the exact room file to edit."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    bash_profile: read-only
+  author:
+    system_prompt: "You author a kitsoki story gate. Add the selected decider gate to the named room YAML, write a cassette-free flow fixture covering each branch, and run `kitsoki test flows` to prove it green. Never use a live LLM in the fixture (cassettes/seeded world only)."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile: read-only
+    external_side_effect: false
+  recorder:
+    system_prompt: "You read the recorded decisions at an existing gate and judge whether one branch dominates enough to drop a determinism rung (LLM → default-rule). You report ladder moves; you do not change code."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    bash_profile: read-only
+  judge:
+    system_prompt: "You are a quality gate. Evaluate the provided artifact against the stated criteria and emit a structured verdict: accept, refine, or uncertain."
+    model: claude-sonnet-4-6
+    tools: []
+
+world:
+  # ── Run identity / inputs ──────────────────────────────────────────────
+  job:           { type: string, default: "intents-current" }   # session-mining job folder name
+  project_dir:   { type: string, default: "" }                  # ~/.claude/projects/<slug> (empty → current repo)
+  stories_dir:   { type: string, default: "stories" }           # target story tree to enrich
+  min_intents:   { type: int,    default: 20 }                  # freshness floor — fewer ⇒ corpus too thin
+  selected_theme: { type: string, default: "" }                 # the item the decide room chose
+
+  # mining_started gates idle's autostart so it fires exactly once per
+  # session (mirrors bugfix's bf_autostart_attempted — an on_error bounce
+  # back to idle must not re-fire the chain). See rooms/idle.yaml.
+  mining_started: { type: bool, default: false }
+
+  # ── Judge polymorphism (mirrors bugfix) ───────────────────────────────
+  judge_mode:                 { type: string, default: "human" }   # human | llm | llm_then_human
+  judge_confidence_threshold: { type: float,  default: 0.8 }
+  llm_verdict:                { type: object, default: {} }         # { intent, reason, confidence, verdict }
+
+  # ── Pipeline control ───────────────────────────────────────────────────
+  cycle:           { type: int,    default: 0 }
+  refine_feedback: { type: string, default: "" }
+  abandon_reason:  { type: string, default: "" }
+  status:          { type: string, default: "open" }              # open | mapped | authored | abandoned
+
+  # ── Per-phase cycle budgets (L2 — one bail-out instead of a loop) ──────
+  mine_cycle:     { type: int, default: 0 }
+  map_cycle:      { type: int, default: 0 }
+  decide_cycle:   { type: int, default: 0 }
+  author_cycle:   { type: int, default: 0 }
+  record_cycle:   { type: int, default: 0 }
+  mine_budget:    { type: int, default: 3 }
+  map_budget:     { type: int, default: 3 }
+  decide_budget:  { type: int, default: 3 }
+  author_budget:  { type: int, default: 3 }
+  record_budget:  { type: int, default: 3 }
+
+  # ── Per-room artifacts ─────────────────────────────────────────────────
+  mine_artifact:   { type: object, default: {} }   # { brief_path, intent_count, deterministic, agent_gated, irreducible, summary_markdown }
+  map_artifact:    { type: object, default: {} }   # { themes:[{theme,intents,home_room,status,decider,validator}], summary_markdown }
+  decide_artifact: { type: object, default: {} }   # { selected:[{theme,room,gate}], rationale, summary_markdown }
+  author_artifact: { type: object, default: {} }   # { files_changed, flows_green, summary_markdown }
+  record_artifact: { type: object, default: {} }   # { ladder_moves, summary_markdown }
+
+intents:
+  start:
+    description: "Begin the mining loop from idle."
+    examples: [start, begin, "kick off", mine]
+    priority: 90
+  accept:
+    description: "Accept the current room's artifact and advance to the next phase. Posts the artifact to the transport as a side-effect."
+    examples: ["continue", "proceed", "accept", "next", "approve", "lgtm", "ok"]
+    priority: 85
+  refine:
+    description: "Refine the current checkpoint; re-execute with feedback."
+    examples: [refine, rework, redo]
+    priority: 70
+    slots:
+      feedback: { type: string, required: true }
+  restart_from:
+    description: "Restart from a named prior stage (resets that phase's cycle counter)."
+    examples: [restart_from, restart]
+    priority: 60
+    slots:
+      stage: { type: string, required: false }
+  quit:
+    description: "Abandon the mining loop."
+    examples: [quit, abort, bail]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: [look, "what now?"]
+    priority: 10
+
+exports:
+  intents: [start, accept, refine, restart_from, quit, look]
+
+# Named return points for an importer (e.g. a dev-story / kitsoki-dev hub
+# that offers "improve myself" as a room). Standalone load synthesises
+# __exit__done / __exit__abandoned terminals.
+exits:
+  done:
+    description: "A gate was authored (or a ladder move recorded); loop complete."
+    requires: [record_artifact]
+  abandoned:
+    description: "Operator or budget bailed."
+
+root: idle
+
+include:
+  - rooms/*.yaml

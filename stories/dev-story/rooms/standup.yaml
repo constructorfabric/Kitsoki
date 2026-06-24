@@ -8,7 +8,7 @@ states:
     description: "Standup — what's on my plate today."
     # Flattened view (no extends/blocks) — `choice:` cannot live inside a
     # `blocks:` map (typed metadata is lost through the inheritance
-    # pipeline; see docs/choice-widget.md §3.1).
+    # pipeline; see docs/stories/choice-widget.md §3.1).
     view:
       - kv:
           pairs:
@@ -33,7 +33,7 @@ states:
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
-        - target: main
+        - target: landing
       look:
         - target: .
 
@@ -57,6 +57,7 @@ states:
       - invoke: iface.ticket.list_mine
         with:
           filter: "assignee=me"
+          repo: "{{ world.ticket_repo }}"
         bind:
           standup_summary: tickets
         on_error: standup
@@ -64,6 +65,6 @@ states:
       go_back:
         - target: standup
       go_main:
-        - target: main
+        - target: landing
       look:
         - target: .

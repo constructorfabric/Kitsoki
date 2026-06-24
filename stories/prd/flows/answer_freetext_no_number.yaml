@@ -1,0 +1,62 @@
+# answer_freetext_no_number — REGRESSION for the clarifying routing trap.
+#
+# A bare, number-less answer must be RECORDED against the question it
+# semantically answers and KEEP the operator in clarifying — it must NOT
+# skip the phase by mis-routing to submit_answers (the production bug:
+# submit_answers' optional `answers` slot swallowed stray prose and advanced
+# straight to brief, leaving every question unanswered).
+#
+# The `answer` arc hands the whole reply to the answer_matcher agent, which
+# decides which question it answers — here a reply about the success metric
+# lands on q2 even though q1 is still open and no number was typed. The
+# matcher is STUBBED (no real LLM), keyed by the invoke id `match_answer`;
+# the on_enter analyst call (`analyst_questions`) falls through to the
+# top-level decide envelope.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: clarifying
+initial_world:
+  idea:       "A CLI for X"
+  workdir:    "."
+  judge_mode: "human"
+  clarifications:
+    questions:
+      - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+      - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+      - { id: "q3", question: "What is explicitly out of scope?", why: "bounds the work" }
+
+host_handlers:
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    # on_enter analyst (id: analyst_questions) → falls through to this envelope.
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+          - { id: "q3", question: "What is explicitly out of scope?", why: "bounds the work" }
+    by_call:
+      # The matcher maps the number-less reply to q2 (position 2).
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q2: time-to-first-PRD under 10 minutes\n"
+            answered_ids_append: "|2|"
+            matched_count:       1
+
+turns:
+  # A number-less answer about the success metric. No `n` slot — just `text`,
+  # exactly as the default_intent sink delivers it. It must STAY in clarifying
+  # and attach to q2 (the question it actually answers), NOT skip to brief.
+  - intent: { name: answer, slots: { text: "we want time-to-first-PRD under 10 minutes" } }
+    expect_state: clarifying
+    expect_world:
+      answered_count:        1
+      clarification_answers: "Q2: time-to-first-PRD under 10 minutes\n"
+      answered_ids:          "|2|"
+
+expect_no_errors: true

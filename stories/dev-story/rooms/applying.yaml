@@ -1,0 +1,92 @@
+# applying — the deterministic executor for an accepted ad-hoc plan.
+#
+# Reached from landing's accept_plan / apply_plan arc once the operator accepts a
+# proposed plan (world.accepted_plan is frozen there). This room carries OUT the
+# accepted plan's single step, then hands off to `verifying` to prove it landed.
+#
+# Read-only by default → opt into write (same posture as landing). The room
+# carries write_mode: read_only: the landing_agent boots with its full toolbox
+# but every MUTATING tool call (Edit / Write / side-effecting Bash) holds for an
+# operator write-mode grant before the effect lands (internal/host/write_mode_gate.go).
+# A mutating plan (step.mutating: true) is exactly where that grant matters; a
+# headless run (cassettes / flows) denies and the agent stays read-only.
+#
+# Unlike landing (a fresh free-form turn), the agent here is prompted with the
+# ACCEPTED PLAN AS INSTRUCTION (prompts/apply.md) — goal + step.description +
+# the resolved issue_source — NOT a fresh re-prose of the operator's words. This
+# is what makes apply deterministic: the second turn does what the first turn's
+# plan described, not whatever the agent re-derives.
+
+states:
+
+  applying:
+    description: "Applying the accepted plan — carrying out the step."
+    relevant_world: [accepted_plan, issue_source, verify_ok, last_error, workdir]
+
+    # Read-only → write-mode opt-in (the mutating step holds for the grant).
+    # Valid because the room dispatches an agent (the on_enter host.agent.task).
+    write_mode: read_only
+
+    view:
+      - banner:
+          text:     "APPLYING PLAN"
+          subtitle: "carrying out the accepted step · read-only until you approve a change"
+          color:    "#8B5CF6"
+      - kv:
+          pairs:
+            Goal: "{{ world.accepted_plan.goal }}"
+            Step: "{{ world.accepted_plan.step.description }}"
+            Source: "{{ world.issue_source }}"
+      - prose: "Running the step, then verifying it landed…"
+
+    on_enter:
+      # 1. Reset the verify verdict for this apply attempt (tri-state "" until
+      #    the verifying room's gate binds it).
+      - set: { verify_ok: "", verify_reason: "" }
+
+      # 2. Carry out the accepted plan's step. The landing_agent is re-used
+      #    (one persona, correct write-mode posture) but prompted with the
+      #    ACCEPTED PLAN — not a fresh re-prose. once: keyed off the bind so a
+      #    `look` / re-entry shows the result instead of re-dispatching. A
+      #    mutating tool call holds for the write-mode grant; headless it stays
+      #    read-only. Binds the apply turn's close-out note so its report shows.
+      # NOTE: binds a DISTINCT key (apply_note), NOT landing_note. landing_note
+      # already holds the proposed plan from the work turn, so binding it here
+      # with once: true would see the target already-set and SKIP the dispatch —
+      # the apply step would never run (the migration would never happen). Binding
+      # the separate apply_note re-arms once: per apply attempt and keeps
+      # landing_note.plan intact for the red-path refine card.
+      - invoke: host.agent.task
+        id: apply-step
+        once: true
+        with:
+          agent: landing_agent
+          working_dir: "{{ world.workdir }}"
+          acceptance:
+            schema: schemas/landing-note.json
+          context:
+            prompt: prompts/apply.md
+            args:
+              goal:             "{{ world.accepted_plan.goal }}"
+              step_description: "{{ world.accepted_plan.step.description }}"
+              mutating:         "{{ world.accepted_plan.step.mutating }}"
+              issue_source:     "{{ world.issue_source }}"
+        bind:
+          apply_note: submitted
+        on_error: landing
+
+      # 3. The step landed (bind settled) — run the verify gate. Unconditional
+      #    emit AFTER the step bind, so the verifying room's on_enter runs next.
+      - emit_intent: run_verify
+
+    on:
+      # Enter verifying to run the gate on the result of the step.
+      run_verify:
+        - target: verifying
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Applying the plan…"

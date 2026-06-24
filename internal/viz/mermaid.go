@@ -1,15 +1,11 @@
-// Package viz — mermaid.go implements a Mermaid stateDiagram-v2 exporter
-// (§9a.7, §12.1 Visualizer.Mermaid). Templated string generator, no library.
-//
-// First cut — intentionally minimal so we can iterate. Handles:
-//   - top-level atomic + compound states
-//   - initial-state arrow [*] --> root
-//   - terminal states with --> [*]
-//   - intent-labelled transitions, optional [guard] suffix
-//   - self-edges, wildcard intent (*), default branch
-//
-// Not (yet) handled: parallel regions, cross-compound paths drawn as
-// dotted edges, view/effect annotations, on_enter, timeouts.
+// mermaid.go implements the flat Mermaid stateDiagram-v2 exporter — a
+// hand-rolled string generator (no library) showing state-machine topology.
+// It handles top-level atomic and compound states, the initial-state arrow,
+// terminal states, parallel regions (the `<<fork>>` / `--` separator shape),
+// intent-labelled transitions with an optional [guard] suffix, self-edges,
+// the wildcard intent (*), and the default branch. View/effect annotations,
+// on_enter chains and timeouts are intentionally omitted here — the flowchart
+// mode (flowchart.go) carries data-flow detail. See doc.go for the overview.
 package viz
 
 import (
@@ -21,7 +17,11 @@ import (
 	"kitsoki/internal/app"
 )
 
-// ExportMermaid writes a Mermaid stateDiagram-v2 representation of the app to w.
+// ExportMermaid streams a flat Mermaid stateDiagram-v2 for a to w (state
+// declarations and nested compound blocks first, then transition edges, which
+// Mermaid resolves by global ID). It returns w's write error. Use
+// [MermaidBytes] for the in-memory form, or [ExportMermaidRooms] when the app
+// is too large for one readable diagram.
 //
 // For large apps (e.g. dev-story, ~200 states) mermaid-cli's default limits
 // (maxTextSize=50000, maxEdges=500) reject the diagram. Pass a config file
@@ -56,7 +56,9 @@ func ExportMermaid(a *app.AppDef, w io.Writer) error {
 	return err
 }
 
-// MermaidBytes returns the Mermaid source as a byte slice.
+// MermaidBytes is the in-memory form of [ExportMermaid], returning the
+// stateDiagram-v2 source as bytes. The error is whatever [ExportMermaid]
+// reports (effectively never, since it writes to an in-memory builder).
 func MermaidBytes(a *app.AppDef) ([]byte, error) {
 	var sb strings.Builder
 	if err := ExportMermaid(a, &sb); err != nil {
@@ -80,7 +82,7 @@ func emitStates(b *strings.Builder, states map[string]*app.State, prefix, indent
 		label := fullPath
 
 		if len(s.States) > 0 {
-			// Parallel states (§9.4) are rendered with the special
+			// Parallel states are rendered with the special
 			// `<<fork>>` shape so the sibling-region structure is visible
 			// in the Mermaid output. Each region renders as a nested
 			// compound block; emitStates recurses into them.

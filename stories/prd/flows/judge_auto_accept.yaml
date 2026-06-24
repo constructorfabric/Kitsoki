@@ -1,0 +1,74 @@
+# judge_auto_accept — the LLM judge AUTO-ADVANCES on a confident verdict.
+#
+# llm_judge.yaml covers the hold case (verdict=uncertain → falls through to
+# the human view). This covers the other half — the whole emit_intent
+# machinery: in judge_mode=llm, entering drafting runs the author then the
+# judge; when the verdict is not 'uncertain' and confidence >=
+# judge_confidence_threshold, drafting's on_enter `emit_intent:`s that
+# verdict's intent THE SAME TURN. Here the judge returns accept@0.92, so a
+# single `confirm` into drafting auto-fires accept and the session exits
+# @done — no second operator turn.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: references
+initial_world:
+  idea:                       "A CLI for X"
+  workdir:                    "."
+  output_path:                ".artifacts/prd.md"
+  judge_mode:                 "llm"
+  judge_confidence_threshold: 0.8
+  references:
+    items:
+      - { path: "docs/spec.md", sections: "Goals", rationale: "the PRD must align with the stated goals" }
+
+host_handlers:
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    by_call:
+      # references on_enter may re-fire defensively on initial entry.
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/spec.md", sections: "Goals", rationale: "the PRD must align with the stated goals" }
+      # The judge: a confident, non-uncertain verdict → auto-fire.
+      judge_verdict:
+        data:
+          ok: true
+          submitted:
+            verdict:    "accept"
+            intent:     "accept"
+            reason:     "Problem, users, goals, and metrics are all covered and consistent."
+            confidence: 0.92
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd_references.md", message_id: "prd_references#1" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  # confirm → drafting; on_enter runs author + judge, and the confident
+  # verdict auto-fires accept → @exit:done within the same turn.
+  - intent: { name: confirm, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status: "done"
+      llm_verdict:
+        verdict:    "accept"
+        intent:     "accept"
+        reason:     "Problem, users, goals, and metrics are all covered and consistent."
+        confidence: 0.92
+
+expect_terminal: true
+expect_no_errors: true

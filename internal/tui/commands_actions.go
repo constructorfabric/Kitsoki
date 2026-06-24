@@ -10,33 +10,33 @@ import (
 	"kitsoki/internal/tui/blocks"
 )
 
-// ActionsCommand implements `/actions`, `/actions <n>`, and
-// `/actions auto on|off`. The actions block reuses the current room's
+// ActionsCommand implements `/intents`, `/intents <n>`, and
+// `/intents auto on|off`. The intents block reuses the current room's
 // menu items (already computed by the orchestrator) and renders them
 // via blocks.Renderer.Menu so the visual matches Phase 0's preview.
 //
 // Phase 1 ships the framework default rendering — rooms can later
-// declare their own pongo2 template for the actions block (proposal
+// declare their own pongo2 template for the intents block (proposal
 // §"Rendering is room-provided"); when they do, this command will
 // dispatch to the room-supplied template, falling back to the default.
 type ActionsCommand struct{}
 
-func (ActionsCommand) Name() string { return "/actions" }
+func (ActionsCommand) Name() string { return "/intents" }
 
 func (ActionsCommand) Run(m RootModel, args []string) (string, RootModel, tea.Cmd) {
-	// Sub-command parsing: `/actions auto on|off` toggles the
-	// per-session auto-print flag; `/actions <n>` dispatches a row;
-	// `/actions` alone prints the block.
+	// Sub-command parsing: `/intents auto on|off` toggles the
+	// per-session auto-print flag; `/intents <n>` dispatches a row;
+	// `/intents` alone prints the block.
 	if len(args) >= 2 && strings.EqualFold(args[0], "auto") {
 		switch strings.ToLower(args[1]) {
 		case "on":
 			m.actionsAuto = true
-			return blockSlashLine(m, "(actions auto on — actions block will print after each turn)"), m, nil
+			return blockSlashLine(m, "(intents auto on — intents block will print after each turn)"), m, nil
 		case "off":
 			m.actionsAuto = false
-			return blockSlashLine(m, "(actions auto off)"), m, nil
+			return blockSlashLine(m, "(intents auto off)"), m, nil
 		default:
-			return blockSlashLine(m, "(actions: usage: /actions auto on|off)"), m, nil
+			return blockSlashLine(m, "(intents: usage: /intents auto on|off)"), m, nil
 		}
 	}
 	if len(args) == 1 {
@@ -76,7 +76,7 @@ func renderActionsBlock(m RootModel) string {
 	return r.Menu(rows)
 }
 
-// dispatchActionByIndex routes /actions <n> to the orchestrator. The
+// dispatchActionByIndex routes /intents <n> to the orchestrator. The
 // index is 1-based to match the rendered block. A row whose guard
 // fails dispatches anyway and lets the orchestrator surface the
 // rejection through its normal channels — same as picking the row from
@@ -85,7 +85,7 @@ func dispatchActionByIndex(m RootModel, n int) (string, RootModel, tea.Cmd) {
 	all := append([]orchestrator.MenuEntry{}, m.menu.items...)
 	all = append(all, m.menu.blocked...)
 	if n < 1 || n > len(all) {
-		return blockSlashLine(m, "(actions: index out of range — try /actions to see the list)"), m, nil
+		return blockSlashLine(m, "(intents: index out of range — try /intents to see the list)"), m, nil
 	}
 	entry := all[n-1]
 	// Use the existing dispatch path so the rest of the system (history
@@ -99,7 +99,7 @@ func dispatchActionByIndex(m RootModel, n int) (string, RootModel, tea.Cmd) {
 }
 
 // blockSlashLine renders a "(...)" slash-feedback line through the
-// blocks.Renderer so it carries the same styling as /actions itself
+// blocks.Renderer so it carries the same styling as /intents itself
 // rather than the legacy slashOutputStyle path. Helps keep all phase 1
 // chat-block output visually consistent.
 func blockSlashLine(m RootModel, text string) string {
@@ -108,8 +108,8 @@ func blockSlashLine(m RootModel, text string) string {
 }
 
 // maybeAutoActions is called from handleTurnOutcome after a successful
-// turn. When the user has toggled /actions auto on, it returns the
-// actions block string so the caller can append it before the prompt
+// turn. When the user has toggled /intents auto on, it returns the
+// intents block string so the caller can append it before the prompt
 // is shown again. Returns "" when auto-print is off.
 func (m RootModel) maybeAutoActions() string {
 	if !m.actionsAuto {
@@ -117,4 +117,3 @@ func (m RootModel) maybeAutoActions() string {
 	}
 	return renderActionsBlock(m)
 }
-

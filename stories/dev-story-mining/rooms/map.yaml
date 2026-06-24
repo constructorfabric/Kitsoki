@@ -1,0 +1,108 @@
+# map — phase 2/5. Cross-reference the brief's gates vs dev-story's inventory.
+#
+# The `mapper` persona regenerates the existing-gate inventory (greps
+# host.agent.decide / .task across the target rooms — never from memory),
+# clusters the brief's in-scope gates into themes, and classifies each
+# ALREADY-MODELED / ENRICH / GAP. This is the previously-implicit step ②
+# made first-class.
+
+states:
+
+  map:
+    description: "Map the brief's decision themes against dev-story's existing gates."
+    view:
+      - banner:
+          text:     "MAP"
+          subtitle: "Phase 2 / 5  ·  classify each theme ALREADY / ENRICH / GAP"
+          color:    "#0EA5E9"
+      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }} · tree {{ world.stories_dir }}"
+      - heading: "Enrichment map"
+      - code: '{{ world.map_artifact.summary_markdown|default:"(pending — mapper has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "accept the map and decide what to ticket"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-map with feedback (e.g. wrong home room)"
+              intent: refine
+              param: { slot: feedback, type: string, placeholder: "what to redo", required: false }
+            - label:  "restart"
+              hint:   "go back and re-mine"
+              intent: restart_from
+              slots:  { stage: mine }
+            - label:  "quit"
+              hint:   "abandon the loop"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [job, stories_dir, judge_mode, judge_confidence_threshold, mine_artifact, map_artifact, llm_verdict, refine_feedback, cycle]
+    on_enter:
+      - invoke: host.agent.task
+        once: true
+        with:
+          agent: mapper
+          acceptance:
+            schema: schemas/map_artifact.json
+          context:
+            prompt: prompts/map_executing.md
+            args:
+              brief_path:      "{{ world.mine_artifact.brief_path }}"
+              stories_dir:     "{{ world.stories_dir }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+        bind:
+          map_artifact: submitted
+        on_error: idle
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.agent.decide
+        with:
+          agent: judge
+          prompt: prompts/judge_generic.md
+          schema: schemas/judge_verdict.json
+          args:
+            phase:          "map"
+            artifact_title: "enrichment map for {{ world.stories_dir }}"
+            artifact_body:  "{{ world.map_artifact.summary_markdown }}"
+            criterion:      "Every in-scope theme is classified with a home_room file path and a validator; statuses are defensible against the actual gate inventory."
+            threshold:      "{{ world.judge_confidence_threshold }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        - target: decide
+          effects:
+            - say: "Map accepted — ranking ENRICH/GAP items to ticket."
+            - set: { refine_feedback: "", status: "mapped" }
+      refine:
+        - when: "world.map_cycle >= world.map_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "map_cycle_budget_exhausted", status: "abandoned" }
+        - target: map
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                map_cycle:       "{{ world.map_cycle + 1 }}"
+                cycle:           "{{ world.cycle + 1 }}"
+                map_artifact:    {}
+      restart_from:
+        - target: mine
+          effects:
+            - set: { refine_feedback: "", map_cycle: 0, mine_artifact: {}, map_artifact: {} }
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_at_map", status: "abandoned" }
+      look:
+        - target: .

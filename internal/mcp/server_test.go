@@ -133,7 +133,7 @@ func TestTransition_ValidIntent(t *testing.T) {
 }
 
 // TestTransition_MissingRequiredSlot checks that a missing required slot returns
-// the correct MISSING_SLOTS error envelope per §5.2.
+// the correct MISSING_SLOTS error envelope.
 func TestTransition_MissingRequiredSlot(t *testing.T) {
 	def := loadCloakApp(t)
 	s := openInMemoryStore(t)
@@ -162,7 +162,7 @@ func TestTransition_MissingRequiredSlot(t *testing.T) {
 }
 
 // TestTransition_IntentNotAllowed checks that calling an intent not allowed in the
-// current state returns INTENT_NOT_ALLOWED_IN_STATE per §5.2.
+// current state returns INTENT_NOT_ALLOWED_IN_STATE.
 func TestTransition_IntentNotAllowed(t *testing.T) {
 	def := loadCloakApp(t)
 	s := openInMemoryStore(t)

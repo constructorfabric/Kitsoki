@@ -1,0 +1,116 @@
+# Flow 4: Agent Room — auto-persist chats.
+#
+# New flow (post-redesign):
+#  1. Go to agent list (empty list shows "No chats yet" branch)
+#  2. ask_question → routes through agent_asking_new (host.chat.create + host.agent.converse + host.chat.suggest_title)
+#  3. Ask another question (continues in agent_asking — re-uses existing chat)
+#  4. go_back → agent list (now shows 1 chat)
+#  5. rename_chat → list refreshes with new title
+#  6. go_back → main
+test_kind: flow
+app: ../app.yaml
+initial_state: main
+initial_world:
+  prev_state: "main"
+
+host_handlers:
+  host.chat.list:
+    data:
+      rendered: "(no chats yet — use 'new <title>' to start one)"
+      chats:    []
+      count:    0
+
+  host.chat.create:
+    data:
+      chat_id: "stub-chat-id"
+      title:   "who is beasy"
+      app_id:  "dev-story"
+      room:    "agent"
+
+  host.chat.transcript:
+    data:
+      rendered:   "(empty chat — ask a question to begin)"
+      messages:   []
+      latest_seq: -1
+      title:      "who is beasy"
+
+  host.agent.converse:
+    data:
+      answer:            "Here is my answer."
+      session_id:        "stub-session-id"
+      chat_id:           "stub-chat-id"
+      claude_session_id: "stub-session-id"
+      transcript_seq:    1
+
+  host.chat.suggest_title:
+    data:
+      chat_id:        "stub-chat-id"
+      title:          "Who is Beasy explained"
+      previous_title: "who is beasy"
+      renamed:        true
+      skipped:        false
+
+  host.chat.rename:
+    data:
+      chat_id: "stub-chat-id"
+      title:   "My renamed chat"
+      renamed: true
+
+  host.chat.resolve_ref:
+    data:
+      chat_id: "stub-chat-id"
+      title:   "stub title"
+      kind:    "ulid"
+
+turns:
+  # Go to the Agent Room from main — list view loads (count=0)
+  - intent:
+      name: go_agent
+      slots: {}
+    expect_state: agent
+    expect_world:
+      prev_state: "main"
+      agent_chat_count: 0
+
+  # ask_question from list → agent_asking_new (creates chat + asks + suggest_title)
+  - intent:
+      name: ask_question
+      slots:
+        question: "who is beasy"
+    expect_state: agent_asking_new
+    expect_world:
+      agent_question:   "who is beasy"
+      agent_answer:     "Here is my answer."
+      agent_chat_id:    "stub-chat-id"
+      agent_chat_title: "Who is Beasy explained"
+
+  # Ask another question — continues in agent_asking (existing chat)
+  - intent:
+      name: ask_question
+      slots:
+        question: "What are the trade-offs between Option A and B?"
+    expect_state: agent_asking
+    expect_world:
+      agent_question: "What are the trade-offs between Option A and B?"
+
+  # Go back to the chat list
+  - intent:
+      name: go_back
+      slots: {}
+    expect_state: agent
+
+  # Rename a chat from the list
+  - intent:
+      name: rename_chat
+      slots:
+        chat_id: "stub-chat-id"
+        title:   "My renamed chat"
+    expect_state: agent
+
+  # Exit Agent — should return to prev_state (main)
+  - intent:
+      name: go_back
+      slots: {}
+    expect_state: main
+
+expect_no_errors: true

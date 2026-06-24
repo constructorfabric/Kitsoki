@@ -1,0 +1,72 @@
+# slidey_decomposition — the no-LLM tour fixture for the "decomposition" clip
+# of the slidey dev-story hybrid deck (phase 3: design → validated work plan).
+#
+# Mirrors decompose_happy, but TOUR-SHAPED:
+#   - epic_path is seeded via initial_world (the GAP-1 fix lets `kitsoki web
+#     --flow` honor it), so the web tour can drive the `start` intent with NO
+#     slot — `start` falls back to world.epic_path. (DriveAction has no slot
+#     field, so a slot-bearing start can't be driven from a web tour.)
+#   - the epic is slidey-themed (speaker-notes export), the decomposer returns a
+#     three-brief slidey manifest, and lint passes → the run lands in fleet.load
+#     with a validated work plan.
+#
+# Full path: configure (seeded epic_path) → start → decompose (agent mocked) →
+#            lint (script mocked) → fleet.load (fleet_load mocked).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  epic_path: "stories/deliver/testdata/fixture_epic_slidey.md"
+  base_branch: main
+  main_worktree_path: "."
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      decomposer:
+        data:
+          submitted:
+            briefs:
+              - id: notes-model
+                brief: "Add a SceneNotes struct in internal/notes/ (narration + scene title + ordinal) derived from the deck spec. Gate: go test ./internal/notes/..."
+                gate_command: "go test ./internal/notes/..."
+                deps: []
+              - id: notes-renderer
+                brief: "Add RenderHandout in internal/notes/render/ turning []SceneNotes into a printable per-scene handout. Gate: go test ./internal/notes/render/..."
+                gate_command: "go test ./internal/notes/render/..."
+                deps: [notes-model]
+              - id: notes-cli-flag
+                brief: "Register a --notes <path> flag on the slidey CLI that renders the handout over the parsed deck spec. Gate: go test ./cmd/slidey/..."
+                gate_command: "go test ./cmd/slidey/..."
+                deps: [notes-renderer]
+  host.run:
+    by_call:
+      lint:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            route: "ok"
+            error: ""
+      fleet_load:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            fleet_briefs:
+              - { id: notes-model,    brief: "Add a SceneNotes struct...",       gate_command: "go test ./internal/notes/...",        status: pending, last_error: "" }
+              - { id: notes-renderer, brief: "Add RenderHandout...",             gate_command: "go test ./internal/notes/render/...", status: pending, last_error: "" }
+              - { id: notes-cli-flag, brief: "Register a --notes <path> flag...", gate_command: "go test ./cmd/slidey/...",             status: pending, last_error: "" }
+            fleet_state_path: "/tmp/fleet-slidey-decomp-test.json"
+            error: ""
+
+turns:
+  - intent:
+      name: start
+      slots: {}
+    expect_state: fleet.load
+    expect_world:
+      decomposition_path: ".artifacts/deliver/decomposition.yaml"
+
+expect_no_errors: true

@@ -1,0 +1,171 @@
+# ideas — reconcile the ideas backlog + seed the proposal pipeline.
+#
+# Reached from main via go_ideas. The hand-maintained backlog (world.ideas_path,
+# default repo-root ideas.md) has three sections — ## Done, ## Partial / in
+# progress, ## Ideas — that drift out of date: things ship but stay parked under
+# ## Ideas. This room runs the `ideas_reviewer` (host.agent.decide) against the
+# repo root so it can read ideas.md, the commit history (git log, read-only
+# Bash), and the docs (especially docs/proposals/), and proposes section MOVES
+# backed by concrete evidence — plus a few writer's-block candidates.
+#
+# The decide is interpretation; the MUTATION is deterministic — `apply` hands
+# the persisted report to scripts/ideas_reconcile.py, which rewrites ideas.md
+# (the same decide→script discipline as the proposal slug step). The operator
+# confirms the moves first (this is a gate, not auto-apply).
+#
+# `pick` seeds world.design_seed_idea from a candidate and jumps into the
+# proposal intake, so a blocked author flows straight into authoring a proposal
+# (slug + workspace minting happens in proposal.discuss, on the first message).
+
+states:
+
+  ideas:
+    description: "Reconcile the ideas backlog against shipped work; apply the moves or pick something to propose."
+    view:
+      - banner:
+          text:     "IDEAS REVIEW"
+          subtitle: "Reconcile the backlog · pick something to propose"
+          color:    "#F59E0B"   # amber — gathering
+      - prose: '⚠ {{ world.last_error }}'
+        when: "world.last_error != ''"
+      - prose: '{{ world.ideas_review.summary|default:"(scanning the backlog against commits + docs…)" }}'
+      - prose: 'Backlog: {{ world.ideas_path }} · report saved to {{ world.ideas_review_path|default:"(scanning…)" }}'
+      - heading: "Proposed moves"
+      - code: |
+          {% for m in world.ideas_review.reclassifications %}{{ forloop.Counter }}. [{{ m.from }} → {{ m.to }}] {{ m.item|wordwrap:96 }}
+             evidence: {{ m.evidence|wordwrap:96 }}
+          {% empty %}(none — the backlog is already current, or nothing has concrete shipped evidence){% endfor %}
+      - heading: "Candidates to propose"
+      - code: |
+          {% for c in world.ideas_review.candidates %}{{ forloop.Counter }}. ({{ c.effort|default:"?" }}) {{ c.item|wordwrap:96 }}
+             why: {{ c.rationale|wordwrap:96 }}
+          {% empty %}(none suggested){% endfor %}
+      - prose: 'Applied: {{ world.ideas_apply_result.moved }} move(s) — backlog rewritten.'
+        when:  "len(world.ideas_apply_result) > 0"
+      - prose: "**apply** to write the moves into the backlog, **pick N** to start a proposal from candidate N, **regenerate** to re-scan, or **quit**."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "apply"
+              hint:   "rewrite the backlog with the proposed moves above"
+              intent: apply
+              when:   "len(world.ideas_review.reclassifications ?? []) > 0"
+            - label:  "pick"
+              hint:   "start a proposal from candidate N (e.g. pick 1)"
+              intent: pick
+              when:   "len(world.ideas_review.candidates ?? []) > 0"
+              param:
+                slot:        n
+                type:        int
+                placeholder: "candidate number"
+                required:    true
+            - label:  "regenerate"
+              hint:   "re-scan the backlog fresh (optionally steer)"
+              intent: regenerate
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what to focus on"
+                required:    false
+            - label:  "quit"
+              hint:   "back to main"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [ideas_path, ideas_review, ideas_review_path, ideas_review_feedback, ideas_apply_result, design_seed_idea]
+    on_enter:
+      # Reconcile the backlog. working_dir is the repo root (".") so the reviewer
+      # can read ideas.md, run `git log`, and scan docs/proposals/ + docs/.
+      #
+      # `once: true` for reload-safety: keyed off its own bind (ideas_review), so
+      # /reload re-renders the stored report rather than re-running the scan.
+      # `apply` / `regenerate` clear ideas_review to re-arm it.
+      - invoke: host.agent.decide
+        once: true
+        id: ideas_review
+        with:
+          agent: ideas_reviewer
+          prompt_path: prompts/ideas_review.md
+          schema: schemas/ideas-review.json
+          working_dir: "."
+          args:
+            ideas_path: "{{ world.ideas_path }}"
+            feedback:   "{{ world.ideas_review_feedback }}"
+        bind:
+          ideas_review: submitted
+        on_error: main
+
+      # Persist the report as real JSON (the .json thread extension is honoured
+      # verbatim; no title ⇒ the bare-object body is written as pretty JSON the
+      # reconcile script reads). `once: true` keyed off its bind
+      # (ideas_review_path); cleared on the same apply/regenerate arcs.
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          artifacts_root: ".artifacts/ideas-review"
+          thread:         "latest.json"
+          mode:           "replace"
+          body:           "{{ world.ideas_review }}"
+        bind:
+          ideas_review_path: "path"
+    on:
+      # Apply the moves: the deterministic executor reads the persisted report
+      # (ideas_review_path) and rewrites ideas.md. `target: .` (stay) — applying
+      # is idempotent (a second apply re-moves nothing, since each item is now in
+      # its target section), and `regenerate` is how the operator re-scans the
+      # rewritten file. We must NOT clear ideas_review_path here: host-call args
+      # are re-rendered against the POST-effect world, so a same-arc clear would
+      # blank the path argument before the script reads it.
+      apply:
+        - target: .
+          effects:
+            - invoke: host.run
+              id: reconcile
+              with:
+                cmd: python3
+                args:
+                  - "stories/dev-story/scripts/ideas_reconcile.py"
+                  - "{{ world.ideas_path }}"
+                  - "{{ world.ideas_review_path }}"
+              bind:
+                ideas_apply_result: "stdout_json"
+              on_error: .
+            - say: "Applied the section moves to {{ world.ideas_path }} — `regenerate` to re-scan the rewritten backlog."
+
+      # Seed the proposal pipeline from a candidate and jump into intake. Guarded
+      # on a valid 1-based index; the first `discuss` message in the proposal room
+      # mints the slug + workspace, so nothing else is needed here.
+      pick:
+        - when: "slots.n >= 1 && len(world.ideas_review.candidates ?? []) >= slots.n"
+          target: design
+          effects:
+            - set:
+                design_seed_idea: "{{ world.ideas_review.candidates[slots.n - 1].item }}"
+                prev_state:         "ideas"
+        - default: true
+          target: .
+          effects:
+            - say: "No candidate at that number — pick one of the numbered candidates above."
+
+      # Re-scan fresh. `target: ideas` (re-enter by name) re-fires on_enter;
+      # clearing both once: binds re-arms the decide + the report write. (A bare
+      # `target: .` would NOT re-run on_enter.) Carry optional steering feedback.
+      regenerate:
+        - target: ideas
+          effects:
+            - set:
+                ideas_review:          {}
+                ideas_review_path:     ""
+                ideas_apply_result:    {}
+                ideas_review_feedback: "{{ slots.feedback ?? '' }}"
+
+      quit:
+        - target: landing
+          effects:
+            - set:
+                last_error: "ideas review closed"
+                prev_state: "landing"
+      look:
+        - target: .

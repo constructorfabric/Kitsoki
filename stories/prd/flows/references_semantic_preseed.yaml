@@ -1,0 +1,68 @@
+# references_semantic_preseed — the optional semantic pre-seed populates
+# world.reference_hits and is spliced into the researcher's args.
+#
+# Seeds directly into references (skips on_enter for the upstream rooms) and
+# transitions IN via a regenerate self-loop so the references on_enter fires
+# and the search → researcher pipeline runs. Asserts:
+#   - host.agent.search is called (the pre-seed) and its hits land in
+#     world.reference_hits,
+#   - the researcher decide receives those hits as search_hits.
+# Intent-only, no LLM: both the search and the researcher are stubbed.
+
+test_kind: flow
+app: ../app.yaml
+# Enter at the seed room so its on_enter fires the semantic search, then it
+# auto-advances (emit_intent: seeded) into references where the researcher
+# runs with the hits. A transition IN (not seeding references directly) is
+# what makes the pre-seed pipeline run.
+initial_state: brief
+initial_world:
+  idea:              "A CLI for X"
+  workdir:           "."
+  prd_workspace:     ".artifacts/prd/a-cli-for-x"
+  clarification_log: "Q: who? A: developers"
+  brief_path:        ".artifacts/prd/a-cli-for-x/001-brief.md"
+  judge_mode:        "human"
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  # The semantic pre-seed returns two ranked chunks (embeddings configured).
+  host.agent.search:
+    data:
+      hits:
+        - { path: "docs/auth.md",  score: 0.71, chunk_id: "auth#3", text: "Tokens are minted per session and expire after 1h." }
+        - { path: "docs/quota.md", score: 0.55, chunk_id: "quota#1", text: "Each tenant gets a soft and a hard quota." }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        items:
+          - { path: "docs/auth.md", sections: "Tokens", rationale: "token model the PRD must honour" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd/a-cli-for-x/003-references.md", message_id: "003#1" }
+
+turns:
+  # confirm the brief → references_seed (semantic search) → references. The
+  # search hits are bound into reference_hits (the ranked list), the room
+  # auto-advances via emit_intent, and the researcher decide is dispatched
+  # in that same post-bind chain with those hits as search_hits. The
+  # researcher runs in the post-bind-emit chain, so it's asserted by its
+  # WORLD effect (references bound from its result) rather than via
+  # expect_host_calls (which only sees the primary turn's calls).
+  - intent: { name: confirm, slots: {} }
+    expect_state: references
+    expect_world:
+      # The semantic hits landed (proves host.agent.search ran and bound).
+      reference_hits:
+        - { path: "docs/auth.md",  score: 0.71, chunk_id: "auth#3", text: "Tokens are minted per session and expire after 1h." }
+        - { path: "docs/quota.md", score: 0.55, chunk_id: "quota#1", text: "Each tenant gets a soft and a hard quota." }
+      # The researcher ran on those hits (proves the seed → references chain
+      # carried search_hits into the decide and bound its result).
+      references:
+        items:
+          - { path: "docs/auth.md", sections: "Tokens", rationale: "token model the PRD must honour" }
+    expect_host_calls:
+      - handler: host.agent.search
+
+expect_no_errors: true

@@ -1,0 +1,19 @@
+{% comment %}
+Routing Playground — app-wide base view. Every room extends this and
+overrides only the blocks it needs.
+
+Block contract:
+  status   — a permanent reminder of the four tiers + a little world readout.
+  heading  — room title; default = state.description.
+  body     — the lesson content.
+  choices  — the action menu (always visible).
+  footer   — optional bottom line.
+{% endcomment %}
+{% block status %}tiers: synonym › template › semantic › local-LLM › main-LLM   |   lamp: {% if world.lamp %}on{% else %}off{% endif %}   |   budget: {{ world.budget }}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

@@ -1,0 +1,77 @@
+# refine_budget_exhaust_skip — refine group_budget times → auto-skip, advance cursor.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: fixing
+initial_world:
+  verdict_path:   "stories/ui-fix/testdata/verdict.json"
+  severity_floor: "warn"
+  media_format:   "slideshow"
+  group_budget:   2  # small budget so we hit it fast
+  cursor: 0
+  group_cycle: 2  # already at budget
+  groups:
+    items:
+      - { id: "g1", title: "Group 1", pattern: "P1", root_cause: "C1", severity: "error", member_ids: ["fp1"], surfaces: ["s1"], viewports: ["mobile"], before_frames: ["f1.png"], recommendation: "R1" }
+      - { id: "g2", title: "Group 2", pattern: "P2", root_cause: "C2", severity: "warn",  member_ids: ["fp2"], surfaces: ["s2"], viewports: ["desktop"], before_frames: ["f2.png"], recommendation: "R2" }
+  current:
+    id: "g1"
+    title: "Group 1"
+    pattern: "P1"
+    root_cause: "C1"
+    severity: "error"
+    member_ids: ["fp1"]
+    surfaces: ["s1"]
+    viewports: ["mobile"]
+    before_frames: ["f1.png"]
+    recommendation: "R1"
+  fix_result:
+    applied: true
+    files: ["src/Comp.vue"]
+    summary: "Did something."
+    diff_excerpt: "+  fix"
+    notes: ""
+  skipped:
+    items: []
+
+starlark_http_cassette: ../testdata/empty.http.yaml
+
+host_handlers:
+  host.agent.task:
+    data:
+      submitted:
+        applied: true
+        files: ["src/Comp2.vue"]
+        summary: "Fixed group 2."
+        diff_excerpt: "+  fix2"
+        notes: ""
+
+  host.starlark.run:
+    data:
+      bucket:
+        items:
+          - { group: { id: "g1", title: "Group 1", pattern: "P1", root_cause: "C1", severity: "error", member_ids: ["fp1"], surfaces: ["s1"], viewports: ["mobile"], before_frames: ["f1.png"], recommendation: "R1" }, media_handle: "", reason: "refine_budget_exhausted" }
+      # get_current for cursor=1 returns g2
+      item:
+        id: "g2"
+        title: "Group 2"
+        pattern: "P2"
+        root_cause: "C2"
+        severity: "warn"
+        member_ids: ["fp2"]
+        surfaces: ["s2"]
+        viewports: ["desktop"]
+        before_frames: ["f2.png"]
+        recommendation: "R2"
+      groups: { items: [] }
+
+turns:
+  # group_cycle is already at group_budget — should auto-skip
+  - intent: { name: refine, slots: { feedback: "still broken" } }
+    expect_state: fixing
+    expect_world:
+      cursor: 1
+      group_cycle: 0
+
+expect_terminal: false
+expect_no_errors: true

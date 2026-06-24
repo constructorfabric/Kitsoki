@@ -1,0 +1,51 @@
+# design_intake_and_quit — the intake room's arcs.
+#
+# `capture_existing` records the operator-named docs (passed to the search
+# room) and stays on the intake screen. `quit` abandons the proposal back
+# to the hub landing. In the new 4-stage pipeline, `discuss` advances
+# directly to design_search on the FIRST message (no multi-turn loop);
+# there is no `ready` gate in the intake room.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design
+initial_world:
+  judge_mode: "human"
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      name_slug:
+        data:
+          ok: true
+          submitted: { slug: "idea-x", rationale: "the proposed change" }
+  host.run:
+    by_call:
+      uniquify:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"slug":"idea-x","workspace":"docs/proposals/.workspace/idea-x"}'
+          stdout_json: { slug: "idea-x", workspace: "docs/proposals/.workspace/idea-x" }
+  # Search on_enter fires when we land in design_search; stub it to avoid errors.
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/idea-x/out.md", message_id: "out#1" }
+
+# Stub both search decides to avoid errors; the flow only tests intake arcs
+# and never advances past the transition into search.
+# We test capture_existing + quit without triggering on_enter's LLM calls.
+
+turns:
+  # Point the pipeline at existing docs — recorded, stays on the intake screen.
+  - intent: { name: capture_existing, slots: { paths: "docs/auth.md docs/stories/state-machine.md" } }
+    expect_state: design
+    expect_world:
+      design_existing_paths: "docs/auth.md docs/stories/state-machine.md"
+
+  # Abandon → back to the hub landing.
+  - intent: { name: quit, slots: {} }
+    expect_state: landing
+    expect_world:
+      last_error: "design abandoned at intake"
+
+expect_no_errors: true

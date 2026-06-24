@@ -1,5 +1,5 @@
 // Package host — agent registry plumbing for the per-call `agent:` argument
-// on host.oracle.ask_with_mcp (and any future site that wants to dispatch
+// on host.agent.ask_with_mcp (and any future site that wants to dispatch
 // against a named agent).
 //
 // Design note (WS-A7): we use a package-level setter rather than a context

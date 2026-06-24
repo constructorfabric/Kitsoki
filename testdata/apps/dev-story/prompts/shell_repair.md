@@ -1,6 +1,6 @@
 # shell_repair — Given a failed shell command, propose a fix.
 #
-# Invoked via `host.oracle.decide` after a host.run returns non-zero.
+# Invoked via `host.agent.decide` after a host.run returns non-zero.
 # The validator pins the response to a typed {command, why} object; the
 # state machine binds `command` back into `proposal_cmd` and `why` into
 # `proposal_explanation`, then routes the user to the review state.

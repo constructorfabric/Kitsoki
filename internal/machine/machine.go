@@ -1,39 +1,3 @@
-// Package machine implements the pure deterministic state machine core (§4, §12.1).
-// No I/O; consumers are the MCP server, the replay harness, and tests.
-//
-// # Parallel states (proposal §9.4)
-//
-// `type: parallel` is supported with minimum-viable semantics. See
-// parallel.go for the full design notes — state-path encoding, first-region-
-// wins intent dispatch, and depth-capped emit propagation across sibling
-// regions.
-//
-// # Event ordering within a turn
-//
-// Natural ordering:
-//
-//	IntentAccepted → ValidationFailed (if rejected, stop) |
-//	TransitionApplied → EffectApplied* → StateExited* → StateEntered*
-//
-// §8 lists the canonical event kinds. We do not emit TurnStarted / TurnEnded
-// here; those are orchestrator-level events. The machine emits only the events
-// that result from evaluating a single IntentCall.
-//
-// # Guard-hint policy (§7.5 ambiguity)
-//
-// When multiple guarded transitions fail, we return the guard_hint from the
-// *first* failing transition (most specific in declaration order). This follows
-// "first-guard-wins" ordering — the first branch that was tried and failed is
-// the most relevant for the author to explain.
-//
-// # View precedence (§7.6)
-//
-// If the winning transition declares a view:, it is rendered and returned.
-// The target state's view is NOT additionally appended (it would be shown on
-// the next "look" or re-entry, not on the current transition). This keeps the
-// turn output unambiguous. Authors who want both should write both in the
-// transition view. If the transition has no view:, only the target state's
-// view is rendered.
 package machine
 
 import (
@@ -43,8 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/expr"
@@ -57,7 +24,7 @@ import (
 )
 
 // AllowedIntent describes one intent that is currently valid for the user,
-// as produced by Machine.AllowedIntents for the §7.2 progressive-disclosure menu.
+// as produced by Machine.AllowedIntents for the progressive-disclosure menu.
 type AllowedIntent struct {
 	Name        string   `json:"name"`
 	Title       string   `json:"title,omitempty"`
@@ -76,7 +43,14 @@ type ValidationResult struct {
 }
 
 // HostInvocation describes a host.* side-effect call that the caller must
-// dispatch outside the pure machine (§11).
+// dispatch outside the pure machine. The machine only constructs and returns
+// these; it never executes them, which is what keeps a turn reproducible.
+//
+// The zero value is a no-op descriptor (empty Namespace, nil maps); callers
+// dispatch only the non-zero entries the machine collected. A HostInvocation
+// is plain data with no internal synchronisation — a single turn's slice is
+// owned by one goroutine (the orchestrator dispatching them), so concurrent
+// mutation of the same value is the caller's responsibility, not the machine's.
 type HostInvocation struct {
 	Namespace string         `json:"namespace"`
 	Args      map[string]any `json:"args,omitempty"`
@@ -93,14 +67,29 @@ type HostInvocation struct {
 	// Env is the expression-evaluation environment to use for re-rendering
 	// RawWith.  Captured from the machine's effect-walk so the orchestrator
 	// has access to the same slots/event/run scope (the World is overridden
-	// at re-render time with the latest world).
+	// at re-render time with the world snapshot below plus dispatch binds).
 	Env any `json:"-"`
+	// WorldSnapshot is a clone of the world AS OF THIS INVOKE'S POSITION in
+	// the effect list — earlier `set:`/`increment:` effects are reflected,
+	// LATER ones are NOT. The orchestrator re-renders RawWith against this
+	// snapshot overlaid with the binds accumulated from earlier invokes in
+	// the same chain. Using the snapshot (rather than the final post-chain
+	// world) is what keeps a later `set:` from clobbering an earlier
+	// invoke's `with:` arg — e.g. proposal/restart archives the chat with
+	// `{{ world.proposal_chat_id }}` and then a following `set:` clears that
+	// key; the archive must still see the pre-clear value. Empty for
+	// HostInvocations built outside the effect-walk (older paths / test
+	// stubs), in which case the orchestrator falls back to the live world.
+	WorldSnapshot map[string]any `json:"-"`
 	// Bind maps world variable names to keys in the host result's Data map.
 	// e.g. bind: {workspace: "id"} copies result.Data["id"] into world["workspace"].
 	Bind map[string]string `json:"bind,omitempty"`
 	// OnError is a state path to transition to when the host returns an error.
 	// When non-empty and the host fails, the machine should transition there
-	// rather than erroring out. The $host_error slot will be set.
+	// rather than erroring out. Before the redirect the engine sets the
+	// reserved global world vars last_error (string) and host_error
+	// ({namespace, message, data?, stderr?, exit_code?}); both are exempt from
+	// import folding and readable by the target room without declaration.
 	OnError   string `json:"on_error,omitempty"`
 	EmitEvent string `json:"emit_event,omitempty"`
 	// Background, when true, signals that the orchestrator should submit
@@ -110,9 +99,22 @@ type HostInvocation struct {
 	// The orchestrator persists these alongside the job spec; the machine
 	// does not consume them.
 	OnComplete []app.Effect `json:"on_complete,omitempty"`
+	// AgentPlugin is the agent alias (e.g. "agent.autofix_fixer") declared
+	// on the effect via the `agent:` field. Empty means resolve to the default
+	// "agent.claude". Carried from app.Effect.AgentPlugin so the orchestrator
+	// can route through host.Dispatch with the correct plugin.
+	AgentPlugin string `json:"agent_plugin,omitempty"`
 }
 
-// TurnResult is returned by Machine.Turn after a successful transition.
+// TurnResult is returned by Machine.Turn after a successful transition. It is
+// a snapshot of one turn's outcome and carries no internal synchronisation: it
+// is safe to read from multiple goroutines once Turn has returned, but the
+// caller must not mutate its slices/maps concurrently. The zero value is the
+// "nothing happened" result (empty NewState, zero World, nil ValidationError);
+// Turn never returns it for an accepted call.
+//
+// When the intent was rejected, ValidationError is non-nil and NewState/World
+// equal the inputs unchanged — see Machine.Turn.
 type TurnResult struct {
 	NewState  app.StatePath    `json:"new_state"`
 	World     world.World      `json:"world"`
@@ -141,11 +143,25 @@ type TurnResult struct {
 	Renderer *render.AppRenderer `json:"-"`
 }
 
-// Machine is the pure deterministic core (§12.1).
+// Machine is the pure deterministic core. See the package doc for the turn
+// algorithm, event-ordering invariants, and concurrency contract.
 type Machine interface {
 	Turn(ctx context.Context, cur app.StatePath, w world.World, call intent.IntentCall) (TurnResult, error)
 	AllowedIntents(cur app.StatePath, w world.World) []AllowedIntent
+	// DecisionCandidates returns the intents an LLM/human decider may choose
+	// between at a gate (firable, advancing, non-exit, non-self). See the impl.
+	DecisionCandidates(cur app.StatePath, w world.World) []AllowedIntent
+	// IsDecisionGate reports whether the state is a multi-way decision gate
+	// (has a forward intent that is not an auto-emit target). See isDecisionGate.
+	IsDecisionGate(cur app.StatePath, w world.World) bool
 	Validate(cur app.StatePath, w world.World, call intent.IntentCall) ValidationResult
+	// LookupIntent resolves an intent definition by name scoped to the given
+	// state (state-local intents shadow the global library; parallel-encoded
+	// paths probe each region leaf). Read-only callers (e.g. the runstatus web
+	// surface, which needs each allowed intent's slot schema to tell the
+	// browser which input box to bind) use it without re-deriving the
+	// state→intent resolution rules.
+	LookupIntent(cur app.StatePath, name string) (app.Intent, bool)
 	// RenderState recomputes the view for the given state path and world snapshot.
 	// Used by the orchestrator to refresh the view after host-call bindings land
 	// so the user sees the updated world on the same turn.
@@ -170,7 +186,7 @@ type Machine interface {
 	// Callers should treat unresolved as primary (passes by default): the guard
 	// will be checked at submission time when all slots are present.
 	TryGuards(cur app.StatePath, w world.World, intentName string, prefillSlots map[string]any) GuardDryRunResult
-	// Menu returns the computed §7.2 menu (primary + blocked entries) for
+	// Menu returns the computed menu (primary + blocked entries) for
 	// the given state and world. View-render call sites populate env.Menu
 	// with the template-friendly view of this so authors can render the
 	// "what can I do right now" surface inline.
@@ -204,7 +220,7 @@ type Machine interface {
 	// This is the bridge that makes emit_intent: composable with
 	// host.* invocations that bind into world AFTER machine.Turn
 	// returns — the canonical case being the bugfix story's LLM-judge
-	// step (host.oracle.ask_with_mcp binds llm_verdict, the next
+	// step (host.agent.ask_with_mcp binds llm_verdict, the next
 	// effect's `when:` reads it).
 	//
 	// The pass walks only emit_intent: entries; set/increment/say/invoke
@@ -217,7 +233,20 @@ type Machine interface {
 	// When the state has no emit_intent: effects (or none whose guard
 	// passes), returns the inputs unchanged with empty event/hostCall
 	// slices — callers can guard on len(events) before doing anything.
-	DispatchPostBindEmits(ctx context.Context, state app.StatePath, w world.World) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error)
+	//
+	// When `staged` is true, the synthetic chain STOPS before firing any
+	// emit at a state that is a multi-way decision gate (>1 advancing
+	// intent currently available) — a phase boundary ends the turn so a
+	// human can decide. A GateDecided event records the stop. In one-shot
+	// mode (staged=false) the chain advances exactly as before. See the
+	// "turn loop" section of docs/stories/state-machine.md for how staged
+	// and one-shot execution modes drive the orchestrator.
+	//
+	// onEnter, when non-nil, is fired once per synthetic hop with the room
+	// entered and that hop's say-text, so callers can stream per-room
+	// progress breadcrumbs live during a one-shot chain. Pass nil to
+	// disable (the say-text is still returned merged in the string result).
+	DispatchPostBindEmits(ctx context.Context, state app.StatePath, w world.World, staged bool, onEnter onRoomEnterFn) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error)
 
 	// ResolveInitialLeaf descends a compound state to its initial leaf,
 	// recursively. For non-compound states (or unknown paths) it returns
@@ -234,7 +263,13 @@ type Machine interface {
 	ResolveInitialLeaf(cur app.StatePath, w world.World) (app.StatePath, error)
 }
 
-// GuardDryRunResult is the result of TryGuards.
+// GuardDryRunResult is the result of [Machine.TryGuards] — a read-only
+// "what would happen if I tried this intent now" probe used to build the menu
+// without mutating state or world. The zero value reads as "blocked, no
+// destination, no reason": every bool is false and both string fields empty,
+// which is the safe default for a guard that could not be resolved. Primary and
+// Blocked are mutually exclusive; Unresolved is reported as Primary (it passes
+// by default and is re-checked at submission time when all slots are present).
 type GuardDryRunResult struct {
 	// Primary is true when a guard arm matched (or is a default/no-guard branch).
 	Primary bool
@@ -265,9 +300,8 @@ type GuardDryRunResult struct {
 
 // compiledTransition holds a Transition with its pre-compiled guard program.
 type compiledTransition struct {
-	tr       app.Transition
-	guard    *expr.Program // nil when no When guard
-	viewProg *expr.Program // nil when no View template
+	tr    app.Transition
+	guard *expr.Program // nil when no When guard
 }
 
 // compiledState is a State with pre-compiled guard programs on every transition.
@@ -296,7 +330,10 @@ type machineImpl struct {
 	importRenderers map[string]*render.AppRenderer
 }
 
-// MachineOption is a functional option for Machine construction.
+// MachineOption is a functional option for Machine construction. Options exist
+// so tests and specialised callers can customise the logger or renderer without
+// widening New's signature or exposing the unexported machineImpl — production
+// call sites pass none and get the documented defaults.
 type MachineOption func(*machineImpl)
 
 // WithMachineLogger sets the logger for guard/effect trace events.
@@ -323,7 +360,7 @@ func WithMachineRenderer(r *render.AppRenderer) MachineOption {
 // New creates a new Machine from a validated AppDef.
 // It pre-compiles all guards, view templates, and guard hints.
 // Returns an error (via errors.Join) listing every compilation failure.
-// Returns an error if any parallel state is malformed (proposal §9.4).
+// Returns an error if any parallel state is malformed.
 func New(def *app.AppDef, opts ...MachineOption) (Machine, error) {
 	m := &machineImpl{
 		appDef:          def,
@@ -510,7 +547,7 @@ func (m *machineImpl) hasWildcard(cur app.StatePath) bool {
 // given state (including inherited handlers from compound-state ancestors,
 // but for PoC we only look at the leaf state and its direct parent chain).
 //
-// Parallel-encoded paths (proposal §9.4) return the union of allowed intents
+// Parallel-encoded paths return the union of allowed intents
 // across every region leaf, so the orchestrator's menu and Validate code
 // see the full surface without needing to know about parallel encoding.
 func (m *machineImpl) allowedIntentNames(cur app.StatePath) []string {
@@ -559,6 +596,13 @@ func isAllowed(name string, allowed []string) bool {
 	return false
 }
 
+// LookupIntent is the exported wrapper over lookupIntent for read-only callers
+// (the runstatus web surface) that need an allowed intent's resolved slot
+// schema. It applies the same state-local-shadows-global resolution.
+func (m *machineImpl) LookupIntent(cur app.StatePath, name string) (app.Intent, bool) {
+	return m.lookupIntent(cur, name)
+}
+
 // lookupIntent looks up an intent definition by name scoped to the given state.
 // Parallel-encoded paths probe each region leaf in turn; the first match wins
 // (regions are alphabetical so the result is deterministic).
@@ -597,10 +641,13 @@ func (m *machineImpl) lookupIntent(cur app.StatePath, name string) (app.Intent, 
 
 // validateSlots validates the provided slot values against the intent's slot schema.
 func validateSlots(intentDef app.Intent, slots world.Slots) *intent.ValidationError {
+	if slots == nil {
+		slots = world.Slots{}
+	}
 	var missing []string
 	for slotName, slotDef := range intentDef.Slots {
 		val, present := slots[slotName]
-		if slotDef.Required && (!present || val == nil || val == "") {
+		if slotDef.Required && (!present || val == nil) {
 			missing = append(missing, slotName)
 			continue
 		}
@@ -650,8 +697,7 @@ func validateSlots(intentDef app.Intent, slots world.Slots) *intent.ValidationEr
 // Turn applies one accepted intent call and returns the result.
 // All state mutations are on a cloned world — the caller's world is not mutated.
 func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World, call intent.IntentCall) (TurnResult, error) {
-	// 0. Parallel-encoded path? Dispatch to the parallel-state turn handler
-	//    (proposal §9.4).
+	// 0. Parallel-encoded path? Dispatch to the parallel-state turn handler.
 	if par := parseParallel(string(cur)); par.IsParallel {
 		return m.turnParallel(ctx, par, w, call)
 	}
@@ -729,7 +775,7 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 
 	// 5. For compound states, resolve the initial child. resolveInitialAware
 	//    additionally expands a parallel target into its encoded composite
-	//    leaf-set (proposal §9.4).
+	//    leaf-set.
 	resolvedTarget, err := m.resolveInitialAware(targetPath, env)
 	if err != nil {
 		return TurnResult{}, fmt.Errorf("resolve initial for %q: %w", targetPath, err)
@@ -767,7 +813,7 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	//
 	// Pre-2026-05-20 the test was just `resolvedTarget != cur`, which
 	// silently swallowed the refine arc's intent: the user typed
-	// `refine` in reproducing, the cycle counter bumped, but the oracle
+	// `refine` in reproducing, the cycle counter bumped, but the agent
 	// never re-fired and the artifact text stayed identical. The user
 	// described it as "the refinement came back immediately and didn't
 	// change the artifact text."
@@ -849,7 +895,12 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 	//     externally-initiated turn. Depth-capped at EmitIntentMaxDepth.
 	finalState := resolvedTarget
 	if len(emits) > 0 {
-		ds, dw, dhc, dssb, devs, derr := m.dispatchEmittedIntents(ctx, finalState, newWorld, emits, env, 0)
+		// staged=false: pre-bind emit chains on the Turn path stay one-shot
+		// in this slice. The staged gate-stop lives in the post-bind path
+		// (DispatchPostBindEmits), which is where the docs-review / bugfix
+		// decision emits actually fire (they gate on host-bound world keys).
+		// Threading the run mode through Machine.Turn is deferred.
+		ds, dw, dhc, dssb, devs, derr := m.dispatchEmittedIntents(ctx, finalState, newWorld, emits, env, 0, false, nil)
 		if derr != nil {
 			return TurnResult{}, derr
 		}
@@ -953,7 +1004,16 @@ func (m *machineImpl) Turn(ctx context.Context, cur app.StatePath, w world.World
 // Depth is bounded by EmitIntentMaxDepth — exceeding it surfaces an
 // error trace event (trace.EvIntentEmitDepthCap) and returns an error
 // so the surrounding Turn fails loud rather than looping silently.
-func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState string, w world.World, emits []emittedIntent, parentEnv expr.Env, depth int) (string, world.World, []HostInvocation, string, []store.Event, error) {
+// onRoomEnterFn, when non-nil, is invoked once per synthetic hop with the
+// room just entered and the say-text that hop produced (transition say +
+// the entered room's on_enter say). It is the seam the orchestrator uses to
+// stream per-room progress breadcrumbs LIVE during a one-shot chain instead
+// of merging all say into one blob prepended to the final view. Fired
+// synchronously; implementations MUST NOT block (the TUI sink fans out via
+// tea.Program.Send).
+type onRoomEnterFn func(state string, say string)
+
+func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState string, w world.World, emits []emittedIntent, parentEnv expr.Env, depth int, staged bool, onEnter onRoomEnterFn) (string, world.World, []HostInvocation, string, []store.Event, error) {
 	if depth >= EmitIntentMaxDepth {
 		m.logger.DebugContext(ctx, trace.EvIntentEmitDepthCap,
 			slog.Int("depth", depth),
@@ -962,11 +1022,61 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 		return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent: dispatch exceeded max depth (%d) at state %q — likely a cyclic emit chain", EmitIntentMaxDepth, curState)
 	}
 
+	// Gate check: a phase boundary ends the turn. If the chain has reached
+	// a multi-way decision gate that owes a human decision (staged mode, or
+	// a `decider: human` pin), stop BEFORE firing this state's emits —
+	// drop them, rest here, and record why. One-shot mode (and `decider:
+	// llm` pins) skip this and advance as before.
+	//
+	// Origin-state (depth==0) exception, scoped to internal auto-routes: the
+	// origin is the state *dispatching* these emits (e.g. a router room's
+	// post-bind `emit_intent: "{{ world.route }}"`), not a state the chain has
+	// arrived at. A post-bind emit that resolves to a `hidden:` intent —
+	// on_branch/on_main and friends, which no operator ever types — is
+	// deterministic routing off a host-bound fact, so it must fire even in
+	// staged mode (issue #15: once: on_enter host.run bind+emit was dropped).
+	// But a post-bind emit to a FIRST-CLASS operator action (e.g. cherny-loop
+	// baseline's `proceed`, shown alongside reconfigure/accept) IS a decision a
+	// human owes, so the origin gate still stands. Distinguishing on the
+	// emitted intent's `hidden:` flag is what lets git-ops idle auto-route while
+	// importer-gate's baseline gates. depth>0 (arrived-at) states always gate.
+	if (depth > 0 || !m.allEmitsHiddenRoutes(curState, emits)) &&
+		m.isStagedGate(ctx, curState, w, staged) {
+		m.logger.DebugContext(ctx, trace.EvIntentEmitted,
+			slog.String("state", curState),
+			slog.String("kind", "staged_gate_stop"),
+			slog.Int("depth", depth),
+		)
+		gateEv := newEvent(store.GateDecided, map[string]any{
+			"state":             curState,
+			"available_intents": m.allowedIntentNames(app.StatePath(curState)),
+			"decider":           "human",
+			"chosen_intent":     "",
+			"bailed_to_human":   true,
+		})
+		return curState, w, nil, "", []store.Event{gateEv}, nil
+	}
+
 	state := curState
 	newWorld := w
 	var hostCalls []HostInvocation
 	var saySB strings.Builder
 	var events []store.Event
+
+	// Record an auto-advance through a real decision gate: when a guarded
+	// emit_intent (a conditional default) fires at a state that IS a decision
+	// gate, the engine just made the decision deterministically. Recording it
+	// keeps the "every decision is a labeled datapoint" invariant. Trivial
+	// single-intent / non-gate advances are NOT recorded (no decision existed).
+	if len(emits) > 0 && m.isDecisionGate(ctx, curState, w) {
+		events = append(events, newEvent(store.GateDecided, map[string]any{
+			"state":             curState,
+			"available_intents": m.allowedIntentNames(app.StatePath(curState)),
+			"decider":           "default",
+			"chosen_intent":     emits[0].Name,
+			"bailed_to_human":   false,
+		}))
+	}
 
 	for _, emit := range emits {
 		// Build the dispatch env so guards / templates in the
@@ -1058,11 +1168,16 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 		}
 		newWorld = nw2
 		hostCalls = append(hostCalls, hc2...)
+		// hopSay accumulates the say-text for THIS hop only (transition say
+		// + the entered room's on_enter say) so onEnter can stream it as one
+		// per-room breadcrumb. The recursion below streams its own hops.
+		var hopSay strings.Builder
 		if sb2.Len() > 0 {
 			if saySB.Len() > 0 {
 				saySB.WriteString("\n")
 			}
 			saySB.WriteString(sb2.String())
+			hopSay.WriteString(sb2.String())
 		}
 
 		// Fire on_enter of newly-entered ancestors. Mirror Turn's logic.
@@ -1086,10 +1201,19 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 						saySB.WriteString("\n")
 					}
 					saySB.WriteString(sb3.String())
+					if hopSay.Len() > 0 {
+						hopSay.WriteString("\n")
+					}
+					hopSay.WriteString(sb3.String())
 				}
 				ev2 = append(ev2, ev3...)
 				enterEmits = append(enterEmits, em3...)
 			}
+		}
+
+		// Stream this hop's say live as a per-room breadcrumb.
+		if onEnter != nil && hopSay.Len() > 0 {
+			onEnter(resolvedTarget, hopSay.String())
 		}
 
 		// Build event sequence for this synthetic transition.
@@ -1121,7 +1245,7 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 		state = resolvedTarget
 
 		if len(chainedEmits) > 0 {
-			subState, subWorld, subHC, subSay, subEvs, subErr := m.dispatchEmittedIntents(ctx, state, newWorld, chainedEmits, parentEnv, depth+1)
+			subState, subWorld, subHC, subSay, subEvs, subErr := m.dispatchEmittedIntents(ctx, state, newWorld, chainedEmits, parentEnv, depth+1, staged, onEnter)
 			if subErr != nil {
 				return "", world.World{}, nil, "", nil, subErr
 			}
@@ -1304,15 +1428,21 @@ type emittedIntent struct {
 // It additionally collects emit_intent: effects into a slice of
 // emittedIntent records; the surrounding Turn / on_enter logic
 // dispatches them after the chain completes.
-func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effect, w world.World, env expr.Env) (world.World, []HostInvocation, strings.Builder, []store.Event, []emittedIntent, error) {
+// Returns saySB as *strings.Builder, not a value: a strings.Builder must never
+// be copied after its first write (it self-references its own address; copying
+// then writing panics with "illegal use of non-zero Builder copied by value").
+// Callers append more say text onto the returned builder, so a value return
+// would be a latent panic the moment a transition effect emits a non-empty
+// `say:` and the on_enter / emit-dispatch chain writes more onto it.
+func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effect, w world.World, env expr.Env) (world.World, []HostInvocation, *strings.Builder, []store.Event, []emittedIntent, error) {
 	newWorld := cloneWorld(w)
 	var hostCalls []HostInvocation
-	var saySB strings.Builder
+	saySB := &strings.Builder{}
 	var effectEvents []store.Event
 	var emits []emittedIntent
 
 	for _, eff := range effects {
-		// Optional per-effect guard (§6.2.1, §9.6). An effect whose
+		// Optional per-effect guard. An effect whose
 		// `when:` expression evaluates false is silently skipped so
 		// authors can branch on_enter chains on world flags (e.g.
 		// `when: world.narration` vs `when: not world.narration`)
@@ -1331,7 +1461,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				// emit_intent effects routinely reference world keys that
 				// only get populated by host-call binds (e.g. the bugfix
 				// story's `world.llm_verdict.confidence`, bound by
-				// host.oracle.ask_with_mcp later in the same on_enter
+				// host.agent.ask_with_mcp later in the same on_enter
 				// chain). Binds happen at orchestrator-dispatch time, not
 				// machine-time, so the When eval can error against nil
 				// references here even though the post-bind eval would
@@ -1360,24 +1490,40 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 		}
 		switch {
 		case len(eff.Set) > 0:
-			for k, v := range eff.Set {
-				resolved, err := resolveEffectValue(v, env, newWorld)
+			// Freeze the env for the whole block so every key in one `set:`
+			// renders against the SAME pre-block world. This makes a single `set:`
+			// map atomic and order-independent (its keys are a Go map → unordered),
+			// while cross-entry order stays progressive: the next effect entry sees
+			// these writes because we commit them before moving on.
+			blockEnv := env
+			blockEnv.World = newWorld.Vars // pre-block snapshot (read-only during render)
+			keys := make([]string, 0, len(eff.Set))
+			for k := range eff.Set {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			resolvedSet := make(map[string]any, len(eff.Set))
+			for _, k := range keys {
+				resolved, err := resolveEffectValue(eff.Set[k], blockEnv, newWorld)
 				if err != nil {
 					return world.World{}, nil, saySB, nil, nil, fmt.Errorf("effect set %q: %w", k, err)
 				}
+				resolvedSet[k] = resolved
+			}
+			for _, k := range keys {
 				before := newWorld.Vars[k]
-				newWorld.Vars[k] = resolved
-				env.World = newWorld.Vars
+				newWorld.Vars[k] = m.coerceSetValue(k, resolvedSet[k])
 				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
 					slog.String("type", "set"),
 					slog.String("key", k),
 					slog.Any("before", before),
-					slog.Any("after", resolved),
+					slog.Any("after", resolvedSet[k]),
 				)
 				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-					"set": map[string]any{k: resolved},
+					"set": map[string]any{k: resolvedSet[k]},
 				}))
 			}
+			env.World = newWorld.Vars // expose this block's commits to the next entry
 
 		case len(eff.Increment) > 0:
 			for k, delta := range eff.Increment {
@@ -1408,11 +1554,33 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 				slog.String("type", "say"),
 				slog.String("text", text),
 			)
-			effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-				"say": text,
+			// narration is its own event kind so
+			// world.update means only a world mutation. Payload key is `text`.
+			effectEvents = append(effectEvents, newEvent(store.MachineSay, map[string]any{
+				"text": text,
 			}))
 
 		case eff.Invoke != "":
+			// once: idempotent re-entry guard. When every bind target world
+			// key is already SET (non-empty), the invoke is a no-op — its
+			// result is already cached in world, so re-entry (/reload,
+			// self-transition, on_error) re-renders from the cache instead of
+			// recomputing an expensive, non-idempotent call. Skipping does NOT
+			// abort the rest of the on_enter chain; the engine continues to the
+			// next effect. The skip is recorded on EffectApplied so a trace
+			// shows the elision and why. See app.Effect.Once.
+			if eff.Once && allBindTargetsSet(eff.Bind, newWorld.Vars) {
+				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
+					slog.String("type", "invoke"),
+					slog.String("namespace", eff.Invoke),
+					slog.String("skipped", "cached"),
+				)
+				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
+					"namespace": eff.Invoke,
+					"skipped":   "cached",
+				}))
+				continue
+			}
 			// Resolve with: args (templated values).  `resolvedArgs` is the
 			// best-effort up-front resolution against the world snapshot at
 			// machine-time; the orchestrator re-renders RawWith using the
@@ -1431,16 +1599,36 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			for k, v := range eff.With {
 				rawWith[k] = v
 			}
+			// Thread the author-assigned call-site id (effect-level `id:`) into
+			// the args under the reserved `call` key, so flow stubs (`by_call:`)
+			// and cassettes (`match: { call: <id> }`) can address two calls that
+			// share a handler name. A plain string with no template, so the
+			// dispatch-time re-render of rawWith returns it unchanged. Mirrors
+			// the `op` arg that `by_op:` keys on.
+			if eff.Id != "" {
+				resolvedArgs["call"] = eff.Id
+				rawWith["call"] = eff.Id
+			}
+			// Snapshot the world as of THIS invoke's position so the
+			// orchestrator can re-render RawWith without a later `set:` in
+			// the same chain leaking back into these args. See
+			// HostInvocation.WorldSnapshot.
+			worldSnapshot := make(map[string]any, len(newWorld.Vars))
+			for k, v := range newWorld.Vars {
+				worldSnapshot[k] = v
+			}
 			hc := HostInvocation{
-				Namespace:  eff.Invoke,
-				Args:       resolvedArgs,
-				RawWith:    rawWith,
-				Env:        env,
-				Bind:       eff.Bind,
-				OnError:    eff.OnError,
-				EmitEvent:  eff.Emit,
-				Background: eff.Background,
-				OnComplete: eff.OnComplete,
+				Namespace:     eff.Invoke,
+				Args:          resolvedArgs,
+				RawWith:       rawWith,
+				Env:           env,
+				WorldSnapshot: worldSnapshot,
+				Bind:          eff.Bind,
+				OnError:       eff.OnError,
+				EmitEvent:     eff.Emit,
+				Background:    eff.Background,
+				OnComplete:    eff.OnComplete,
+				AgentPlugin:   eff.AgentPlugin,
 			}
 			hostCalls = append(hostCalls, hc)
 			m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
@@ -1499,81 +1687,6 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 	return newWorld, hostCalls, saySB, effectEvents, emits, nil
 }
 
-// findTransition walks the transition arms for a given intent in the state
-// path (leaf first, then ancestors for compound states) and returns the first
-// winning compiledTransition, the state path it belongs to, and any guard hint.
-func (m *machineImpl) findTransition(leafPath, intentName string, env expr.Env) (*compiledTransition, string, string, error) {
-	// Walk from leaf to root.
-	path := leafPath
-	for {
-		cs, ok := m.states[path]
-		if ok {
-			// Try the intent's handlers first.
-			handlers := cs.on[intentName]
-			if len(handlers) > 0 {
-				ct, hint, err := evaluateArms(handlers, env)
-				if err != nil {
-					return nil, "", "", err
-				}
-				if ct != nil {
-					return ct, path, "", nil
-				}
-				// All guards failed; return hint from first failing guard.
-				return nil, path, hint, nil
-			}
-			// Try wildcard "*" handlers.
-			wildcardHandlers := cs.on["*"]
-			if len(wildcardHandlers) > 0 {
-				ct, hint, err := evaluateArms(wildcardHandlers, env)
-				if err != nil {
-					return nil, "", "", err
-				}
-				if ct != nil {
-					return ct, path, "", nil
-				}
-				return nil, path, hint, nil
-			}
-		}
-		// Move up one level.
-		idx := strings.LastIndexByte(path, '.')
-		if idx < 0 {
-			break
-		}
-		path = path[:idx]
-	}
-	return nil, leafPath, "", nil
-}
-
-// evaluateArms walks a list of compiledTransitions in order and returns the
-// first one whose guard evaluates true (or which is a default branch).
-// Returns nil if no arm matched, along with the guard hint from the first
-// failing guarded transition.
-func evaluateArms(arms []compiledTransition, env expr.Env) (*compiledTransition, string, error) {
-	hint := ""
-	for i := range arms {
-		arm := &arms[i]
-		if arm.tr.Default {
-			return arm, "", nil
-		}
-		if arm.guard == nil {
-			// No guard = always true.
-			return arm, "", nil
-		}
-		ok, err := expr.EvalBool(arm.guard, env)
-		if err != nil {
-			return nil, "", err
-		}
-		if ok {
-			return arm, "", nil
-		}
-		// Guard failed; capture the hint from the first failing guard.
-		if hint == "" && arm.tr.GuardHint != "" {
-			hint = arm.tr.GuardHint
-		}
-	}
-	return nil, hint, nil
-}
-
 // resolveTarget resolves a transition target relative to its owning state path.
 // Handles: "." (self), ".." relative refs, absolute refs.
 func resolveTarget(statePath, target string) string {
@@ -1623,95 +1736,6 @@ func (m *machineImpl) resolveInitial(path string, env expr.Env) (string, error) 
 	return m.resolveInitial(childPath, env)
 }
 
-// applyEffects applies an ordered list of effects to a world snapshot and
-// returns the new world, any host calls, a "say" string builder, and effect events.
-func (m *machineImpl) applyEffects(effects []app.Effect, w world.World, env expr.Env) (world.World, []HostInvocation, strings.Builder, []store.Event, error) {
-	newWorld := cloneWorld(w)
-	var hostCalls []HostInvocation
-	var saySB strings.Builder
-	var effectEvents []store.Event
-
-	for _, eff := range effects {
-		switch {
-		case len(eff.Set) > 0:
-			for k, v := range eff.Set {
-				// Values may be expr-lang template strings.
-				resolved, err := resolveEffectValue(v, env, newWorld)
-				if err != nil {
-					return world.World{}, nil, saySB, nil, fmt.Errorf("effect set %q: %w", k, err)
-				}
-				newWorld.Vars[k] = resolved
-				// Update env.World so subsequent effects see the new value.
-				env.World = newWorld.Vars
-				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-					"set": map[string]any{k: resolved},
-				}))
-			}
-
-		case len(eff.Increment) > 0:
-			for k, delta := range eff.Increment {
-				cur := toInt64(newWorld.Vars[k])
-				newWorld.Vars[k] = cur + int64(delta)
-				env.World = newWorld.Vars
-				effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-					"increment": map[string]any{k: delta},
-				}))
-			}
-
-		case eff.Say != "":
-			text, err := render.Pongo(eff.Say, env)
-			if err != nil {
-				return world.World{}, nil, saySB, nil, fmt.Errorf("effect say: %w", err)
-			}
-			if saySB.Len() > 0 {
-				saySB.WriteString("\n")
-			}
-			saySB.WriteString(text)
-			effectEvents = append(effectEvents, newEvent(store.EffectApplied, map[string]any{
-				"say": text,
-			}))
-
-		case eff.Invoke != "":
-			// Resolve with: args (templated values).  `resolvedArgs` is the
-			// best-effort up-front resolution against the world snapshot at
-			// machine-time; the orchestrator re-renders RawWith using the
-			// post-bind world before each invocation, so a downstream step
-			// in the same `on_enter:` can see an earlier step's binds.
-			resolvedArgs := make(map[string]any, len(eff.With))
-			for k, v := range eff.With {
-				resolved, err := resolveEffectValue(v, env, newWorld)
-				if err != nil {
-					return world.World{}, nil, saySB, nil, fmt.Errorf("effect invoke %q with %q: %w", eff.Invoke, k, err)
-				}
-				resolvedArgs[k] = resolved
-			}
-			// Snapshot the raw `with:` block so dispatch can re-render it.
-			rawWith := make(map[string]any, len(eff.With))
-			for k, v := range eff.With {
-				rawWith[k] = v
-			}
-			hc := HostInvocation{
-				Namespace:  eff.Invoke,
-				Args:       resolvedArgs,
-				RawWith:    rawWith,
-				Env:        env,
-				Bind:       eff.Bind,
-				OnError:    eff.OnError,
-				EmitEvent:  eff.Emit,
-				Background: eff.Background,
-				OnComplete: eff.OnComplete,
-			}
-			hostCalls = append(hostCalls, hc)
-			effectEvents = append(effectEvents, newEvent(store.HostInvoked, map[string]any{
-				"namespace":  eff.Invoke,
-				"args":       resolvedArgs,
-				"background": eff.Background,
-			}))
-		}
-	}
-	return newWorld, hostCalls, saySB, effectEvents, nil
-}
-
 // DispatchPostBindEmits — see Machine interface doc-comment.
 //
 // Walks the leaf state's on_enter chain (parallel-encoded paths are
@@ -1720,7 +1744,7 @@ func (m *machineImpl) applyEffects(effects []app.Effect, w world.World, env expr
 // emit_intent: (with its optional When: guard), evaluates the guard
 // against the post-bind world and dispatches the synthetic intent via
 // the shared dispatchEmittedIntents pipeline.
-func (m *machineImpl) DispatchPostBindEmits(ctx context.Context, state app.StatePath, w world.World) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error) {
+func (m *machineImpl) DispatchPostBindEmits(ctx context.Context, state app.StatePath, w world.World, staged bool, onEnter onRoomEnterFn) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error) {
 	if par := parseParallel(string(state)); par.IsParallel {
 		// Parallel-encoded paths can't host emit_intent dispatch
 		// (parallel.go's region semantics ride a separate event-bus
@@ -1812,11 +1836,174 @@ func (m *machineImpl) DispatchPostBindEmits(ctx context.Context, state app.State
 		return state, w, nil, "", nil, nil
 	}
 
-	finalState, finalWorld, hostCalls, sayText, events, derr := m.dispatchEmittedIntents(ctx, string(state), w, emits, env, 0)
+	finalState, finalWorld, hostCalls, sayText, events, derr := m.dispatchEmittedIntents(ctx, string(state), w, emits, env, 0, staged, onEnter)
 	if derr != nil {
 		return state, w, nil, "", nil, derr
 	}
 	return app.StatePath(finalState), finalWorld, hostCalls, sayText, events, nil
+}
+
+// allEmitsHiddenRoutes reports whether EVERY emit in `emits` resolves to an
+// intent declared `hidden:` — an internal auto-route (a router room's
+// `emit_intent: "{{ world.route }}"` → on_branch/on_main, never operator-typed)
+// rather than a first-class operator action. Such a post-bind emit is a
+// deterministic consequence of a host-bound fact, so the staged gate must let
+// it fire even at the origin state; a single non-hidden emit (e.g. cherny-loop
+// baseline's `proceed`) means a real decision is pending and the gate stands.
+// Aliases are resolved first so the lookup works across an import boundary
+// (e.g. `proceed` → `maker__proceed`). An empty list or an unresolvable name is
+// treated as NOT a pure route (false), so the gate is preserved by default.
+func (m *machineImpl) allEmitsHiddenRoutes(state string, emits []emittedIntent) bool {
+	if len(emits) == 0 {
+		return false
+	}
+	for _, e := range emits {
+		name := m.resolveEmittedIntentName(state, e.Name)
+		def, ok := m.lookupIntent(app.StatePath(state), name)
+		if !ok || !def.Hidden {
+			return false
+		}
+	}
+	return true
+}
+
+// isDecisionGate reports whether `state` represents a genuine branch the
+// operator must choose between — as opposed to deterministic outcome
+// routing the engine resolves on its own.
+//
+// The rule: a state is a decision gate when it has at least one currently-
+// available forward intent (arm advances to a different, non-`@exit` state)
+// that is NOT itself the target of one of the state's `emit_intent:`
+// auto-advances. Such an intent is reachable ONLY by operator/decider
+// input, so leaving it to auto-advance would silently make a choice.
+//
+// Worked examples (docs-review):
+//   - reviewing: forward intents {done, no_submit} are BOTH emit_intent
+//     targets (success/failure outcome routing) → not a gate → auto-advance.
+//   - reviewed:  forward intents {fix_docs, review_again}; only fix_docs is
+//     an emit target, review_again is operator-only → gate → staged stops.
+//   - fixing:    forward {fix_done} is an emit target → not a gate.
+//
+// A templated emit name (e.g. `emit_intent: "{{ world.verdict.intent }}"`,
+// the bugfix LLM-judge shape) matches no static intent, so every real
+// forward intent stays "operator-only" → the *_awaiting_reply room is a
+// gate. That is correct: in staged mode a human decides; in one-shot mode
+// this check is skipped and the templated emit fires.
+func (m *machineImpl) isDecisionGate(ctx context.Context, state string, w world.World) bool {
+	cs, ok := m.states[state]
+	if !ok || cs.s == nil {
+		return false
+	}
+	emitTargets := make(map[string]struct{}, len(cs.s.OnEnter))
+	for _, eff := range cs.s.OnEnter {
+		if n := strings.TrimSpace(eff.EmitIntent); n != "" {
+			// Under an import, the on_enter `emit_intent:` value stays the
+			// bare child name (e.g. `mark_achieved`) while the state's `on:`
+			// arc keys — what allowedIntentNames returns — are rewritten to
+			// the aliased form (`maker__mark_achieved`). Resolve the emit
+			// name through the same IntentAliases walk the dispatcher uses so
+			// the membership test below matches; otherwise every forward emit
+			// is misclassified "operator-only" and the chain wrongly stalls at
+			// the gate (e.g. cherny-loop's `gating` imported into ship-it).
+			emitTargets[m.resolveEmittedIntentName(state, n)] = struct{}{}
+		}
+	}
+	env := expr.Env{Slots: map[string]any{}, World: w.Vars, Event: map[string]any{}}
+	for _, name := range m.allowedIntentNames(app.StatePath(state)) {
+		if _, isEmit := emitTargets[name]; isEmit {
+			continue // auto-advance outcome, not an operator choice
+		}
+		tr, path, _, err := m.findTransitionTraced(ctx, state, name, env)
+		if err != nil || tr == nil {
+			continue // guard failed / errored → not available this turn
+		}
+		raw := strings.TrimSpace(tr.tr.Target)
+		// Exit escapes (quit-style) are not forward branches. `@exit:<name>`
+		// is rewritten to the synthesised terminal `__exit__<name>` at load
+		// time, so match both the raw and rewritten forms.
+		if strings.HasPrefix(raw, "@exit") || strings.HasPrefix(raw, "__exit__") {
+			continue
+		}
+		if strings.Contains(raw, "{{") {
+			if rendered, rerr := expr.Render(raw, env); rerr == nil {
+				raw = strings.TrimSpace(rendered)
+			}
+			// On render failure, fall through and treat as forward
+			// (conservative: prefer stopping over auto-advancing through
+			// an unresolved target).
+		}
+		if resolveTarget(path, raw) == state {
+			continue // self / recycle (look), not a branch choice
+		}
+		return true // operator-only forward intent exists → decision gate
+	}
+	return false
+}
+
+// IsDecisionGate is the exported wrapper around isDecisionGate, used by the
+// orchestrator's engine decider to detect a gate post-settle.
+func (m *machineImpl) IsDecisionGate(cur app.StatePath, w world.World) bool {
+	return m.isDecisionGate(context.Background(), string(cur), w)
+}
+
+// isStagedGate reports whether the synthetic emit chain should STOP at
+// `state` because a human decision is owed. It stops when the state is a
+// decision gate (isDecisionGate) AND either staged mode is active or the
+// state pins `decider: human`. A `decider: llm` pin forces auto-advance
+// (the emit fires) even in staged mode — the "mix" override.
+func (m *machineImpl) isStagedGate(ctx context.Context, state string, w world.World, staged bool) bool {
+	decider := ""
+	if cs, ok := m.states[state]; ok && cs.s != nil {
+		decider = strings.TrimSpace(cs.s.Decider)
+	}
+	switch decider {
+	case "human":
+		return m.isDecisionGate(ctx, state, w)
+	case "llm":
+		return false
+	}
+	return staged && m.isDecisionGate(ctx, state, w)
+}
+
+// DecisionCandidates returns the intents a decider may choose between at a
+// gate: those currently available (a firable arm) whose target advances to a
+// different, non-`@exit` state. Self-loops (look) and exit escapes (quit) are
+// excluded; unlike isDecisionGate this INCLUDES emit-target intents, because
+// when an LLM decider runs (one-shot, the conditional-default emit did not
+// fire) the author's intended action is itself a legitimate choice. Metadata
+// (title/description/examples) rides along so the engine can build a decision
+// prompt from the state machine's own vocabulary.
+func (m *machineImpl) DecisionCandidates(cur app.StatePath, w world.World) []AllowedIntent {
+	ctx := context.Background()
+	env := expr.Env{Slots: map[string]any{}, World: w.Vars, Event: map[string]any{}}
+	var out []AllowedIntent
+	for _, name := range m.allowedIntentNames(cur) {
+		tr, path, _, err := m.findTransitionTraced(ctx, string(cur), name, env)
+		if err != nil || tr == nil {
+			continue
+		}
+		raw := strings.TrimSpace(tr.tr.Target)
+		if strings.HasPrefix(raw, "@exit") || strings.HasPrefix(raw, "__exit__") {
+			continue
+		}
+		if strings.Contains(raw, "{{") {
+			if rendered, rerr := expr.Render(raw, env); rerr == nil {
+				raw = strings.TrimSpace(rendered)
+			}
+		}
+		if resolveTarget(path, raw) == string(cur) {
+			continue
+		}
+		intentDef, _ := m.lookupIntent(cur, name)
+		out = append(out, AllowedIntent{
+			Name:        name,
+			Title:       intentDef.Title,
+			Description: intentDef.Description,
+			Examples:    intentDef.Examples,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // RenderState renders the view for a state+world snapshot. Used by the
@@ -1958,7 +2145,10 @@ func (m *machineImpl) RunEffectsAndState(ctx context.Context, state app.StatePat
 	finalState := string(state)
 	sayOut := saySB.String()
 	if len(emits) > 0 && finalState != "" {
-		ds, dw, dhc, dsay, devs, derr := m.dispatchEmittedIntents(ctx, finalState, newWorld, emits, env, 0)
+		// staged=false: see the Turn-path note above. RunEffectsAndState
+		// drives synthetic / timeout / on_complete turns that are one-shot
+		// by nature in this slice.
+		ds, dw, dhc, dsay, devs, derr := m.dispatchEmittedIntents(ctx, finalState, newWorld, emits, env, 0, false, nil)
 		if derr != nil {
 			return state, newWorld, hostCalls, sayOut, evts, derr
 		}
@@ -1986,6 +2176,45 @@ func (m *machineImpl) RunEffectsAndState(ctx context.Context, state app.StatePat
 //     `{{ world.jira_query }}` inside a list passes through verbatim and the
 //     handler receives an unexpanded template.
 //   - Other scalars are returned as-is.
+// coerceSetValue coerces a set-effect value to the declared type of world key
+// k. set-effect RHS values are expression strings (a bare YAML `true` in a
+// world_in projection arrives as the string "true"), so a rendered scalar may
+// land as a string even when the world schema declares the key bool/int/float.
+// Without this, a later guard like `&& world.flag` would fail eval with
+// `bool(string)`. Keys not declared in the schema, or values that don't need
+// coercion, pass through unchanged.
+func (m *machineImpl) coerceSetValue(k string, v any) any {
+	if m.appDef == nil {
+		return v
+	}
+	vd, ok := m.appDef.World[k]
+	if !ok {
+		return v
+	}
+	s, isStr := v.(string)
+	if !isStr {
+		return v
+	}
+	switch vd.Type {
+	case "bool":
+		switch s {
+		case "true":
+			return true
+		case "false":
+			return false
+		}
+	case "int":
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return n
+		}
+	case "float":
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return f
+		}
+	}
+	return v
+}
+
 func resolveEffectValue(v any, env expr.Env, w world.World) (any, error) {
 	switch val := v.(type) {
 	case string:
@@ -2147,7 +2376,7 @@ func (m *machineImpl) renderBlocks(blocks map[string][]app.ViewElement, env expr
 	return out, nil
 }
 
-// renderView computes the view text for a turn per §7.6 precedence:
+// renderView computes the view text for a turn per the view-precedence rule:
 //   - Transition view wins (if declared).
 //   - Otherwise, target state view.
 //   - If say text exists, prepend it.
@@ -2327,7 +2556,7 @@ func tryEvaluateArms(arms []compiledTransition, env expr.Env, statePath string) 
 // ─── Machine.AllowedIntents ──────────────────────────────────────────────────
 
 // AllowedIntents returns the list of intents currently allowed in the state,
-// populated with metadata for progressive disclosure (§7.2).
+// populated with metadata for progressive disclosure.
 func (m *machineImpl) AllowedIntents(cur app.StatePath, w world.World) []AllowedIntent {
 	names := m.allowedIntentNames(cur)
 	allowed := make([]AllowedIntent, 0, len(names))
@@ -2357,14 +2586,61 @@ func (m *machineImpl) AllowedIntents(cur app.StatePath, w world.World) []Allowed
 
 // ─── Event helpers ───────────────────────────────────────────────────────────
 
-var eventSeq int // package-level monotonic seq; tests reset this if needed
+var eventSeq atomic.Int64 // package-level monotonic seq; safe for concurrent use
+
+// allBindTargetsSet reports whether every LHS world key in an invoke's
+// bind: map is already "set" (non-empty) in the given world vars. It backs
+// the `once:` idempotent-invoke guard (app.Effect.Once): when it returns
+// true the engine skips the invoke because its result is already cached in
+// world. An empty bind map returns false so a misconfigured once: (caught at
+// load time) never silently skips. A value counts as UNSET when it is nil,
+// an empty string "", an empty map, or an empty slice; anything else is SET.
+// Scalar int/bool binds are intentionally NOT special-cased — a real 0 /
+// false reads as SET (non-empty), so authors should guard scalars by hand
+// with When rather than once:.
+func allBindTargetsSet(bind map[string]string, vars map[string]any) bool {
+	if len(bind) == 0 {
+		return false
+	}
+	for worldKey := range bind {
+		if !worldValueSet(vars[worldKey]) {
+			return false
+		}
+	}
+	return true
+}
+
+// worldValueSet reports whether a world value counts as SET for once:.
+// UNSET: nil, "", empty map, empty slice. Everything else is SET.
+func worldValueSet(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return false
+	case string:
+		return t != ""
+	case map[string]any:
+		return len(t) > 0
+	case []any:
+		return len(t) > 0
+	default:
+		rv := reflect.ValueOf(v)
+		switch rv.Kind() {
+		case reflect.Map, reflect.Slice, reflect.Array:
+			return rv.Len() > 0
+		case reflect.Ptr, reflect.Interface:
+			return !rv.IsNil()
+		default:
+			return true
+		}
+	}
+}
 
 func newEvent(kind store.EventKind, payload map[string]any) store.Event {
 	b, _ := json.Marshal(payload)
-	eventSeq++
+	seq := eventSeq.Add(1)
 	return store.Event{
 		Kind:    kind,
-		Seq:     eventSeq,
+		Seq:     int(seq),
 		Payload: b,
 	}
 }
@@ -2424,9 +2700,7 @@ func stateEnterPathsAware(oldPath, newPath string) []string {
 		if leaf == par.Root || leaf == "" {
 			continue
 		}
-		for _, p := range stateEnterPaths(par.Root, leaf) {
-			out = append(out, p)
-		}
+		out = append(out, stateEnterPaths(par.Root, leaf)...)
 	}
 	return out
 }
@@ -2501,12 +2775,46 @@ func toInt64(v any) int64 {
 }
 
 // WorldFromSchema initialises a World from the app's world schema defaults.
+// Each call returns a fresh, independent, mutable World — callers may safely
+// mutate the result without affecting the schema or any other World. Vars are
+// populated only for schema entries that declare a non-nil Default; a nil or
+// empty schema yields an empty (but usable) World, never a nil one.
 func WorldFromSchema(schema app.WorldSchema) world.World {
 	w := world.New()
 	for k, def := range schema {
 		if def.Default != nil {
 			w.Vars[k] = def.Default
 		}
+	}
+	// Reserved, engine-managed cost vars. Seeded to 0 so a story can guard on
+	// them (`when: "world.session_cost_usd >= world.cost_budget"`) without
+	// declaring them, and so a guard that runs before any agent call reads a
+	// number rather than nil. The orchestrator overwrites these from real agent
+	// spend each turn (see foldAgentCost). A story that declares its own default
+	// for either key keeps it — the seed only fills an absent key.
+	if _, ok := w.Vars["session_cost_usd"]; !ok {
+		w.Vars["session_cost_usd"] = 0.0
+	}
+	if _, ok := w.Vars["turn_cost_usd"]; !ok {
+		w.Vars["turn_cost_usd"] = 0.0
+	}
+	// Reserved, engine-owned string globals (last_error, write_mode_scope; see
+	// app.ReservedWorldKeys). Seeded to "" for the same reason as the cost vars:
+	// a view condition or guard that runs before the engine ever writes the key
+	// (`when: "world.last_error == ''"`) must read "" rather than nil — `nil ==
+	// ''` is false, which silently suppresses every banner/prose gated on the
+	// no-error state. This MUST be seeded here rather than left to the story's
+	// own world block: import folding deliberately drops a child's declaration of
+	// a reserved key (it stays bare at every depth), so a room that declares
+	// `last_error: {default: ""}` and renders correctly standalone would diverge
+	// when imported under an alias (e.g. dev-story's landing under kitsoki-dev).
+	// host_error is a map, guarded only via `?? ''` / `|default:`, so it is
+	// left nil. The seed only fills an absent key.
+	if _, ok := w.Vars["last_error"]; !ok {
+		w.Vars["last_error"] = ""
+	}
+	if _, ok := w.Vars[app.WriteModeScopeWorldKey]; !ok {
+		w.Vars[app.WriteModeScopeWorldKey] = ""
 	}
 	return w
 }

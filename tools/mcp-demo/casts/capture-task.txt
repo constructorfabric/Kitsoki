@@ -1,0 +1,17 @@
+You are demonstrating the kitsoki studio MCP server (attached as the "kitsoki" MCP server). Use ONLY the kitsoki MCP tools (story.* / session.* / render.*) — do not use any other tools and do not read files directly. Narrate each step in ONE short sentence before each tool call. Work with the pre-existing "barista" story.
+
+Use this exact story manifest path wherever a story_path is needed:
+tools/mcp-demo/capture-ws/barista/app.yaml
+
+Do these steps in order:
+1. story.read the barista story to see its rooms and intents.
+2. story.validate it (it should be valid).
+3. story.graph it to show the room graph.
+4. story.test it to run its flows (they should pass — no LLM, a cassette/flow agent).
+5. Open a session with session.new: pass story_path = the path above AND cassette = tools/mcp-demo/capture-ws/barista/recording.yaml (the harness defaults to "replay", which is no-LLM). Report the starting state and allowed intents.
+6. Drive the session with DIRECT intents via session.submit (these are plain transitions, no slots): submit intent "start_order" (goes to the order room), then submit intent "pick_flat_white" (goes to the confirm room and sets world drink = "flat white").
+7. Call render.tui on the session to show the current kitsoki TUI screen for the confirm room.
+8. Call session.inspect to show the session's state, world, and allowed intents.
+9. Demonstrate the authoring/edit path: call story.read with path "app.yaml" to get the manifest content, then call story.write with path "app.yaml" and the SAME content except change the app title to "Barista — kitsoki MCP studio". story.write auto-validates; confirm it stayed valid (ok: true).
+
+End with a one-sentence summary of what you did over MCP. Keep narration terse and professional.

@@ -1,54 +1,3 @@
-// Package elements implements the per-element renderers and the dispatcher
-// that turns a typed app.View into a final string for the TUI transcript
-// (Phase D of the view-elements design).
-//
-// # Pipeline
-//
-// For each element in view.Elements:
-//
-//  1. If the element carries a `when:` guard (expr-lang source), compile-
-//     and-evaluate it. A false result drops the element entirely (no blank
-//     stub row in a list, no extra blank line between siblings).
-//  2. Every leaf string on the element (prose / heading / code / template
-//     body, list-item label and hint, kv pair value) is rendered through
-//     render.Pongo BEFORE the element-kind renderer sees it. Element
-//     renderers operate on concrete text, never on un-substituted templates.
-//  3. The element-kind renderer (prose / heading / list / kv / code /
-//     template) lays the rendered leaves out at the supplied width.
-//
-// Element outputs are joined with one blank line between adjacent
-// elements. Two consecutive `kv` elements coalesce into a single block
-// with no blank line in between, matching the proposal §5.3 hint that
-// same-kind kv neighbours read more naturally as one table.
-//
-// # `template` kind — escape hatch
-//
-// The `template` kind is the escape hatch into today's Glamour pipe. The
-// dispatcher delegates back into the caller-supplied Glamour callback
-// (see RenderAll's `glamour` parameter) so the transcript model keeps
-// owning the Glamour renderer (it's terminal-style-aware, expensive to
-// rebuild, and needs to coexist with preserveLeadingIndent). Tests pass
-// an identity callback to inspect the post-Pongo source without invoking
-// Glamour.
-//
-// # Backward compatibility
-//
-// The orchestrator's pre-Phase-D pipeline still renders views to a string
-// before they reach the TUI. Today every state's View carries a single
-// {Kind: "template", Source: <legacy markdown>} element, so the
-// dispatcher's net effect is identical to today's path — the legacy
-// string flows through the template renderer and is handed to Glamour
-// verbatim. Phase E/F migrate apps to typed elements; only then does the
-// lipgloss-based layout kick in.
-//
-// # `when:` guard cache
-//
-// Per-element `when:` guards are compiled lazily and cached in a global
-// sync.Map keyed by the raw expression source. The cache is shared
-// across all views (a guard string like "available('start_journey')" used
-// by two different rooms compiles once). This matches the existing
-// guard-compilation cache in internal/expr (see anyProgCache /
-// boolProgCache).
 package elements
 
 import (
@@ -56,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+
+	goyaml "github.com/goccy/go-yaml"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/expr"
@@ -92,8 +43,16 @@ func IdentityGlamour(s string) string { return s }
 // given a View with `extends:` set, it pre-renders each block at the
 // dispatcher's width and then asks the ViewRenderer to splice them
 // into the base template. Tests can pass an extendsCapable mock or
-// stay on the legacy path by passing nil (RenderAll will refuse the
-// extends shape with a clear error).
+// stay on the legacy path by passing nil (RenderAll returns "" for the
+// extends shape rather than erroring — see RenderAll).
+//
+// A nil ViewRenderer is a valid argument everywhere it is accepted: it
+// selects the loader-less render.Pongo fast path. Implementations are
+// expected to be safe for concurrent use, since the dispatcher may be
+// invoked from multiple render goroutines; both interface methods are
+// read-only with respect to the renderer. Render returns a non-nil error
+// only when pongo expansion fails (malformed template, undefined include);
+// RenderExtended additionally errors when the extends target is missing.
 type ViewRenderer interface {
 	Render(src string, env expr.Env) (string, error)
 	RenderExtended(extends string, blocks map[string]string, env expr.Env) (string, error)
@@ -117,6 +76,13 @@ func renderLeaf(r ViewRenderer, src string, env expr.Env) (string, error) {
 // horizontal width, the expr.Env (leaf strings may carry pongo2
 // templates), and the per-app ViewRenderer (so leaf substitution
 // resolves {% include %} against <appDir>/views/).
+//
+// By convention every implementation in this package returns "" (and a
+// nil error) when its content is empty after leaf expansion and trimming,
+// so the dispatcher can drop the element without emitting blank spacing.
+// A nil ViewRenderer argument is always valid (it selects render.Pongo);
+// the error return is reserved for leaf-expansion failures, never for
+// "no content."
 type Renderer interface {
 	Render(width int, env expr.Env, rr ViewRenderer) (string, error)
 }
@@ -147,8 +113,19 @@ type Renderer interface {
 // blockRenderWidth=80 default that the machine pre-renders with). Before
 // this branch existed, the TUI fell back to the 80-wide pre-render, so
 // a single wide label in any block clamped the hint column to ~25 chars
-// even on a 150-col terminal. See stories/dev-story/rooms/main.yaml:62
-// for the wide-label canary.
+// even on a 150-col terminal. See stories/dev-story/rooms/main.yaml for
+// the wide-label canary.
+//
+// Contracts: RenderAll is safe for concurrent calls. Its only shared
+// state is the process-global whenCache (a sync.Map); it performs reads
+// and idempotent stores, never mutates the View or env, and relies on
+// the supplied ViewRenderer being concurrency-safe. The error return is
+// non-nil only when an element's `when:` guard fails to COMPILE, when a
+// leaf's pongo expansion fails, or when the extends branch's
+// RenderExtended fails; a guard that merely evaluates falsy, or an empty
+// element, yields no error. A nil glamour is normalised to IdentityGlamour
+// and a nil rr selects the loader-less render.Pongo path, so both are
+// valid arguments.
 func RenderAll(view app.View, env expr.Env, width int, glamour GlamourFunc, rr ViewRenderer) (string, error) {
 	if glamour == nil {
 		glamour = IdentityGlamour
@@ -211,6 +188,186 @@ func RenderAll(view app.View, env expr.Env, width int, glamour GlamourFunc, rr V
 	return joinElements(parts, kinds), nil
 }
 
+// EvalElements evaluates element-level when: guards and pongo Sources against
+// env, returning a new View with concrete (non-template) element Sources.
+// Elements whose when: guard is false are omitted. Sources are expanded through
+// pongo but no terminal styling (ANSI) is applied — the result is safe for
+// browser rendering where the client applies its own CSS per element Kind.
+//
+// Only the element-array form is supported (view.Extends and view.Source are
+// ignored; callers should fall back to the pre-rendered View text for those
+// shapes). Returns a zero View and an error when a guard fails to compile or
+// a Source fails pongo expansion.
+func EvalElements(view app.View, env expr.Env, rr ViewRenderer) (app.View, error) {
+	if len(view.Elements) == 0 {
+		return app.View{}, nil
+	}
+	out := make([]app.ViewElement, 0, len(view.Elements))
+	for i, el := range view.Elements {
+		keep, err := evalWhen(el.When, env)
+		if err != nil {
+			return app.View{}, fmt.Errorf("view[%d] (%s) when: %w", i, el.Kind, err)
+		}
+		if !keep {
+			continue
+		}
+		evaluated, err := evalElementSources(el, env, rr)
+		if err != nil {
+			return app.View{}, fmt.Errorf("view[%d] (%s): %w", i, el.Kind, err)
+		}
+		out = append(out, evaluated)
+	}
+	return app.View{Elements: out}, nil
+}
+
+// evalElementSources evaluates pongo templates in the fields of a single
+// element without applying terminal styling. Called by EvalElements.
+func evalElementSources(el app.ViewElement, env expr.Env, rr ViewRenderer) (app.ViewElement, error) {
+	switch el.Kind {
+	case "prose", "heading", "code", "template":
+		src, err := renderLeaf(rr, el.Source, env)
+		if err != nil {
+			return el, err
+		}
+		el.Source = strings.TrimSpace(src)
+	case "list":
+		items := make([]app.ListItem, 0, len(el.Items))
+		for j, item := range el.Items {
+			keep, err := evalWhen(item.When, env)
+			if err != nil {
+				return el, fmt.Errorf("list[%d] when: %w", j, err)
+			}
+			if !keep {
+				continue
+			}
+			label, err := renderLeaf(rr, item.Label, env)
+			if err != nil {
+				return el, fmt.Errorf("list[%d] label: %w", j, err)
+			}
+			hint, err := renderLeaf(rr, item.Hint, env)
+			if err != nil {
+				return el, fmt.Errorf("list[%d] hint: %w", j, err)
+			}
+			items = append(items, app.ListItem{Label: strings.TrimRight(label, " \t"), Hint: strings.TrimSpace(hint)})
+		}
+		el.Items = items
+	case "kv":
+		pairs := make(goyaml.MapSlice, 0, len(el.Pairs))
+		for j, pair := range el.Pairs {
+			key := fmt.Sprintf("%v", pair.Key)
+			raw, _ := pair.Value.(string)
+			val, err := renderLeaf(rr, raw, env)
+			if err != nil {
+				return el, fmt.Errorf("kv[%d] (%s): %w", j, key, err)
+			}
+			pairs = append(pairs, goyaml.MapItem{Key: key, Value: val})
+		}
+		el.Pairs = pairs
+	case "banner":
+		src, err := renderLeaf(rr, el.Source, env)
+		if err != nil {
+			return el, err
+		}
+		el.Source = strings.TrimSpace(src)
+		if el.Subtitle != "" {
+			sub, err := renderLeaf(rr, el.Subtitle, env)
+			if err != nil {
+				return el, err
+			}
+			el.Subtitle = strings.TrimSpace(sub)
+		}
+	case "choice":
+		if el.ChoicePrompt != "" {
+			prompt, err := renderLeaf(rr, el.ChoicePrompt, env)
+			if err != nil {
+				return el, err
+			}
+			el.ChoicePrompt = strings.TrimSpace(prompt)
+		}
+		// Evaluate per-item When guards and pongo-expand label / hint /
+		// slots / param.placeholder so the browser receives concrete
+		// strings, not raw template expressions. Mirrors the TUI widget's
+		// Open() expansion so both surfaces see identical values.
+		if len(el.ChoiceItems) > 0 {
+			filtered := make([]app.ChoiceItem, 0, len(el.ChoiceItems))
+			for _, item := range el.ChoiceItems {
+				keep, err := evalWhen(item.When, env)
+				if err != nil {
+					return el, fmt.Errorf("choice item %q when: %w", item.Label, err)
+				}
+				if !keep {
+					continue
+				}
+				label, err := renderLeaf(rr, item.Label, env)
+				if err != nil {
+					return el, fmt.Errorf("choice item %q label: %w", item.Label, err)
+				}
+				item.Label = strings.TrimRight(label, " \t")
+				hint, err := renderLeaf(rr, item.Hint, env)
+				if err != nil {
+					return el, fmt.Errorf("choice item %q hint: %w", item.Label, err)
+				}
+				item.Hint = strings.TrimSpace(hint)
+				if len(item.Slots) > 0 {
+					expanded := make(map[string]any, len(item.Slots))
+					for k, v := range item.Slots {
+						if s, ok := v.(string); ok {
+							sv, err := renderLeaf(rr, s, env)
+							if err != nil {
+								return el, fmt.Errorf("choice item %q slots.%s: %w", item.Label, k, err)
+							}
+							expanded[k] = sv
+						} else {
+							expanded[k] = v
+						}
+					}
+					item.Slots = expanded
+				}
+				if item.Param != nil && item.Param.Placeholder != "" {
+					ph, err := renderLeaf(rr, item.Param.Placeholder, env)
+					if err != nil {
+						return el, fmt.Errorf("choice item %q param.placeholder: %w", item.Label, err)
+					}
+					p := *item.Param
+					p.Placeholder = ph
+					item.Param = &p
+				}
+				filtered = append(filtered, item)
+			}
+			el.ChoiceItems = filtered
+		}
+	case "media":
+		// Expand pongo2 templates in handle, caption and path so world slot
+		// references (e.g. {{world.video_handle}}) resolve at render time. The
+		// handle MUST be interpolated: it is the artifact id the browser
+		// resolves to a URL (/artifact/{id}) — left as a literal template the
+		// inline <video>/<img> src points at "{{ world.video_handle }}" and
+		// never loads.
+		if el.MediaHandle != "" {
+			h, err := renderLeaf(rr, el.MediaHandle, env)
+			if err != nil {
+				return el, fmt.Errorf("media handle: %w", err)
+			}
+			el.MediaHandle = strings.TrimSpace(h)
+		}
+		if el.MediaCaption != "" {
+			cap, err := renderLeaf(rr, el.MediaCaption, env)
+			if err != nil {
+				return el, fmt.Errorf("media caption: %w", err)
+			}
+			el.MediaCaption = strings.TrimSpace(cap)
+		}
+		if el.MediaPath != "" {
+			p, err := renderLeaf(rr, el.MediaPath, env)
+			if err != nil {
+				return el, fmt.Errorf("media path: %w", err)
+			}
+			el.MediaPath = strings.TrimSpace(p)
+		}
+	}
+	return el, nil
+}
+
 // renderOne dispatches a single element through its kind's renderer.
 // Leaf-string substitution (renderLeaf on prose/heading/code/template
 // bodies, on list item labels & hints, on kv values) happens inside each
@@ -240,13 +397,20 @@ func renderOne(el app.ViewElement, env expr.Env, width int, glamour GlamourFunc,
 			Max: el.ChoiceMax, MaxSet: el.ChoiceMaxSet,
 			Template: el.ChoiceTemplate, Fields: el.ChoiceFields,
 		}.Render(width, env, rr)
+	case "media":
+		return Media{
+			Handle:  el.MediaHandle,
+			Caption: el.MediaCaption,
+			Kind:    el.MediaKind,
+			Path:    el.MediaPath,
+		}.Render(width, env, rr)
 	default:
 		return "", fmt.Errorf("unknown element kind %q", el.Kind)
 	}
 }
 
 // joinElements joins rendered element strings with the inter-element
-// spacing policy from proposal §5.3:
+// spacing policy:
 //
 //   - One blank line between adjacent elements by default.
 //   - Two adjacent `kv` elements coalesce — no blank line between them.
@@ -286,18 +450,18 @@ var whenCache sync.Map // map[string]*expr.Program
 // compiled (or fetched from cache) and evaluated to ANY value, then
 // coerced to bool via JavaScript/Python-style truthy rules:
 //
-//   bool      → as-is
-//   nil       → false
-//   string    → len > 0
-//   slice/array/map → len > 0
-//   number    → != 0
-//   anything else → true (any non-nil value is truthy)
+//	bool      → as-is
+//	nil       → false
+//	string    → len > 0
+//	slice/array/map → len > 0
+//	number    → != 0
+//	anything else → true (any non-nil value is truthy)
 //
 // Strict-bool semantics (the legacy `expr.CompileBool` + `EvalBool`
 // path) were too brittle for `when:` guards: an author writing
 // `when: "world.implement_artifact.blockers"` expected
 // "render this section IF there are blockers" and got a runtime
-// panic when claude's oracle returned `blockers: []` — expr-lang
+// panic when claude's agent returned `blockers: []` — expr-lang
 // rejected `bool([]interface{})` with "invalid operation". The
 // orchestrator's post-bind render path then silently dropped the
 // view to "" because the render error bubbled up the host-dispatch

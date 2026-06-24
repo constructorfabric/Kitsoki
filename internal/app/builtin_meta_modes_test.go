@@ -109,7 +109,7 @@ func TestInjectBuiltinMetaModes_KitsokiGroupRequiresEnvVar(t *testing.T) {
 	require.Equal(t, "${KITSOKI_REPO}", kBug.Cwd)
 }
 
-// TestInjectBuiltinMetaModes_LegacyKeysAbsent asserts the proposal §7
+// TestInjectBuiltinMetaModes_LegacyKeysAbsent asserts the
 // clean-break: the single-token `bug` and `self` keys are gone. Apps
 // that referenced them directly will see "unknown mode" instead.
 func TestInjectBuiltinMetaModes_LegacyKeysAbsent(t *testing.T) {

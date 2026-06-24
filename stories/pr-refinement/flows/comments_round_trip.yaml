@@ -38,7 +38,7 @@ host_handlers:
       sha:   "cafebabe"
   host.local:
     data: { ok: true, state: "success" }
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

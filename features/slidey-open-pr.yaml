@@ -1,0 +1,145 @@
+# yaml-language-server: $schema=feature.schema.json
+id: slidey-open-pr
+kind: story-demo
+title: Open the PR for the slidey fix
+tagline: kitsoki's PR-refinement pipeline opens, monitors and merges a pull request for the real slidey grid-cards narration-drift fix.
+summary: "Phase 6 of the slidey hybrid deck: the PR-refinement pipeline (stories/pr-refinement) takes the proven slidey-128 fix — grid `cards` scenes with more than six items drifted their narration because the frame estimator's per-card fallback disagreed with the renderer's hold — and walks it to a landed merge. Every room is a deterministic state-machine beat: open the PR on the fix/grid-cards-narration branch, monitor CI to green, land the squash-merge, and close out. No-LLM (human judge); the render is deterministic and replayable, no API cost."
+narrative: "The tail of the slidey story: with the fix committed, kitsoki opens a real pull request, watches the project's CI go green, merges it, and closes the loop. What you see is the provider-neutral PR-refinement state machine driven through its open-PR happy path — the same graph that bugfix and dev-story import as their shared tail — replayed deterministically, same frames every time."
+docs:
+  - stories/pr-refinement/app.yaml
+  - stories/pr-refinement/README.md
+related:
+  - slidey-bugfix
+demo:
+  spec: tests/playwright/slidey-open-pr-video.spec.ts
+  artifactDir: slidey-open-pr
+  videoBase: slidey-open-pr-demo
+  posterStep: sop-intro-home
+  story: stories/pr-refinement
+  flow: stories/pr-refinement/flows/slidey_open_pr.yaml
+tour:
+  export: SLIDEY_OPEN_PR_TOUR_STEPS
+  steps:
+    - id: sop-intro-home
+      route: home
+      title: Open the PR for the slidey fix
+      body: "kitsoki's PR-refinement pipeline, pointed at the slidey grid-cards narration fix. With the one-line fallback fix committed to fix/grid-cards-narration, we'll open a pull request, monitor CI to green and land the merge — every room a deterministic state-machine step, replayed with no LLM in the loop."
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 6000
+      drive: []
+    - id: sop-intro-story
+      route: home
+      target: story-card
+      title: The PR-refinement pipeline
+      body: "This card is the PR-refinement pipeline — the provider-neutral tail that bugfix and dev-story share. It opens the PR, polls CI, resolves review comments and merges, all as one state machine. The ticket is slidey-128; the branch is fix/grid-cards-narration. Let's run it."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: story-card
+      dwellMs: 5500
+      drive: []
+    - id: sop-intro-start
+      route: home
+      target: new-session-btn
+      title: Spin up a run
+      body: Click New session to create a fresh, independently-traced run of the PR-refinement pipeline for the slidey-128 fix.
+      placement: right
+      kind: action
+      advance: route-match
+      advanceRoute: interactive
+      waitForTarget: new-session-btn
+      dwellMs: 3500
+      drive: []
+    - id: sop-intro-observe
+      route: interactive
+      target: observe-link
+      title: Drive here, observe there
+      body: "We're on the drive view. The pipeline is parked at idle with the PR metadata loaded — title fix(timing): align grid-cards narration past 6 cards, branch fix/grid-cards-narration, base main. Each operator action advances exactly one room and the state badge tracks where we are. Let's open the PR."
+      placement: bottom
+      kind: explain
+      advance: next
+      waitForTarget: observe-link
+      dwellMs: 5500
+      drive: []
+    - id: sop-open
+      route: any
+      target: chat-transcript
+      title: Open the pull request
+      body: "open_pr — the room calls iface.vcs.open_pr and binds the PR id and url. The PR is opened against main from fix/grid-cards-narration, titled 'fix(timing): align grid-cards narration past 6 cards (slidey-128)', its body summarizing the one-line fallback fix and the 19/19 + 94/94 node --test result. Accept to start monitoring CI."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 8000
+      drive:
+        - { type: wait-state, state: idle }
+        - { type: click-intent, intent: open }
+        - { type: wait-state, state: open_pr }
+        - { type: reveal-turn }
+    - id: sop-ci
+      route: any
+      target: chat-transcript
+      title: Monitor CI to green
+      body: "ci_monitoring — the room polls iface.vcs.pr_status for the PR's checks. CI comes back success with zero failing checks and no pending review comments, so the pipeline is clear to merge. The state badge shows the PR id and a success CI state. Proceed to land the merge."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7500
+      drive:
+        - { type: click-intent, intent: proceed }
+        - { type: wait-state, state: ci_monitoring }
+        - { type: reveal-turn }
+    - id: sop-merge
+      route: any
+      target: chat-transcript
+      title: Land the squash-merge
+      body: "merge_executing — CI green and no comments, so proceed branches straight to merge. The room calls iface.vcs.merge with the squash strategy, binds the merge SHA c0ffee19, and sets status to merged. Proceed to the close-out checkpoint."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7500
+      drive:
+        - { type: click-intent, intent: proceed }
+        - { type: wait-state, state: merge_executing }
+        - { type: reveal-turn }
+    - id: sop-checkpoint
+      route: any
+      target: chat-transcript
+      title: Close-out checkpoint
+      body: "merge_awaiting_reply — the final §6 checkpoint. The merge landed at c0ffee19 and the PR url is pinned. With judge_mode human, the operator gives the close-out the nod. Accept to exit merged and resolve the ticket."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7500
+      drive:
+        - { type: click-intent, intent: proceed }
+        - { type: wait-state, state: merge_awaiting_reply }
+        - { type: reveal-turn }
+    - id: sop-merged
+      route: any
+      target: state-badge
+      title: PR merged, ticket resolved
+      body: "accept fires the @exit:merged arc: the pipeline reaches its merged terminal with status merged and the PR url pinned. The slidey grid-cards narration fix is landed — the whole open-PR arc ran as one deterministic, replayable graph."
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: state-badge
+      dwellMs: 6500
+      drive:
+        - { type: click-intent, intent: accept }
+        - { type: wait-state, state: __exit__merged }
+        - { type: dwell-ms, ms: 1500 }
+    - id: sop-outro
+      route: any
+      title: That's the PR, landed
+      body: "You watched kitsoki's PR-refinement pipeline take the slidey-128 fix from a committed branch to a landed squash-merge — open the PR, monitor CI, merge, close out — every room a deterministic, replayable state-machine step with no LLM in the loop. Hit '?' anytime to replay this tour."
+      placement: center
+      kind: explain
+      advance: next
+      dwellMs: 6000

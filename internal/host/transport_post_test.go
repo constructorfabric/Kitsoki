@@ -1,11 +1,11 @@
 package host_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -15,6 +15,12 @@ import (
 	"kitsoki/internal/host"
 	"kitsoki/internal/transport"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestTransportPost_RegisteredAsBuiltin(t *testing.T) {
 	r := host.NewRegistry()
@@ -96,10 +102,10 @@ func TestTransportPost_RequiredArgs(t *testing.T) {
 
 // TestTransportPost_BodyAcceptsStructuredPayload covers the production case
 // where `bind` writes a host-result object (e.g. the validated submit() dict
-// from `host.oracle.ask_with_mcp`) into a world slot, and the next checkpoint
+// from `host.agent.ask_with_mcp`) into a world slot, and the next checkpoint
 // effect's `body:` template renders that slot.  Without the JSON-coercion
 // fallback in `bodyArg`, the type assertion silently drops the dict and the
-// transport receives an empty body — the bug discovered live on PROJ-89912.
+// transport receives an empty body — the bug discovered live on PLTFRM-89912.
 // The handler must coerce maps to JSON so the comment is non-empty.
 func TestTransportPost_BodyAcceptsStructuredPayload(t *testing.T) {
 	tt := transport.NewTUITransport()
@@ -139,21 +145,24 @@ func TestTransportPost_Bitbucket(t *testing.T) {
 		gotAuth string
 		gotBody map[string]any
 	)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
 		raw, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(raw, &gotBody)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":12345}`))
-	}))
-	t.Cleanup(srv.Close)
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Status:     "201 Created",
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":12345}`)),
+			Request:    r,
+		}, nil
+	})}
 
 	bt, err := transport.NewBitbucketTransport(transport.BitbucketConfig{
-		BaseURL:    srv.URL,
+		BaseURL:    "https://bitbucket.test",
 		Token:      "TOK",
-		HTTPClient: srv.Client(),
+		HTTPClient: client,
 	})
 	require.NoError(t, err)
 	reg := transport.NewRegistry()
@@ -163,7 +172,7 @@ func TestTransportPost_Bitbucket(t *testing.T) {
 
 	res, err := host.TransportPostHandler(ctx, map[string]any{
 		"transport":  "bitbucket",
-		"thread":     "PROJ-89912",
+		"thread":     "PLTFRM-89912",
 		"phase_id":   "phase_13",
 		"title":      "Validate",
 		"body":       "All checks pass.",
@@ -201,7 +210,7 @@ func TestTransportPost_BitbucketMissingPRIDIsCleanError(t *testing.T) {
 
 	res, err := host.TransportPostHandler(ctx, map[string]any{
 		"transport":  "bitbucket",
-		"thread":     "PROJ-89912",
+		"thread":     "PLTFRM-89912",
 		"body":       "hi",
 		"pr_project": "P",
 		"pr_slug":    "s",
@@ -219,17 +228,20 @@ func TestTransportPost_BitbucketMissingPRIDIsCleanError(t *testing.T) {
 // for non-string scalars.
 func TestTransportPost_BitbucketIntCoordCoerces(t *testing.T) {
 	var gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		gotPath = r.URL.Path
-		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":1}`))
-	}))
-	t.Cleanup(srv.Close)
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Status:     "201 Created",
+			Body:       io.NopCloser(bytes.NewReader([]byte(`{"id":1}`))),
+			Request:    r,
+		}, nil
+	})}
 
 	bt, err := transport.NewBitbucketTransport(transport.BitbucketConfig{
-		BaseURL:    srv.URL,
+		BaseURL:    "https://bitbucket.test",
 		Token:      "t",
-		HTTPClient: srv.Client(),
+		HTTPClient: client,
 	})
 	require.NoError(t, err)
 	reg := transport.NewRegistry()

@@ -1,9 +1,9 @@
-// Package orchestrator — resume read path for continue-mode (proposal §4.5).
+// Package orchestrator — resume read path for continue-mode.
 //
 // AttachSession is the public entry point for the --continue TUI path.  It
 // returns a ResumeBundle that carries everything the TUI needs to reconstruct
 // the full session state without calling any harness, host handler, transport,
-// or LLM (§6.8 determinism contract).
+// or LLM (the resume determinism contract).
 package orchestrator
 
 import (
@@ -22,7 +22,7 @@ import (
 )
 
 // ResumeBundle is the result of AttachSession: the full rehydration set for a
-// resumed TUI session (continue-mode proposal §4.5).
+// resumed TUI session.
 //
 // Determinism contract: every field in this struct is derived from persisted
 // journal or store data — no LLM call, no host handler dispatch, no transport
@@ -49,7 +49,7 @@ type ResumeBundle struct {
 	InitialView string
 
 	// AwaitingJobs lists background jobs that were in awaiting_input status
-	// when the session was last active (proposal §6.3).  The TUI surfaces a
+	// when the session was last active.  The TUI surfaces a
 	// clarification UI for each on first frame.  Empty when no jobs await input
 	// or when no JobStore is wired into the orchestrator.
 	AwaitingJobs []AwaitingJob
@@ -122,11 +122,11 @@ func WithJournalReader(r journal.Reader) Option {
 // transcriptKinds is the set of journal entry kinds that are relevant for
 // transcript rehydration.  Only these are included in ResumeBundle.TranscriptEntries.
 var transcriptKinds = map[string]struct{}{
-	journal.KindViewRendered:    {},
-	journal.KindOffPathQuestion: {},
-	journal.KindOffPathAnswer:   {},
+	journal.KindViewRendered:      {},
+	journal.KindOffPathQuestion:   {},
+	journal.KindOffPathAnswer:     {},
 	journal.KindDisambigPresented: {},
-	journal.KindDisambigChosen:  {},
+	journal.KindDisambigChosen:    {},
 }
 
 // AttachSession rebuilds the full session state from persisted data and
@@ -170,7 +170,8 @@ func (o *Orchestrator) AttachSession(sid app.SessionID) (*ResumeBundle, error) {
 		latestViewText     string
 	)
 
-	for e := range o.journalReader.ReplayTyped(sid) {
+	typedSeq, typedErr := o.journalReader.ReplayTyped(sid)
+	for e := range typedSeq {
 		switch e.Kind {
 		case journal.KindClarifyRequested:
 			var body clarifyRequestedBody
@@ -204,6 +205,12 @@ func (o *Orchestrator) AttachSession(sid app.SessionID) (*ResumeBundle, error) {
 			}
 		}
 	}
+	if err := typedErr(); err != nil {
+		// A truncated typed-entry stream means the rehydrated transcript and
+		// pending-clarify state are incomplete — surface it rather than
+		// resuming the session from a partial replay.
+		return nil, fmt.Errorf("orchestrator.AttachSession: replay typed entries: %w", err)
+	}
 
 	// ── 3. Populate pending clarify (rehydrates o.pending[sid]) ───────────────
 	if pendingClarifyBody != nil {
@@ -231,10 +238,14 @@ func (o *Orchestrator) AttachSession(sid app.SessionID) (*ResumeBundle, error) {
 		if !isChatsDoc(doc) {
 			continue
 		}
-		for e := range o.journalReader.ReplayFrom(sid, doc, 0) {
+		chatsSeq, chatsErr := o.journalReader.ReplayFrom(sid, doc, 0)
+		for e := range chatsSeq {
 			if e.Kind == journal.KindChatsAppend {
 				transcriptEntries = append(transcriptEntries, e)
 			}
+		}
+		if err := chatsErr(); err != nil {
+			return nil, fmt.Errorf("orchestrator.AttachSession: replay chats doc %q: %w", doc, err)
 		}
 	}
 	sortByTs(transcriptEntries)
@@ -242,7 +253,7 @@ func (o *Orchestrator) AttachSession(sid app.SessionID) (*ResumeBundle, error) {
 	bundle.TranscriptEntries = transcriptEntries
 	bundle.InitialView = latestViewText
 
-	// ── 4. Background jobs in awaiting_input state (proposal §6.3) ───────────
+	// ── 4. Background jobs in awaiting_input state ───────────────────────────
 	// The jobs table is its own source of truth; status survives restart
 	// natively.  AttachSession surfaces awaiting-input jobs so the TUI can
 	// open their clarification UI immediately.
@@ -320,10 +331,10 @@ func (o *Orchestrator) AttachSession(sid app.SessionID) (*ResumeBundle, error) {
 
 // clarifyRequestedBody is the JSON shape of a clarify.requested entry body.
 type clarifyRequestedBody struct {
-	Origin     string         `json:"origin"`
-	Intent     string         `json:"intent"`
-	SlotsSoFar map[string]any `json:"slots_so_far"`
-	SlotsNeeded []string      `json:"slots_needed"`
+	Origin      string         `json:"origin"`
+	Intent      string         `json:"intent"`
+	SlotsSoFar  map[string]any `json:"slots_so_far"`
+	SlotsNeeded []string       `json:"slots_needed"`
 }
 
 // viewRenderedBody is the JSON shape of a view.rendered entry body.

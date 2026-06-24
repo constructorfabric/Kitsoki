@@ -185,3 +185,87 @@ func TestSession_ContinueExternal_RawTextCapturesInput(t *testing.T) {
 		"view.rendered.user_input must capture the raw text the user typed "+
 			"(not the resolved intent name) on the --raw continue path")
 }
+
+// TestSession_ContinueFromJSONL_WhenSQLiteDeleted verifies the critical Jenkins/Jira
+// workflow: a session is created, a turn is processed, the SQLite database is deleted,
+// but the JSONL trace is saved externally (e.g., in a Jira ticket). A later continue
+// should recover from the JSONL trace and proceed normally.
+//
+// This test documents the JSONL-fallback recovery behavior required for the
+// orchestration use case where sessions are stateless across job runs.
+func TestSession_ContinueFromJSONL_WhenSQLiteDeleted(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "sessions.db")
+	tracePath := filepath.Join(dir, "trace.jsonl")
+	key := "tui:jsonl_recovery_test"
+
+	// 1. Create session (SQLite is created)
+	_, err := runKitsoki(t, "session", "create",
+		"--app", cloakAppFlag(),
+		"--db", dbPath,
+		"--key", key,
+	)
+	require.NoError(t, err, "session create")
+
+	// 2. First continue turn (writes to both SQLite and JSONL trace)
+	result1, err := runKitsoki(t, "session", "continue",
+		"--app", cloakAppFlag(),
+		"--db", dbPath,
+		"--key", key,
+		"--intent", "go",
+		"--slots", `{"direction":"south"}`,
+		"--trace", tracePath,
+	)
+	require.NoError(t, err, "first session continue")
+
+	var outcome1 map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result1), &outcome1))
+	state1 := outcome1["new_state"].(string)
+	turn1 := int64(outcome1["turn"].(float64))
+	require.Equal(t, "bar.dark", state1, "turn 1 should end in bar.dark")
+	require.Equal(t, int64(1), turn1)
+
+	// 3. Delete SQLite (simulating Jenkins job boundary)
+	err = os.Remove(dbPath)
+	require.NoError(t, err, "delete SQLite database")
+	_, err = os.Stat(dbPath)
+	require.Error(t, err, "SQLite should be deleted")
+
+	// 4. Second continue with JSONL recovery (SQLite is gone, only JSONL exists)
+	result2, err := runKitsoki(t, "session", "continue",
+		"--app", cloakAppFlag(),
+		"--db", dbPath,
+		"--key", key,
+		"--intent", "look",
+		"--slots", `{}`,
+		"--trace", tracePath,
+	)
+	require.NoError(t, err, "second session continue after JSONL recovery")
+
+	var outcome2 map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result2), &outcome2))
+	state2 := outcome2["new_state"].(string)
+	turn2 := int64(outcome2["turn"].(float64))
+
+	// Verify the recovered session continued from the correct state
+	require.Equal(t, "bar.dark", state2, "recovered session should stay in bar.dark after look")
+	require.Equal(t, int64(2), turn2, "turn should increment to 2 after recovery")
+
+	// 5. Third continue on the recovered session (verify it's fully functional)
+	result3, err := runKitsoki(t, "session", "continue",
+		"--app", cloakAppFlag(),
+		"--db", dbPath,
+		"--key", key,
+		"--intent", "go",
+		"--slots", `{"direction":"north"}`,
+		"--trace", tracePath,
+	)
+	require.NoError(t, err, "third session continue after recovery")
+
+	var outcome3 map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result3), &outcome3))
+	state3 := outcome3["new_state"].(string)
+	turn3 := int64(outcome3["turn"].(float64))
+	require.Equal(t, "foyer", state3, "going north from bar.dark should return to foyer")
+	require.Equal(t, int64(3), turn3, "turn should be 3")
+}

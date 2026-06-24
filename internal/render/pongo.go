@@ -1,90 +1,26 @@
-// Package render wraps github.com/flosch/pongo2/v6 with the surface the rest
-// of kitsoki uses for templated string rendering (§3 of the view-elements
-// proposal). It intentionally shadows the shape of expr.Render so the
-// upcoming codemod can swap call sites one-for-one.
-//
-// # Engine split
-//
-// Pongo2 takes over every {{ }}-delimited or {% %}-delimited templated
-// string. Bare-expression fields (when:, guard predicates, pure
-// initial-child selectors) stay on internal/expr — see proposal §3.5.
-//
-// # Helpers
-//
-// The four view helpers from expr.Env (Available, Blocked, BlockedReason,
-// IntentStatus) are exposed as callable values on the pongo2.Context. Pongo2
-// resolves func-typed context entries as callables, so
-//
-//	{{ available('start_journey') }}
-//	{{ blocked_reason('start_journey') }}
-//
-// both work without any extra registration step. Per-render binding avoids
-// the global-mutable-state pitfall that pongo2.RegisterFilter would
-// introduce (filters are process-wide; helper closures are per-env).
-//
-// Filter-style invocation ({{ 'start' | available }}) is NOT supported by
-// design: pongo2 filters are registered globally on the engine, which can't
-// see a per-render env. Authors should use the function-call form everywhere
-// — the proposal's translation table (§3.1) uses that form exclusively.
-//
-// # Autoescape
-//
-// pongo2 defaults to HTML autoescape (escaping &, <, >, ', "). The kitsoki
-// renderer targets a terminal UI, where HTML escaping would corrupt
-// authored text like "A & B". This package disables autoescape globally
-// in an init() since pongo2's escape flag is a package-level var
-// (`pongo2.SetAutoescape`). Templates that DO want escaping can opt in
-// with the `|escape` filter.
-//
-// **DO NOT call `pongo2.SetAutoescape` anywhere else in this binary.**
-// pongo2 has no per-`TemplateSet` autoescape configuration — the only
-// public hook is the global. Flipping it from another init() or at
-// runtime would race with this package's renders (the global is read
-// once per `tpl.Execute` to seed each ExecutionContext). The sentinel
-// test `TestAutoescapeRemainsDisabledAcrossConcurrentRenders` in
-// `pongo_test.go` catches accidental flips by asserting that the
-// canonical HTML-escape characters survive a 100-way concurrent
-// render. Add to that test (or to package-level documentation) if you
-// introduce another caller of `pongo2.SetAutoescape`.
-//
-// # Undefined variables
-//
-// Pongo2 returns the empty string for undefined top-level variables and for
-// missing map keys. Chained access on a missing field (`{{ world.foo.bar }}`
-// when `foo` doesn't exist) short-circuits to nil instead of erroring,
-// matching pongo2's Django-compatible semantics.
-//
-// # Pongo2/v6 syntax quirks (vs. the proposal §3.1 translation table)
-//
-// pongo2/v6 implements Django's template language rather than Jinja2. Two
-// notable deviations from the proposal:
-//
-//  1. Filter arguments use Django's colon syntax, not Jinja parens:
-//     {{ slots.foo|default:"(unset)" }}   ✓ pongo2/v6
-//     {{ slots.foo|default('(unset)') }}  ✗ Jinja form, parser error
-//
-//  2. There is no expression-level ternary. Use the {% if %} … {% else %}
-//     … {% endif %} block form even for tiny conditionals:
-//     {% if x %}a{% else %}b{% endif %}    ✓
-//     {{ 'a' if x else 'b' }}              ✗ parser error
-//
-// The for-loop counter variable is `forloop.Counter` (1-based) /
-// `forloop.Counter0` (0-based) / `forloop.First` / `forloop.Last`, not
-// `loop.index` (that's Jinja). See pongo2's tags_for.go for the full
-// shape.
-//
-// These are pure syntax differences; the codemod (Phase C) must produce
-// the pongo2/v6 forms above when rewriting YAML.
 package render
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/flosch/pongo2/v6"
+	"github.com/muesli/reflow/wordwrap"
 
 	"kitsoki/internal/expr"
+	"kitsoki/internal/render/sourcecolor"
 )
+
+// TemplateErrorSnippetLength bounds the template source echoed in a wrapped
+// render error. Inline view leaves are usually short, but a multi-line
+// {% extends %} body or a long prose paragraph would flood the error log;
+// truncating to a fixed prefix keeps render failures scannable while still
+// showing enough of the source for an author to recognise the offending
+// template.
+const TemplateErrorSnippetLength = 200
 
 func init() {
 	// Disable HTML autoescape globally — see package doc.
@@ -124,6 +60,128 @@ func init() {
 	// `truncatechars:N-1|col:N`.
 	_ = pongo2.RegisterFilter("col", filterCol)
 	_ = pongo2.RegisterFilter("rcol", filterRcol)
+
+	// Override pongo2/v6's built-in `wordwrap`, which is doubly broken:
+	//
+	//  1. It wraps at a number of WORDS, not characters — the opposite of
+	//     Django's `wordwrap` (which wraps to N columns, breaking on
+	//     whitespace) that the name leads every author to expect. A
+	//     `question|wordwrap:115` meant to hard-wrap a long line at ~115
+	//     columns instead asks for "115 words per line" and does nothing.
+	//
+	//  2. Its line-count formula `wordsLen/wrapAt + wordsLen%wrapAt`
+	//     over-counts whenever wrapAt exceeds the word count, then indexes
+	//     past the end of the word slice. A 3-word string with
+	//     `wordwrap:110` slices words[110:3] and PANICS with
+	//     "slice bounds out of range [110:3]" — and because the panic
+	//     unwinds through tpl.Execute it escapes the TUI's render-error
+	//     fallback and crashes the whole bubbletea program.
+	//
+	// Replace it with muesli/reflow's character-width word wrap — the same
+	// wrapper the prose/kv/list view elements already use — so `wordwrap:N`
+	// means "wrap to N columns, breaking on whitespace" and never panics.
+	_ = pongo2.ReplaceFilter("wordwrap", filterWordwrap)
+
+	// Override pongo2/v6's built-in `truncatechars` with a source-color-aware
+	// version. The stock filter counts every rune — including the zero-width
+	// source-color sentinels — and slices off the tail, which drops a span's
+	// closing sentinel when an LLM-wrapped value (e.g. `world.idea`) is
+	// truncated. The dangling open then makes the TUI's Colorize (and every
+	// other consumer) bleed the warm "LLM" band across the rest of the view.
+	// sourcecolor.Truncate counts only visible runes and re-closes any span
+	// open at the cut; for sentinel-free input it is byte-identical to the
+	// built-in. See internal/render/sourcecolor.Truncate.
+	_ = pongo2.ReplaceFilter("truncatechars", filterTruncatechars)
+
+	// `reference` renders its input as a line-numbered, attributed
+	// `<reference>` block — the built-in primitive for embedding external
+	// material (a spec, a report, a coding standard) into a prompt verbatim,
+	// with a citable source label and a content hash. Registered globally
+	// (not per-TemplateSet) so it works identically on the inline render.Pongo
+	// path AND the AppRenderer/overlay path, with no @-namespace resolution and
+	// no file read — see filterReference and docs/stories/prompts.md.
+	_ = pongo2.RegisterFilter("reference", filterReference)
+}
+
+// filterReference renders the input content as a line-numbered, attributed
+// reference block — the built-in way to embed external material (a spec, a
+// report, a coding standard) into a prompt verbatim, so the LLM can cite it by
+// line and a reader of the recorded prompt can walk the citation back to the
+// source. See docs/stories/prompts.md (Embedding reference material).
+//
+// Input is the content; the single param is a free-form source LABEL. Output is
+//
+//	<reference src="LABEL" lines="1-N" sha256="XXXXXXXX">
+//	   1 | <line 1>
+//	   …
+//	   N | <line N>
+//	</reference>
+//
+// Line numbers are 1-based and right-aligned to the width of N, so a whole-file
+// input yields absolute numbers that line up with a report's line citations. The
+// sha256 is the first 8 hex of the content digest — a scannable pin that lets a
+// later reader confirm the embedded bytes against the source.
+//
+// The content is emitted VERBATIM: unlike {% include %}, the filter never
+// re-parses its input as a template, so material containing `{{ }}` / `{% %}` is
+// safe. A nil / missing input passes through unchanged (no block) — matching the
+// reverse filter's degrade-to-no-op convention — so a typo'd variable doesn't
+// wrap an empty reference around nothing.
+//
+// It resolves nothing and reads no file: it is a pure function of (content,
+// label), which is exactly what makes it work on the inline render.Pongo path
+// and the AppRenderer path alike, under any agent backend.
+func filterReference(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	if in == nil || in.IsNil() {
+		return in, nil
+	}
+	content := in.String()
+	label := param.String()
+
+	sum := sha256.Sum256([]byte(content))
+	hash := hex.EncodeToString(sum[:])[:8]
+
+	// A trailing newline (the usual shape of a read file) would otherwise
+	// split into a phantom empty final line; trim exactly one so the line
+	// count and gutter reflect the real lines. Empty content yields no body
+	// lines and a "0-0" span rather than one blank numbered line.
+	var lines []string
+	if content != "" {
+		lines = strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+	}
+	n := len(lines)
+	span := "0-0"
+	if n > 0 {
+		span = "1-" + strconv.Itoa(n)
+	}
+	width := len(strconv.Itoa(n))
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "<reference src=%q lines=%q sha256=%q>\n", label, span, hash)
+	for i, line := range lines {
+		fmt.Fprintf(&b, "%*d | %s\n", width, i+1, line)
+	}
+	b.WriteString("</reference>")
+	return pongo2.AsValue(b.String()), nil
+}
+
+// filterTruncatechars is the source-color-aware replacement for pongo2's
+// built-in truncatechars (registered in init()). See sourcecolor.Truncate.
+func filterTruncatechars(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	return pongo2.AsValue(sourcecolor.Truncate(in.String(), param.Integer())), nil
+}
+
+// filterWordwrap wraps the input to param visible columns, breaking on
+// whitespace, replacing pongo2's broken built-in (see the ReplaceFilter
+// call in init()). A non-positive width returns the input unchanged.
+// Backed by muesli/reflow/wordwrap so wrapping behaviour matches the
+// prose/kv/list elements.
+func filterWordwrap(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	width := param.Integer()
+	if width <= 0 {
+		return in, nil
+	}
+	return pongo2.AsValue(wordwrap.String(in.String(), width)), nil
 }
 
 // filterCol pads or truncates the input to exactly N runes,
@@ -209,7 +267,7 @@ func PongoParse(src string) error {
 // view leaf strings that are pure prose.
 //
 // The signature matches expr.Render so call-site swaps are mechanical.
-func Pongo(src string, env expr.Env) (string, error) {
+func Pongo(src string, env expr.Env) (out string, err error) {
 	if !hasDelims(src) {
 		return src, nil
 	}
@@ -218,11 +276,24 @@ func Pongo(src string, env expr.Env) (string, error) {
 	if err != nil {
 		return "", wrapTemplateError(src, err)
 	}
-	out, err := tpl.Execute(ToContext(env))
+	// pongo2 filters (built-in and our own) execute arbitrary Go against
+	// author-controlled input that can panic rather than return an error —
+	// the stock `wordwrap` did exactly this on a short string (see init()).
+	// A panic here unwinds straight past every caller's render-error
+	// fallback and crashes the bubbletea program. Recover at this seam and
+	// turn the panic into an ordinary error so callers degrade gracefully
+	// (the transcript view falls back to raw source).
+	defer func() {
+		if r := recover(); r != nil {
+			out = ""
+			err = wrapTemplateError(src, fmt.Errorf("panic during template execution: %v", r))
+		}
+	}()
+	rendered, err := tpl.Execute(ToContext(env))
 	if err != nil {
 		return "", wrapTemplateError(src, err)
 	}
-	return out, nil
+	return rendered, nil
 }
 
 // preprocessCoalesce rewrites the kitsoki-author-friendly ` ?? ` null-
@@ -413,9 +484,9 @@ func ToContext(env expr.Env) pongo2.Context {
 	return ctx
 }
 
-// hasDelims reports whether src contains pongo2 template syntax. The
-// proposal's fast path (§3) returns the source verbatim when no delimiters
-// are present.
+// hasDelims reports whether src contains pongo2 template syntax. The render
+// fast path returns the source verbatim when no delimiters are present, so
+// pure-prose leaves never pay the pongo2 parse cost.
 func hasDelims(src string) bool {
 	return strings.Contains(src, "{{") || strings.Contains(src, "{%")
 }
@@ -428,8 +499,8 @@ func wrapTemplateError(src string, err error) error {
 	// Single-line shorthand for short templates; for multi-line templates
 	// fall back to a quoted snippet to keep error logs scannable.
 	snippet := src
-	if len(snippet) > 200 {
-		snippet = snippet[:200] + "…"
+	if len(snippet) > TemplateErrorSnippetLength {
+		snippet = snippet[:TemplateErrorSnippetLength] + "…"
 	}
 	return fmt.Errorf("render: pongo2 template %q: %w", snippet, err)
 }

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "references",
+  "description": "The researcher's curated list of existing documents the PRD should build on. An empty list is valid and means no relevant prior art was found.",
+  "type": "object",
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "rationale"],
+        "properties": {
+          "path":      { "type": "string", "minLength": 1, "description": "Path (relative to the working dir) of the referenced document. Docs only — not source code." },
+          "sections":  { "type": "string", "description": "The specific section(s) / heading(s) that matter, e.g. \"§3.2 Rate limits\" or \"Auth model\"." },
+          "rationale": { "type": "string", "minLength": 4, "description": "One line: why this reference matters for the PRD / what it constrains." }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

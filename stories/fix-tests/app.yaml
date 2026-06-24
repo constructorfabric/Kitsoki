@@ -1,0 +1,93 @@
+app:
+  id: fix-tests
+  version: 0.1.0
+  title: "Auto-fix failing tests"
+  author: "kitsoki"
+  license: "CC0"
+
+# A self-driving, operator-facing maintenance pipeline:
+#
+#   idle --start--> running --(red)--> fixing --> verifying --(red, retry)--> fixing
+#                      |                                |
+#                   (green)                          (green)
+#                      v                                v
+#                  done_clean <------------------- done_clean
+#
+#   fixing --(fixer needs a human decision)--> blocked
+#   verifying --(still red after max_cycles)--> done_exhausted
+#
+# Every room auto-advances via a synthetic `route` intent emitted from
+# on_enter (post-bind), so `kitsoki session continue --intent start`
+# walks the whole pipeline to a terminal state in one turn — no human in
+# the loop. The fixer is an agentic `host.agent.task` pinned to
+# claude-sonnet-4-6 (which execs `claude -p --model sonnet`).
+#
+# Depth note: the synthetic emit_intent chain is depth-capped at 8. The
+# worst path (max_cycles=3, always-red) emits `route` 7 times, so the
+# default max_cycles MUST stay <= 3. Raising it requires raising the
+# engine cap.
+
+hosts:
+  - host.run
+  - host.agent.task
+  - host.inbox.add
+
+# The fixer persona. Agentic write surface (Edit/Write) plus a bounded
+# bash allowlist so it can run the test/build commands to check its own
+# work. Model is sonnet — the verb at the call site is `task` because it
+# mutates files. external_side_effect:false — no network / no git push.
+agents:
+  fixer:
+    system_prompt: "You are a senior software engineer whose sole job is to make a project's failing tests pass with the minimal, correct change. You read the failure output, locate the root cause, and apply a focused fix to the source or the test. You never weaken or delete a test to make it pass, and you never invent behaviour the codebase doesn't have. When a fix would require a product/architecture decision you cannot make safely on your own, you stop and surface the question instead of guessing."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile:
+      commands: [go, make]
+    external_side_effect: false
+
+# Typed world. Every key read in a view, effect, or guard is declared here.
+world:
+  # Configuration (defaults wired for this repo; overridable via the
+  # `start` intent's slots).
+  test_cmd:       { type: string, default: "make test" }
+  workdir:        { type: string, default: "." }
+  max_cycles:     { type: int,    default: 3 }
+
+  # Run state.
+  cycle:          { type: int,    default: 0 }
+  tests_passed:   { type: bool,   default: false }
+
+  # Background-job bookkeeping. last_job_id is bound from each background
+  # invoke; last_job_result is engine-injected into the world only inside an
+  # on_complete: chain (so it isn't declared here).
+  last_job_id:    { type: string, default: "" }
+
+  # Most recent test-run result envelope ({exit_code, ok, stdout}), copied
+  # out of last_job_result in on_complete so the fixer prompt can read the
+  # failures (world.last_run.stdout) after the on_complete turn.
+  last_run:       { type: object, default: {} }
+
+  # Fixer output (schemas/fix_artifact.json).
+  fix_artifact:   { type: object, default: {} }
+
+  # Outcome.
+  outcome:        { type: string, default: "" }
+  report_path:    { type: string, default: "" }
+
+intents:
+  start:
+    description: "Run the test suite and auto-fix any failures."
+    examples: ["start", "fix the tests", "make tests pass", "go"]
+    priority: 90
+    slots:
+      test_cmd:   { type: string, required: false }
+      max_cycles: { type: int,    required: false }
+  look:
+    description: "Re-render the current room."
+    examples: ["look", "status"]
+    priority: 5
+
+root: idle
+
+include:
+  - rooms/*.yaml

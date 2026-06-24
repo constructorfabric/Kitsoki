@@ -1,0 +1,158 @@
+# ship-it — the single-brief delivery loop.
+#
+# A scoped brief delivers itself: implemented in isolation by the cherny-loop
+# maker, integrated to main lost-work-safely (rebase onto CURRENT main even when
+# a concurrent session moved it), RE-PROVEN on the merged commit by an
+# independent re-verify (trust the gate, not the maker's "done"), and cleaned up
+# — exiting @exit:shipped or @exit:needs-human with the REAL error.
+#
+# Pipeline (delivery-loop epic slice 2):
+#   configure{brief,gate_command} ─▶ maker[cherny-loop, @exit:achieved] ─▶
+#   integrate ─▶ verify (re-run gate on MERGED commit) ─▶ cleanup ─▶
+#   @exit:shipped | @exit:needs-human(last_error)
+#
+# Imports cherny-loop as the maker (its @exit:achieved leaves worktree_path +
+# workspace_branch in world — the handoff seam). The integrate / verify /
+# cleanup rooms are ship-it's own thin wrappers that REUSE the slice-1 git-ops
+# mechanisms (lost-work-safe rebase, no-swallowed cleanup) — see
+# .context/ship-it-design-decision.md for why these are ship-it rooms rather
+# than a git-ops import (git-ops must stay standalone-runnable).
+#
+# Every failure arc routes to @exit:needs-human with last_error populated —
+# never a swallowed false success. The gate is deterministic by construction
+# (script mode, an explicit gate_command); the re-verify re-runs the IDENTICAL
+# command on the merged commit from the main worktree.
+
+app:
+  id: ship-it
+  version: 0.1.0
+  title: "ship-it — single-brief delivery loop"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.agent.task
+  - host.agent.decide
+  - host.git_worktree
+  - host.artifacts_dir
+
+world:
+  brief:            { type: string, default: "" }    # the scoped task → cherny goal_text
+  gate_command:     { type: string, default: "" }    # the deterministic gate (script mode)
+  base_branch:      { type: string, default: "main" }
+  main_worktree_path: { type: string, default: "." } # where integrate/verify/cleanup run
+  workspace_id:     { type: string, default: "ship-it" }   # .worktrees/<id>
+  workspace_branch: { type: string, default: "ship-it/run" } # branch the worktree holds
+  worktree_path:    { type: string, default: "" }    # bound back from cherny's exit
+  build_check_disabled: { type: bool, default: false }
+
+  integrated:       { type: bool,   default: false }
+  integrate_outcome: { type: string, default: "" }   # integrated | conflict | build_fail | error
+  integrated_sha:   { type: string, default: "" }    # the merged commit
+  verify_ok:        { type: string, default: "" }    # tri-state: "" until re-verify binds
+  verify_output:    { type: string, default: "" }    # the re-run gate's stdout/stderr tail
+  shipped_sha:      { type: string, default: "" }    # the merged commit, set after re-verify green
+  cleanup_outcome:  { type: string, default: "" }    # cleaned | refused
+  last_error:       { type: string, default: "" }    # the real failure on any needs-human arc
+  status:           { type: string, default: "" }    # shipped | needs-human
+
+intents:
+  ship:
+    description: "Start the delivery loop for the configured brief."
+    examples: ["ship", "ship it", "deliver", "go", "start"]
+    priority: 85
+    slots:
+      brief:        { type: string, required: false }
+      gate_command: { type: string, required: false }
+      base_branch:  { type: string, required: false }
+  integrate_existing:
+    description: "Skip the maker — integrate an existing worktree's branch (work already done)."
+    examples: ["integrate existing", "integrate the worktree", "skip the maker", "work is done"]
+    priority: 70
+  quit:
+    description: "Abandon the brief → needs-human."
+    examples: ["quit", "abandon", "stop", "bail"]
+    priority: 50
+  look:
+    description: "Re-render the current room."
+    examples: ["look", "status"]
+    priority: 5
+
+exits:
+  shipped:     { requires: [shipped_sha] }
+  needs-human: { requires: [last_error] }
+
+# Intents a parent (fleet) may lift into its own table when importing ship-it.
+# fleet drives `integrate_existing` to advance a brief's ship-it through its
+# deterministic delivery half to @exit:shipped|needs-human.
+exports:
+  intents: [ship, integrate_existing, look]
+
+root: configure
+
+imports:
+  # The maker — cherny-loop's goal-gated loop in an isolated worktree. Entered at
+  # `configuring`; ship-it projects the brief as the goal and the gate_command as
+  # cherny's script gate. cherny mints .worktrees/<workspace_id>, runs
+  # red-before-green, loops maker→checker until @exit:achieved (leaving
+  # worktree_path + workspace_branch in world) or @exit:exhausted/@exit:abandoned.
+  maker:
+    source: ../cherny-loop
+    entry: configuring
+    world_in:
+      goal_text:        "{{ world.brief }}"
+      gate_command:     "{{ world.gate_command }}"
+      gate_mode:        "script"
+      workspace_id:     "{{ world.workspace_id }}"
+      workspace_branch: "{{ world.workspace_branch }}"
+      workspace_base:   "{{ world.base_branch }}"
+    exits:
+      # @exit:achieved → tail (delivery-tail's integrate), carrying the worktree handoff seam up.
+      achieved:
+        to: tail
+        set:
+          worktree_path:    "{{ world.maker__worktree_path }}"
+          workspace_branch: "{{ world.workspace_branch }}"
+      # Budget/abandon → needs-human with the real terminal reason + last gate failure.
+      exhausted:
+        to: "@exit:needs-human"
+        set:
+          last_error: "maker exhausted ({{ world.terminal_reason }}): {{ world.last_gate_failure }}"
+          status:     "needs-human"
+      abandoned:
+        to: "@exit:needs-human"
+        set:
+          last_error: "maker abandoned ({{ world.terminal_reason }}): {{ world.last_gate_failure }}"
+          status:     "needs-human"
+
+  # The delivery tail — the shared neutral integrate → verify → cleanup → report
+  # pipeline. Entered at `integrate` after the maker achieves (or after
+  # integrate_existing skips the maker). ship-it projects the brief + gate + the
+  # maker's worktree handoff seam into the tail's world.
+  tail:
+    source: ../delivery-tail
+    entry: integrate
+    world_in:
+      worktree_path:        "{{ world.worktree_path }}"
+      workspace_branch:     "{{ world.workspace_branch }}"
+      gate_command:         "{{ world.gate_command }}"
+      base_branch:          "{{ world.base_branch }}"
+      main_worktree_path:   "{{ world.main_worktree_path }}"
+      build_check_disabled: "{{ world.build_check_disabled }}"
+      workspace_id:         "{{ world.workspace_id }}"
+      brief:                "{{ world.brief }}"
+    exits:
+      shipped:
+        to: "@exit:shipped"
+        set:
+          shipped_sha: "{{ world.tail__shipped_sha }}"
+          status:      "shipped"
+      needs-human:
+        to: "@exit:needs-human"
+        set:
+          last_error: "{{ world.tail__last_error }}"
+          status:     "needs-human"
+
+include:
+  - rooms/*.yaml

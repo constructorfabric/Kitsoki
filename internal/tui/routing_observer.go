@@ -1,5 +1,5 @@
 // Package tui — routing_observer.go bridges slog routing events into
-// the [RoutingChip]'s tea.Msg stream (semantic-routing proposal §8).
+// the [RoutingChip]'s tea.Msg stream. See docs/architecture/semantic-routing.md.
 //
 // Background context: the orchestrator emits structured routing events
 // via slog (turn.semantic_hit / miss / ambiguous, turn.llm_routed,
@@ -16,13 +16,12 @@
 //
 // Lifecycle: [InstallRoutingObserver] returns a *RoutingObserver that
 // the caller wires into their slog logger as one handler in a multi-
-// handler set (the same way the always-on RingBuffer is wired in
-// cmd/kitsoki/trace.go::BuildTraceLogger). [RoutingObserver.Attach]
-// sets the *tea.Program and starts dispatching; [Detach] stops it.
+// handler set. [RoutingObserver.Attach] sets the *tea.Program and starts
+// dispatching; [Detach] stops it.
 //
 // The observer also maintains a small in-memory ring of routing
 // records (the last N events grouped by turn number) so the ctrl+r
-// route-trace overlay (§8.3) can pretty-print "everything we know
+// route-trace overlay can pretty-print "everything we know
 // about turn N's routing pipeline" without re-reading the trace file.
 package tui
 
@@ -362,6 +361,14 @@ func translateToTeaMsg(msg string, attrs map[string]any) (tea.Msg, bool) {
 			Latency:    attrDuration(attrs, "dur"),
 		}, true
 
+	case trace.EvTurnLLMMiss:
+		// The local-model routing tier was tried and missed; Reason carries the
+		// backend so the pipeline marks the local-LLM layer (not main-LLM).
+		return RoutingTierMissMsg{
+			Tier:   TierLLM,
+			Reason: attrString(attrs, "model"),
+		}, true
+
 	case trace.EvTurnOffpathRouted:
 		return RoutingTierHitMsg{
 			Tier:   TierOffpath,
@@ -386,6 +393,7 @@ func isRoutingMsg(msg string) bool {
 		trace.EvTurnSemanticAmbiguous,
 		trace.EvTurnTurncacheHit,
 		trace.EvTurnLLMRouted,
+		trace.EvTurnLLMMiss,
 		trace.EvTurnOffpathRouted,
 		trace.EvTurnCancelled:
 		return true

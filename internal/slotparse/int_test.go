@@ -118,7 +118,8 @@ func TestParseInt_TrailingJunkConsumedRangeEndsAtSix(t *testing.T) {
 // TestParseInt_200lbsBehaviour pins the documented behaviour: lex
 // emits "200lbs" as a single IsNum=false token, so the digit-prefix
 // is NOT picked up. The matcher relies on this exact behaviour to
-// route such inputs to the LLM tier (proposal §4.4).
+// route such inputs to the LLM tier (see the slot parser table in
+// docs/architecture/semantic-routing.md).
 func TestParseInt_200lbsBehaviour(t *testing.T) {
 	t.Parallel()
 	toks := tok(t, "200lbs")

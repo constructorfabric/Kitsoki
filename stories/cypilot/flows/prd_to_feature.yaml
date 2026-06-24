@@ -62,7 +62,7 @@ host_handlers:
       log: "PASS: 12 tests"
       passed: 12
       failed: 0
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

@@ -1,0 +1,19 @@
+# Deterministic flow posture for the agent-probe story: nil harness, host
+# calls served by the paired host cassette (who_are_you.cassette.yaml). The web
+# demo drives the three turns from the browser (switching provider between each);
+# the turns: block here lets the same fixture run headless via `kitsoki test`.
+test_kind: flow
+app: ../app.yaml
+
+initial_state: probe
+initial_world:
+  reply: ""
+  question: ""
+
+turns:
+  - intent: { name: ask, slots: { question: "who are you" } }
+    expect_state: probe
+  - intent: { name: ask, slots: { question: "who are you" } }
+    expect_state: probe
+  - intent: { name: ask, slots: { question: "who are you" } }
+    expect_state: probe

@@ -1,0 +1,59 @@
+# idle — choose whether to create a fresh deck or edit an existing deck spec.
+#
+# The baked world points at the pre-rendered explainer deck so `kitsoki tour`/web
+# can still drive straight in. `start` creates a fresh draft. `edit_existing`
+# preserves the operator-supplied spec path as source_deck while clearing deck so
+# drafting's once: author/edit pass runs.
+
+states:
+
+  idle:
+    description: "Slidey deck editor. Start a new deck or edit an existing deck, then render and review."
+    relevant_world: [deck, source_deck, cycle]
+    view:
+      - heading: "Slidey deck editor"
+      - prose: "Nothing's been rendered yet. Start a new deck from scratch, or point at an existing slidey JSON spec to edit. Either way you'll render it to a static HTML deck, then annotate the rendered frame and refine the exact scene you pointed at."
+      - kv:
+          pairs:
+            Sample deck:    '{{ world.deck.spec_path|default:"(none)" }}'
+            Existing deck:  '{{ world.source_deck.spec_path|default:"(not selected)" }}'
+            Sample summary: '{{ world.deck.summary|default:"(pending)" }}'
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "start"
+              hint:  "draft a new deck and advance to render"
+            - label: "edit_existing spec_path=…"
+              hint:  "edit an existing slidey JSON spec"
+            - label: "quit"
+              hint:  "abandon the editor"
+            - label: "look"
+    on:
+      start:
+        - target: drafting
+          effects:
+            - set:
+                draft_feedback: "{{ slots.feedback ?? '' }}"
+                # Clear the deck so drafting's once: author pass runs fresh
+                # (the baked default seeds idle's view; start re-authors).
+                deck: {}
+                source_deck: {}
+                render_retries: 0   # fresh deck — reset the auto-fix budget
+      edit_existing:
+        - target: drafting
+          effects:
+            - set:
+                source_deck:
+                  spec_path: "{{ slots.spec_path }}"
+                  summary: "{{ slots.summary ?? 'Existing slidey deck' }}"
+                draft_feedback: "{{ slots.feedback ?? '' }}"
+                # deck is the drafting result/cache. Clear it so once: does
+                # not mistake the existing input deck for completed output.
+                deck: {}
+                render_retries: 0   # fresh deck — reset the auto-fix budget
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_idle" }
+      look:
+        - target: .

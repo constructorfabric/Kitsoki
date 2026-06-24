@@ -24,9 +24,9 @@ func TestBindAndLookupExternalKey(t *testing.T) {
 	sid, err := st.CreateSession(ctx, def)
 	require.NoError(t, err)
 
-	require.NoError(t, st.BindExternalKey(ctx, sid, "jira", "PROJ-12345"))
+	require.NoError(t, st.BindExternalKey(ctx, sid, "jira", "PLTFRM-12345"))
 
-	got, err := st.LookupByKey(ctx, "jira", "PROJ-12345")
+	got, err := st.LookupByKey(ctx, "jira", "PLTFRM-12345")
 	require.NoError(t, err)
 	require.Equal(t, sid, got)
 }
@@ -49,8 +49,8 @@ func TestBindExternalKey_RebindSameSessionIsNoOp(t *testing.T) {
 	sid, err := st.CreateSession(ctx, makeAppDef("bugfix", "0.1"))
 	require.NoError(t, err)
 
-	require.NoError(t, st.BindExternalKey(ctx, sid, "jira", "PROJ-1"))
-	require.NoError(t, st.BindExternalKey(ctx, sid, "jira", "PROJ-1"))
+	require.NoError(t, st.BindExternalKey(ctx, sid, "jira", "PLTFRM-1"))
+	require.NoError(t, st.BindExternalKey(ctx, sid, "jira", "PLTFRM-1"))
 }
 
 func TestBindExternalKey_AlreadyTakenByOtherSession(t *testing.T) {
@@ -65,8 +65,8 @@ func TestBindExternalKey_AlreadyTakenByOtherSession(t *testing.T) {
 	sidB, err := st.CreateSession(ctx, def)
 	require.NoError(t, err)
 
-	require.NoError(t, st.BindExternalKey(ctx, sidA, "jira", "PROJ-1"))
-	err = st.BindExternalKey(ctx, sidB, "jira", "PROJ-1")
+	require.NoError(t, st.BindExternalKey(ctx, sidA, "jira", "PLTFRM-1"))
+	err = st.BindExternalKey(ctx, sidB, "jira", "PLTFRM-1")
 	require.ErrorIs(t, err, store.ErrExternalKeyTaken)
 }
 
@@ -88,7 +88,7 @@ func TestListExternalKeys_MultipleKeysPerSession(t *testing.T) {
 	sid, err := st.CreateSession(ctx, makeAppDef("bugfix", "0.1"))
 	require.NoError(t, err)
 
-	require.NoError(t, st.BindExternalKey(ctx, sid, "jira", "PROJ-1"))
+	require.NoError(t, st.BindExternalKey(ctx, sid, "jira", "PLTFRM-1"))
 	// Force a microsecond gap so created_at differs.
 	time.Sleep(2 * time.Microsecond)
 	require.NoError(t, st.BindExternalKey(ctx, sid, "bitbucket", "DBI/repo/pulls/42"))
@@ -97,7 +97,7 @@ func TestListExternalKeys_MultipleKeysPerSession(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, keys, 2)
 	require.Equal(t, "jira", keys[0].Transport)
-	require.Equal(t, "PROJ-1", keys[0].Thread)
+	require.Equal(t, "PLTFRM-1", keys[0].Thread)
 	require.Equal(t, "bitbucket", keys[1].Transport)
 }
 

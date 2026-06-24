@@ -1,0 +1,213 @@
+# Worked example: the project profile kitsoki's init phase would synthesize for
+# the kitsoki repo itself (the dogfood case — it should reproduce what
+# stories/kitsoki-dev/ binds by hand). This is the dry-run report shown at
+# init_review: readiness.status is `not-run` and nothing is written yet.
+#
+# Validates against project-profile.schema.json (proven in docs/proposals/project-init.md §Verification).
+schema: project-profile/v1
+id: kitsoki
+title: kitsoki — self-hosting dev loop
+summary: |
+  Go runtime + embedded Vue 3 web UI (`tools/runstatus/`). dev-story is bound
+  to local-file / git providers, mirroring `stories/kitsoki-dev/`. Mined from
+  the maintainers' own Claude Code transcripts (recency sample).
+
+generated:
+  by: "agent:project_profiler @ kitsoki-dev"
+  mining_job: intents-20260615
+
+repo:
+  root: "."
+  vcs: git
+  default_branch: main
+  remote: constructorfabric/Kitsoki
+  monorepo: false
+
+stack:
+  kind: fullstack
+  languages: [go, typescript]
+  frameworks: [vue, vite, bubbletea]
+  package_managers: [go-modules, pnpm]
+
+dev_server:
+  components:
+    - name: web
+      role: backend
+      command: "go run ./cmd/kitsoki web --addr 127.0.0.1:8848"
+      cwd: "."
+      url: "http://127.0.0.1:8848"
+      ready:
+        probe: http
+        target: "http://127.0.0.1:8848/"
+        expect: "200"
+        timeout_ms: 30000
+        interval_ms: 500
+    - name: web-dev-hmr
+      role: frontend
+      command: "make web-dev"
+      cwd: "tools/runstatus"
+      url: "http://127.0.0.1:5173"
+      ready:
+        probe: log
+        target: "ready in"
+        timeout_ms: 20000
+
+environments:
+  - name: local
+    kind: local
+    url: "http://127.0.0.1:8848"
+    config_ref: ".kitsoki.yaml"
+    notes: |
+      Personal overrides in the gitignored `.kitsoki.local.yaml`.
+  - name: ci
+    kind: test
+    config_ref: ".github/workflows"
+    notes: "make build + make test; no real LLM (cassettes only)."
+
+commands:
+  install: "make setup"
+  build: "make build"
+  dev: "kitsoki web"
+  test: "make test"
+  e2e: "cd tools/runstatus && pnpm exec playwright test --project=chromium"
+  lint: "go vet ./..."
+  typecheck: "cd tools/runstatus && pnpm exec vue-tsc --noEmit"
+
+testing:
+  frameworks: [go-test, playwright, kitsoki-flows]
+  mechanisms:
+    - kind: unit
+      runner: go-test
+      command: "go test ./..."
+    - kind: flow
+      runner: kitsoki
+      command: "kitsoki test flows stories/dev-story/app.yaml"
+    - kind: e2e
+      runner: playwright
+      command: "WEB_CHAT_PACE=0 pnpm exec playwright test --project=chromium"
+      config_ref: "tools/runstatus/playwright.config.ts"
+  ci:
+    provider: github-actions
+    config_ref: ".github/workflows"
+
+golden_path:
+  applicable: true
+  kind: ui
+  name: "Boot the web UI and land in a session"
+  description: |
+    Start `kitsoki web` in the no-LLM `--flow`/`--host-cassette` posture, open
+    the home page, start a session, and confirm the trace timeline renders.
+  steps:
+    - "Open http://127.0.0.1:8848/"
+    - "Click New session"
+    - "Confirm the observer trace timeline renders a first row"
+  verify:
+    harness: playwright
+    spec: "tools/runstatus/tests/playwright/oregon-trail-e2e.spec.ts"
+    url: "http://127.0.0.1:8848/"
+
+conventions:
+  source: kitsoki
+  dirs:
+    context:   { path: ".context",   use: existing }
+    artifacts: { path: ".artifacts", use: existing }
+    worktrees: { path: ".worktrees", use: existing }
+  gitignore:
+    manage: true
+    additions:
+      - ".kitsoki.local.yaml"
+      - ".context/"
+      - ".artifacts/"
+      - ".worktrees/"
+  rules_files: [AGENTS.md, CLAUDE.md]
+
+rules:
+  - id: no-real-llm-in-tests
+    scope: tests
+    source: discovered
+    ref: "AGENTS.md#automated-testing"
+    text: "Automated tests never use a real LLM or incur cost — mock agents via cassettes."
+  - id: worktrees-in-project-root
+    scope: repo
+    source: discovered
+    ref: "AGENTS.md"
+    text: "Make worktrees under .worktrees in the project root."
+  - id: dependency-injection
+    scope: global
+    source: discovered
+    ref: "AGENTS.md"
+    text: "Use dependency-injection patterns wherever relevant."
+
+kitsoki:
+  story: dev-story
+  instance:
+    id: kitsoki
+    path: "stories/kitsoki-dev/app.yaml"
+    bindings:
+      ticket: host.local_files.ticket
+      vcs: host.git
+      ci: host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+  harness_profile: claude
+  judge_mode: human
+  autonomy: supervised
+
+mining:
+  job: intents-20260615
+  sample: recency
+  intent_count: 154
+  themes:
+    - theme: "verify-by-running"
+      count: 9
+      status: already-modeled
+      recommendation: "implementation/test judge_test already covers it."
+    - theme: "pre-existing failure vs regression"
+      count: 8
+      status: enrich
+      recommendation: "Add a default-rule baseline-worktree gate before the LLM judge."
+    - theme: "fan-out partition disjointness"
+      count: 6
+      status: gap
+      recommendation: "No room gates the partition; reuse the work-decomposition manifest lint."
+
+setup_plan:
+  writes:
+    - path: ".kitsoki/project-profile.yaml"
+      action: create
+      summary: "This profile — the declarative source of the dev-story instance."
+    - path: "stories/kitsoki-dev/app.yaml"
+      action: create
+      summary: "Generated dev-story instance with the bindings above (already exists for kitsoki; init would create it for a fresh project)."
+    - path: ".kitsoki.yaml"
+      action: merge
+      summary: "Ensure story_dirs includes stories/ and default harness profile is set."
+    - path: ".gitignore"
+      action: merge
+      summary: "Append the managed convention block (.context/.artifacts/.worktrees/.kitsoki.local.yaml)."
+  dirs_create: [".context", ".artifacts", ".worktrees"]
+  gitignore_additions:
+    - ".kitsoki.local.yaml"
+    - ".context/"
+    - ".artifacts/"
+    - ".worktrees/"
+  verifications:
+    - id: build
+      kind: build
+      command: "make build"
+      gate: required
+    - id: unit-tests
+      kind: tests
+      command: "go test ./..."
+      gate: required
+    - id: dev-server-ready
+      kind: readiness
+      command: "go run ./cmd/kitsoki web --addr 127.0.0.1:8848"
+      gate: required
+    - id: golden-path-ui
+      kind: golden-path
+      command: "WEB_CHAT_PACE=0 pnpm exec playwright test oregon-trail-e2e --project=chromium"
+      gate: advisory
+
+readiness:
+  status: not-run

@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/chats"
 	"kitsoki/internal/clock"
 	"kitsoki/internal/expr"
 	"kitsoki/internal/intent"
@@ -75,7 +76,6 @@ func SetTranscriptSizeForTest(m *RootModel, width, height int) {
 	m.transcript.vp.GotoBottom()
 }
 
-
 // PreserveLeadingIndent exposes the internal leading-indent preprocessor.
 func PreserveLeadingIndent(s string) string { return preserveLeadingIndent(s) }
 
@@ -104,6 +104,16 @@ func TriggerTurnOutcomeMsg(m tea.Model, outcome *orchestrator.TurnOutcome, input
 func SimulateSlowHarnessTurnStart(m RootModel) RootModel {
 	m.mode = ModeAwaitingLLM
 	m.inFlightCancel = func() {}
+	return m
+}
+
+// SimulateMetaTurnInFlight puts the model into ModeMeta with the
+// meta-mode turn marked in-flight, so the meta "agent is thinking…"
+// caption renders without driving a real meta turn. Used by the
+// cancel-copy frame test.
+func SimulateMetaTurnInFlight(m RootModel) RootModel {
+	m.mode = ModeMeta
+	m.metaMode.inFlight = true
 	return m
 }
 
@@ -188,6 +198,14 @@ func MenuSystemActive(m RootModel) bool { return m.menuSystem.IsActive() }
 // MenuSystemView returns the rendered overlay (empty when inactive).
 func MenuSystemView(m RootModel) string { return m.menuSystem.View() }
 
+// OpenMenuSystemForTest activates the Esc menu overlay so its rendered
+// rows can be asserted without simulating the Esc keypress sequence.
+func OpenMenuSystemForTest(m *RootModel) { m.menuSystem.Open() }
+
+// PromptPlaceholderForTest exposes the prompt textarea's placeholder so
+// tests can assert the first-run typing/help hint.
+func PromptPlaceholderForTest(m RootModel) string { return m.prompt.Placeholder }
+
 // ── Sessions panel test helpers ───────────────────────────────────────────────
 
 // SessionsPanelActive reports whether the foyer "meta sessions" overlay is
@@ -198,6 +216,13 @@ func SessionsPanelActive(m RootModel) bool { return m.sessionsPanel.IsActive() }
 
 // SessionsPanelView returns the rendered overlay (empty when inactive).
 func SessionsPanelView(m RootModel) string { return m.sessionsPanel.View() }
+
+// CachedSessionListForTest returns the current /sessions attach cache.
+func CachedSessionListForTest(m RootModel) []chats.PtySession {
+	out := make([]chats.PtySession, len(m.sessionList))
+	copy(out, m.sessionList)
+	return out
+}
 
 // MetaSessionChatID returns the chat ID of the currently-active meta
 // session, or "" when no /meta overlay is open. Used by the
@@ -237,6 +262,13 @@ func HandleSlashCommandForTest(m RootModel, cmd string) (RootModel, tea.Cmd) {
 	updated, tcmd := m.handleSlashCommand(cmd)
 	rm, _ := updated.(RootModel)
 	return rm, tcmd
+}
+
+// SetOpenArtifactForTest installs a recording opener seam so /open tests
+// observe which absolute path the command resolved and opened without
+// launching a real OS opener / $EDITOR.
+func SetOpenArtifactForTest(m *RootModel, fn func(path string) error) {
+	m.openArtifact = fn
 }
 
 // ChoiceWidgetIsActive reports whether the inline choice widget owns
@@ -475,7 +507,7 @@ func ScheduleInboxPollForTest(m RootModel, d time.Duration) tea.Cmd {
 
 // NewMetaSendDoneMsgForTest constructs a metaSendDoneMsg for injection
 // into Update(). Used by reload-flag tests to exercise the
-// SendResult.ReloadRequested path without running a real oracle.
+// SendResult.ReloadRequested path without running a real agent.
 func NewMetaSendDoneMsgForTest(userText, assistantText string, reload bool, err error) tea.Msg {
 	return metaSendDoneMsg{
 		userText: userText,
@@ -523,6 +555,9 @@ func SetRoutingObserverForTest(m *RootModel, obs *RoutingObserver) {
 // by rooms_test.go to assert navigation landed in the expected room
 // without poking at unexported fields from the _test package.
 func (m RootModel) CurrentStateForTest() app.StatePath { return m.currentState }
+
+// SessionIDForTest returns the app session id owned by the model.
+func (m RootModel) SessionIDForTest() app.SessionID { return m.sid }
 
 // ActiveRoomForTest returns the active room key — useful for
 // asserting which transcript buffer is currently bound to
@@ -672,4 +707,24 @@ func OpenDisambiguationForTest(m *RootModel, candidates []CandidateForTest) {
 	}
 	m.disambiguation.Open(cs)
 	m.mode = ModeDisambiguating
+}
+
+// GetTranscriptLiveLine returns the current in-flight liveLine from the transcript.
+func GetTranscriptLiveLine(m *transcriptModel) string {
+	return m.liveLine
+}
+
+// GetTranscriptPending returns a copy of the pending queue from the transcript.
+func GetTranscriptPending(m *transcriptModel) []string {
+	pending := make([]string, len(m.pending))
+	copy(pending, m.pending)
+	return pending
+}
+
+// NewTranscriptModel creates a transcriptModel for testing.
+func NewTranscriptModel(width int, appDef app.AppDef) *transcriptModel {
+	tm := newTranscriptModel(width, 10) // 10-line viewport for testing
+	tm.entries = []transcriptEntry{}    // ensure clean state
+	tm.pending = []string{}
+	return &tm
 }

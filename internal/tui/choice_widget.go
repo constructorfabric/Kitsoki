@@ -1,4 +1,5 @@
-// choice_widget.go — Phase C of the choice-widget design.
+// choice_widget.go — the interactive choice / multi-select / form widget.
+// Author-facing reference: docs/stories/choice-widget.md.
 //
 // choiceWidgetModel is the inline interactive picker the TUI uses when a
 // state's typed view contains a Kind=="choice" element. It mirrors the
@@ -20,7 +21,7 @@
 // The widget never reaches the orchestrator; on commit it constructs an
 // (intent, slots) pair, hands it back to the caller, and the caller
 // fires the same async path the right-pane menu uses
-// (asyncSubmitDirect). See proposal §2.3 "Dispatch parity".
+// (asyncSubmitDirect), preserving dispatch parity between the two surfaces.
 
 package tui
 
@@ -410,7 +411,7 @@ func (m choiceWidgetModel) updateSingleParam(msg tea.KeyMsg) (choiceWidgetModel,
 	switch msg.Type {
 	case tea.KeyEsc:
 		// Esc in param mode returns to the item list rather than
-		// closing the widget entirely (proposal §"Phase D").
+		// closing the widget entirely.
 		m.paramMode = false
 		m.paramBuf = ""
 		m.errMsg = ""
@@ -446,8 +447,8 @@ func (m choiceWidgetModel) updateSingleParam(msg tea.KeyMsg) (choiceWidgetModel,
 		m.errMsg = ""
 		return m, nil, nil
 	}
-	// Enum params cycle on Space, mirroring form-mode enum fields
-	// (proposal §3.1 — Space-to-cycle inline picker).
+	// Enum params cycle on Space, mirroring form-mode enum fields.
+	// See docs/stories/choice-widget.md §2.6 "Enum field with cycle-on-Space".
 	it := m.items[m.paramItemIdx]
 	if msg.Type == tea.KeySpace && it.param.Type == "enum" && len(it.param.Values) > 0 {
 		cur := m.paramBuf
@@ -1135,7 +1136,7 @@ func formatBound(v float64) string {
 
 // coerceFieldValue type-coerces a form-field buffer to the declared
 // type. Mirrors coerceParamValue but covers float / bool as well
-// (form mode's allowed-type set per proposal §3.3). For int/float
+// (form mode's allowed-type set). For int/float
 // fields, also enforces the declared min/max bounds — out-of-range
 // values fail coercion just like a type mismatch, which both blocks
 // the commit AND makes the View() render the buffer in red.

@@ -1,0 +1,31 @@
+# clean — the suite passes on the first (background) run; nothing to fix.
+# idle --start--> running_executing; on_complete (exit 0) --> done_clean.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  test_cmd:   "make test"
+  max_cycles: 3
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 0, ok: true, stdout: "ok\tall packages\n" }
+        delay: "20ms"
+      write_report:
+        data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-clean.md" }
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: start }
+    advance_clock: "500ms"
+    expect_state: done_clean
+    expect_world:
+      tests_passed: true
+      outcome:      "clean"
+      cycle:        0
+      report_path:  ".artifacts/fix-tests/report-clean.md"
+
+expect_no_errors: true

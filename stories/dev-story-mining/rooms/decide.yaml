@@ -1,0 +1,110 @@
+# decide — phase 3/5. Rank ENRICH/GAP items; select what to ticket.
+#
+# The `ranker` persona (read-only ask) ranks by (# intents × mechanicalness)
+# and selects the top item; `selected_theme` is pinned for the author phase.
+# This is the gate the operator most cares about — which mined decision to
+# install next — so in human mode the operator IS the decider, and the
+# judge gate only confirms the ranking is sound.
+
+states:
+
+  decide:
+    description: "Rank the ENRICH/GAP items and pick the gate to author next."
+    view:
+      - banner:
+          text:     "DECIDE"
+          subtitle: "Phase 3 / 5  ·  rank by (#intents × mechanicalness), pick one"
+          color:    "#8B5CF6"
+      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }}"
+      - kv:
+          pairs:
+            Selected: '{{ world.selected_theme|default:"(pending)" }}'
+      - heading: "Decision"
+      - code: '{{ world.decide_artifact.summary_markdown|default:"(pending — ranker has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "accept the selection and author the gate"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-rank with feedback (e.g. prefer the ENRICH)"
+              intent: refine
+              param: { slot: feedback, type: string, placeholder: "what to reconsider", required: false }
+            - label:  "restart"
+              hint:   "go back and re-map"
+              intent: restart_from
+              slots:  { stage: map }
+            - label:  "quit"
+              hint:   "abandon the loop"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [job, judge_mode, judge_confidence_threshold, map_artifact, decide_artifact, selected_theme, llm_verdict, refine_feedback, cycle]
+    on_enter:
+      - invoke: host.agent.ask
+        once: true
+        with:
+          agent: ranker
+          schema: schemas/decide_artifact.json
+          prompt: prompts/decide_executing.md
+          args:
+            themes:          "{{ world.map_artifact.themes }}"
+            refine_feedback: "{{ world.refine_feedback }}"
+        bind:
+          decide_artifact: submitted
+          selected_theme:  "submitted.selected[0].theme"
+        on_error: idle
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.agent.decide
+        with:
+          agent: judge
+          prompt: prompts/judge_generic.md
+          schema: schemas/judge_verdict.json
+          args:
+            phase:          "decide"
+            artifact_title: "selection: {{ world.selected_theme }}"
+            artifact_body:  "{{ world.decide_artifact.summary_markdown }}"
+            criterion:      "The top selection is the highest (#intents × mechanicalness) item; an ENRICH with a deterministic validator is preferred over a new-room GAP unless clearly higher value."
+            threshold:      "{{ world.judge_confidence_threshold }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        - target: author
+          effects:
+            - say: "Selected '{{ world.selected_theme }}' — authoring the gate + flow fixture."
+            - set: { refine_feedback: "" }
+      refine:
+        - when: "world.decide_cycle >= world.decide_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "decide_cycle_budget_exhausted", status: "abandoned" }
+        - target: decide
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                decide_cycle:    "{{ world.decide_cycle + 1 }}"
+                cycle:           "{{ world.cycle + 1 }}"
+                decide_artifact: {}
+                selected_theme:  ""
+      restart_from:
+        - target: map
+          effects:
+            - set: { refine_feedback: "", decide_cycle: 0, map_artifact: {}, decide_artifact: {}, selected_theme: "" }
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_at_decide", status: "abandoned" }
+      look:
+        - target: .

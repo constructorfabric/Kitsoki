@@ -1,0 +1,16 @@
+# Replay recording for the operator_probe fixture — routes the free-text drive
+# deterministically to the `ask` intent so the no-LLM studio operator-ask test
+# never touches an LLM.
+kind: recording
+app_id: operator-probe
+app_version: 0.1.0
+generated_at: "2026-06-19T00:00:00Z"
+generator: "hand-authored (slice 8)"
+min_confidence: 1.00
+
+entries:
+  - state: probe
+    input: "ask the operator"
+    intent: { name: ask, slots: { prompt: "ask the operator" } }
+    confidence: 1.00
+    majority_of: 1

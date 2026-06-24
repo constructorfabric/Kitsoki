@@ -1,0 +1,47 @@
+# mining.profile.yaml — scope config for mining ui-fix coverage from real
+# Claude Code transcripts. Co-located so the story self-describes its mine.
+#
+# This is SCOPE CONFIGURATION, not an auto-classifier. It tells coverage_prep.py
+# (1) which sessions to distill (the grep prefilter), (2) which mined intents are
+# in-scope (the action tags), and (3) which rooms are CANDIDATE owners of each
+# action tag — a STARTING POINT for the human/LLM map in coverage.md, never an
+# assertion. The verdict (CONFORMS / DIVERGES / FIXTURE-GAP / COVERAGE-GAP /
+# OUT-OF-SCOPE) is assigned by reading the room bash + the recovered outcome, not
+# mechanically. See docs/stories/story-coverage-mining.md.
+
+story: ui-fix
+
+scope:
+  # prep.py --grep words. RECALL-ONLY prefilter: a substring scan over the whole
+  # raw jsonl, so it over-matches prose ("fix the layout", "the UI looks off").
+  # It widens the net; the real scoping is the human read in the map.
+  grep: ["ui fix", "the layout", "fix the ui", "looks off", "on-screen", screenshot, "before and after", "the audit", "a11y"]
+  sample: recency          # mine how we work *now*
+  max: 25
+
+  # post-filter to these action tags (vocab/tags.yaml). The story is a UI-fix
+  # loop: cluster an audit into groups, apply a scoped fix, re-audit + prove it
+  # on-screen, then record a before/after gallery — a visual-verification loop.
+  action_tags: [visual-verification-loop, implement-from-spec, verify-by-running, review-feedback]
+
+# Candidate rooms per action tag — a starting point for the human map, joined into
+# the coverage.md "candidate room" column by coverage_prep.py. Room ids are the
+# files under stories/ui-fix/rooms/.
+owns:
+  visual-verification-loop:  [verifying, showcase, done]
+  implement-from-spec:       [fixing]
+  verify-by-running:         [verifying]
+  review-feedback:           [review, fixing]
+
+# Non-goals. A matching intent is OUT-OF-SCOPE, not a gap. Matched against the
+# verbatim user_text, since the action tags above are too coarse to separate
+# these from in-scope work (README "Non-goals"). No vision re-verify (per-group
+# verify is geometry+axe only — kitsoki-ui-review owns the vision pass), no
+# cross-group fixes (each fix targets exactly one group), and nothing outside
+# src_root (the fix agent is scoped to tools/runstatus/src/).
+non_goals: [vision-re-verify, cross-group-fix, edit-outside-src-root, run-full-ui-review]
+
+# Marker substrings coverage_prep.py scans the verbatim user_text for to HINT that
+# an in-scope-by-tag intent is actually an OUT-OF-SCOPE non_goal. A hint that
+# routes the human's attention — never an automatic verdict.
+non_goal_markers: ["vision review", "full re-review", "re-review", "all the groups at once", "across groups", "outside src", "backend", "server-side", "run the ui review", "ui-review audit"]

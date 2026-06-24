@@ -1,0 +1,102 @@
+# multi_round_clarify — drafting —clarify→ clarifying —submit_answers→
+# brief —confirm→ references —confirm→ drafting, twice. Proves the
+# clarification transcript ACCUMULATES rather than overwrites:
+# clarifying_cycle reaches 2 (it is NOT reset when clarify re-enters
+# clarifying), and each submit appends a fresh round to
+# world.clarification_log. The brief + references rooms sit on the path
+# back to drafting; passing through them does not disturb the transcript.
+#
+# The shared host.agent.decide stub returns the questions shape; the
+# references room binds it into world.references and reads only `.items`
+# (empty here), so the transcript stays clean (clarifications carry just
+# `questions`). This flow does not assert references content.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  idea:        "A CLI for X"
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd.md"
+        confidence:          0.84
+        needs_clarification: true
+        follow_up_questions: ["What is the scope boundary?"]
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    # Shared stub: the analyst (id: analyst_questions) falls through to this
+    # questions envelope; the `answer` arc's matcher (id: match_answer) is
+    # intercepted below. by_call can't sequence, so both rounds get the same
+    # matched delta — fine here, because `clarify` clears the round's answers
+    # before round 2, so each round records the same answer independently.
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "What is the scope boundary?", why: "scopes the work" }
+    by_call:
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q1: the public CLI surface only\n"
+            answered_ids_append: "|1|"
+            matched_count:       1
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd_brief.md", message_id: "prd_brief#1" }
+
+turns:
+  # Round 1: clarify → clarifying → answer (matcher) → submit → brief, then
+  # confirm through references back to drafting for the next round.
+  - intent: { name: clarify, slots: {} }
+    expect_state: clarifying
+  - intent: { name: answer, slots: { text: "scope is the public CLI surface only" } }
+    expect_state: clarifying
+    expect_world:
+      clarification_answers: "Q1: the public CLI surface only\n"
+  - intent: { name: submit_answers, slots: {} }
+    expect_state: brief
+    expect_world:
+      clarifying_cycle:      1
+      clarification_answers: "Q1: the public CLI surface only\n"
+  - intent: { name: confirm, slots: {} }
+    expect_state: references
+  - intent: { name: confirm, slots: {} }
+    expect_state: drafting
+
+  # Round 2 — clarifying_cycle is preserved across the clarify re-entry,
+  # so submitting again advances it to 2 (accumulation, not reset).
+  - intent: { name: clarify, slots: {} }
+    expect_state: clarifying
+  - intent: { name: answer, slots: { text: "still just the public CLI surface" } }
+    expect_state: clarifying
+    expect_world:
+      clarification_answers: "Q1: the public CLI surface only\n"
+  - intent: { name: submit_answers, slots: {} }
+    expect_state: brief
+    expect_world:
+      clarifying_cycle:      2
+      clarification_answers: "Q1: the public CLI surface only\n"
+      # The transcript accumulates newest-round-first: Round 2 is prepended
+      # while Round 1 is preserved below it. This exact-match guards against
+      # a regression that overwrites instead of appending. Each round's
+      # questions render as a READABLE bullet list (a `{{ range }}` over the
+      # clarifications object), so the operator-facing brief never shows the
+      # raw questions JSON.
+      clarification_log:     "── Round 2 ──\nQuestions:\n  - What is the scope boundary?\nAnswers: Q1: the public CLI surface only\n\n\n── Round 1 ──\nQuestions:\n  - What is the scope boundary?\nAnswers: Q1: the public CLI surface only\n\n\n\n\n"
+
+expect_no_errors: true

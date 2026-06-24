@@ -1,0 +1,96 @@
+# incident_mitigate — the on-call happy path: alert → triage (mitigate) →
+# apply the recorded mitigation → resolved → write the postmortem → landing.
+#
+# The full deterministic walk of the incident loop's mitigate branch, no LLM.
+# The triage host.agent.decide and the postmortem host.agent.task are STUBBED
+# (their verdicts are canned); the mitigation step runs the REAL host.run
+# (printf — deterministic, no network) so the recorded action is asserted for
+# real. Proves: report_incident captures the alert and enters triage; the
+# post-bind guarded emit auto-routes on recommendation=='mitigate'; the
+# mitigation action records; the postmortem writer binds; and the loop lands
+# back on the workbench with incident_status=='resolved'.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: incident
+initial_world: {}
+
+host_handlers:
+  # Triage verdict — a sev2 with a known fix → recommend mitigate.
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        severity: "sev2"
+        summary: "Checkout 5xx rate elevated in us-east after the 14:02 deploy."
+        recommendation: "mitigate"
+        suspected_cause: "Bad config in deploy abc123 — missing PAYMENTS_TIMEOUT."
+        mitigation: "roll back deploy abc123"
+  # Recorded mitigation action — the flow harness does not execute real
+  # host.run, so stub its stdout deterministically (printf would otherwise
+  # return empty and bounce via on_error).
+  host.run:
+    data:
+      ok: true
+      stdout: "applied mitigation: roll back deploy abc123"
+      exit_code: 0
+  # Postmortem writer close-out note.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Checkout 5xx resolved by rolling back deploy abc123."
+        file_path: "docs/incidents/2026-06-22-checkout-5xx.md"
+        follow_ups:
+          - "Add a config-presence check to the deploy gate."
+
+turns:
+  # Paste the alert → captured, enters triage, the decide binds the verdict,
+  # the post-bind emit auto-routes on recommendation=='mitigate' → triaged.
+  - intent: { name: report_incident, slots: { alert: "5xx spiking in checkout, us-east" } }
+    expect_state: incident_triaged
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: triage }
+        times: 1
+    expect_world:
+      incident_alert: "5xx spiking in checkout, us-east"
+      incident_triage:
+        severity: "sev2"
+        summary: "Checkout 5xx rate elevated in us-east after the 14:02 deploy."
+        recommendation: "mitigate"
+        suspected_cause: "Bad config in deploy abc123 — missing PAYMENTS_TIMEOUT."
+        mitigation: "roll back deploy abc123"
+
+  # Accept the recommended disposition → mitigating runs the REAL host.run
+  # mitigation action, sets the disposition, emits write_postmortem → resolved.
+  - intent: { name: mitigate, slots: {} }
+    expect_state: incident_resolved
+    expect_host_calls:
+      - handler: host.run
+        args: { call: apply-mitigation }
+        times: 1
+    expect_world:
+      incident_status: "mitigated"
+      incident_action: "applied mitigation: roll back deploy abc123"
+
+  # Close out — write the (stubbed) postmortem → status resolved → landing.
+  - intent: { name: write_postmortem, slots: {} }
+    expect_state: incident_postmortem
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: write-postmortem }
+        times: 1
+    expect_world:
+      incident_status: "resolved"
+      incident_postmortem:
+        summary: "Checkout 5xx resolved by rolling back deploy abc123."
+        file_path: "docs/incidents/2026-06-22-checkout-5xx.md"
+        follow_ups:
+          - "Add a config-presence check to the deploy gate."
+
+  # The postmortem room rests; go_main returns to the workbench.
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

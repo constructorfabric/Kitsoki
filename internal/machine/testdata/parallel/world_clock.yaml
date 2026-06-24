@@ -1,5 +1,5 @@
 # world_clock.yaml — in-tree fixture mirroring the canonical Oregon Trail
-# parallel-region shape (proposal §5.1).  Lives alongside the machine
+# parallel-region shape.  Lives alongside the machine
 # package so unit tests can drive viz / loader paths without dragging in
 # the full top-level testdata/apps/ tree.
 #

@@ -1,0 +1,38 @@
+# Worktree mint failure blocks the loop. The maker only ever runs in an
+# isolated worktree, so if iface.workspace.create fails (e.g. the branch is
+# already checked out elsewhere), `launch` lands in workspace_error and NEVER
+# calls the maker or the gate — the loop refuses to spend in the operator's
+# checkout. The operator can then `abort` (or reconfigure to a different
+# branch/id and re-launch).
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  host.git_worktree:
+    error: "workspace.create: branch \"cherny-loop/run\" exists but reattach failed: already checked out"
+  # Stubbed but must NOT fire — the loop blocks before any gate/maker spend.
+  host.run: { data: { ok: false, exit_code: 1, stdout: "(should not run)" } }
+  host.agent.task: { data: { submitted: { summary: "(should not run)" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal:         "Get `go test ./internal/ratelimit` green"
+        gate_command: "go test ./internal/ratelimit/"
+        gate_mode:    "script"
+    expect_state: configuring
+  # The mint fails → workspace_error. No maker, no gate spend.
+  - intent: { name: launch, slots: {} }
+    expect_state: workspace_error
+    expect_no_host_calls: [host.agent.task, host.run, host.artifacts_dir]
+  # The operator abandons rather than spending in their checkout.
+  - intent: { name: abort, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      terminal_reason: "aborted"
+
+expect_terminal: true
+expect_no_errors: true

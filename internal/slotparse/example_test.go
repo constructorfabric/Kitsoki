@@ -37,8 +37,8 @@ func ExampleParseInt() {
 	// value=250 reason=spelled ok=true
 }
 
-// ExampleParseEnum demonstrates the §4.2 worked example: a slot with
-// per-value synonyms maps "rich guy" → "banker" via the synonym tier.
+// ExampleParseEnum demonstrates the synonym-tier worked example: a
+// slot with per-value synonyms maps "rich guy" → "banker".
 func ExampleParseEnum() {
 	slot := app.Slot{
 		Type:   "enum",
@@ -67,7 +67,7 @@ func ExampleParseMoney() {
 	// value=121 reason=bare-int ok=true
 }
 
-// ExampleParseList demonstrates the §2.4 worked example: a comma-
+// ExampleParseList demonstrates the list worked example: a comma-
 // and "and"-separated run of ints round-trips into a []any. The
 // inner parser is shared with the bare [slotparse.ParseInt] entry
 // point through a small adapter (see parseIntAdapter in this file).

@@ -1,10 +1,11 @@
 ---
+# triage-marathon: ALREADY-FIXED in main — f3030bdf (rewriteExpr helperIntentArgRE pass); live bugfix drive self-terminated (no fabrication)
 id: 2026-05-20T011329Z-imports-rewriter-available-blocked-reason-not-rewritten
 title: "imports rewriter: intent-name string args to available()/blocked()/blocked_reason()/intent_status() are not prefix-rewritten, so imported-room menu helpers always answer false/\"\""
 target: kitsoki
 filed_at: 2026-05-20T01:13:29Z
 filed_by: cloud-user
-status: open
+status: fixed
 severity: P1
 component: app/imports
 kitsoki_rev: c539d00

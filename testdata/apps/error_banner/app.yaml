@@ -1,0 +1,55 @@
+# error_banner — minimal app proving the runtime surfaces a host failure even
+# when the on_error: destination room does NOT render {{ world.last_error }}.
+#
+# RED gate: with the plain error room below, expect_view_matches "Action failed"
+# fails today (the room hides the error). GREEN after the orchestrator appends
+# its on_error redirect banner (see .context/error-banner-brief.md).
+#
+# No LLM: the lone host call (host.run) is stubbed to a domain error via the
+# flow's host_handlers error: field, so the on_error: arc fires deterministically.
+
+app:
+  id: error-banner-demo
+  version: 0.1.0
+  title: "Error Banner Demo"
+
+hosts:
+  - host.run
+
+world:
+  last_error: { type: string, default: "" }
+
+intents:
+  do_thing:
+    title: "Do the thing"
+    description: "Run a host command that will fail."
+    examples: ["do it", "go", "run"]
+
+root: lobby
+
+states:
+  lobby:
+    description: "Lobby — type 'do it' to run the failing command."
+    view: |
+      Lobby. Type 'do it' to run the command.
+    on:
+      do_thing:
+        - target: working
+
+  working:
+    description: "Running the command…"
+    view: |
+      Running…
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "false"
+        on_error: bounced
+
+  # The PLAIN error room — deliberately does NOT reference world.last_error.
+  # This is the silent-bounce trust-killer the engine fix targets.
+  bounced:
+    terminal: true
+    description: "Back at the lobby."
+    view: |
+      Back at the lobby. Try again when ready.

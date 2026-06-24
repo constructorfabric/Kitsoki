@@ -24,7 +24,7 @@ states:
             Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary: '{{ world.done_artifact.summary_title|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.done_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.done_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -68,11 +68,18 @@ states:
               intent: look
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, done_artifact, validate_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
-      # `working_dir` pins the oracle to the bugfix worktree even though
-      # done's postmortem oracle mostly reads upstream artifact text —
+      # `working_dir` pins the agent to the bugfix worktree even though
+      # done's postmortem agent mostly reads upstream artifact text —
       # consistency across rooms means an operator never has to remember
-      # which oracle calls see which tree.
-      - invoke: host.oracle.decide
+      # which agent calls see which tree.
+      # `once: true` for reload-safety: keyed off its own bind
+      # (done_artifact), so /reload (or self/on_error re-entry) re-renders
+      # the stored close-out without re-running the agent. The refine arm
+      # clears done_artifact to re-arm a fresh run. The accept arc
+      # RE-PINS done_artifact for the @exit:done requires: check — that is
+      # intentional and left intact.
+      - invoke: host.agent.decide
+        once: true
         with:
           agent: proposer
           prompt_path: prompts/done_executing.md
@@ -89,8 +96,49 @@ states:
           done_artifact: submitted
         on_error: idle
 
+      # ── Lost-work guard: the open-PR clean-tree invariant ──────────────
+      # Re-read the maker worktree's git status. The accept arc below refuses
+      # to fire @exit:done if anything is uncommitted/untracked — the open-PR
+      # analogue of the direct-ship integrate room's guard
+      # (delivery-tail/rooms/integrate.yaml). Without this, a room that
+      # mutated the worktree without committing (the test_author lost-work
+      # split) would hand off a broken/partial committed tip while the dirty
+      # working tree looked green. Runs AFTER the done agent so an agent that
+      # itself wrote files is caught too. Guarded on a worktree existing so
+      # narrative-only dogfood walks (no isolated worktree) skip it.
+      - when: "world.workdir != ''"
+        invoke: host.run
+        id: done_clean_tree_check
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              WT="{{ world.workdir }}"
+              # `git -C` targets the worktree; NO cwd: is set so a missing/odd
+              # worktree dir can't make exec fail to start (which would bounce
+              # via on_error). A worktree that doesn't exist → git errors →
+              # 2>/dev/null → DIRTY="" → reported clean (nothing to lose).
+              DIRTY=$(git -C "$WT" status --porcelain 2>/dev/null || echo "")
+              if [ -n "$DIRTY" ]; then
+                jq -n --arg files "$DIRTY" '{dirty:true,files:$files}'
+              else
+                jq -n '{dirty:false,files:""}'
+              fi
+        bind:
+          worktree_dirty:       "stdout_json.dirty"
+          worktree_dirty_files: "stdout_json.files"
+        # NO on_error: this check is a non-critical backstop whose only output
+        # is binding worktree_dirty for the accept guard below. If git/host.run
+        # can't run, worktree_dirty stays at its default (false) and the close-
+        # out proceeds — degrade to "assume clean" rather than bounce the whole
+        # room to idle (which would strand the done artifact). The PRIMARY
+        # lost-work fix is the testing room's stage_all commit; this guard only
+        # hardens the open-PR handoff when git IS readable.
+
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_done.md
@@ -117,6 +165,18 @@ states:
       # re-pin done_artifact (it was bound on_enter) so the requires
       # gate sees an explicit set.
       accept:
+        # LOST-WORK GUARD (open-PR): refuse to hand off if the maker worktree
+        # has uncommitted/untracked work. The committed tip is what a parent's
+        # pr-refinement / merge will carry — shipping it with the real fix or
+        # a new test stranded in the working tree is the exact bug this guards
+        # against. Fail loud to @exit:needs-human (mirrors the direct-ship
+        # integrate guard) rather than silently shipping a partial tip.
+        - when: "world.worktree_dirty"
+          target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "refusing to hand off: the maker worktree has uncommitted work — it was never committed, so the committed tip is broken or partial while the working tree looks green. Commit it on the branch first:\n{{ world.worktree_dirty_files }}"
+                status:     "needs-human"
         # Close out: post the artifact to the transport, transition the
         # upstream ticket to resolved, then fire @exit:done.
         # @exit:done.requires: [done_artifact] is checked statically
@@ -151,24 +211,30 @@ states:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 done_cycle:      "{{ world.done_cycle + 1 }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: bind so on_enter re-runs the agent.
+                done_artifact:   {}
 
       restart_from:
         - when: "slots.stage == 'reproducing'"
           target: reproducing
           effects:
             - set:
-                restart_from_stage: "reproducing"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "reproducing"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear reproducing's once: bind so it re-runs fresh.
+                reproduction_artifact: {}
         - when: "slots.stage == 'proposing' || slots.stage == 'propose_fix'"
           target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
         - when: "slots.stage == 'implementing' || slots.stage == 'implement_review'"
           target: implementing
           effects:
@@ -177,14 +243,18 @@ states:
                 refine_feedback:     ""
                 implementing_cycle:  0
                 cycle:               0
+                # Clear implementing's once: bind so it re-applies fresh.
+                implement_artifact:  {}
         - when: "slots.stage == 'testing' || slots.stage == 'test'"
           target: testing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage }}"
-                refine_feedback:    ""
-                testing_cycle:      0
-                cycle:              0
+                restart_from_stage:        "{{ slots.stage }}"
+                refine_feedback:           ""
+                testing_cycle:             0
+                cycle:                     0
+                # Clear testing's once: bind so it re-runs fresh.
+                implement_review_artifact: {}
         - when: "slots.stage == 'validating' || slots.stage == 'validate'"
           target: validating
           effects:
@@ -193,6 +263,8 @@ states:
                 refine_feedback:    ""
                 validating_cycle:   0
                 cycle:              0
+                # Clear validating's once: bind so it re-runs fresh.
+                validate_artifact:  {}
         - target: validating
           effects:
             - set:
@@ -200,6 +272,8 @@ states:
                 refine_feedback:    ""
                 validating_cycle:   0
                 cycle:              0
+                # Clear validating's once: bind so it re-runs fresh.
+                validate_artifact:  {}
 
       quit:
         - target: "@exit:abandoned"

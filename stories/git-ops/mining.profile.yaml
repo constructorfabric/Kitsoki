@@ -1,0 +1,43 @@
+# mining.profile.yaml — scope config for mining git-ops coverage from real
+# Claude Code transcripts. Co-located so the story self-describes its mine.
+#
+# This is SCOPE CONFIGURATION, not an auto-classifier. It tells coverage_prep.py
+# (1) which sessions to distill (the grep prefilter), (2) which mined intents are
+# in-scope (the action tags), and (3) which rooms are CANDIDATE owners of each
+# action tag — a STARTING POINT for the human/LLM map in coverage.md, never an
+# assertion. The verdict (CONFORMS / DIVERGES / FIXTURE-GAP / COVERAGE-GAP /
+# OUT-OF-SCOPE) is assigned by reading the room bash + the recovered outcome, not
+# mechanically. See docs/stories/story-coverage-mining.md.
+
+story: git-ops
+
+scope:
+  # prep.py --grep words. RECALL-ONLY prefilter: a substring scan over the whole
+  # raw jsonl, so it over-matches prose ("merge these ideas", "commit to the
+  # design"). It widens the net; the real scoping is the human read in the map.
+  grep: [rebase, "git merge", conflict, worktree, "git commit", "git stash", squash, "git pull", "git reset"]
+  sample: recency          # mine how we work *now*
+  max: 25
+
+  # post-filter to these action tags (vocab/tags.yaml). COARSE: only 3 tags exist
+  # for all git work, so they cannot separate commit from force-push/cherry-pick —
+  # the non_goals boundary below is enforced by reading user_text, not by tag.
+  action_tags: [commit-or-pr, rebase-or-resolve-conflicts, branch-or-worktree-setup]
+
+# Candidate rooms per action tag — a starting point for the human map, joined into
+# the coverage.md "candidate room" column by coverage_prep.py. Room ids are the
+# files under stories/git-ops/rooms/.
+owns:
+  commit-or-pr:                 [commit, staging, squash, undo]
+  rebase-or-resolve-conflicts:  [rebase, conflict, pull, merge_into_main, merge_branch]
+  branch-or-worktree-setup:     [worktree_create, worktree_list, branch_ops, cleanup]
+
+# v1 non-goals (stories/git-ops/README.md "Non-goals (v1)"). A matching intent is
+# OUT-OF-SCOPE, not a gap. Matched against the verbatim user_text, since the 3
+# action tags above are too coarse to separate these from in-scope work.
+non_goals: [push-to-remote, pr-create, force-push, cherry-pick, bisect, "rebase -i", interactive-conflict-editor, submodules]
+
+# Marker substrings coverage_prep.py scans the verbatim user_text for to HINT that
+# an in-scope-by-tag intent is actually an OUT-OF-SCOPE non_goal. A hint that
+# routes the human's attention — never an automatic verdict.
+non_goal_markers: ["force push", "force-push", "--force", "git push", "cherry-pick", "cherry pick", "bisect", "rebase -i", "interactive rebase", "submodule", "open a pr", "create a pr", "pull request"]

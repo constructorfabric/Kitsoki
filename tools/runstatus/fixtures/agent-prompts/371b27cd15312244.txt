@@ -1,0 +1,50 @@
+# Implementing the fix — apply edits to the worktree
+
+You are implementing the fix for **TKT-001** — *TUI hangs on ESC*
+inside the worktree at `.worktrees/tkt-001`.
+
+The proposing room produced this proposal:
+
+> In `internal/tui/tui.go` inside the `routeKey()` function, extend the existing ESC guard block (currently at line 1251) with a new `ModeAwaitingLLM` branch placed immediately after the `ModeOnPath | ModeOffPath` branch. The new branch must: (1) call `m.inFlightCancel()` if it is non-nil, to cancel the in-flight turn; (2) set `m.mode = ModeMenu`; (3) call `m.menuSystem.Open()`; (4) return `m, nil`. Also remove or update the stale comment on lines 1247–1250 that claims ESC "deliberately does not fire during ModeAwaitingLLM".
+
+**Root cause:** The ESC key handler in `routeKey()` (`internal/tui/tui.go:1252`) only transitions to `ModeMenu` when `m.mode` is `ModeOnPath` or `ModeOffPath`. In `ModeAwaitingLLM` the condition is false, so execution falls through to `m.prompt.Update(msg)`, which delegates to the `charmbracelet/bubbles/textarea` widget. That widget has no ESC binding, so the keystroke is silently consumed. No cancel, no menu, no user feedback.
+
+**Affected files:** <[]interface {} Value>
+
+
+
+## What to do
+
+Make the edits described in the proposal. You are running with cwd set to
+the worktree (`.worktrees/tkt-001`), so file paths in the proposal's
+`affected_files` are valid relative paths you can hand straight to
+the `Read` and `Edit` (or `Write`) tools.
+
+You MUST actually modify the files. The downstream `testing` room will
+re-run the repro tests against this worktree's HEAD — if you don't make
+the edits, those tests will still fail and the pipeline will reject the
+work.
+
+## Constraints
+
+- Stay inside the worktree. Do not edit `.git` metadata or any path
+  outside `.worktrees/tkt-001`.
+- Touch only the files in `affected_files`. If you genuinely need to
+  edit something outside that list, add it to `files_changed` in the
+  artifact so the reviewer sees the scope.
+- Don't run `git commit` yourself — the pipeline does that after you
+  return. Just leave the worktree dirty with your edits staged or
+  unstaged; the commit step picks up everything.
+- Don't run `go test` either — the next room runs CI.
+
+## Output
+
+Submit an `implementing_artifact` (see `schemas/implementing_artifact.json`).
+Required fields:
+- `summary_title`: one-line description of what you applied.
+- `summary_markdown`: human-readable diff narrative (what changed, where,
+  why each edit). This is what a human reviewer reads at the testing
+  checkpoint.
+- `files_changed`: every path you actually edited (or attempted to edit).
+- `applied`: `true` if every required edit was made, `false` if you hit a
+  blocker. When `false`, populate `blockers` with the reason.

@@ -1,0 +1,62 @@
+# chat_drive_work — minimal no-LLM app that creates chat-backed async work.
+#
+# Used by studio MCP smoke tests to prove `studio.work` can surface a pending
+# chat drive and `chat.show` can reacquire the selected subagent context.
+
+app:
+  id: chat-drive-work
+  version: 0.1.0
+  title: "Chat Drive Work"
+
+hosts:
+  - host.chat.create
+  - host.chat.drive
+
+world:
+  chat_id: { type: string, default: "" }
+  drive_id: { type: string, default: "" }
+
+intents:
+  queue:
+    title: "Queue chat work"
+    description: "Create a persistent chat and enqueue an async drive."
+
+root: idle
+
+states:
+  idle:
+    description: "Idle — queue a chat-backed work item."
+    view: |
+      Idle. Type queue to create pending chat work.
+    on:
+      queue:
+        - target: queued
+
+  queued:
+    description: "Queued — a chat drive is waiting for a dispatcher."
+    view: |
+      Queued chat work.
+      Chat: {{ world.chat_id }}
+      Drive: {{ world.drive_id }}
+    on_enter:
+      - invoke: host.chat.create
+        with:
+          app: "chat-drive-work"
+          room: "agent"
+          scope_key: "mcp-smoke"
+          title: "Async MCP chat"
+        bind:
+          chat_id: chat_id
+      - invoke: host.chat.drive
+        with:
+          chat_id: "{{ world.chat_id }}"
+          payload: "review the queued MCP smoke task"
+          transport: "mcp"
+          actor: "studio-smoke"
+          thread: "mcp-smoke"
+          await: false
+        bind:
+          drive_id: drive_id
+    on:
+      queue:
+        - target: .

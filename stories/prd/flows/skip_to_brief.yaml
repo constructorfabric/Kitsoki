@@ -1,0 +1,57 @@
+# skip_to_brief — `skip` from clarifying advances to the brief WITHOUT
+# recording a round. The distinct contrast to `submit_answers`: skip has
+# NO effects (clarifying.yaml), so clarification_log stays empty and
+# clarifying_cycle does NOT increment, even though questions were on
+# screen and (here) one was already answered this round. Locks in that
+# skip is a clean move-on, not a silent submit.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: clarifying
+initial_world:
+  idea:        "A CLI for X"
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+  clarifications:
+    questions:
+      - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+      - { id: "q2", question: "What is the success metric?", why: "defines done" }
+  # A partial answer this round — skip must NOT fold it into the transcript.
+  clarification_answers: "Q1: platform developers\n"
+  answered_count:        1
+  answered_ids:          "|1|"
+  clarifying_cycle:      0
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  # Defensive: if the runner fires clarifying's on_enter on initial entry.
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the success metric?", why: "defines done" }
+  # Entering brief writes the brief artifact.
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd_brief.md", message_id: "prd_brief#1" }
+
+turns:
+  - intent: { name: skip, slots: {} }
+    expect_state: brief
+    expect_world:
+      # No round recorded: the transcript stays empty and the round counter
+      # does not move (submit_answers would have appended + incremented).
+      clarification_log: ""
+      clarifying_cycle:  0
+    expect_host_calls:
+      - handler: host.artifacts_dir
+        args: { thread: "001-brief" }
+
+expect_no_errors: true

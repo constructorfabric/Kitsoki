@@ -1,0 +1,74 @@
+# cleanup_force — force=true removes a DIRTY worktree (git worktree remove
+# --force) and -D's an UNMERGED branch in one shot (git-ops-smoothing task 3).
+#
+# Without force, a dirty tree refuses removal and an unmerged branch refuses
+# `git branch -d`. force=true upgrades both: `--force` on the worktree remove,
+# `-D` on the branch. The script reports cleaned with the force-deleted branch.
+#
+# This fixture also exercises the unmerged-branch CONFIRM interstitial: a
+# non-force remove_all on an unmerged branch reports outcome="unmerged_branch"
+# (worktree gone, branch kept), then confirm_force_delete force-deletes it.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: cleanup
+initial_world:
+  integration_branch: main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+      # Step 1: non-force remove_all on an unmerged branch — worktree removed,
+      # branch -d refused → outcome=unmerged_branch (NOT cleaned).
+      remove_wt_and_br:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:        unmerged_branch
+            last_op_ok:     true
+            last_op_output: "Removed worktree .worktrees/dirty; branch dirty not fully merged: error: The branch 'dirty' is not fully merged."
+      # Step 2: confirm_force_delete → git branch -D dirty → cleaned.
+      force_delete_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:        cleaned
+            last_op_ok:     true
+            last_op_output: "Force-deleted unmerged branch dirty"
+
+turns:
+  # Non-force remove on an unmerged branch — worktree gone, branch -d refused.
+  # STAYS in cleanup (the interstitial renders); must NOT report cleaned.
+  - intent: { name: remove_all, slots: { worktree: ".worktrees/dirty" } }
+    expect_state: cleanup
+    expect_world:
+      worktree:        ".worktrees/dirty"
+      last_op_outcome: unmerged_branch
+      last_op_ok:      true
+  # Confirm the forced delete → git branch -D → cleaned → leave for the hub.
+  - intent: { name: confirm_force_delete, slots: {} }
+    expect_state: main_ops
+    expect_world:
+      last_op_outcome: cleaned
+      last_op_ok:      true
+
+expect_no_errors: true

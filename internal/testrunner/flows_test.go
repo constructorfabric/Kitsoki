@@ -81,7 +81,7 @@ func TestFlowsLosingPath(t *testing.T) {
 	require.True(t, r.Passed, "losing path should pass")
 }
 
-// TestFlowsWorldOverride runs the world_override fixture (§7.19): forcing
+// TestFlowsWorldOverride runs the world_override fixture: forcing
 // wearing_cloak=false before the south transition routes the player into
 // bar.lit on the very first turn instead of bar.dark.
 func TestFlowsWorldOverride(t *testing.T) {
@@ -144,7 +144,7 @@ func TestFlowsProposalSmoke(t *testing.T) {
 }
 
 // TestFlowsDevStory runs all dev-story flow fixtures (the main app build).
-// Covers: navigation, terminal proposal lifecycle, background jobs, oracle, clarification.
+// Covers: navigation, terminal proposal lifecycle, background jobs, agent, clarification.
 func TestFlowsDevStory(t *testing.T) {
 	const devStoryAppPath = "../../testdata/apps/dev-story/app.yaml"
 	const devStoryGlob = "../../testdata/apps/dev-story/flows/*.yaml"
@@ -231,12 +231,12 @@ func TestFlowsDevStoryFlow3(t *testing.T) {
 	require.True(t, r.Passed, "flow3 background job should pass")
 }
 
-// TestFlowsDevStoryFlow4 runs the Oracle Room flow.
+// TestFlowsDevStoryFlow4 runs the Agent Room flow.
 func TestFlowsDevStoryFlow4(t *testing.T) {
 	ctx := context.Background()
 	report, err := testrunner.RunFlows(ctx,
 		"../../testdata/apps/dev-story/app.yaml",
-		"../../testdata/apps/dev-story/flows/flow4_oracle.yaml",
+		"../../testdata/apps/dev-story/flows/flow4_agent.yaml",
 		testrunner.FlowOptions{})
 	require.NoError(t, err)
 	require.Len(t, report.Results, 1)
@@ -246,19 +246,19 @@ func TestFlowsDevStoryFlow4(t *testing.T) {
 			t.Logf("flow4 turn %d failure: %s", turn.TurnIndex+1, f)
 		}
 	}
-	require.True(t, r.Passed, "flow4 oracle room should pass")
+	require.True(t, r.Passed, "flow4 agent room should pass")
 }
 
-// TestFlowsDevStoryFlow8 runs the Oracle background-chat-turn flow.
-// This proves that Effect.Background + chat-aware host.oracle.talk +
+// TestFlowsDevStoryFlow8 runs the Agent background-chat-turn flow.
+// This proves that Effect.Background + chat-aware host.agent.talk +
 // on_complete bridge all compose correctly: the job is submitted, the clock is
-// advanced past the stub delay, on_complete sets oracle_answer, and the inbox
+// advanced past the stub delay, on_complete sets agent_answer, and the inbox
 // shows a chat-friendly "Reply ready" success notification.
 func TestFlowsDevStoryFlow8(t *testing.T) {
 	ctx := context.Background()
 	report, err := testrunner.RunFlows(ctx,
 		"../../testdata/apps/dev-story/app.yaml",
-		"../../testdata/apps/dev-story/flows/flow8_oracle_background.yaml",
+		"../../testdata/apps/dev-story/flows/flow8_agent_background.yaml",
 		testrunner.FlowOptions{Verbose: true})
 	require.NoError(t, err)
 	require.Len(t, report.Results, 1)
@@ -268,7 +268,7 @@ func TestFlowsDevStoryFlow8(t *testing.T) {
 			t.Logf("flow8 turn %d failure: %s", turn.TurnIndex+1, f)
 		}
 	}
-	require.True(t, r.Passed, "flow8 oracle background should pass")
+	require.True(t, r.Passed, "flow8 agent background should pass")
 }
 
 // ─── expect_jobs assertion tests ─────────────────────────────────────────────

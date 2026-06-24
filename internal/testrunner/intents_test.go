@@ -12,14 +12,14 @@ import (
 )
 
 const (
-	cloakOraclePath  = "../../testdata/apps/cloak/recording.yaml"
+	cloakAgentPath   = "../../testdata/apps/cloak/recording.yaml"
 	cloakIntentsGlob = "../../testdata/apps/cloak/intents/*.yaml"
 )
 
 // TestIntentsStaticHarness runs the Cloak intent fixtures with a StaticHarness
-// seeded from the oracle. Every input that has an oracle entry should pass.
+// seeded from the agent. Every input that has an agent entry should pass.
 func TestIntentsStaticHarness(t *testing.T) {
-	sh, err := testrunner.NewStaticHarnessFromRecording(cloakOraclePath)
+	sh, err := testrunner.NewStaticHarnessFromRecording(cloakAgentPath)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -40,7 +40,7 @@ func TestIntentsStaticHarness(t *testing.T) {
 // TestIntentsNoiseInjection verifies that the statistical reporting flags
 // fixtures below min_pass_rate when noise is injected.
 func TestIntentsNoiseInjection(t *testing.T) {
-	sh, err := testrunner.NewStaticHarnessFromRecording(cloakOraclePath)
+	sh, err := testrunner.NewStaticHarnessFromRecording(cloakAgentPath)
 	require.NoError(t, err)
 
 	// Inject 20% noise: every 5th call returns "look" instead of the canonical intent.
@@ -66,9 +66,9 @@ func TestIntentsNoiseInjection(t *testing.T) {
 	_ = hasFailure
 }
 
-// TestIntentsEmitRecording verifies that --emit-oracle writes a valid YAML oracle.
+// TestIntentsEmitRecording verifies that --emit-agent writes a valid YAML agent.
 func TestIntentsEmitRecording(t *testing.T) {
-	sh, err := testrunner.NewStaticHarnessFromRecording(cloakOraclePath)
+	sh, err := testrunner.NewStaticHarnessFromRecording(cloakAgentPath)
 	require.NoError(t, err)
 
 	tmpFile := filepath.Join(t.TempDir(), "emitted-recording.yaml")
@@ -82,9 +82,9 @@ func TestIntentsEmitRecording(t *testing.T) {
 		EmitRecording:     tmpFile,
 	})
 	require.NoError(t, err)
-	require.True(t, report.RecordingEmitted, "oracle should have been emitted")
+	require.True(t, report.RecordingEmitted, "agent should have been emitted")
 
-	// The emitted file must exist and be parseable as an oracle.
+	// The emitted file must exist and be parseable as an agent.
 	data, err := os.ReadFile(tmpFile)
 	require.NoError(t, err)
 	require.NotEmpty(t, data)
@@ -99,17 +99,17 @@ func TestIntentsEmitRecording(t *testing.T) {
 	require.NotNil(t, sh2)
 }
 
-// TestIntentsRoundtrip verifies that emitting an oracle and running against it
+// TestIntentsRoundtrip verifies that emitting an agent and running against it
 // produces the same results (idempotent roundtrip per the spec).
 func TestIntentsRoundtrip(t *testing.T) {
-	sh, err := testrunner.NewStaticHarnessFromRecording(cloakOraclePath)
+	sh, err := testrunner.NewStaticHarnessFromRecording(cloakAgentPath)
 	require.NoError(t, err)
 
 	tmpFile := filepath.Join(t.TempDir(), "roundtrip-recording.yaml")
 
 	ctx := context.Background()
 
-	// First run: emit oracle.
+	// First run: emit agent.
 	report1, err := testrunner.RunIntents(ctx, cloakAppPath, testrunner.IntentOptions{
 		Glob:              cloakIntentsGlob,
 		Runs:              1,
@@ -120,7 +120,7 @@ func TestIntentsRoundtrip(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, report1.RecordingEmitted)
 
-	// Second run: load emitted oracle.
+	// Second run: load emitted agent.
 	sh2, err := testrunner.NewStaticHarnessFromRecording(tmpFile)
 	require.NoError(t, err)
 
@@ -153,4 +153,34 @@ func TestIntentsDryRun(t *testing.T) {
 	require.NotNil(t, report)
 	// Dry run produces an empty report.
 	require.Empty(t, report.Fixtures)
+}
+
+func TestIntentsInvalidStateFailsBeforeHarness(t *testing.T) {
+	fixturePath := filepath.Join(t.TempDir(), "stale.yaml")
+	require.NoError(t, os.WriteFile(fixturePath, []byte(`
+test_kind: intents
+app: cloak-of-darkness
+state: does.not.exist
+defaults:
+  runs: 1
+  min_pass_rate: 1.0
+fixtures:
+  - id: stale-state
+    intent:
+      name: look
+      slots: {}
+    inputs:
+      - "look"
+`), 0o644))
+
+	report, err := testrunner.RunIntents(context.Background(), cloakAppPath, testrunner.IntentOptions{
+		Glob:              fixturePath,
+		HarnessType:       "static",
+		StaticHarnessImpl: testrunner.NewEmptyStaticHarness(),
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, report.TotalFailed)
+	require.Len(t, report.Fixtures, 1)
+	require.Len(t, report.Fixtures[0].Inputs, 1)
+	require.Contains(t, report.Fixtures[0].Inputs[0].FirstError, `state "does.not.exist" has no allowed intents`)
 }

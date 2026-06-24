@@ -145,26 +145,24 @@ func TestAppendEvents_SeqResetsPerTurn(t *testing.T) {
 	require.Equal(t, app.TurnNumber(2), history[2].Turn)
 }
 
-// TestAppendEvents_SameTurnBatchesCollide pins the invariant that two
-// AppendEvents calls that share a turn number with already-persisted events
-// MUST collide on the (session_id, turn, seq) primary key.
+// TestAppendEvents_SameTurnBatchesContinueSeq pins the contract that two
+// AppendEvents calls that share a turn number COEXIST: the second batch's seq
+// continues past the rows the first batch already persisted (MAX(seq)+1), so
+// they do NOT collide on the (session_id, turn, seq) primary key.
 //
-// Rationale: appendEventsTx overwrites the incoming Seq fields with a
-// monotonic 0..N-1 starting at 0 per call. Two same-turn calls both start
-// their seq at 0, so the second insert hits the same (turn, seq=0) row that
-// the first wrote — SQLite must raise the constraint violation. This is the
-// invariant that caught the world_override bug (injectWorldOverride used to
-// hard-code Turn: 0 on every override regardless of where the journey was,
-// so the FIRST override succeeded after a seed-events flush but the SECOND
-// (and every subsequent) override collided).
+// Rationale: appendEventsTx assigns a monotonic seq that CONTINUES past any
+// rows already persisted for the turn rather than always resetting to 0. This
+// is required by the web session bootstrap, where seedFlowInitialState writes
+// a synthetic turn-0 seed batch (TransitionApplied + per-key EffectApplied) and
+// the orchestrator's RunInitialOnEnter then appends the seeded state's on_enter
+// chain ALSO as turn 0 — two same-turn batches that previously collided on
+// (turn, seq=0). Continuing the seq lets them interleave deterministically.
 //
-// If a future refactor papers over this — e.g. by silently bumping seq on
-// duplicate — this test will catch it. The off-path appender in
+// This does NOT weaken the side-channel appenders: the off-path appender in
 // internal/orchestrator/offpath.go and the testrunner's injectWorldOverride
-// both rely on this invariant by allocating a fresh turn = max(history)+1
-// for side-channel events; the collision contract here is what makes those
-// callers safe.
-func TestAppendEvents_SameTurnBatchesCollide(t *testing.T) {
+// still allocate a fresh turn = max(history)+1, so they never share a turn in
+// the first place; nothing relies on a same-turn append ERRORING.
+func TestAppendEvents_SameTurnBatchesContinueSeq(t *testing.T) {
 	st, err := store.OpenMemory()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = st.Close() })
@@ -173,31 +171,32 @@ func TestAppendEvents_SameTurnBatchesCollide(t *testing.T) {
 	sid, err := st.CreateSession(context.Background(), def)
 	require.NoError(t, err)
 
-	// First batch at turn 0 succeeds.
+	// First batch at turn 0 succeeds (seq 0,1,2).
 	require.NoError(t, st.AppendEvents(sid, makeEvents(0, 3)),
 		"first batch at turn 0 should succeed")
 
-	// Second batch at the SAME turn must collide on (session_id, turn, seq=0).
-	err = st.AppendEvents(sid, makeEvents(0, 2))
-	require.Error(t, err,
-		"second batch at the same turn must collide on the (session_id, turn, seq) PK")
-	require.Contains(t, err.Error(), "UNIQUE",
-		"the error must surface the UNIQUE/PRIMARY KEY violation (got %v)", err)
+	// Second batch at the SAME turn coexists: its seq continues at 3,4 instead
+	// of colliding on (session_id, turn, seq=0).
+	require.NoError(t, st.AppendEvents(sid, makeEvents(0, 2)),
+		"second same-turn batch should continue seq past the first, not collide")
 
-	// History should still contain only the first batch's three events; the
-	// failed second batch must roll back atomically (no partial writes).
+	// History should now contain all five events, all at turn 0 with
+	// contiguous seq 0..4.
 	hist, err := st.LoadHistory(sid)
 	require.NoError(t, err)
-	require.Len(t, hist, 3, "failed second batch must roll back; history unchanged")
+	require.Len(t, hist, 5, "both same-turn batches persist; seq continues instead of colliding")
+	for i := range hist {
+		require.Equal(t, app.TurnNumber(0), hist[i].Turn)
+		require.Equal(t, i, hist[i].Seq, "seq must be contiguous 0..4 across the two same-turn batches")
+	}
 }
 
-// TestAppendEvents_FreshTurnAfterSameTurnFailure is the positive companion to
-// TestAppendEvents_SameTurnBatchesCollide: the side-channel pattern (allocate
-// a fresh turn = max(history)+1 for the next batch) MUST succeed even when
-// a prior same-turn call collided, because the failed call rolled back
-// cleanly. This is the contract the testrunner's injectWorldOverride and the
-// orchestrator's appendOffPathEvents both depend on.
-func TestAppendEvents_FreshTurnAfterSameTurnFailure(t *testing.T) {
+// TestAppendEvents_SeedThenFreshTurn mirrors the web bootstrap followed by a
+// real foreground turn: a seed batch and a same-turn on_enter batch coexist at
+// turn 0 (seq continues), and the next foreground turn lands cleanly at turn 1.
+// This is the shape the testrunner's injectWorldOverride and the orchestrator's
+// appendOffPathEvents protect by allocating a fresh turn = max(history)+1.
+func TestAppendEvents_SeedThenFreshTurn(t *testing.T) {
 	st, err := store.OpenMemory()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = st.Close() })
@@ -206,29 +205,30 @@ func TestAppendEvents_FreshTurnAfterSameTurnFailure(t *testing.T) {
 	sid, err := st.CreateSession(context.Background(), def)
 	require.NoError(t, err)
 
-	// Seed batch at turn 0.
+	// Seed batch at turn 0 (e.g. seedFlowInitialState).
 	require.NoError(t, st.AppendEvents(sid, makeEvents(0, 3)))
 
-	// Attempt (and fail) a same-turn append.
-	_ = st.AppendEvents(sid, makeEvents(0, 1))
+	// Same-turn on_enter batch coexists at turn 0 (e.g. RunInitialOnEnter).
+	require.NoError(t, st.AppendEvents(sid, makeEvents(0, 1)),
+		"the on_enter batch shares turn 0 with the seed batch and continues its seq")
 
-	// Recover by appending at a fresh turn (the side-channel pattern).
+	// The first real foreground turn lands at a fresh turn.
 	require.NoError(t, st.AppendEvents(sid, makeEvents(1, 2)),
-		"a fresh turn must succeed after a same-turn collision rolled back")
+		"a fresh turn must succeed after the same-turn bootstrap batches")
 
 	hist, err := st.LoadHistory(sid)
 	require.NoError(t, err)
-	require.Len(t, hist, 5, "3 seed events + 2 fresh-turn events; the failed batch left no trace")
+	require.Len(t, hist, 6, "3 seed + 1 on_enter (turn 0) + 2 foreground (turn 1)")
 
-	// Verify the seq invariant: turn 0 has seq 0,1,2; turn 1 has seq 0,1.
+	// Verify the seq invariant: turn 0 has seq 0,1,2,3; turn 1 has seq 0,1.
 	require.Equal(t, app.TurnNumber(0), hist[0].Turn)
 	require.Equal(t, 0, hist[0].Seq)
-	require.Equal(t, app.TurnNumber(0), hist[2].Turn)
-	require.Equal(t, 2, hist[2].Seq)
-	require.Equal(t, app.TurnNumber(1), hist[3].Turn)
-	require.Equal(t, 0, hist[3].Seq)
+	require.Equal(t, app.TurnNumber(0), hist[3].Turn)
+	require.Equal(t, 3, hist[3].Seq)
 	require.Equal(t, app.TurnNumber(1), hist[4].Turn)
-	require.Equal(t, 1, hist[4].Seq)
+	require.Equal(t, 0, hist[4].Seq)
+	require.Equal(t, app.TurnNumber(1), hist[5].Turn)
+	require.Equal(t, 1, hist[5].Seq)
 }
 
 func TestAppendEvents_Content(t *testing.T) {

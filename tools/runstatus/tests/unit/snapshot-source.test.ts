@@ -142,4 +142,13 @@ describe("SnapshotSource", () => {
       /no snapshot provided/
     );
   });
+
+  it("write/read RPCs reject as read-only artifact", () => {
+    const src = new SnapshotSource(FIXTURE);
+    expect(() => src.view("x")).toThrow(/read-only artifact/);
+    expect(() => src.submit("x", "go")).toThrow(/read-only artifact/);
+    expect(() => src.sendTurn("x", "hi")).toThrow(/read-only artifact/);
+    expect(() => src.continueTurn("x", {})).toThrow(/read-only artifact/);
+    expect(() => src.offpath("x", "q")).toThrow(/read-only artifact/);
+  });
 });

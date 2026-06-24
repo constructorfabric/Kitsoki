@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "record_artifact",
+  "description": "Determinism-ladder review: whether any existing gate's recorded decisions are dominated enough to drop a rung.",
+  "type":    "object",
+  "required": ["ladder_moves", "summary_markdown"],
+  "properties": {
+    "ladder_moves": {
+      "type": "array",
+      "description": "Gates whose recorded decisions support a rung drop (may be empty — that is a valid, honest outcome).",
+      "items": {
+        "type": "object",
+        "required": ["gate", "from", "to"],
+        "properties": {
+          "gate": { "type": "string", "description": "Room/gate identifier." },
+          "from": { "type": "string", "description": "Current rung, e.g. L2." },
+          "to":   { "type": "string", "description": "Proposed rung, e.g. L3." },
+          "evidence": { "type": "string", "description": "Why — e.g. 92% of recorded decisions took one branch." }
+        },
+        "additionalProperties": true
+      }
+    },
+    "summary_markdown": { "type": "string", "minLength": 40, "description": "Human-readable summary delivered to the transport." }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,187 @@
+# docs-review — single-shot agent.decide story that asks an Opus
+# read-only agent whether the repo's docs are still in sync with
+# recent code changes. The verdict is written to .artifacts/ keyed by
+# commit sha.
+#
+# Walks: idle → reviewing → reviewed.
+#
+# reviewing.on_enter chains three host calls:
+#   1. host.run — capture the current HEAD sha + recent git log/diffstat
+#      into a single JSON envelope (stdout_json).
+#   2. host.agent.decide — opus agent reads the repo + docs and emits
+#      a typed verdict (needs_update / up_to_date plus rationale).
+#   3. host.artifacts_dir — write the verdict JSON to
+#      .artifacts/docs-review-<sha>.md.
+#
+# The story is small enough to be useful from `kitsoki turn` (one
+# `start` intent walks the whole pipeline because emit_intent fires
+# `done` once the artifact is written) and equally usable from
+# `kitsoki run` for interactive operator-facing review.
+
+app:
+  id: docs-review
+  version: 0.1.0
+  title: "Docs review — are the docs in sync with recent changes?"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.agent.decide
+  - host.agent.task
+  - host.artifacts_dir
+
+# Single opus agent — read-only by construction (agent.decide rejects
+# Edit/Write/NotebookEdit at call time and load time). Bash is gated to
+# the built-in read-only allowlist (grep/find/cat/ls/git/jq/rg/…).
+agents:
+  docs_reviewer:
+    system_prompt: |
+      You are a documentation auditor. Compare the repository's docs
+      (README.md, docs/**, CLAUDE.md, story READMEs) against recent
+      code changes and decide whether the docs are stale. Be concrete:
+      cite files and reasons. When in doubt, prefer "needs_update" with
+      a low confidence so a human takes a second look.
+
+      OUTPUT CONTRACT — read this before you start.
+
+      The ONLY way to produce your verdict is by calling the `submit`
+      tool with a JSON object that conforms to the docs_review_verdict
+      schema. The submit tool's `arguments` field IS the verdict;
+      nothing else you write reaches the caller.
+
+      DO NOT:
+        - paste the verdict as a fenced YAML block in chat
+        - paste the verdict as a fenced JSON block in chat
+        - describe your findings in prose only
+        - end your turn without calling submit (the caller will treat
+          that as abandonment and retry up to 3 times before failing)
+
+      The submit call comes LAST, after you've done your reading.
+      Plan your reads (Read/Grep/Glob/Bash) in whatever order you
+      need, then call submit exactly once.
+    model: claude-opus-4-7
+    tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
+
+  # Write-capable agent used by the `fixing` room. Reads world.verdict's
+  # stale_docs listing and applies the corresponding edits to the docs.
+  # External side effect is true: this agent mutates files in the
+  # working tree (left uncommitted for the operator to review).
+  docs_writer:
+    system_prompt: |
+      You are a documentation editor. You will be handed a JSON verdict
+      that lists doc sections that are stale relative to the code at
+      HEAD. Your job is to APPLY the corresponding edits to bring the
+      docs back in sync — concrete, minimal, surgical changes. Read
+      each cited doc + the referenced code source before editing.
+
+      OUTPUT CONTRACT — read this before you start.
+
+      Use `Edit` / `Write` to modify the docs in the working tree.
+      When you are done, call the `submit` tool with a JSON object
+      conforming to the docs_fix_artifact schema (list of files you
+      changed + a one-line per-file summary). Do NOT commit; leave the
+      changes uncommitted for the operator to review.
+    model: claude-opus-4-7
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile: read-only
+    external_side_effect: false
+
+world:
+  # Captured by idle.on_enter so the operator can see which tree they
+  # are about to audit.
+  cwd:               { type: string, default: "" }
+  repo_root:         { type: string, default: "" }
+
+  # Captured by the host.run preflight before agent.decide runs.
+  commit_sha:        { type: string, default: "" }
+  commit_count:      { type: string, default: "" }
+  recent_log:        { type: string, default: "" }
+  recent_changes:    { type: string, default: "" }
+  working_tree_diff: { type: string, default: "" }
+  # Baseline-mode-only: enumerations of docs/ and cmd//internal/ trees.
+  # Empty when review_mode == "recent".
+  doc_inventory:     { type: string, default: "" }
+  code_inventory:    { type: string, default: "" }
+
+  # Agent output.
+  verdict:          { type: object, default: {} }
+  # Scalar sentinel bound alongside `verdict` so the reviewing.done
+  # guard can cheaply detect a successful submit (decision is required
+  # by the schema; absence proves the submit never landed).
+  verdict_decision: { type: string, default: "" }
+
+  # Selects between two audit modes:
+  #   "recent"   — focus on the last ~20 commits + working-tree changes
+  #                (what the original story did; useful in CI / after a PR)
+  #   "baseline" — full-repo structural sweep, no commit-range filter
+  #                (use to seed a fresh project or after long doc drift)
+  review_mode:      { type: string, default: "recent" }
+
+  # Filesystem path returned by host.artifacts_dir.
+  artifact_path:    { type: string, default: "" }
+
+  # Output of the `fixing` room — written by docs_writer after it
+  # applies edits to the docs cited in `verdict.stale_docs`. Mirrors
+  # the docs_fix_artifact schema.
+  fix_artifact:     { type: object, default: {} }
+  # Scalar sentinel, set in parallel with fix_artifact. Same pattern as
+  # `verdict_decision` above — lets the post-bind emit guard tell "fix
+  # completed" from "host call queued but binds haven't settled yet".
+  # Bound from submitted.summary (required, minLength 10) because the
+  # schema's `applied` is a boolean that doesn't survive the world's
+  # string-typing as cleanly as the summary text does.
+  fix_summary:      { type: string, default: "" }
+
+intents:
+  start:
+    description: "Run the docs review against the current HEAD (last ~20 commits + working tree)."
+    examples: ["start", "review", "go"]
+    priority: 90
+  baseline:
+    description: "Run a baseline review — audit the whole repo state, ignoring commit range."
+    examples: ["baseline", "full", "audit all"]
+    priority: 90
+  done:
+    description: "Internal: emitted by reviewing.on_enter once the artifact has landed."
+    examples: ["done"]
+    priority: 85
+  no_submit:
+    description: "Internal: emitted by reviewing.on_enter when agent.decide returned ok but no schema-conforming submit landed (e.g. empty submitted, missing decision)."
+    examples: ["no_submit"]
+    priority: 85
+  fix_docs:
+    description: "Internal: emitted by reviewed.on_enter when decision == needs_update, routing into the docs-writer agent."
+    examples: ["fix_docs"]
+    priority: 85
+  fix_done:
+    description: "Internal: emitted by fixing.on_enter once docs_writer has returned an artifact recording the edits."
+    examples: ["fix_done"]
+    priority: 85
+  review_again:
+    description: "Re-run the review (e.g. after a new commit)."
+    examples: ["again", "re-run", "review again"]
+    priority: 60
+  quit:
+    description: "Exit the story."
+    examples: ["quit", "exit", "bail"]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "what now?"]
+    priority: 10
+
+exports:
+  intents: [start, baseline, review_again, quit, look]
+
+exits:
+  done:
+    description: "Operator dismissed the verdict."
+  abandoned:
+    description: "Operator quit before a verdict landed."
+
+root: idle
+
+include:
+  - rooms/*.yaml

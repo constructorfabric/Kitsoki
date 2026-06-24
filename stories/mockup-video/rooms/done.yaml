@@ -1,0 +1,36 @@
+# done — gallery: the final video, the scenarios it covers, the feedback
+# addressed across iterations. No re-entry.
+
+states:
+
+  done:
+    description: "Mockup walkthrough accepted."
+    relevant_world: [video_handle, chapters_handle, brief, iterations, cycle]
+    view:
+      - heading: "Mockup video studio · done"
+      - kv:
+          pairs:
+            Feature:    '{{ world.brief.feature|default:"—" }}'
+            Scenarios:  '{{ world.brief.scenarios|length }}'
+            Iterations: '{{ world.iterations.items|length }}'
+            Cycles:     "{{ world.cycle }}"
+      - heading: "Final walkthrough"
+      - media:
+          handle:  "{{ world.video_handle }}"
+          kind:    video
+          caption: "{{ world.brief.feature }} — final walkthrough"
+      - heading: "Scenarios covered"
+      - template: |
+          {% for s in world.brief.scenarios %}- {{ s }}
+          {% endfor %}
+      - heading: "Refine log"
+      - template: |
+          {% if world.iterations.items %}{% for it in world.iterations.items %}{{ forloop.Counter }}. {{ it.instruction|default:"(web notes)" }} — edited {{ it.feedback_addressed|length }} source target(s)
+          {% endfor %}{% else %}(accepted on first render — no refine passes){% endif %}
+      - list:
+          items:
+            - label: "look"
+              hint:  "re-render"
+    on:
+      look:
+        - target: .

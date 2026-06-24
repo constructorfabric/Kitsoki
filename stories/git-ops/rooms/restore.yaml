@@ -1,0 +1,122 @@
+# restore — reset the branch back to a saved checkpoint (rooms/checkpoint.yaml).
+#
+# WHY: the "go back to a step and try again" half of the checkpoint arc. Resets
+# committed history to the checkpoint's base and re-applies the dirty tracked tree
+# captured at checkpoint time.
+#
+# REVERSIBLE: before clobbering, restore auto-saves the CURRENT state to
+# refs/kitsoki/checkpoints/auto-pre-restore, so a restore is itself undoable
+# (restore label=auto-pre-restore). This is the safety net — a restore never
+# silently destroys un-checkpointed work.
+#
+# SINGLE-SHOT: the reset runs once per entry (once: keyed on restore_outcome).
+# JSON envelope + EXIT trap mirror integrate.yaml.
+#
+#   restore_outcome: "restored" | "not_found" | "error"
+
+states:
+
+  restore:
+    description: "Restore the branch to a previously saved checkpoint."
+    relevant_world: [restore_label, restore_outcome, checkpoint_sha,
+                     checkpoint_dirty, checkpoint_list, current_branch, on_integration]
+    view:
+      - kv:
+          pairs:
+            "Branch":      '{{ world.current_branch|default:"(unknown)" }}'
+            "Checkpoint":  '{{ world.restore_label|default:"(name one)" }}'
+      - heading: "Restored"
+        when: "world.restore_outcome == 'restored'"
+      - prose: "Branch reset to checkpoint {{ world.restore_label }} ({{ world.checkpoint_sha }}){% if world.checkpoint_dirty %}, dirty tracked changes re-applied{% endif %}. The pre-restore state was saved to auto-pre-restore (restore label=auto-pre-restore to undo)."
+        when: "world.restore_outcome == 'restored'"
+      - heading: "No such checkpoint"
+        when: "world.restore_outcome == 'not_found'"
+      - prose: "{{ world.last_error }} Existing checkpoints: {{ world.checkpoint_list.raw|default:'(none)' }}"
+        when: "world.restore_outcome == 'not_found'"
+      - prose: "Restore failed: {{ world.last_error }}"
+        when: "world.restore_outcome == 'error'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "back"
+              hint:  "return to the hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        once: true
+        id: restore_exec
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              EMITTED=0
+              emit() { jq -n "$@"; EMITTED=1; exit 0; }
+              trap 'rc=$?; if [ "$EMITTED" != "1" ]; then jq -n --arg rc "$rc" "{restore_outcome:\"error\",restore_label:\"\",checkpoint_sha:\"\",checkpoint_dirty:false,last_error:(\"restore aborted (exit \"+\$rc+\")\")}"; fi; exit 0' EXIT
+              LABEL="$1"
+              [ -z "$LABEL" ] && emit '{restore_outcome:"error",restore_label:"",checkpoint_sha:"",checkpoint_dirty:false,last_error:"no checkpoint label given"}'
+              SLUG=$(printf '%s' "$LABEL" | tr -c 'A-Za-z0-9._/-' '-' | sed 's#//*#/#g; s#^[/-]*##; s#[/-]*$##')
+              REF="refs/kitsoki/checkpoints/$SLUG"
+              if ! git rev-parse -q --verify "$REF" >/dev/null 2>&1; then
+                emit --arg slug "$SLUG" '{restore_outcome:"not_found",restore_label:$slug,checkpoint_sha:"",checkpoint_dirty:false,last_error:("no checkpoint named "+$slug+".")}'
+              fi
+              SNAP=$(git rev-parse "$REF")
+              BASE=$(git rev-parse -q --verify "${REF}.base" 2>/dev/null || echo "$SNAP")
+              # Safety net: auto-checkpoint the CURRENT state before clobbering so
+              # the restore is itself reversible.
+              PRE=$(git stash create 2>/dev/null || echo "")
+              PRE="${PRE:-$(git rev-parse HEAD 2>/dev/null || echo "")}"
+              if [ -n "$PRE" ]; then
+                git update-ref "refs/kitsoki/checkpoints/auto-pre-restore" "$PRE" 2>/dev/null || true
+                git update-ref "refs/kitsoki/checkpoints/auto-pre-restore.base" "$(git rev-parse HEAD 2>/dev/null)" 2>/dev/null || true
+              fi
+              # Reset committed history to the checkpoint base.
+              git reset --hard "$BASE" >/dev/null 2>&1
+              # Re-apply the dirty tracked tree captured at checkpoint time, if any.
+              DIRTY=false
+              if [ "$SNAP" != "$BASE" ]; then
+                git stash apply "$SNAP" >/dev/null 2>&1 && DIRTY=true || true
+              fi
+              emit --arg slug "$SLUG" --arg sha "$SNAP" --argjson dirty "$DIRTY" \
+                '{restore_outcome:"restored",restore_label:$slug,checkpoint_sha:$sha,checkpoint_dirty:$dirty,last_error:""}'
+            - "kitsoki-restore"
+            - "{{ world.restore_label }}"
+          cwd: "{{ world.working_dir }}"
+        bind:
+          restore_outcome:  "stdout_json.restore_outcome"
+          restore_label:    "stdout_json.restore_label"
+          checkpoint_sha:   "stdout_json.checkpoint_sha"
+          checkpoint_dirty: "stdout_json.checkpoint_dirty"
+          last_error:       "stdout_json.last_error"
+        on_error: restore
+      # Refresh the checkpoint list (useful when the named one wasn't found).
+      - invoke: host.run
+        id: restore_list
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              LIST=$(git for-each-ref --format='%(refname)' refs/kitsoki/checkpoints 2>/dev/null \
+                | grep -v '\.base$' \
+                | sed 's#refs/kitsoki/checkpoints/##' \
+                | tr '\n' ' ')
+              jq -n --arg list "$LIST" '{raw:$list}'
+          cwd: "{{ world.working_dir }}"
+        bind:
+          checkpoint_list: "stdout_json"
+        on_error: restore
+    on:
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

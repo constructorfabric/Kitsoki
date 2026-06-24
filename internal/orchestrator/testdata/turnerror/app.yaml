@@ -1,0 +1,33 @@
+# Tiny app used by TestOrchestrator_MachineTurnErrorIsTraced. The `boom`
+# intent's effect sets a var from "{{ world.scalar + 1 }}". That expression
+# COMPILES (so the app-load expr validator passes) but FAILS at eval time —
+# scalar is a string, and `string + int` is an invalid operation — so
+# machine.Turn returns an error mid-turn. The orchestrator must still record
+# the failure in the trace (a store.MachineError + TurnEnded outcome:"error").
+app:
+  id: turnerror
+  version: 0.1.0
+  title: "machine.Turn error tracing test app"
+
+world:
+  scalar: { type: string, default: "hello" }
+
+root: idle
+
+intents:
+  boom:
+    title: "Boom"
+    description: "Trigger an effect whose expression eval-fails."
+    examples: ["boom"]
+    priority: 10
+
+states:
+  idle:
+    description: "Idle"
+    view: "Idle. Scalar: {{ world.scalar }}"
+    on:
+      boom:
+        - target: idle
+          effects:
+            - set:
+                scalar: "{{ world.scalar + 1 }}"

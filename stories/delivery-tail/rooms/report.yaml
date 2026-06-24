@@ -1,0 +1,40 @@
+# report — the shipped read-out → @exit:shipped.
+#
+# Renders shipped_sha, the brief, and a one-line summary, then fires
+# @exit:shipped (requires [shipped_sha]). This is the room fleet reads to mark
+# a brief done and release the merge-lock.
+
+states:
+
+  report:
+    description: "Shipped read-out → @exit:shipped."
+    relevant_world: [brief, shipped_sha, workspace_branch, status]
+    view:
+      - heading: "Shipped."
+      - kv:
+          pairs:
+            Brief:    '{{ world.brief }}'
+            Merged:   '{{ world.shipped_sha }}  (on main, gate green on the merged sha)'
+            Worktree: 'removed ({{ world.workspace_branch }}, branch -D)'
+            Status:   'shipped'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      - emit_intent: ship_done
+    on:
+      ship_done:
+        - target: "@exit:shipped"
+          effects:
+            # Re-pin shipped_sha (set by verify on the green re-verify) on the
+            # exit arc so @exit:shipped.requires:[shipped_sha] sees an explicit
+            # set — keeps ship-it importable as a tail. Same discipline as
+            # bugfix/done re-pinning done_artifact.
+            - set:
+                status:      "shipped"
+                shipped_sha: "{{ world.shipped_sha }}"
+      look:
+        - target: .

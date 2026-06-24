@@ -1,0 +1,66 @@
+# ideas_review_apply — the ideas reviewer's reconcile path, intent-only (no LLM).
+#
+# Entering `ideas` fires on_enter: the `ideas_review` decide proposes section
+# moves and host.artifacts_dir persists the report (ideas_review_path). `apply`
+# hands that report to the deterministic reconcile script (host.run, id
+# `reconcile`) which rewrites the backlog, then re-arms the scan (self-loop).
+#
+# Asserts: the reconcile call receives ideas_path + the persisted report path
+# (proving on_enter's bind reached the apply arc), the apply result binds, and
+# the room stays in `ideas`.
+
+test_kind: flow
+app: ../app.yaml
+# Start at main and transition in via go_ideas so the `ideas` on_enter (the
+# reviewer decide + the report write) actually fires — a flow's seeded
+# initial_state does NOT run on_enter.
+initial_state: landing
+initial_world:
+  judge_mode: "human"
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      ideas_review:
+        data:
+          ok: true
+          submitted:
+            summary: "Two parked items have shipped; backlog needs two moves."
+            reclassifications:
+              - { item: "react UI", from: "ideas", to: "partial", evidence: "docs/proposals/web-ui.md — SPA partially landed", confidence: 0.7 }
+              - { item: "tests are slow", from: "ideas", to: "done", evidence: "commit f085566 — fast test budget enforced", confidence: 0.9 }
+            candidates:
+              - { item: "react UI", rationale: "high-visibility surface; partial scaffolding exists", effort: "large" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/ideas-review/latest.json", message_id: "latest.json#1" }
+  host.run:
+    by_call:
+      reconcile:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"moved":2,"not_found":[],"sections":{"done":15,"partial":9,"ideas":48}}'
+          stdout_json: { moved: 2, not_found: [], sections: { done: 15, partial: 9, ideas: 48 } }
+
+turns:
+  # Enter the reviewer — on_enter runs the decide + persists the report.
+  - intent: { name: go_ideas, slots: {} }
+    expect_state: ideas
+    expect_world:
+      ideas_review_path: ".artifacts/ideas-review/latest.json"
+
+  # Apply the proposed moves — the deterministic reconcile script runs against
+  # the persisted report, then the scan re-arms (self-loop stays in `ideas`).
+  - intent: { name: apply, slots: {} }
+    expect_state: ideas
+    expect_world:
+      ideas_apply_result: { moved: 2, not_found: [], sections: { done: 15, partial: 9, ideas: 48 } }
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "reconcile", args: ["stories/dev-story/scripts/ideas_reconcile.py", "ideas.md", ".artifacts/ideas-review/latest.json"] }
+
+  # Out-of-range pick is a guarded no-op — stays in `ideas` (only 1 candidate).
+  - intent: { name: pick, slots: { n: 5 } }
+    expect_state: ideas
+
+expect_no_errors: true

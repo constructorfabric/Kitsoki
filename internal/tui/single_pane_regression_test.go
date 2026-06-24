@@ -160,7 +160,7 @@ func TestRoutingTierHitSettlesInTranscript(t *testing.T) {
 		"settled line should mark source as LLM for TierLLM")
 }
 
-// ─── /actions auto on actually fires (Phase 1) ──────────────────────────
+// ─── /intents auto on actually fires (Phase 1) ──────────────────────────
 
 // TestActionsAutoEmitsBlockAfterTurn drives a turn through the cloak
 // fixture with actionsAuto=true and asserts the actions block lands
@@ -175,7 +175,7 @@ func TestActionsAutoEmitsBlockAfterTurn(t *testing.T) {
 	m = runTurnBlocking(t, tea.Model(rm), "go west")
 	content := extractTranscript(t, m)
 	require.Contains(t, content, "actions",
-		"actions block should auto-print after the turn when /actions auto is on; got:\n%s", content)
+		"actions block should auto-print after the turn when /intents auto is on; got:\n%s", content)
 }
 
 // ─── promptPrefix per Mode (Phase 6) ────────────────────────────────────
@@ -189,11 +189,11 @@ func TestPromptPrefixPerMode(t *testing.T) {
 	rm, _ := tuipkg.ExtractRootModel(m)
 
 	cases := map[tuipkg.Mode]string{
-		tuipkg.ModeOnPath:         "> ",
-		tuipkg.ModeMeta:           "» ",
-		tuipkg.ModeOffPath:        "# ",
-		tuipkg.ModeSlotFilling:    "? ",
-		tuipkg.ModeAwaitingLLM:    "… ",
+		tuipkg.ModeOnPath:      "> ",
+		tuipkg.ModeMeta:        "» ",
+		tuipkg.ModeOffPath:     "# ",
+		tuipkg.ModeSlotFilling: "? ",
+		tuipkg.ModeAwaitingLLM: "… ",
 	}
 	for mode, want := range cases {
 		tuipkg.SetModeForTest(&rm, mode)

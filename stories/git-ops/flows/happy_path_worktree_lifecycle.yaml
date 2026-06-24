@@ -1,0 +1,88 @@
+# happy_path_worktree_lifecycle — main_ops → worktree_create → branch_ops → cleanup → main_ops.
+# Asserts: .worktrees/ path enforced; cleanup offered after merge.
+# Free-text trigger: "create a worktree in .worktrees for add login"
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main_ops
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+  has_uncommitted:    false
+  upstream_tracking:  false
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"branch":"main","main_worktree_path":".","worktree_list":{"raw":""},"commits_ahead":0,"commits_behind":0,"has_uncommitted":false,"merge_in_progress":false,"no_common_ancestor":false,"upstream_tracking":false}'
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+      create_worktree:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"branch":"add-login","path":".worktrees/add-login","output":"Preparing worktree","ok":true,"outcome":"created"}'
+          stdout_json:
+            branch:  add-login
+            path:    .worktrees/add-login
+            output:  "Preparing worktree (new branch 'add-login')"
+            ok:      true
+            outcome: created
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"branch":"add-login","main_worktree_path":".","worktree_list":{"raw":". main\n.worktrees/add-login add-login"},"commits_ahead":0,"commits_behind":0,"has_uncommitted":false,"no_common_ancestor":false}'
+          stdout_json:
+            branch:             add-login
+            main_worktree_path: "."
+            worktree_list:      { raw: ". main\n.worktrees/add-login add-login" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+      remove_wt_and_br:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:        cleaned
+            last_op_ok:     true
+            last_op_output: "Removed worktree .worktrees/add-login; branch add-login deleted"
+
+turns:
+  - intent: { name: worktree_create, slots: {} }
+    expect_state: worktree_create
+
+  - intent: { name: describe, slots: { desc: "add login" } }
+    expect_state: worktree_create
+    expect_world:
+      worktree_branch_name: add-login
+      worktree_path:        .worktrees/add-login
+      last_op_outcome:      created
+
+  - intent: { name: back, slots: {} }
+    expect_state: main_ops
+
+  - intent: { name: cleanup, slots: {} }
+    expect_state: cleanup
+
+  - intent: { name: remove_all, slots: {} }
+    expect_state: main_ops
+
+expect_no_errors: true

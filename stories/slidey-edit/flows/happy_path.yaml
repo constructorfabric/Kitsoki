@@ -1,0 +1,74 @@
+# happy_path — idle → drafting(accept) → rendering → reviewing(accept) → done.
+#
+# All host calls stubbed (Mode-2, intent-only, no LLM). Agent + render calls
+# stubbed by per-invoke id (memory: agent-stub-by-id). The render stub points at
+# the BAKED pre-rendered deck html + .semantic.json sidecar under baked/, so no
+# slidey runs.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Spatial-annotation explainer deck (3 scenes)." }
+  addressed: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      author_deck:
+        data:
+          ok: true
+          submitted:
+            spec_path: "stories/slidey-edit/baked/deck.json"
+            summary: "Authored a 3-scene spatial-annotation explainer deck."
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "stories/slidey-edit/baked/deck.html"
+          semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
+
+  host.starlark.run:
+    by_call:
+      seed_annotation:
+        data:
+          annotation:
+            anchor:
+              kind: "semantic_element"
+              semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+              label: "Scene 1 · card 0"
+            instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+            frame_handle: "slidey-edit#1"
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "slideshow", mime: "text/html" }, path: "stories/slidey-edit/baked/deck.html", kind: "slideshow", mime: "text/html" }
+      emit_semantic:
+        data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" }, path: "stories/slidey-edit/baked/deck.semantic.json", kind: "data", mime: "application/json" }
+
+turns:
+  # idle: start → drafting (agent authors the deck) → auto-render → reviewing.
+  # Drafting no longer pauses for accept: it emits accept itself once the deck
+  # spec is bound, flowing straight through rendering to reviewing.
+  - intent: { name: start, slots: {} }
+    expect_state: reviewing
+    expect_world:
+      deck:
+        spec_path: "stories/slidey-edit/baked/deck.json"
+        summary: "Authored a 3-scene spatial-annotation explainer deck."
+      deck_handle: "slidey-edit#1"
+      semantic_handle: "slidey-semantic#1"
+
+  # reviewing: accept → done.
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      deck_handle: "slidey-edit#1"
+
+expect_terminal: false
+expect_no_errors: true

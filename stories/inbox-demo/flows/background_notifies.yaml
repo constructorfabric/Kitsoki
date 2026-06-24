@@ -1,0 +1,33 @@
+# background_notifies — drives the background host.run to terminal and
+# asserts the inbox gains the two notifications (info at submit, success
+# at completion). This same fixture backs `kitsoki web --flow` for the
+# async-inbox tour video (host_handlers stub host.run; in the web posture
+# the real-clock scheduler completes the 200ms delay in real time).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: dispatch
+initial_world:
+  last_job_id: ""
+  result:      ""
+
+host_handlers:
+  host.run:
+    data:
+      stdout: ""
+      exit_code: 0
+      ok: true
+    delay: "200ms"
+
+turns:
+
+  - intent: { name: start, slots: {} }
+    advance_clock: "500ms"
+    expect_state: working
+    expect_world:
+      result: "task complete"
+    expect_inbox:
+      unread: 2
+      severities: ["info", "success"]
+
+expect_no_errors: true

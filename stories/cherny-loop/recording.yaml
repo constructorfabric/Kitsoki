@@ -1,0 +1,40 @@
+# Replay recording for the cherny-loop web demo (kitsoki web --harness replay).
+#
+# Hand-authored (no real LLM): the ONE free-text decision the demo needs — the
+# operator types a natural-language request in the configuring room and the
+# router maps it to `configure` with the goal, script gate, and a small budget.
+# This is the "first message that makes sense": the goal is free text, and it's
+# exactly the script-gated case (a command to make green).
+#
+# launch and the loop's internal hops are NOT routed (launch is an explicit
+# intent; the loop self-drives via emit_intent), so they need no entries.
+kind: recording
+app_id: cherny-loop
+app_version: 0.1.0
+generated_at: "2026-06-19T00:00:00Z"
+generator: "hand-authored (demo)"
+min_confidence: 1.00
+
+entries:
+  - state: configuring
+    input: "make the story qa guide convincing to a skeptical lead engineer"
+    intent:
+      name: configure
+      slots:
+        goal:             "Make docs/stories/story-qa.md convincing to a skeptical lead engineer"
+        artifact:         "docs/stories/story-qa.md"
+        iteration_budget: 2
+    confidence: 1.00
+    majority_of: 1
+
+  - state: configuring
+    input: "the rate limiter tests are flaky — get `go test ./internal/ratelimit` green"
+    intent:
+      name: configure
+      slots:
+        goal:             "Get `go test ./internal/ratelimit` green"
+        gate_command:     "go test ./internal/ratelimit"
+        gate_mode:        "script"
+        iteration_budget: 3
+    confidence: 1.00
+    majority_of: 1

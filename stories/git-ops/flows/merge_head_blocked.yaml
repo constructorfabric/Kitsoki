@@ -1,0 +1,50 @@
+# merge_head_blocked — MERGE_HEAD exists on target worktree → merge_in_progress shown.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+  rebase_done:        true
+  rebase_base_sha:    "abc1234"
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      2
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+      merge_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:           merge_in_progress
+            descendant_ok:     true
+            merge_in_progress: true
+            last_op_ok:        false
+            last_op_output:    "MERGE_HEAD exists on target worktree"
+            stash_ref:         ""
+            rebase_done:       false
+
+turns:
+  - intent: { name: merge_into_main, slots: {} }
+    expect_state: merge_into_main
+    expect_world:
+      last_op_outcome:   merge_in_progress
+      merge_in_progress: true
+
+expect_no_errors: true

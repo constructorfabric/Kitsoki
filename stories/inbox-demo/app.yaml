@@ -1,0 +1,32 @@
+app:
+  id: inbox-demo
+  version: 0.1.0
+  title: "Async Inbox Demo"
+  author: "kitsoki"
+  license: "CC0"
+
+# A minimal, no-LLM story for the web async-inbox tour. A `start` intent
+# kicks off a `background: true` host.run; when the job reaches terminal
+# the engine auto-posts a completion notification whose TeleportState is
+# the originating state (working) — that is the inbox entry the SPA badge,
+# toast, and teleport jump surface.
+
+hosts:
+  - host.run
+
+world:
+  last_job_id:    { type: string, default: "" }
+  result:         { type: string, default: "" }
+
+intents:
+  start:
+    description: "Kick off the background task."
+    examples: ["start", "go", "run"]
+  check:
+    description: "Look at the current room."
+    examples: ["look", "check"]
+
+root: dispatch
+
+include:
+  - rooms/*.yaml

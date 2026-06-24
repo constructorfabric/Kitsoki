@@ -1,0 +1,21 @@
+{
+  "name": "kitsoki-mcp-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tour-driven demo of an external coding agent driving the kitsoki studio MCP server (Claude Code TUI POC), recorded through the shared kitsoki demo→QA pipeline.",
+  "scripts": {
+    "serve": "node player/serve.mjs",
+    "validate": "WEB_CHAT_PACE=0 playwright test",
+    "record": "playwright test",
+    "lint:no-llm": "node scripts/lint-no-llm.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@xterm/xterm": "^5.5.0"
+  }
+}

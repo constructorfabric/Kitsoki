@@ -9,7 +9,7 @@ import (
 
 // TestRecordEndToEnd verifies the kitsoki record pipeline end-to-end:
 //   - Loads the cloak-of-darkness app
-//   - Replays the "winning" flow (structured intents, no oracle needed)
+//   - Replays the "winning" flow (structured intents, no agent needed)
 //   - Writes to a temp GIF file
 //   - Asserts the GIF is non-empty and has at least 2 frames
 func TestRecordEndToEnd(t *testing.T) {

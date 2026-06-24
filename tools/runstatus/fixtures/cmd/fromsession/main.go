@@ -61,8 +61,7 @@ func main() {
 		die("no events", fmt.Errorf("session %q has no events", sessionID))
 	}
 
-	snap, err := runstatus.FromHistory(hist, def, sessionID,
-		runstatus.WithOracleJournal(s.DB()))
+	snap, err := runstatus.FromHistory(hist, def, sessionID)
 	if err != nil {
 		die("build snapshot", err)
 	}

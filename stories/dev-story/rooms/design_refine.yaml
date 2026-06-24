@@ -1,0 +1,266 @@
+# design_refine — brief scaffolding + quality gate.
+#
+# Stage 3 of the 4-stage proposal pipeline:
+#   intake → design_search → design_refine → design_draft (+ publish)
+#
+# on_enter runs three calls, each once: guarded:
+#   1. scaffold brief — host.artifacts_dir (thread=001-brief) writes the
+#      operator-editable 001-brief.md; bind → design_brief_path.
+#      Once: keyed off design_brief_path (non-empty ⇒ already ran).
+#   2. host.ide.open_file — opens the brief in the operator's editor.
+#      Once: keyed off design_brief_path.
+#   3. design_refiner (host.agent.task id=refine_brief) — reads the
+#      search results + idea and fills in the brief scaffold.
+#      Bind → design_refine_analysis.
+#      Once: keyed off design_refine_analysis (non-empty ⇒ already ran).
+#   4. brief judge (host.agent.decide id=brief_check) — evaluates the
+#      brief against the quality rubric.
+#      GUARDED: only fires when design_brief_cycle > 0 (first entry skips
+#      the judge; `ready` increments the cycle and re-enters, arming it).
+#      A `continue` verdict fires the synthetic `advance_brief` intent via
+#      post-bind emit_intent → auto-advance to design_draft.
+#
+# The `ready` intent increments design_brief_cycle (arming the judge) and
+# self-transitions (full YAML target) so on_enter re-fires with the new
+# cycle value.
+#
+# `clarify` steps all the way back to the intake room, resetting all search
+# and brief state (the operator has decided the idea itself needs rethinking).
+#
+# `discuss` folds a message into the brief via a conversational turn.
+#
+# Reload-safety: the scaffold, refiner, and judge calls are once: guarded;
+# a /reload that lands here with results already set skips the expensive
+# calls and re-renders the current brief state.
+
+states:
+
+  design_refine:
+    mode: conversational
+    default_intent: discuss
+    description: "Shape the brief — talk it through, then say ready to run the quality check."
+    view:
+      - banner:
+          text:     "BRIEF"
+          subtitle: "Shape the brief — ready runs the quality check"
+          color:    "#6366F1"
+      - kv:
+          pairs:
+            Brief:      '{{ world.design_brief_path|default:"(scaffolding…)" }}'
+            Cycle:      '{{ world.design_brief_cycle }}'
+            Change:     '{{ world.design_change_target }}'
+        when: "world.design_change_target != ''"
+      - kv:
+          pairs:
+            Brief:  '{{ world.design_brief_path|default:"(scaffolding…)" }}'
+            Cycle:  '{{ world.design_brief_cycle }}'
+        when: "world.design_change_target == ''"
+      # Echo the operator's last instruction back so a refine turn visibly
+      # acknowledges what was asked (a non-empty message means the operator
+      # typed feedback; the blank-message `refine` choice skips this line).
+      - kv:
+          pairs:
+            You asked: '{{ world.design_last_refine_message }}'
+        when: "world.design_last_refine_message != '' ?? false"
+      - kv:
+          pairs:
+            Refiner: '{{ world.design_refine_analysis.summary|default:"(refiner running…)" }}'
+        when: "world.design_brief_path != ''"
+      # The refiner's open questions. A `template:` (not `code:`) so long gap
+      # text reflows in both surfaces — see design_search.yaml for the
+      # paragraph-only / no-bold-no-bullets parity rationale.
+      #
+      # Each gap string carries its OWN stable number (assigned by the refiner
+      # and persisted in the brief's "Open questions" section). We render it
+      # verbatim — no forloop.Counter — so a resolved question dropping off the
+      # list never renumbers the survivors.
+      - template: |
+          Open questions the brief still needs to settle:
+
+          {% for g in world.design_refine_analysis.gaps %}{{ g }}{% if not forloop.Last %}
+
+          {% endif %}{% endfor %}
+        when: "len(world.design_refine_analysis.gaps ?? []) > 0"
+      - kv:
+          pairs:
+            Judge: '{{ world.design_brief_decision.verdict }} — {{ world.design_brief_decision.reason }}'
+        when: "world.design_brief_decision.verdict != '' ?? false"
+      - prose: "The refiner's open questions above are advisory; the quality-gate asks below are the blockers — settle them to pass the brief check."
+        when: "world.design_brief_decision.verdict == 'clarify' ?? false"
+      - heading: "Quality gate asks (these block a passing brief):"
+        when: "world.design_brief_decision.verdict == 'clarify' ?? false"
+      - code: |
+          {% for q in world.design_brief_decision.questions %}- {{ q }}
+          {% empty %}{% endfor %}
+        when: "world.design_brief_decision.verdict == 'clarify' ?? false"
+      - prose: "Type feedback below to have the refiner update the brief, or open it directly in your editor. Say **ready** when it's good enough to check."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "advance to draft"
+              hint:   "brief approved — proceed to writing the design"
+              intent: advance_brief
+              when: "world.design_brief_decision.verdict == 'continue' ?? false"
+            - label:  "ready"
+              hint:   "run the brief quality check"
+              intent: ready
+            - label:  "refine"
+              hint:   "re-run the refiner on the current brief as saved in your editor"
+              intent: discuss
+              slots:
+                message: ""
+            - label:  "back to intake"
+              hint:   "abandon this brief and rethink the idea from scratch"
+              intent: clarify
+            - label:  "quit"
+              hint:   "abandon this design"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [design_idea, design_workspace, design_brief_path, design_existing_state, design_change_target, design_references, design_refine_analysis, design_last_refine_message, design_brief_decision, design_brief_cycle, design_brief_budget]
+    on_enter:
+      # 1. Scaffold the brief — write 001-brief.md (once: brief_path not yet set).
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          thread:         "001-brief"
+          artifacts_root: "{{ world.design_workspace }}"
+          mode:           "replace"
+          body: |
+            # {{ world.design_idea }}
+
+            **Status:** Draft — in progress
+
+            ## Why
+
+            <…>
+
+            ## What changes
+
+            <…>
+
+            ## Impact
+
+            <…>
+
+            ## Why kitsoki
+
+            <…>
+
+            ## How it's used
+
+            <…>
+        bind:
+          design_brief_path: path
+        on_error: design_search
+      # 2. Open the brief in the operator's editor.
+      - invoke: host.ide.open_file
+        with:
+          path: "{{ world.design_brief_path }}"
+        on_error: .
+      # 3. Refiner fills the scaffold with search context (once: analysis not yet set).
+      - invoke: host.agent.task
+        once: true
+        id: refine_brief
+        with:
+          agent: design_refiner
+          working_dir: "{{ world.design_workspace }}"
+          acceptance:
+            schema: schemas/brief-refine.json
+          context:
+            prompt: prompts/design_refine.md
+            args:
+              idea:           "{{ world.design_idea }}"
+              brief_path:     "{{ world.design_brief_path }}"
+              existing_state: "{{ world.design_existing_state }}"
+              references:     "{{ world.design_references }}"
+              change_target:  "{{ world.design_change_target }}"
+        bind:
+          design_refine_analysis: submitted
+        on_error: design_search
+      # 4. Brief judge — GUARDED on design_brief_cycle > 0 (ready arms it).
+      - invoke: host.agent.decide
+        id: brief_check
+        when: "world.design_brief_cycle > 0"
+        with:
+          agent: design_brief_judge
+          prompt_path: prompts/design_brief_check.md
+          schema: schemas/brief-check.json
+          working_dir: "{{ world.workdir == '' ? '.' : world.workdir }}"
+          args:
+            brief_path: "{{ world.design_brief_path }}"
+        bind:
+          design_brief_decision: submitted
+        emit_intent: "{{ world.design_brief_decision.verdict == 'continue' ? 'advance_brief' : '' }}"
+        on_error: .
+    on:
+      # Fold a conversational message into the brief.
+      # Re-runs the refiner with the operator's message so it updates the brief.
+      discuss:
+        - target: .
+          effects:
+            # Record what the operator just asked so the view can echo it back
+            # after the refiner runs — confirmation the instruction was heard.
+            # (Empty when the `refine` choice fires with a blank message, in
+            # which case the view falls back to "re-ran on the saved brief".)
+            - set:
+                design_last_refine_message: "{{ slots.message }}"
+            - invoke: host.agent.task
+              id: refine_brief_update
+              with:
+                agent: design_refiner
+                working_dir: "{{ world.design_workspace }}"
+                acceptance:
+                  schema: schemas/brief-refine.json
+                context:
+                  prompt: prompts/design_refine.md
+                  args:
+                    idea:           "{{ world.design_idea }}"
+                    brief_path:     "{{ world.design_brief_path }}"
+                    existing_state: "{{ world.design_existing_state }}"
+                    references:     "{{ world.design_references }}"
+                    change_target:  "{{ world.design_change_target }}"
+                    message:        "{{ slots.message }}"
+              bind:
+                design_refine_analysis: submitted
+              on_error: .
+
+      # Arm the judge: increment cycle and re-enter so on_enter fires the judge.
+      ready:
+        - target: design_refine
+          effects:
+            - set:
+                design_brief_cycle: "{{ world.design_brief_cycle + 1 }}"
+
+      # advance_brief is synthetic — emitted by the judge when verdict == "continue".
+      advance_brief:
+        - target: design_draft
+
+      # Step back to intake — full reset of search + brief state.
+      clarify:
+        - target: design
+          effects:
+            - set:
+                design_existing_state:   {}
+                design_existing_path:    ""
+                design_overlap_decision: ""
+                design_change_target:    ""
+                design_references:       {}
+                design_references_path:  ""
+                design_brief_path:       ""
+                design_brief_decision:   {}
+                design_brief_cycle:      0
+                design_refine_analysis:  {}
+                design_last_refine_message: ""
+
+      quit:
+        - target: landing
+          effects:
+            - set:
+                last_error:         "design abandoned at brief"
+                prev_state:         "landing"
+                design_seed_idea: ""
+      look:
+        - target: .

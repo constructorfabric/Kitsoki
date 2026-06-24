@@ -6,7 +6,7 @@
 // `isError: true` with a human-readable error list so the calling LLM can
 // self-correct and call again — all within the same `claude -p` conversation.
 //
-// Used by `host.oracle.ask_with_mcp` (auto-attached when the effect declares
+// Used by `host.agent.ask_with_mcp` (auto-attached when the effect declares
 // a `schema:` arg) and exposed standalone via `kitsoki mcp-validator`.
 //
 // Design notes vs. an external phase-keyed validator MCP:
@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,11 @@ const postCmdStderrCap = 2000
 // otherwise leak into the LLM's context as noise.
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
 
+// postCmdArgKeyRe constrains post-cmd-arg keys so they render to exactly one
+// `--<Key>` argv slot. A key with spaces (or other metacharacters) would
+// otherwise create stray argv slots in the post-cmd subprocess.
+var postCmdArgKeyRe = regexp.MustCompile(`^[a-z0-9-]+$`)
+
 // ValidatorServer is the MCP-protocol surface of the schema validator.
 type ValidatorServer struct {
 	mcpSrv *mcpsdk.Server
@@ -59,7 +65,7 @@ type ValidatorServer struct {
 	// outputPath, when non-empty, receives the validated JSON every time
 	// `submit` is called with a payload that passes schema validation.
 	// The file is overwritten (last-call-wins). This is the side channel
-	// host.oracle.ask_with_mcp uses to recover the canonical, validated
+	// host.agent.ask_with_mcp uses to recover the canonical, validated
 	// payload after `claude -p` exits — independent of whatever the model
 	// chooses to write as its final response.
 	outputPath string
@@ -115,7 +121,7 @@ type ValidatorConfig struct {
 	ToolDescription string
 	// OutputPath, when non-empty, instructs the validator to write the
 	// validated JSON to that path on each successful submit. Used by
-	// host.oracle.ask_with_mcp to capture the canonical payload from the
+	// host.agent.ask_with_mcp to capture the canonical payload from the
 	// tool call rather than from the LLM's final stdout text.
 	OutputPath string
 
@@ -138,7 +144,7 @@ type ValidatorConfig struct {
 	// (attempts/successfulSubmits/lastError) survive a process restart.
 	// At startup the validator reads JSON state from this file (if it
 	// exists) to seed its counters; after every submit it rewrites the
-	// file atomically. host.oracle.ask_with_mcp uses this to keep one
+	// file atomically. host.agent.ask_with_mcp uses this to keep one
 	// logical "validator session" across multiple `claude --resume`
 	// re-engagements (each re-engagement spawns a fresh kitsoki
 	// mcp-validator subprocess but they all share the same state file).
@@ -163,18 +169,21 @@ func NewValidatorServer(cfg ValidatorConfig) (*ValidatorServer, error) {
 		return nil, fmt.Errorf("mcp.NewValidatorServer: top-level schema type must be \"object\" (got %q)", t)
 	}
 
-	compiler := jsonschema.NewCompiler()
-	// Register custom semantic formats (e.g. JQL) and switch the compiler
-	// from annotation-only to assertion mode so format errors surface as
-	// kind.Format failures through BasicOutput like any other constraint.
-	compiler.RegisterFormat(&jsonschema.Format{Name: "jql", Validate: validateJQL})
-	compiler.AssertFormat()
-	if err := compiler.AddResource("validator-schema.json", probe); err != nil {
-		return nil, fmt.Errorf("mcp.NewValidatorServer: register schema: %w", err)
-	}
-	compiled, err := compiler.Compile("validator-schema.json")
+	// Compile via the shared helper so the validator MCP server and the
+	// host.agent.decide recovery path enforce byte-for-byte identical schema
+	// semantics (same jql format registration + assertion mode).
+	compiled, err := CompileSchema(cfg.SchemaJSON)
 	if err != nil {
-		return nil, fmt.Errorf("mcp.NewValidatorServer: compile schema: %w", err)
+		return nil, fmt.Errorf("mcp.NewValidatorServer: %w", err)
+	}
+
+	// Validate post-cmd arg keys at parse time so a key with spaces (or other
+	// metacharacters) can't smuggle stray argv slots into the subprocess via
+	// the `--<Key> <Value>` rendering in runPostCmd.
+	for _, kv := range cfg.PostCmdArgs {
+		if !postCmdArgKeyRe.MatchString(kv.Key) {
+			return nil, fmt.Errorf("mcp.NewValidatorServer: invalid post-cmd-arg key %q: must match %s", kv.Key, postCmdArgKeyRe.String())
+		}
 	}
 
 	toolName := cfg.ToolName
@@ -238,7 +247,7 @@ func NewValidatorServer(cfg ValidatorConfig) (*ValidatorServer, error) {
 }
 
 // Outcome reports the validator's session-level disposition. The
-// orchestrator (host.oracle.ask_with_mcp, sub-task B) reads this after
+// orchestrator (host.agent.ask_with_mcp, sub-task B) reads this after
 // the MCP session ends to decide whether to (a) accept the captured
 // payload, (b) re-engage the same `claude --continue` conversation with
 // a "you forgot to call submit_result" nudge, or (c) fire on_error.
@@ -428,9 +437,11 @@ func (v *ValidatorServer) recordFailure(reason string) {
 
 // persistStateLocked rewrites the on-disk state file atomically. Caller
 // must hold v.mu. No-op when stateFilePath is empty. Failures are
-// silently ignored: a state-file write error must not block the LLM's
+// non-blocking: a state-file write error must not block the LLM's
 // response — the worst-case is that a subsequent restart loses one
-// iteration of state, which is recoverable.
+// iteration of state, which is recoverable. The failure is logged to
+// stderr at error level rather than swallowed, because the state file
+// drives the retry loop and a silent loss is hard to diagnose.
 func (v *ValidatorServer) persistStateLocked() {
 	if v.stateFilePath == "" {
 		return
@@ -444,7 +455,10 @@ func (v *ValidatorServer) persistStateLocked() {
 	if err != nil {
 		return
 	}
-	_ = writeOutputAtomically(v.stateFilePath, data)
+	if err := writeOutputAtomically(v.stateFilePath, data); err != nil {
+		slog.Error("validator: persist state file failed",
+			"path", v.stateFilePath, "err", err)
+	}
 }
 
 // maxRetriesExhaustedMessage is the LLM-facing sentinel returned once the
@@ -579,6 +593,43 @@ func errorResult(text string) *mcpsdk.CallToolResult {
 			&mcpsdk.TextContent{Text: text},
 		},
 	}
+}
+
+// CompileSchema compiles a JSON Schema document into a reusable validator.
+// It registers the custom "jql" semantic format and switches the compiler into
+// assertion mode (AssertFormat) so format violations surface as ordinary
+// validation failures — identical to the setup NewValidatorServer uses.
+//
+// Shared so the validator MCP server and the host.agent.decide code-block
+// recovery path validate against one implementation rather than drifting. A
+// non-object or unparsable schema returns an error.
+func CompileSchema(schemaJSON []byte) (*jsonschema.Schema, error) {
+	if len(schemaJSON) == 0 {
+		return nil, fmt.Errorf("mcp.CompileSchema: schemaJSON is required")
+	}
+	var probe any
+	if err := json.Unmarshal(schemaJSON, &probe); err != nil {
+		return nil, fmt.Errorf("mcp.CompileSchema: parse schema: %w", err)
+	}
+	compiler := jsonschema.NewCompiler()
+	compiler.RegisterFormat(&jsonschema.Format{Name: "jql", Validate: validateJQL})
+	compiler.AssertFormat()
+	if err := compiler.AddResource("validator-schema.json", probe); err != nil {
+		return nil, fmt.Errorf("mcp.CompileSchema: register schema: %w", err)
+	}
+	compiled, err := compiler.Compile("validator-schema.json")
+	if err != nil {
+		return nil, fmt.Errorf("mcp.CompileSchema: compile schema: %w", err)
+	}
+	return compiled, nil
+}
+
+// FormatValidationError renders a schema validation error into the same
+// LLM-facing message the validator MCP server returns inline. Exported so the
+// host.agent.decide recovery path can reuse identical wording when it rejects a
+// schema-invalid recovered verdict.
+func FormatValidationError(err error) string {
+	return formatValidationError(err)
 }
 
 // formatValidationError renders a jsonschema.ValidationError into a

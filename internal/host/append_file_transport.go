@@ -1,5 +1,5 @@
 // Package host — host.append_to_file — local-file transport for the
-// dogfood path described in dev-story-bugfix-unify-proposal §5.2/§5.4.
+// dogfood path. See docs/case-studies/bug-fix.md.
 //
 // This is **not** an out-of-band transport (no Jira / GitHub / Slack
 // post).  It is the "the bug file IS the conversation thread"

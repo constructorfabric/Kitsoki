@@ -1,0 +1,74 @@
+# happy_human — judge_mode=human, accept at every checkpoint → done.
+#
+# Hermetic and LLM-free: every room's on_enter producer is `once: true`
+# keyed off its artifact bind, so seeding those artifacts in initial_world
+# makes the agent calls short-circuit on entry. The only live host call is
+# iface.transport.post, bound here to host.stdout (a no-op channel). We
+# assert the phase transitions and the status side-effects.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  job:           "intents-20260615"
+  project_dir:   ""
+  stories_dir:   "stories"
+  judge_mode:    "human"
+  judge_confidence_threshold: 0.8
+  selected_theme: "Pre-existing failure vs regression"
+  # Seed each phase artifact so `once:` skips the producer agent call.
+  mine_artifact:
+    brief_path:   ".artifacts/session-mining/intents-20260615/BRIEF.md"
+    intent_count: 154
+    deterministic: 84
+    agent_gated:  66
+    irreducible:   4
+    summary_markdown: "154 intents · 144 clusters · 98% grounded. Top recurring shapes: explore-codebase, verify-by-running, write-docs, implement-from-spec."
+  map_artifact:
+    themes:
+      - { theme: "Pre-existing failure vs regression", intents: 8, home_room: "stories/bugfix/rooms/validating.yaml", status: "ENRICH", decider: "default-rule", validator: "isolated HEAD/clean-main worktree reproduces failure identically" }
+      - { theme: "Fan-out partition disjointness", intents: 6, home_room: "stories/dev-story/rooms/fanout_plan.yaml", status: "GAP", decider: "default-rule", validator: "slices pairwise path-disjoint and each builds alone" }
+    summary_markdown: "10 in-scope themes. 3 ENRICH, 2 GAP, 5 ALREADY-MODELED. Top: pre-existing-vs-regression (ENRICH, 8 intents)."
+  decide_artifact:
+    selected:
+      - { theme: "Pre-existing failure vs regression", room: "stories/bugfix/rooms/validating.yaml", gate: "default-rule gate that reproduces the failure on a baseline worktree before the LLM judge classifies" }
+    rationale: "Highest #intents × mechanicalness; ENRICH with a deterministic validator beats the GAP rooms."
+    summary_markdown: "Selected: pre-existing-vs-regression triage into bugfix/validating. Runners-up: fan-out partition (GAP), reconcile claims (ENRICH)."
+  author_artifact:
+    files_changed: ["stories/bugfix/rooms/validating.yaml", "stories/bugfix/flows/preexisting_vs_regression.yaml"]
+    flows_green:   true
+    flow_files:    ["stories/bugfix/flows/preexisting_vs_regression.yaml"]
+    summary_markdown: "Added the baseline-reproduce gate to validating; flow fixture covers pre-existing vs regression branches. `kitsoki test flows` green."
+  record_artifact:
+    ladder_moves: []
+    summary_markdown: "No ladder moves yet — the new gate has no recorded decisions; re-review after a few runs."
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: mine
+    expect_world:
+      mining_started: true
+
+  - intent: { name: accept, slots: {} }
+    expect_state: map
+
+  - intent: { name: accept, slots: {} }
+    expect_state: decide
+    expect_world:
+      status: "mapped"
+
+  - intent: { name: accept, slots: {} }
+    expect_state: author
+
+  - intent: { name: accept, slots: {} }
+    expect_state: record
+    expect_world:
+      status: "authored"
+
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status: "authored"
+
+expect_terminal: true
+expect_no_errors: true

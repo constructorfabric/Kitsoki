@@ -1,0 +1,36 @@
+# idle — capture a brief + gate, then enter the cherny-loop maker import.
+states:
+
+  idle:
+    description: "Set the brief and gate, then start the imported maker loop."
+    relevant_world: [brief, gate_command, status]
+    view:
+      - prose: "Drive the imported cherny-loop maker to @exit:achieved through the import."
+      - kv:
+          pairs:
+            Brief: '{{ world.brief|default:"(not set)" }}'
+            Gate:  '{{ world.gate_command|default:"(not set)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start brief=<text> gate_command=<cmd>"
+              intent: start
+              param:
+                slot:        brief
+                type:        string
+                placeholder: "Get the gate green"
+                required:    false
+            - label: "look"
+              intent: look
+    on:
+      start:
+        # Enter the maker import compound; its world_in projects brief + gate
+        # into cherny's world. The autonomous loop then settles to an exit.
+        - target: maker
+          effects:
+            - set:
+                brief:        "{{ slots.brief ?? world.brief }}"
+                gate_command: "{{ slots.gate_command ?? world.gate_command }}"
+      look:
+        - target: .

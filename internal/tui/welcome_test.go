@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"kitsoki/internal/journal"
 	tuipkg "kitsoki/internal/tui"
 )
 
@@ -31,4 +32,32 @@ func TestWelcomeBlockPrintsAtStartup(t *testing.T) {
 		"welcome block should hint at /help")
 	require.Contains(t, joined, "session",
 		"welcome block should show session/state status")
+}
+
+// TestWelcomeBlockSuppressedOnResume confirms the welcome banner is NOT
+// re-emitted on a --continue resume. It is start-of-session boilerplate
+// already in the prior session's scrollback; re-printing it after the
+// reconstructed transcript dropped a mis-styled box (it inherited the
+// trailing agent body's background) into the middle of the history.
+func TestWelcomeBlockSuppressedOnResume(t *testing.T) {
+	t.Parallel()
+	orch, sid := setupCloak(t)
+
+	// A single reconstructed turn stands in for resumed history; the
+	// resume options mark the model as resumed.
+	entries := []journal.Entry{{
+		Kind: journal.KindViewRendered,
+		Turn: 1,
+		Body: []byte(`{"view_text":"a prior view","user_input":"look"}`),
+	}}
+	m := tuipkg.NewRootModel(orch, sid, "", "",
+		tuipkg.WithResumedTranscript(entries),
+	)
+
+	rm, _ := tuipkg.ExtractRootModel(m)
+	pending := strings.Join(tuipkg.PendingTranscriptForTest(rm), "\n")
+	require.NotContains(t, pending, "/help",
+		"welcome banner must be suppressed on resume; pending = %q", pending)
+	require.NotContains(t, pending, "list commands",
+		"welcome banner must be suppressed on resume")
 }

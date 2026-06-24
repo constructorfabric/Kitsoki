@@ -1,0 +1,48 @@
+# intercept_commands — proves the EXECUTE path runs host calls via mock (no LLM).
+#
+# Drives the `rebase` and `run_tests` command intents directly (the same intents
+# `kitsoki intercept` resolves from free text). host.run is stubbed with ok
+# stdout, so this asserts the full arc — fire the intent, run the (mocked) host
+# call, bind stdout into world, set last_command, self-loop back to `commands` —
+# with zero LLM and zero cost. This is the flow-test half of the intercept gate:
+# the gate decides WHICH intent to fire; this fixture proves firing it works.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: commands
+initial_world:
+  last_command: "(none)"
+  last_output:  ""
+
+host_handlers:
+  host.run:
+    data:
+      stdout: "mocked-ok"
+      exit_code: 0
+      ok: true
+
+turns:
+
+  # rebase — fires host.run (rebase_exec), binds stdout, records the command,
+  # and stays in `commands`.
+  - intent: { name: rebase, slots: {} }
+    expect_state: commands
+    expect_world:
+      last_command: "git rebase origin/main"
+      last_output:  "mocked-ok"
+    expect_host_calls:
+      - handler: host.run
+        args: { cmd: "echo 'rebased onto origin/main'" }
+
+  # run_tests — same shape, a different command. Proves each arc routes to its
+  # own host.run call site.
+  - intent: { name: run_tests, slots: {} }
+    expect_state: commands
+    expect_world:
+      last_command: "go test ./..."
+      last_output:  "mocked-ok"
+    expect_host_calls:
+      - handler: host.run
+        args: { cmd: "echo 'ok  ./...  (12 tests)'" }
+
+expect_no_errors: true

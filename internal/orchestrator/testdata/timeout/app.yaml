@@ -1,4 +1,4 @@
-# timeout — minimal app exercising the Timeout: runtime (gap §9.5).
+# timeout — minimal app exercising the Timeout: runtime.
 #
 # Two leaf states:
 #   - waiting:  declares `timeout: { after: "10d", target: traveled }`. The

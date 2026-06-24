@@ -1,15 +1,19 @@
 // sessions.go — /sessions slash-command family.
 //
 // /sessions list  — print a numbered list of active chat_pty_sessions
-//                   rows on this host (chats with claude alive in
-//                   tmux right now, attached or background).
 //
-// /sessions attach <N>
-//                — re-attach to the Nth row from the most recent
-//                   /sessions list output. No chat IDs typed. The TUI
-//                   suspends, the user lands in the live
-//                   `claude --resume` pane; Ctrl-B then d returns
-//                   them to kitsoki.
+//	rows on this host (chats with claude alive in
+//	tmux right now, attached or background).
+//
+// /sessions attach <N> [--dry-run]
+//
+//	— re-attach to the Nth row from the most recent
+//	   /sessions list output. No chat IDs typed. The TUI
+//	   suspends, the user lands in the live
+//	   `claude --resume` pane; Ctrl-B then d returns
+//	   them to kitsoki.
+//	   With --dry-run, prints the resolved target without
+//	   attaching; useful for MCP/headless smoke tests.
 //
 // The numbering is cached on RootModel between list and attach so
 // the user can `list`, eyeball, `attach 3` with no typing of opaque
@@ -48,10 +52,10 @@ func (m RootModel) handleSessionsSlash(args []string) (tea.Model, tea.Cmd) {
 		return m.handleSessionsList()
 	case "attach":
 		if len(args) < 2 {
-			m.transcript.AppendSystem("(/sessions attach: usage — /sessions attach <N>)")
+			m.transcript.AppendSystem("(/sessions attach: usage — /sessions attach <N> [--dry-run])")
 			return m, nil
 		}
-		return m.handleSessionsAttach(args[1])
+		return m.handleSessionsAttach(args[1], sessionsAttachDryRun(args[2:]))
 	default:
 		m.transcript.AppendSystem(fmt.Sprintf(
 			"(/sessions: unknown subcommand %q — try 'list' or 'attach <N>')", verb))
@@ -173,7 +177,17 @@ func formatShortDuration(d time.Duration) string {
 // handleSessionsAttach resolves the Nth row from the cached list and
 // fires the same tea.Exec-based attach the meta-mode /attach uses.
 // The cache is the only state — re-listing rebuilds it.
-func (m RootModel) handleSessionsAttach(arg string) (tea.Model, tea.Cmd) {
+func sessionsAttachDryRun(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--dry-run", "-n", "dry-run":
+			return true
+		}
+	}
+	return false
+}
+
+func (m RootModel) handleSessionsAttach(arg string, dryRun bool) (tea.Model, tea.Cmd) {
 	if len(m.sessionList) == 0 {
 		m.transcript.AppendSystem("(no cached sessions list — run /sessions list first)")
 		return m, nil
@@ -185,6 +199,10 @@ func (m RootModel) handleSessionsAttach(arg string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	picked := m.sessionList[n-1]
+	if dryRun {
+		m.transcript.AppendSystem(sessionsAttachDryRunLine(n, picked, m.chatStore))
+		return m, nil
+	}
 
 	tmuxClient, err := tmux.New(tmux.DefaultSocketPath())
 	if err != nil {
@@ -212,4 +230,23 @@ func (m RootModel) handleSessionsAttach(arg string) (tea.Model, tea.Cmd) {
 	return m, tea.Exec(execCmd, func(err error) tea.Msg {
 		return metaAttachDoneMsg{err: err}
 	})
+}
+
+func sessionsAttachDryRunLine(n int, picked chats.PtySession, cs *chats.Store) string {
+	title := picked.ChatID
+	if cs != nil {
+		if c, err := cs.Get(context.Background(), picked.ChatID); err == nil && c.Title != "" {
+			title = c.Title
+		}
+	}
+	tmuxName := picked.TmuxSession
+	if tmuxName == "" {
+		tmuxName = "(no tmux session)"
+	}
+	mode := string(picked.Mode)
+	if mode == "" {
+		mode = "(unknown mode)"
+	}
+	return fmt.Sprintf("(/sessions attach: would attach %d to %s [%s] via tmux %s, %s)",
+		n, title, picked.ChatID, tmuxName, mode)
 }

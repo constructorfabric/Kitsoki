@@ -3,10 +3,12 @@ package tui
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/userfacing"
 )
 
 // Default off-path triggers used when the app's app.yaml declares no
@@ -17,7 +19,8 @@ const (
 	defaultOffPathBanner  = "*** off the path — responses do not affect your story ***"
 )
 
-// offPathModel manages the §7.7 off-path mode state.
+// offPathModel manages the off-path mode state. See
+// docs/stories/state-machine.md §11 "Off-path: the global escape hatch".
 type offPathModel struct {
 	active bool
 	banner string
@@ -114,8 +117,7 @@ func (m RootModel) enterOffPath() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	// Close any active inline choice widget — the help banner takes
-	// over (choice-widget proposal §7 "Coexistence"). The next room
-	// entry's handleTurnOutcome re-opens.
+	// over. The next room entry's handleTurnOutcome re-opens.
 	if m.mode == ModeChoosing {
 		m.choice.Close()
 		m.transcript.FinalizeLive("")
@@ -125,7 +127,7 @@ func (m RootModel) enterOffPath() (tea.Model, tea.Cmd) {
 	m.location, _ = m.location.Update(offPathToggled{on: true})
 	m.transcript, _ = m.transcript.Update(offPathToggled{on: true})
 	_, exitCmd := offPathTriggers(m.orch.AppDef())
-	m.prompt.Placeholder = fmt.Sprintf("freeform chat — type to ask the oracle, %s to return", exitCmd)
+	m.prompt.Placeholder = fmt.Sprintf("freeform chat — type to ask the agent, %s to return", exitCmd)
 	// Off-path prefix stays "> " but recolors to amber so the prompt
 	// matches the off-path framing (transcript border, location bar).
 	setPromptPrefix(&m.prompt, promptPrefixOnPath)
@@ -133,7 +135,10 @@ func (m RootModel) enterOffPath() (tea.Model, tea.Cmd) {
 	m.transcript.AppendSystem(m.offPath.Banner())
 	m.transcript.AppendSystem(fmt.Sprintf("(type %s to return to your journey)", exitCmd))
 	if err := m.orch.MarkOffPathEntered(m.sid, m.currentState); err != nil {
-		m.transcript.AppendSystem(fmt.Sprintf("(off-path: log entry failed: %v)", err))
+		// Persistence detail is an internal concern — log it instead of
+		// leaking it into the player-facing transcript. The mode switch
+		// already succeeded regardless of the log write.
+		slog.Warn("off-path: log entry failed", "err", err, "sid", m.sid, "state", m.currentState)
 	}
 	return m, nil
 }
@@ -148,13 +153,15 @@ func (m RootModel) exitOffPath() (tea.Model, tea.Cmd) {
 	m.offPath, _ = m.offPath.Update(exitOffPathMsg{})
 	m.location, _ = m.location.Update(offPathToggled{on: false})
 	m.transcript, _ = m.transcript.Update(offPathToggled{on: false})
-	m.prompt.Placeholder = "what now?"
+	m.prompt.Placeholder = "describe what you want, or /help"
 	// Restore the on-path prefix glyph + violet bold style.
 	setPromptPrefix(&m.prompt, promptPrefixOnPath)
 	setPromptStyle(&m.prompt, promptStyle)
 	m.transcript.AppendSystem("(returned to on-path mode)")
 	if err := m.orch.MarkOffPathExited(m.sid, m.currentState); err != nil {
-		m.transcript.AppendSystem(fmt.Sprintf("(off-path: log exit failed: %v)", err))
+		// Internal persistence detail — log it rather than leak it to the
+		// player. The mode switch back to on-path already succeeded.
+		slog.Warn("off-path: log exit failed", "err", err, "sid", m.sid, "state", m.currentState)
 	}
 	return m, nil
 }
@@ -182,12 +189,22 @@ func (m RootModel) submitOffPath(input string) (tea.Model, tea.Cmd) {
 	sid := m.sid
 	cmd := func() tea.Msg {
 		answer, err := orch.AskOffPath(ctx, sid, input)
-		if ctx.Err() != nil {
-			return offPathReplyMsg{question: input, err: ctx.Err()}
-		}
-		return offPathReplyMsg{question: input, answer: answer, err: err}
+		return offPathReplyFor(input, answer, err)
 	}
 	return m, tea.Batch(m.spinner.Tick, cmd)
+}
+
+// offPathReplyFor builds the reply message from an AskOffPath result. It
+// surfaces the actual error rather than the turn ctx's ctx.Err(): the ctx may
+// have been cancelled asynchronously after a genuine non-cancellation error was
+// produced, and reporting ctx.Err() in that case would both mask the real
+// failure and falsely label it a cancellation. The caller therefore must not
+// consult ctx.Err() to classify — the err returned by the call is authoritative.
+func offPathReplyFor(question, answer string, err error) offPathReplyMsg {
+	if err != nil {
+		return offPathReplyMsg{question: question, err: err}
+	}
+	return offPathReplyMsg{question: question, answer: answer, err: nil}
 }
 
 // handleOffPathReply processes the async reply from AskOffPath.
@@ -198,7 +215,7 @@ func (m RootModel) handleOffPathReply(msg offPathReplyMsg) (tea.Model, tea.Cmd) 
 	// Restore ModeOffPath (not ModeOnPath) — the user is still off the trail.
 	m.mode = ModeOffPath
 	if msg.err != nil {
-		m.transcript.AppendError(msg.question, fmt.Sprintf("off-path: %v", msg.err))
+		m.transcript.AppendError(msg.question, fmt.Sprintf("off-path: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	answer := msg.answer
@@ -208,4 +225,3 @@ func (m RootModel) handleOffPathReply(msg offPathReplyMsg) (tea.Model, tea.Cmd) 
 	m.transcript.AppendOffPathAnswer("", answer)
 	return m, nil
 }
-

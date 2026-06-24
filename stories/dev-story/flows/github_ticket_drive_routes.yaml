@@ -1,0 +1,107 @@
+# github_ticket_drive_routes — a GitHub-Issue-sourced ticket carries a
+# ticket_type, so the headline `drive` affordance routes (no silent no-op).
+#
+# Regression for the two bugs in github_*.go (the `host.gh.ticket`
+# provider):
+#
+#   P3 — GitHub-sourced tickets used to carry no type. ghIssueSummary now
+#        classifies it from the issue's labels (a `bug` label → "bug"), so
+#        a `n=`-pick lands ticket_type=bug and dev-story's `drive` arc
+#        routes into the bugfix pipeline instead of bouncing in place.
+#
+#   P5 — ticket.get lifts the local-bug-file legacy_id out of the
+#        ```kitsoki body-metadata block (and marks source=github), making
+#        the local↔issue identity visible. The pick binds ticket_title
+#        from the same get; the legacy_id round-trips on the row.
+#
+# host_bindings rebinds iface.ticket → host.gh.ticket (the kitsoki-dev
+# instance binding), and the stub returns the SHAPE the real provider now
+# emits: search rows with `type` + `source`, and a get carrying legacy_id.
+# (Flows use stubs only — the classifier itself is unit-tested against the
+# real provider in internal/host/github_test.go, no `gh` / network.)
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir:        ".worktrees/tkt-19"
+  workspace_id:   "ws-19"
+  base_branch:    "main"
+  feature_branch: "fix/tkt-19"
+  judge_mode:     "human"
+  ticket_repo:    "acme/repo"
+
+host_bindings:
+  ticket: host.gh.ticket
+
+host_handlers:
+  # iface.ticket.* → host.gh.ticket. The search row carries the
+  # provider-classified `type: bug` (from a `bug` label) + source=github;
+  # the get carries the lifted legacy_id (the original issues/bugs/<iso>.md
+  # id) so the local↔issue mapping surfaces.
+  host.gh.ticket:
+    by_op:
+      search:
+        data:
+          ok: true
+          tickets:
+            - id: "19"
+              title: "Esc hangs the TUI"
+              status: "open"
+              type: "bug"
+              source: "github"
+              url: "https://github.com/acme/repo/issues/19"
+      get:
+        data:
+          ok: true
+          id: "19"
+          title: "Esc hangs the TUI"
+          type: "bug"
+          source: "github"
+          legacy_id: "2026-06-19T120000Z-esc-hang"
+          url: "https://github.com/acme/repo/issues/19"
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.git:
+    data: { ok: true, sha: "abc", diff: "", state: "success", url: "", pr_id: "" }
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.local:
+    data: { ok: true, state: "success", log: "" }
+  # bf.reproducing.on_enter dispatches the reproducer task; stub it.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "Stub artifact body."
+        bug_verified:     true
+        involved_components: []
+
+turns:
+  # landing → ticket_search; on_enter fires iface.ticket.search → the gh
+  # stub, binding ticket_results (the one classified bug row).
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+
+  # Pick row 1 by number — pick_ticket reads ticket_type off the picked
+  # ROW (the provider-classified `type: bug`), NOT from a type slot. This
+  # is the live GitHub scenario: the operator never types a type. The get
+  # binds the title; the legacy_id rides the row for the identity surface.
+  - intent: { name: pick_ticket, slots: { n: 1 } }
+    expect_state: ticket_search
+    expect_world:
+      ticket_id:    "19"
+      ticket_type:  "bug"
+      ticket_title: "Esc hangs the TUI"
+
+  # The headline `drive` affordance routes by ticket_type. Before the
+  # provider fix this bounced in place (empty type → catch-all self-loop);
+  # now bug → bf. bf.idle.on_enter auto-fires `start`, landing at
+  # bf.reproducing.
+  - intent: { name: drive, slots: {} }
+    expect_state: bf.reproducing
+    expect_world:
+      bf__ticket_id: "19"
+
+expect_no_errors: true

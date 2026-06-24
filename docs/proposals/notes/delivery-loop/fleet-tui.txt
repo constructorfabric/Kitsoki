@@ -1,0 +1,40 @@
+fleet — TUI room render (mockup): the board, mid-fan-out
+========================================================
+The board is the live-result list (dev-story design-list pattern). It re-pins
+itself after each brief. merge_lock_held gates dispatch so integrations serialize.
+
+┌─ fleet ▸ board ──────────────────────────── 3 briefs · lock:held ─┐
+│ Fanning out delivery-loop's own slices. One brief integrates at a │
+│ time (merge-lock); failures park and the rest continue.           │
+│                                                                   │
+│  #  brief                                  status     last_error  │
+│  ─  ───────────────────────────────────    ────────   ────────── │
+│  1  git-ops smoothing (operand-as-slot)    ✔ shipped   —          │
+│  2  ship-it loop (configure→…→shipped)      ⟳ dispatching (lock)  │   ← lock held for #2
+│  3  fleet fan-out (board + merge-lock)      · pending    —         │
+│                                                                   │
+│  shipped: 1     parked: 0     pending: 1   (1 in flight)          │
+│                                                                   │
+│ … #2's ship-it is mid-integrate; #3 waits on the lock release.   │
+├───────────────────────────────────────────────────────────────────┤
+│ board · re-pins per brief · merge_lock_held=true   (auto-dispatch)│
+└───────────────────────────────────────────────────────────────────┘
+
+After #2 ships and the lock releases, the board re-pins:
+  1 ✔ shipped   2 ✔ shipped   3 ⟳ dispatching (lock) → … → summary.
+
+┌─ fleet ▸ summary ──────────────────────────────── @exit:done ────┐
+│ Fan-out complete.                                                 │
+│                                                                  │
+│  shipped : 3   git-ops-smoothing, ship-it, fleet                 │
+│  parked  : 0                                                     │
+│                                                                  │
+│ All briefs delivered to main, each gate-green on its merged sha. │
+│ (If any had parked, its last_error would list here — never a     │
+│  swallowed failure.)                                             │
+├──────────────────────────────────────────────────────────────────┤
+│ summary · fleet_summary set                       @exit:done     │
+└──────────────────────────────────────────────────────────────────┘
+
+The dogfood closure: this very board, fed delivery-loop's own
+decomposition.yaml, reproduces the hand-run that authored the proposal.

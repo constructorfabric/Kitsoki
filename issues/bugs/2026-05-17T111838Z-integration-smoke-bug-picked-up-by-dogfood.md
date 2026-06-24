@@ -11,7 +11,7 @@ kitsoki_rev: "3ff850e"
 
 # --- classification ------------------------------------------
 severity: "low"
-status: "open"
+status: "fixed"  # fixture: smoke-test ticket, not a code defect (dogfood list proof)
 labels: []
 
 # --- evidence ------------------------------------------------

@@ -53,7 +53,7 @@ func TestImports_ParentFold(t *testing.T) {
 // `prompt:` and `schema:` args in an imported child's effects are
 // rewritten to absolute paths rooted at the child's own directory.
 //
-// At runtime, host.oracle.ask_with_mcp's resolvePromptPath joins
+// At runtime, host.agent.ask_with_mcp's resolvePromptPath joins
 // relative paths against $KITSOKI_APP_DIR — which is the PARENT app's
 // directory. Without this rebase, an imported sub-story's
 // `with: { prompt: prompts/foo.md }` would resolve to
@@ -61,7 +61,7 @@ func TestImports_ParentFold(t *testing.T) {
 // triggering the room's on_error and short-circuiting the pipeline.
 //
 // Regression for the dogfood: typing `start` in core.bf.idle queued
-// host.oracle.ask_with_mcp with `prompt: prompts/reproducing_executing.md`;
+// host.agent.ask_with_mcp with `prompt: prompts/reproducing_executing.md`;
 // the runtime looked for it under stories/kitsoki-dev/ (parent) and
 // failed because it lives under stories/bugfix/ (child). The visible
 // symptom was "I typed start and nothing happened" — the redirect
@@ -80,12 +80,12 @@ func TestImports_PromptPathsRebasedToChildDir(t *testing.T) {
 
 	var promptArg, schemaArg string
 	for _, eff := range work.OnEnter {
-		if eff.Invoke == "host.oracle.ask" {
+		if eff.Invoke == "host.agent.ask" {
 			promptArg, _ = eff.With["prompt"].(string)
 			schemaArg, _ = eff.With["schema"].(string)
 		}
 	}
-	require.NotEmpty(t, promptArg, "prompt arg should be set on the host.oracle.ask invoke")
+	require.NotEmpty(t, promptArg, "prompt arg should be set on the host.agent.ask invoke")
 
 	// The rewritten path must be absolute.
 	require.True(t, filepath.IsAbs(promptArg),
@@ -129,6 +129,68 @@ func TestImports_StateRewriting(t *testing.T) {
 	// not override.states (which the parent authored). The rewriter pass
 	// happens AFTER overrides, so override.states view IS rewritten.
 	require.Contains(t, working.View.SourceString(), "world.sub__ticket_id", "override.states view is rewritten by the same pass that handles child states")
+}
+
+// TestImports_EffectIdTemplateRewritten confirms an effect's `id:` template
+// (threaded into host args under the reserved `call` key and re-rendered at
+// dispatch) has its world.X refs rewritten under fold. Regression: an
+// un-rewritten id like cherny-loop's gating gate `id: "gate-{{ world.iteration
+// }}"` rendered against the absent bare key under an import, producing an
+// unmatched call id so the host result never bound and the emit chain stalled
+// (the import-compound "maker stalls at gating" bug). The sub_story's
+// `processing` on_enter invoke carries `id: "work-{{ world.ticket_id }}"`.
+func TestImports_EffectIdTemplateRewritten(t *testing.T) {
+	def, err := Load("../../testdata/apps/imports_smoke/parent/app.yaml")
+	require.NoError(t, err)
+
+	processing := def.States["sub"].States["processing"]
+	require.NotNil(t, processing)
+	require.NotEmpty(t, processing.OnEnter)
+	var gotID string
+	for _, eff := range processing.OnEnter {
+		if eff.Invoke == "host.run" && eff.Id != "" {
+			gotID = eff.Id
+			break
+		}
+	}
+	require.Equal(t, "work-{{ world.sub__ticket_id }}", gotID,
+		"effect id template must be rewritten to the prefixed world key under fold")
+}
+
+// TestImports_OnCompleteTargetRewritten confirms that a `target:` carried
+// by an on_complete: effect (the transition a finishing background job
+// dispatches) is rewritten under fold exactly like an ordinary transition
+// target — a bare sibling name becomes a relative `../<name>` ref that
+// resolves under the alias wrapper.
+//
+// Regression: importing the bugfix story (a phase-template graph whose
+// execute → next-phase chains live in on_enter background invokes with
+// on_complete `target: phase_N_executing`) folded the states fine but left
+// those targets bare, so every phase advance landed on a non-existent
+// `phase_N_executing` instead of `bf.phase_N_executing`. The fold's
+// rewriteChildStateTransitions only walked tr.Target and OnError, never
+// Effect.Target.
+func TestImports_OnCompleteTargetRewritten(t *testing.T) {
+	def, err := Load("../../testdata/apps/imports_smoke/parent/app.yaml")
+	require.NoError(t, err)
+
+	processing := def.States["sub"].States["processing"]
+	require.NotNil(t, processing, "child's processing state should fold under the alias")
+	require.NotEmpty(t, processing.OnEnter, "processing should have an on_enter background invoke")
+
+	// The background invoke's on_complete: chain holds [set, target:working].
+	oc := processing.OnEnter[0].OnComplete
+	require.NotEmpty(t, oc, "on_enter background invoke should have an on_complete chain")
+	var targets []string
+	for _, sub := range oc {
+		if sub.Target != "" {
+			targets = append(targets, sub.Target)
+		}
+	}
+	require.Contains(t, targets, "../working",
+		"on_complete target `working` must be rewritten to `../working` under fold; got %v", targets)
+	require.NotContains(t, targets, "working",
+		"bare sibling target must not survive the fold")
 }
 
 // TestImports_ExitMapping confirms @exit:<name> transitions in the child
@@ -183,9 +245,19 @@ func TestImports_WorldIn(t *testing.T) {
 	require.Equal(t, "compound", wrapper.Type)
 	require.Equal(t, "idle", wrapper.Initial)
 	require.NotEmpty(t, wrapper.OnEnter, "wrapper should carry world_in on_enter")
-	first := wrapper.OnEnter[0]
-	require.NotNil(t, first.Set)
-	v, ok := first.Set["sub__ticket_id"]
+	// The wrapper OnEnter holds re-entry default-reset setters (so a re-entered
+	// import is a fresh instance) followed by the world_in projection setters.
+	// Find the world_in setter by key rather than position.
+	var v any
+	var ok bool
+	for _, eff := range wrapper.OnEnter {
+		if eff.Set != nil {
+			if got, has := eff.Set["sub__ticket_id"]; has {
+				v, ok = got, true
+				break
+			}
+		}
+	}
 	require.True(t, ok, "world_in should write sub__ticket_id")
 	require.Equal(t, "{{ world.current_ticket }}", v, "expression authored in parent scope is preserved")
 }
@@ -237,7 +309,7 @@ func TestImports_Cycle(t *testing.T) {
 	require.Contains(t, err.Error(), "cycle detected")
 }
 
-// TestImports_MultiLayerIfaceComposition exercises proposal §11.2:
+// TestImports_MultiLayerIfaceComposition exercises multi-layer iface composition:
 // a grandparent rebinds a grandchild's host_interface by spelling
 // the alias-prefixed name (`<middle-alias>__<iface>`). The grandchild
 // declares the iface with one default; the middle layer inherits; the
@@ -246,7 +318,7 @@ func TestImports_Cycle(t *testing.T) {
 //
 // Topology: top → middle → leaf. Leaf declares iface `r` defaulting
 // to `host.run`. Top rebinds `leaf__r` to `host.diary` — proves the
-// grandparent surface works (the §11.2 "bindings compose" claim).
+// grandparent surface works (the "bindings compose" claim).
 func TestImports_MultiLayerIfaceComposition(t *testing.T) {
 	root := t.TempDir()
 
@@ -420,6 +492,80 @@ func newKitsokiRoot(t *testing.T) string {
 	mustWrite(t, root, "go.mod", "module kitsoki\n\ngo 1.21\n")
 	_ = mkdirT(t, root, "stories")
 	return root
+}
+
+// TestImports_OffRampAgentNamespaced is the regression guard for the
+// fold-time rewrite at imports_rewriter.go:142-145: when an imported room
+// opts into the agent off-ramp with `agent_off_ramp.agent: <child-agent>`,
+// the fold must prefix that agent name with the import alias (alias+"__"+name)
+// so the renamed parent.Agents[<alias>__<agent>] key satisfies the load-time
+// walkOffRampAgents validator. Without the rewrite, Load fails with an
+// "unknown agent" ValidationError because the off-ramp carries a dangling
+// reference to the child's pre-fold agent name.
+//
+// This mirrors the meta_mode.agent fold (imports.go) and is the ONLY test
+// reaching the off-ramp branch of rewriteState — every other off-ramp test
+// is single-file (non-imported) and the shipped demo uses persona:, not
+// agent:, so AgentOffRamp.Agent is empty there.
+func TestImports_OffRampAgentNamespaced(t *testing.T) {
+	root := t.TempDir()
+
+	childDir := mkdirT(t, root, "child")
+	mustWrite(t, childDir, "app.yaml", `app: { id: child, version: 0.1.0 }
+hosts: [host.run]
+world: {}
+intents:
+  browse: { description: browse }
+exits:
+  done: { description: "..." }
+agents:
+  guide:
+    system_prompt: "answer kindly"
+root: desk
+states:
+  desk:
+    description: "menu room"
+    agent_off_ramp: { agent: guide }
+    on:
+      browse:
+        - target: "@exit:done"
+`)
+
+	parentDir := mkdirT(t, root, "parent")
+	mustWrite(t, parentDir, "app.yaml", `app: { id: parent, version: 0.1.0 }
+hosts: [host.run]
+world: {}
+intents:
+  go: { description: go }
+imports:
+  sub:
+    source: ../child
+    entry: desk
+    exits:
+      done: { to: ended }
+root: main
+states:
+  main:
+    on:
+      go:
+        - target: sub
+  ended:
+    terminal: true
+`)
+
+	// Load is the load-bearing assertion: without the rewrite branch this
+	// returns an "unknown agent guide" ValidationError from walkOffRampAgents.
+	def, err := Load(filepath.Join(parentDir, "app.yaml"))
+	require.NoError(t, err)
+
+	// The child's `desk` folds under the `sub` alias wrapper.
+	desk := def.States["sub"].States["desk"]
+	require.NotNil(t, desk, "child desk should fold under alias `sub`; got %v", keysOf(def.States["sub"].States))
+	require.NotNil(t, desk.AgentOffRamp, "folded desk keeps its off-ramp")
+	require.Equal(t, "sub__guide", desk.AgentOffRamp.Agent,
+		"off-ramp agent must be alias-prefixed after fold")
+	require.Contains(t, def.Agents, "sub__guide",
+		"the renamed agent must exist in the folded top-level agents: map")
 }
 
 func mkdirT(t *testing.T, parts ...string) string {

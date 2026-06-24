@@ -1,0 +1,169 @@
+# tour_triage_to_bugfix — the no-LLM driver for the dev-story
+# "bug triage → autonomous bugfix pipeline" tour demo video.
+#
+# Posture: this fixture is consumed by `kitsoki web --flow` (see the
+# kitsoki-ui-demo skill). In that posture the browser submits intents
+# explicitly and every host.* call is stubbed from `host_handlers`
+# below, so the recording is deterministic and free.
+#
+# The `turns:` block doubles as a Mode-2 proof that the whole path is
+# real and the stubs cover every host call along it:
+#
+#   main          --go_ticket_search-->  ticket_search   (open the triage queue)
+#   ticket_search --pick_ticket-------->  ticket_search    (pick AA-13268)
+#   ticket_search --go_bugfix---------->  bf.reproducing   (review the triage report)
+#   bf            --bf__accept--------->  bf.proposing     (root-cause + fix proposal)
+#   bf            --bf__accept--------->  bf.implementing  (apply the fix)
+#   bf            --bf__accept--------->  bf.testing       (add + run tests)
+#   bf            --bf__accept--------->  bf.reviewing     (self-review the diff)
+#   bf            --bf__accept--------->  bf.validating    (end-to-end validation)
+#   bf            --bf__accept--------->  bf.done          (close out)
+#   bf            --bf__accept--------->  pr.open_pr       (validated → PR opened)
+#
+# No search detour: ticket_search's on_enter already fetches the queue,
+# so the operator lands looking at the list and picks AA-13268 directly.
+# bf.reproducing produces the reproduction artifact — the triage report
+# the operator reviews before accepting it into the pipeline.
+#
+# judge_mode=human walks one phase per keystroke, so each operator
+# accept advances the pipeline by exactly one visible room on camera.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  # No ticket_id yet — triage picks one. The pipeline carry-fields are
+  # pre-seeded so go_bugfix's world_in projection has everything it needs.
+  workdir:        "testdata/projects/cake"
+  workspace_id:   "ws-cake-bug"
+  base_branch:    "main"
+  feature_branch: "fix/AA-13268"
+  judge_mode:     "human"
+  judge_confidence_threshold: 0.8
+  merge_strategy: "squash"
+
+host_handlers:
+  # ── Triage: the queue fetch returns a fixable candidate (AA-13268) ───────
+  # `search` returns a LIST of ticket objects so the ticket_search table
+  # renders real rows (id / status / severity / title). `get` returns the
+  # picked ticket's human title (bound into ticket_title by pick_ticket).
+  host.local_files.ticket:
+    by_op:
+      search:
+        data:
+          ok: true
+          tickets:
+            - { id: "AA-13268", status: "open",        severity: "P1", title: "Note list disappears after creating a second note" }
+            - { id: "AA-13204", status: "open",        severity: "P2", title: "Toolbar overflows on narrow viewports" }
+            - { id: "AA-13190", status: "in-progress", severity: "P3", title: "Stale tooltip persists after tab switch" }
+      get:
+        data:
+          ok:    true
+          id:    "AA-13268"
+          title: "Note list disappears after creating a second note"
+          body:  "Creating a second note clears the rendered list; the notes still exist on reload."
+          status:   "open"
+          severity: "P1"
+      list_mine:
+        data: { ok: true, tickets: [] }
+      transition:
+        data: { ok: true }
+
+  # ── Pipeline plumbing stubs (git / fs / inbox / local test runner) ───────
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    data: { ok: true, log: "synced", path: "testdata/projects/cake" }
+  host.git:
+    data:
+      ok:     true
+      sha:    "deadbeef"
+      diff:   ""
+      url:    "https://example/pr/AA-13268"
+      pr_id:  "200"
+      state:  "success"
+      checks: ""
+      comments: ""
+      branch: "fix/AA-13268"
+  host.local:
+    data: { ok: true, state: "success", log: "PASS", passed: 4, failed: 0 }
+
+  # ── Agent judge stubs: a confident PASS verdict at every checkpoint ─────
+  host.agent.task: &judge
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Note list disappears — defer state mutation"
+        summary_markdown: "Stub bugfix artifact body; deterministic across rooms."
+        bug_verified:     true
+        steps:            ["create alpha", "create beta", "list re-renders empty"]
+        involved_components:
+          - { name: "frontend/src/NotesList.tsx", reason: "list state mutation" }
+        environment_check:
+          frontend_running: true
+          backend_running:  true
+          dataset_ready:    true
+        fix_description:  "Replace the in-place splice with a new array on add."
+        root_cause:       "The list re-render reuses the same array reference."
+        affected_files:   ["frontend/src/NotesList.tsx"]
+        confidence:       0.95
+        reasoning:        "Trace shows the array identity unchanged; React's diff bails out."
+        status:           "passed"
+        tests_added:      ["frontend/src/NotesList.test.tsx"]
+        tests_run:        { passed: 4, failed: 0, log: "PASS 4 tests" }
+        outcome:          "pass"
+        evidence:         { build: "ok", api: "n/a", ui: "list shows both notes" }
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "Stub LLM verdict: pass."
+  host.agent.ask: *judge
+  host.agent.decide: *judge
+
+turns:
+  # ── Triage: open the queue, pick AA-13268 directly (no search detour) ─────
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+
+  - intent: { name: pick_ticket, slots: { id: "AA-13268" } }
+    expect_state: ticket_search
+    expect_world:
+      ticket_id:    "AA-13268"
+      thread:       "AA-13268"
+      ticket_title: "Note list disappears after creating a second note"
+
+  # ── Hand off into the autonomous bugfix pipeline ──────────────────────────
+  # bf.reproducing produces the reproduction artifact — the triage report
+  # the operator reviews before accepting it forward.
+  - intent: { name: go_bugfix, slots: {} }
+    expect_state: bf.reproducing
+    expect_world:
+      bf__ticket_id: "AA-13268"
+
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.proposing
+
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.implementing
+
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.testing
+
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.reviewing
+
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.validating
+
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.done
+
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: pr.open_pr
+    expect_host_calls:
+      - handler: host.local_files.ticket.transition
+        args: { id: "AA-13268", to: "resolved" }
+        times: 1
+
+expect_no_errors: true

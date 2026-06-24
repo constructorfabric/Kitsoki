@@ -24,11 +24,19 @@ type ReloadResult struct {
 	PrevStateExists bool
 }
 
-// Reload re-reads the app YAML at appPath, rebuilds the machine, and
+// Reload re-reads the app definition, rebuilds the machine, and
 // atomically swaps both into the orchestrator. The host registry's
 // allow-list is re-validated against the new definition; if the new
 // app declares hosts the registry can't satisfy, Reload returns an
 // error and leaves the orchestrator untouched.
+//
+// The fresh definition comes from the injected reloader closure
+// (WithReloader) when one is set — this is how a config-synthesized
+// rung-0/1 root re-synthesizes from .kitsoki.yaml on /reload, since it
+// has no app.yaml on disk to re-read. When no reloader is injected,
+// Reload falls back to app.Load(appPath), the historical file-backed
+// path. appPath is ignored when a reloader is set, so a rung-1 edit and
+// a rung-2 edit travel the identical Reload + RerunOnEnter path.
 //
 // Reload does not rebuild the harness. The harness owns its own copy
 // of the app definition (used to build the system prompt); after a
@@ -40,9 +48,18 @@ type ReloadResult struct {
 // OneShot, or ContinueTurn. The TUI guards this by ensuring its
 // edit-mode and turn-in-flight modes are mutually exclusive.
 func (o *Orchestrator) Reload(appPath string, prevState app.StatePath) (*ReloadResult, error) {
-	def, err := app.Load(appPath)
-	if err != nil {
-		return nil, fmt.Errorf("orchestrator.Reload: load %q: %w", appPath, err)
+	var def *app.AppDef
+	var err error
+	if o.reloader != nil {
+		def, err = o.reloader()
+		if err != nil {
+			return nil, fmt.Errorf("orchestrator.Reload: reloader: %w", err)
+		}
+	} else {
+		def, err = app.Load(appPath)
+		if err != nil {
+			return nil, fmt.Errorf("orchestrator.Reload: load %q: %w", appPath, err)
+		}
 	}
 
 	m, err := machine.New(def)
@@ -116,13 +133,13 @@ func hasNestedState(s *app.State, prefix, target string) bool {
 // a TurnOutcome with the freshly rendered view. This is the
 // "/reload" partner of Reload: Reload swaps the app definition, then
 // RerunOnEnter replays the entered state's actions so view-template
-// edits, on_enter additions, or oracle-prompt changes take effect
+// edits, on_enter additions, or agent-prompt changes take effect
 // without the user having to re-type an intent.
 //
 // Caveats by design:
 //
 //   - It re-fires the on_enter chain as-is. If the chain posts to a
-//     transport, calls an oracle, or otherwise has external side
+//     transport, calls an agent, or otherwise has external side
 //     effects, those side effects will repeat. The user explicitly
 //     asked for this ("redo whatever actions") — the trade-off is
 //     spelled out in `/reload`'s slash help.
@@ -206,7 +223,7 @@ func (o *Orchestrator) RerunOnEnter(ctx context.Context, sid app.SessionID) (*Tu
 
 	jEntries := journalEntriesForEvents(sid, turnNum, time.Now(), successEvents,
 		journey.World, currentWorld, view, currentState, "")
-	if appendErr := o.store.AppendEventsAndJournal(sid, successEvents, jEntries); appendErr != nil {
+	if appendErr := o.appendEventsAndJournal(sid, successEvents, jEntries); appendErr != nil {
 		return nil, fmt.Errorf("orchestrator.RerunOnEnter: append events: %w", appendErr)
 	}
 

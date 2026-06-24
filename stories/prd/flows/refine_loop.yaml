@@ -1,0 +1,66 @@
+# refine_loop — refine re-enters drafting, drafting_cycle increments,
+# refine_feedback is set; a second accept exits via @exit:done.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: drafting
+initial_world:
+  idea:          "A CLI for X"
+  workdir:       "."
+  judge_mode:    "human"
+  # Seed the per-PRD workspace minted at the search gate (this flow enters at
+  # drafting directly, bypassing search).
+  prd_slug:      "example-cli"
+  prd_workspace: ".artifacts/prd/example-cli"
+
+host_handlers:
+  # accept publishes the draft out of the workspace into the durable home.
+  host.run:
+    by_call:
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { prd_file: "docs/prd/example-cli.md" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd/example-cli/004-prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        questions: []
+
+turns:
+  # refine self-transitions back to drafting, carrying feedback into the
+  # next draft and bumping both counters.
+  - intent:
+      name: refine
+      slots: { feedback: "add a metrics section" }
+    expect_state: drafting
+    expect_world:
+      drafting_cycle:  1
+      cycle:           1
+      refine_feedback: "add a metrics section"
+
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status:   "done"
+      prd_file: "docs/prd/example-cli.md"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "publish" }
+
+expect_terminal: true
+expect_no_errors: true

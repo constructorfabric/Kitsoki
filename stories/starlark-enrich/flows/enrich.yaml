@@ -1,0 +1,45 @@
+# Happy-path flow for the Starlark enrichment example.
+#
+# It drives the story end-to-end through the orchestrator with the REAL
+# host.starlark.run handler running the on-disk script + sidecar — only the
+# script's single ctx.http GET is replayed, from cassettes/enrich_user.http.yaml
+# via the starlark_http_cassette: seam. No LLM, no network, fully deterministic.
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+initial_world:
+  user_id: 1
+
+# Replay the script's HTTP exchange. This wraps the real handler with a
+# starlark.ReplayClient injected on the context — the production adapter sees a
+# client is already present (HasHTTPClient) and never opens a socket.
+starlark_http_cassette: ../cassettes/enrich_user.http.yaml
+
+turns:
+  # Turn 1: enrich. lobby → profile; the on_enter host.starlark.run call runs
+  # the script, which GETs /users/1 (served from the cassette) and binds the
+  # four derived outputs into world.
+  - intent: { name: enrich, slots: {} }
+    expect_state: profile
+    expect_world:
+      display_name: "Leanne Graham (@Bret)"
+      contact: "Sincere@april.biz · Gwenborough"
+      domain: "hildegard.org"
+      is_complete: true
+    expect_host_calls:
+      - handler: host.starlark.run
+    expect_view_matches: "Leanne Graham"
+
+  # Turn 2: back. Clears the bind targets (re-arming the once: call) and returns
+  # to the lobby.
+  - intent: { name: back, slots: {} }
+    expect_state: lobby
+    expect_world:
+      display_name: ""
+
+  # Turn 3: quit.
+  - intent: { name: quit, slots: {} }
+    expect_state: ended
+
+expect_terminal: true
+expect_no_errors: true

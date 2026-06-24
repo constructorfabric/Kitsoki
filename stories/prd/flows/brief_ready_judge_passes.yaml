@@ -1,0 +1,103 @@
+# brief_ready_judge_passes — the brief quality gate's passing path.
+#
+# In the brief room, `ready` increments brief_cycle (arming the on_enter
+# judge for the first time) and self-transitions (full target) so on_enter
+# re-fires. A `continue` verdict from the judge fires the synthetic
+# `advance_brief` intent via emit_intent → auto-advance to references.
+#
+# The brief already exists on disk (brief_path seeded), so the scaffold is
+# once-guarded and must NOT re-run on the `ready` re-entry — we assert no
+# host.artifacts_dir call during `ready`. The references room's researcher
+# (decide) and author (task) are stubbed so the run can walk to @exit:done.
+#
+# The brief judge and the references researcher are BOTH decide calls; we
+# disambiguate via by_call (brief_check vs the references researcher, which
+# has no id → keyed under the bare handler default).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: brief
+initial_world:
+  judge_mode:        "human"
+  idea:              "A CLI for X that helps developers do Y."
+  workdir:           "."
+  prd_slug:          "example-cli"
+  prd_workspace:     ".artifacts/prd/example-cli"
+  brief_path:        ".artifacts/prd/example-cli/001-brief.md"
+  clarification_log: "── Round 1 ──\nQuestions: who is the user?\nAnswers: platform developers\n\n"
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/out.md", message_id: "out#1" }
+  # accept publishes the draft out of the workspace into the durable home.
+  host.run:
+    by_call:
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { prd_file: "docs/prd/example-cli.md" }
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    by_call:
+      # The brief judge — passes.
+      brief_check:
+        data:
+          ok: true
+          submitted:
+            verdict:   "continue"
+            reason:    "Crisp Why, one-screen What-changes, users and scope are clear."
+            questions: []
+    # Default (no id) → the references room's researcher.
+    data:
+      ok: true
+      submitted:
+        items:
+          - { path: "docs/architecture/auth.md", sections: "Token model", rationale: "the PRD must honour the existing token lifecycle" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  # ready → judge armed (cycle 0→1) → verdict continue → emit_intent
+  # advance_brief → auto-advance to references. The scaffold is once-guarded
+  # (brief_path already set) so it must NOT re-run.
+  - intent: { name: ready, slots: {} }
+    expect_state: references
+    expect_world:
+      brief_cycle: 1
+      brief_decision:
+        verdict:   "continue"
+        reason:    "Crisp Why, one-screen What-changes, users and scope are clear."
+        questions: []
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: "brief_check" }
+    # (The scaffold's once-guard against re-running is asserted in
+    # brief_ready_judge_clarify, which stays IN the brief room so the
+    # references-room write doesn't muddy the host-call ledger.)
+
+  # Confirm references → drafting; the author writes the PRD (stubbed).
+  - intent: { name: confirm, slots: {} }
+    expect_state: drafting
+
+  # Accept → @exit:done.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status:   "done"
+      prd_file: "docs/prd/example-cli.md"
+
+expect_terminal: true
+expect_no_errors: true

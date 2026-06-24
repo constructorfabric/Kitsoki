@@ -169,6 +169,40 @@ func TestCompile_EffectValueExpr(t *testing.T) {
 	require.Equal(t, true, v)
 }
 
+// ─── RenderValue tests ───────────────────────────────────────────────────────
+
+// TestRenderValue_MultiInterpolationIsString pins the bug exposed by the
+// PRD clarifying room's `answer` effect: a set value that string-concats
+// several blocks — "{{ a }}Q{{ b }}: {{ c }}" — begins with "{{" and ends
+// with "}}" but is a TEMPLATE, not a single expression. RenderValue used
+// to strip the outer braces and compile the middle ("a }}Q{{ b }}: {{ c")
+// as one expr, which fails with `unexpected token Bracket("}")`. It must
+// instead render the whole thing to a string.
+func TestRenderValue_MultiInterpolationIsString(t *testing.T) {
+	env := expr.Env{
+		Slots: map[string]any{"n": int64(2), "text": "platform developers"},
+		World: map[string]any{"clarification_answers": "Q1: internal\n"},
+	}
+	got, err := expr.RenderValue("{{ world.clarification_answers }}Q{{ slots.n }}: {{ slots.text }}", env)
+	require.NoError(t, err)
+	require.Equal(t, "Q1: internal\nQ2: platform developers", got)
+}
+
+// TestRenderValue_SingleExprStaysTyped guards that the fix above did not
+// regress the genuine single-expression form, which must still return a
+// TYPED value (int64/bool), not a string.
+func TestRenderValue_SingleExprStaysTyped(t *testing.T) {
+	env := expr.Env{World: map[string]any{"clarifying_cycle": int64(1), "disturbance": int64(3)}}
+
+	got, err := expr.RenderValue("{{ world.clarifying_cycle + 1 }}", env)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, got)
+
+	gotBool, err := expr.RenderValue("{{ world.disturbance > 2 }}", env)
+	require.NoError(t, err)
+	require.Equal(t, true, gotBool)
+}
+
 // ─── Render (template engine) tests ──────────────────────────────────────────
 
 func TestRender_PlainText(t *testing.T) {
@@ -325,14 +359,14 @@ func TestRender_ScalarsKeepFmtVBehavior(t *testing.T) {
 		expr.Env{
 			Slots: map[string]any{},
 			World: map[string]any{
-				"name":  "PROJ-89912",
+				"name":  "PLTFRM-89912",
 				"count": 42,
 				"ok":    true,
 			},
 		},
 	)
 	require.NoError(t, err)
-	require.Equal(t, "PROJ-89912 / 42 / true", out)
+	require.Equal(t, "PLTFRM-89912 / 42 / true", out)
 }
 
 // ─── Menu env + helper builtins (in-view menu rendering) ─────────────────────

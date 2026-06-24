@@ -1,0 +1,50 @@
+# verify_red_on_main — THE trust-the-gate-not-the-agent case. The maker's gate
+# was green in the branch, integrate is clean, but the IDENTICAL gate re-run on
+# the MERGED commit is RED → @exit:needs-human, last_error = the gate tail.
+# A red here means the merge broke main; delivery-tail never ships it.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      # integrate is CLEAN (branch gate was green) …
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "e4f5a6b"
+            last_op_ok:     true
+            last_error:     ""
+      # … but the SAME gate re-run on the MERGED commit is RED.
+      verify-rerun:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: "--- FAIL: TestAllow_Burst (0.00s)\n    bucket drained one token early after merge"
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:            needs-human
+      integrate_outcome: integrated
+      verify_ok:         false
+      shipped_sha:       ""     # NEVER set on a red re-verify
+    expect_world_final:
+      status: needs-human
+
+expect_terminal: true
+expect_no_errors: true

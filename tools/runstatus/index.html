@@ -3,10 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Kitsoki mesa-sun favicon, inlined as a data URI: the SPA is built as a
+         single go:embed'd file (vite-plugin-singlefile), so an external
+         /favicon.svg reference would not be served. Source of truth:
+         docs/branding/assets/mesa-sun-simple.svg (the small-size glyph). -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%20width%3D%22100%22%20height%3D%22100%22%20role%3D%22img%22%20aria-label%3D%22Kitsoki%20mesa%20sun%20%28simplified%29%22%3E%20%3Ccircle%20cx%3D%2250%22%20cy%3D%2232%22%20r%3D%2218%22%20fill%3D%22%23e0a23a%22%2F%3E%20%3Cg%20stroke%3D%22%23e0a23a%22%20stroke-width%3D%226%22%20stroke-linecap%3D%22round%22%3E%20%3Cline%20x1%3D%2278%22%20y1%3D%2232%22%20x2%3D%2271%22%20y2%3D%2232%22%2F%3E%20%3Cline%20x1%3D%2270%22%20y1%3D%2212%22%20x2%3D%2265%22%20y2%3D%2217%22%2F%3E%20%3Cline%20x1%3D%2250%22%20y1%3D%224%22%20x2%3D%2250%22%20y2%3D%2211%22%2F%3E%20%3Cline%20x1%3D%2230%22%20y1%3D%2212%22%20x2%3D%2235%22%20y2%3D%2217%22%2F%3E%20%3Cline%20x1%3D%2222%22%20y1%3D%2232%22%20x2%3D%2229%22%20y2%3D%2232%22%2F%3E%20%3C%2Fg%3E%20%3Cpath%20d%3D%22M8%2084%20L8%2074%20L36%2074%20L36%2059%20L64%2059%20L64%2074%20L92%2074%20L92%2084%20Z%22%20fill%3D%22%23a8492b%22%2F%3E%20%3Crect%20x%3D%228%22%20y%3D%2284%22%20width%3D%2284%22%20height%3D%228%22%20fill%3D%22%237d2e1c%22%2F%3E%20%3C%2Fsvg%3E" />
     <title>Kitsoki Run Status</title>
+    <!-- Kitsoki "Mesa Sun" mark (docs/branding/logo.md, mesa-sun-simple.svg).
+         Inlined as an SVG data URI so it survives vite-plugin-singlefile's
+         single-file bundle and ships inside index.html — the Go web server
+         (internal/runstatus/server) only routes "/" and "/rpc/*", so an
+         external /favicon.svg would 404. -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ccircle%20cx='50'%20cy='32'%20r='18'%20fill='%23e0a23a'/%3E%3Cg%20stroke='%23e0a23a'%20stroke-width='6'%20stroke-linecap='round'%3E%3Cline%20x1='78'%20y1='32'%20x2='71'%20y2='32'/%3E%3Cline%20x1='70'%20y1='12'%20x2='65'%20y2='17'/%3E%3Cline%20x1='50'%20y1='4'%20x2='50'%20y2='11'/%3E%3Cline%20x1='30'%20y1='12'%20x2='35'%20y2='17'/%3E%3Cline%20x1='22'%20y1='32'%20x2='29'%20y2='32'/%3E%3C/g%3E%3Cpath%20d='M8%2084%20L8%2074%20L36%2074%20L36%2059%20L64%2059%20L64%2074%20L92%2074%20L92%2084%20Z'%20fill='%23a8492b'/%3E%3Crect%20x='8'%20y='84'%20width='84'%20height='8'%20fill='%237d2e1c'/%3E%3C/svg%3E"
+    />
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+      body { font-family: system-ui, sans-serif; background: var(--k-bg, #0f172a); color: var(--k-fg, #e2e8f0); }
     </style>
   </head>
   <body>

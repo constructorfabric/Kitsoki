@@ -1,0 +1,43 @@
+# staged_needs_update — same needs_update verdict as happy_needs_update,
+# but run in STAGED execution mode (execution-modes proposal). Instead of
+# collapsing idle → reviewing → reviewed → fixing → fixed in one turn, the
+# engine STOPS at `reviewed` because it is a multi-way decision gate
+# (review_again is an operator-only forward intent). The operator then
+# explicitly picks fix_docs to apply the fixes.
+#
+# This is the end-to-end counterpart to the one-shot happy_needs_update
+# flow and the orchestrator-level TestExecutionMode_* unit tests.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+mode: staged
+
+host_cassette: cassettes/needs_update.cassette.yaml
+
+turns:
+  # start runs reviewing's on_enter (host.run + agent.decide +
+  # artifacts_dir), auto-advances reviewing → reviewed (single forward
+  # intent), then STOPS at reviewed — the fix_docs auto-advance is
+  # suppressed because reviewed is a decision gate in staged mode.
+  - intent: { name: start, slots: {} }
+    expect_state: reviewed
+    expect_world:
+      commit_sha:       "deadbeefcafefeed"
+      verdict_decision: "needs_update"
+
+  # The operator explicitly applies the fixes. fixing is NOT a decision
+  # gate (fix_done is its only forward intent and is an emit target), so
+  # it auto-advances fixing → fixed even in staged mode.
+  - intent: { name: fix_docs, slots: {} }
+    expect_state: fixed
+    expect_world:
+      fix_summary: "Patched docs/hosts.md by appending a host.bar row to the registry table at lines 80-92."
+
+  # quit cleanly exits.
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__done
+
+expect_terminal: true
+expect_no_errors: true

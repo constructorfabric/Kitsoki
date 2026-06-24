@@ -1,0 +1,374 @@
+# prd — PRD-authoring operator story.
+#
+# A pipeline-shaped story that turns a free-form idea (plus any existing
+# upstream requirement docs) into a PRD markdown document, with a dynamic
+# clarification step and an iterative refine loop. Structurally identical
+# to stories/bugfix/ and stories/dev-story/; the novelty is the *document*
+# artifact and the multi-round clarification transcript.
+#
+# Graph (six rooms, two exits):
+#
+#   idle ─start─▶ search ─confirm─▶ clarifying ─submit/skip─▶ brief ─confirm─▶ references ─confirm─▶ drafting
+#     │ (chat)       │ (scout →       │ (decide → questions)    │ (001-       │ (decide →           │ (task → 004-prd.md;
+#     │ ◀─discuss    │  overlap gate; │ ◀─answer n=… (self)     │  brief.md)  │  003-references.md) │  accept publishes to
+#     │              │  mints slug +  ├─regenerate ─▶ clarifying ├─confirm     ├─confirm             │  docs/prd/<slug>.md)
+#     │              │  workspace)    └─quit ─▶ @exit:abandoned  ├─restart_from├─regenerate (budget) ├─accept ─▶ @exit:done
+#     │              ├─change_existing/override_new ─▶ clarifying └─quit       ├─restart_from        ├─refine ─▶ drafting (budget→abandoned)
+#     │              ├─regenerate (re-scout) / quit                    ▲       └── clarify ──────────┤
+#     └─quit ─▶ @exit:abandoned                                        └────────────────────────────┤
+#                                                                                                    └─ quit ─▶ @exit:abandoned
+#
+# search is the prior-art gate (the dev-story design_search analogue): a
+# read-only scout runs BEFORE any artifact is written, so a duplicate idea
+# is caught early. Committing (confirm / change_existing / override_new)
+# runs scripts/prd_slug.py to mint a unique per-PRD slug + workspace
+# (.artifacts/prd/<slug>); every numbered artifact writes under it, and
+# accept publishes the draft out via scripts/prd_publish.py to
+# docs/prd/<slug>.md. brief + references are confirm-gated review rooms
+# inserted before the PRD is written. brief composes world.idea (idle) and
+# world.clarification_log (clarifying) into <workspace>/001-brief.md
+# deterministically (no LLM synthesis), then a brief_check gate decides
+# continue/clarify. references runs the `researcher` (decide, docs-only) →
+# a curated reference list written to <workspace>/003-references.md that
+# the author reads when drafting. drafting is the checkpoint room — same
+# shape as every bugfix phase. The clarify arc
+# closes a multi-round clarification loop: each round *appends* to
+# world.clarification_log rather than overwriting it (see
+# rooms/clarifying.yaml). clarifying_budget caps the number of rounds.
+#
+# No engine / widget changes — everything composes existing mechanisms
+# (choice forms, host.agent.*, host.artifacts_dir, host.run for the
+# deterministic slug/publish glue, the cycle-budget refine loop, named
+# agents, tracing). See README.md for the full
+# contract + design.
+
+app:
+  id: prd
+  version: 0.1.0
+  title: "PRD authoring"
+  author: "Kitsoki"
+  license: "CC0"
+
+# Host allow-list. The intake room is a conversation (converse + a
+# persistent chat); clarifying/references use decide, drafting uses task.
+# brief + references persist their artifacts via host.artifacts_dir. v1
+# does not post the finished PRD anywhere out-of-band (optional, trivial
+# to add as an effect on the accept arc later).
+hosts:
+  - host.agent.converse
+  - host.agent.decide
+  - host.agent.task
+  - host.chat.resolve     # get-or-create the discovery chat; idempotent across on_enter re-fires (e.g. /reload). NOT host.chat.create — see rooms/idle.yaml.
+  - host.artifacts_dir    # write the brief + reference-list artifacts into the per-PRD workspace under {{ workdir }}/.artifacts/prd/<slug> — see rooms/brief.yaml, rooms/references.yaml.
+  - host.ide.open_file    # open the editable brief in the operator's editor on brief-room entry — see rooms/brief.yaml.
+  - host.ide.open_diff    # show a refine as a native diff with an in-editor accept/reject verdict gate — see rooms/drafting.yaml.
+  - host.run              # deterministic glue scripts: mint the per-PRD workspace slug (scripts/prd_slug.py, search room) and publish the accepted PRD to its durable home (scripts/prd_publish.py, drafting room).
+  - host.agent.search    # OPTIONAL semantic pre-seed for the references room: embeds the idea and retrieves close docs chunks to pre-rank the researcher (see rooms/references.yaml). Fails cleanly (on_error stays in references) when no embedding endpoint is configured.
+
+# Persona table — names a model + tool surface per step so the trace
+# attributes model + token usage to each step.
+#
+#   interviewer — converse; read-only; runs the idea-discovery chat.
+#   analyst     — decide;   read-only; generates the clarifying questions.
+#   researcher  — decide;   read-only; curates the doc reference list.
+#   author      — task;     may write the PRD to disk; produces prd_artifact.
+#   judge       — decide;    no tools; the optional auto-advance gate.
+agents:
+  interviewer:
+    system_prompt: "You are a product analyst running a discovery conversation to develop a raw idea into something a PRD can be written from. Default to reflecting back what you heard, NOT to interrogating — ask a question ONLY when an answer is genuinely necessary to write the PRD (an unresolved gap in the problem, the users, or the scope that would actually change the document). If the idea is already clear enough to draft from, say so and invite the user to say 'ready' instead of inventing another question. Never ask for detail that is nice-to-have, already answered, or that the drafting/research steps can reasonably assume. Ask at most one question per reply, and prefer zero. When the user points at existing docs or code, read them. Keep each reply short — a sentence or two."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  analyst:
+    system_prompt: "You are a product analyst. Read the user's idea and any upstream requirement docs, then surface the smallest set of genuinely-new clarifying questions needed to write a solid PRD."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  # scout — decide; read-only; the prior-art gate (search room). Reads the
+  # distilled idea (and any upstream docs) and scans the docs tree for an
+  # existing PRD / requirement doc the idea overlaps, so a duplicate is caught
+  # BEFORE the expensive clarification + reference + draft work runs.
+  scout:
+    system_prompt: "You are a product analyst scouting for prior art. Read the idea and any upstream docs, then search the working directory's DOCUMENTATION — PRDs, requirement docs, design notes, READMEs, feature docs — for work the idea duplicates, extends, or conflicts with. Recommend amending an existing doc whenever the overlap is substantial. A genuinely new idea returns an empty overlap list."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  researcher:
+    system_prompt: "You are a product analyst curating the reference materials for a PRD. Read the idea and the clarification transcript, then search the working directory's DOCUMENTATION — requirement docs, specs, design notes, READMEs, ADRs — for prior art, constraints, and standards the PRD must honour. This is a PRD, not an implementation: do NOT cite source code. For each reference give the path, the specific section(s) that matter, and a one-line rationale. Prefer a short, high-signal list over an exhaustive dump."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  author:
+    system_prompt: "You are a product manager authoring a PRD. Read the idea, the upstream docs, the clarification transcript, and the curated reference list, then write a complete, well-structured PRD markdown document to disk."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Write, Edit]
+    external_side_effect: false
+
+  judge:
+    system_prompt: "You are a quality gate for PRDs. Evaluate the draft against the stated criteria and emit a structured verdict: accept, refine, clarify, or uncertain."
+    model: claude-sonnet-4-6
+    tools: []
+
+  # brief_judge — decide; read-only; the brief-room quality gate. Reads the
+  # operator-editable brief from disk (after `ready` arms it) and emits a
+  # continue|clarify verdict; a `continue` auto-advances to references.
+  brief_judge:
+    system_prompt: "You are a brief reviewer sanity-checking a PRD brief an operator has just filled in. Read the brief from disk and decide whether it has enough signal to proceed (a crisp Why, a one-screen What-changes, and obvious users/scope/success criteria) or whether it needs clarification. When it needs work, return the smallest set of specific clarifying questions."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+  # answer_matcher — decide; no tools; the clarifying room's free-text answer
+  # router. Reads the question list + the operator's latest reply and reports
+  # which question(s) it answers (by 1-based position), so a number-less,
+  # out-of-order answer still lands on the right question. Returns only the
+  # delta for that reply; the room concatenates it onto the running transcript.
+  # See rooms/clarifying.yaml `answer` arc, prompts/match_answer.md.
+  answer_matcher:
+    system_prompt: "You map an operator's free-text reply to the clarifying question(s) it answers. Match on meaning, not position; a reply may answer several questions or none. Return only the questions this reply newly resolves."
+    model: claude-sonnet-4-6
+    tools: []
+    external_side_effect: false
+
+# World — every key read in a view, effect, or guard is declared here.
+world:
+  # ── intake ──────────────────────────────────────────────────────────
+  idea:            { type: string, default: "" }   # the distilled pitch (set when discovery ends)
+  upstream_paths:  { type: string, default: "" }   # space/comma-separated files or dirs
+  workdir:         { type: string, default: "." }  # where upstream lives + PRD is written
+  # The author writes the draft INTO the per-PRD workspace (004-prd.md under
+  # prd_workspace) rather than a fixed .artifacts/prd.md — drafting.yaml
+  # composes the real output_path from prd_workspace at on_enter. This default
+  # is only the standalone fallback used before a workspace is minted (e.g. a
+  # flow that seeds initial_state=drafting directly). Relative to workdir.
+  output_path:     { type: string, default: ".artifacts/prd.md" }
+
+  # ── per-PRD workspace + publish (see scripts/prd_slug.py, prd_publish.py) ─
+  # The search gate mints a slug from the distilled idea (prd_slug.py — a
+  # deterministic kebab reduction, uniquified) so two PRDs authored in the
+  # same tree never collide. Every artifact then lands under the per-PRD
+  # workspace with a numbered spine (001-brief, 003-references, 004-prd.md),
+  # and accept PUBLISHES the draft out of the gitignored workspace into a
+  # durable docs home (prd_publish.py).
+  prd_slug:             { type: string, default: "" }   # kebab slug minted at the search gate (prd_slug.py)
+  prd_workspace:        { type: string, default: "" }   # per-PRD workspace, relative to workdir: .artifacts/prd/<slug> (empty until the gate mints it)
+  prd_file:             { type: string, default: "" }   # durable published path bound on accept (prd_publish.py) — the real deliverable, out of .artifacts/
+  publish_durable_path: { type: string, default: "docs/prd" }  # configurable durable home the accepted PRD is published into (relative to workdir)
+  prd_doc_filename:     { type: string, default: "" }   # external-target override: a FIXED published filename (e.g. "PRD" → <durable>/PRD.md) instead of <slug>.md; "" keeps the slug-named default. Set by an instance (gears-rust) via the dev-story prd import world_in.
+
+  # ── discovery chat (idle room) ───────────────────────────────────────
+  idea_chat_id:    { type: string, default: "" }   # persistent chat thread for the discovery conversation
+  idea_chat_title: { type: string, default: "" }
+  idea_message:    { type: string, default: "" }   # operator's latest message this turn
+  idea_answer:     { type: string, default: "" }   # interviewer's latest reply
+  idea_session_id: { type: string, default: "" }   # claude session id (resume across turns)
+  idea_turns:      { type: int,    default: 0 }
+
+  # ── prior-art gate (search room — see rooms/search.yaml) ─────────────
+  prd_existing_state:   { type: object, default: {} }   # scout result: { overlaps: [{ path, kind, summary, recommendation }], roadmap_fit } — empty overlaps ⇒ no prior art, confirm proceeds cleanly.
+  prd_overlap_decision: { type: string, default: "" }   # "" | new | change_existing — what the operator chose at the gate (audit trail).
+  prd_change_target:    { type: string, default: "" }   # path of the existing PRD to amend when prd_overlap_decision == change_existing (captured for the downstream workspace work — Gap #4).
+
+  # ── clarification (accumulates across rounds — see rooms/clarifying.yaml) ─
+  clarifications:        { type: object, default: {} }  # decide result for THIS round: { questions: [{id, question, why}] }
+  clarification_answers: { type: string, default: "" }  # operator's replies for THIS round — accumulates one line per answered question (see rooms/clarifying.yaml `answer`)
+  answered_count:        { type: int,    default: 0 }   # how many questions answered THIS round (drives the "Answered so far (N/total)" readout); reset on every new round
+  answered_ids:          { type: string, default: "" }  # which question numbers are answered THIS round, as a "|n|"-delimited set (e.g. "|1||3|") — drives removing answered questions from the live list; reset alongside answered_count
+  clarification_log:     { type: string, default: "" }  # growing transcript of every prior round's Q&A
+
+  # ── brief + references (review rooms before drafting) ────────────────
+  brief_path:       { type: string, default: "" }   # path the brief artifact was written to (.artifacts/prd_brief.md)
+  brief_cycle:      { type: int,    default: 0 }     # brief quality-check rounds: 0 ⇒ judge not yet armed (first entry); `ready` increments it so the on_enter judge fires. Each `ready` adds one attempt.
+  brief_decision:   { type: object, default: {} }   # brief judge result: { verdict: continue|clarify, reason, questions: [] } — verdict==continue auto-advances to references via emit_intent.
+  references:       { type: object, default: {} }   # researcher result: { items: [{ path, sections, rationale }] }
+  references_prev:  { type: object, default: {} }   # snapshot of `references` taken on a `refine` so the researcher can revise it in place: `refine` clears `references` to re-arm the on_enter `once:`, so the prompt reads `current_references` from this snapshot, not the (now-cleared) live key. `regenerate` (fresh search) needs no snapshot.
+  references_path:  { type: string, default: "" }   # path the reference-list artifact was written to (.artifacts/prd_references.md)
+  references_cycle: { type: int,    default: 0 }    # references re-search rounds consumed; caps via references_budget
+  references_budget: { type: int,   default: 3 }    # max references regenerations before regenerate abandons
+  references_revise: { type: bool,  default: false } # true on a `refine` (revise the current list in place); false on a fresh `regenerate` search — steers prompts/references.md
+  reference_hits:    { type: list, default: [] }     # OPTIONAL semantic pre-seed (host.agent.search → the `hits` array): [{ path, score, chunk_id, text }]. Bound in the references_seed room. Empty when embeddings are unconfigured (on_error fallback) — the researcher then scans from scratch. Pre-ranks the researcher's reading (prompts/references.md).
+
+  # ── draft + refine ──────────────────────────────────────────────────
+  prd_artifact:    { type: object, default: {} }   # task result: { title, summary_markdown, file_path, confidence, needs_clarification, follow_up_questions }
+  # IDE editor-mirror state (rooms/drafting.yaml). prd_draft_doc is the absolute
+  # path host.artifacts_dir wrote the PRD to (opened via host.ide.open_file);
+  # prd_stage_*/prd_diff_verdict back the refine→diff→verdict gate. Declared so a
+  # machine-time template (e.g. prd_stage_artifact.title) resolves to nil
+  # gracefully before the binding host call has run.
+  prd_draft_doc:      { type: string, default: "" }
+  prd_stage_doc:      { type: string, default: "" }
+  prd_stage_artifact: { type: object, default: {} }
+  prd_diff_verdict:   { type: string, default: "" }
+  refine_feedback: { type: string, default: "" }
+  refine_message:  { type: string, default: "" }   # the operator's last refine/clarify instruction, echoed back in the references + drafting views ("You asked: …") so a refine turn visibly acknowledges what was asked. Set on the refine/clarify arcs, cleared on clean exits.
+
+  # ── cycle counters / budgets ────────────────────────────────────────
+  cycle:             { type: int, default: 0 }     # global audit counter
+  clarifying_cycle:  { type: int, default: 0 }
+  clarifying_budget: { type: int, default: 3 }
+  drafting_cycle:    { type: int, default: 0 }
+  drafting_budget:   { type: int, default: 5 }
+
+  # ── checkpoint / judge / exit ───────────────────────────────────────
+  judge_mode:                 { type: string, default: "human" }  # human | llm | llm_then_human
+  judge_confidence_threshold: { type: float,  default: 0.8 }
+  llm_verdict:     { type: object, default: {} }   # { verdict, intent, reason, confidence }
+  abandon_reason:  { type: string, default: "" }
+  status:          { type: string, default: "" }
+  thread:          { type: string, default: "" }   # held for an optional future transport.post
+  # Set AUTOMATICALLY by the runtime to the failing host call's error
+  # message whenever an on_enter `invoke:` fails and its `on_error:` arc
+  # fires (see internal/orchestrator/host_dispatch.go). Each room's view
+  # renders a ⚠ warning from it so an error bounce is never silent, and
+  # the on_error arcs route to the IMMEDIATELY-previous stage (not all the
+  # way back to idle) so the operator keeps their place. Successful arcs
+  # clear it back to "" so a stale error never leaks into the next room's
+  # view; quit arcs leave the abandon trail in abandon_reason instead.
+  last_error:      { type: string, default: "" }
+
+# Intent vocabulary.
+intents:
+  discuss:
+    description: "Send a message in the idea-discovery conversation."
+    examples: ["i want to build", "the idea is", "it's for", "tell me more", "here's what i'm thinking"]
+    priority: 40
+    slots:
+      # required: true forces the semantic router to fall through to the
+      # LLM router so the operator's free-text message is captured whole
+      # rather than parsed as a command.
+      message: { type: string, required: true }
+  capture_existing:
+    description: "Point me at docs or code to read during discovery — they get passed to the reference researcher."
+    examples: ["see docs/auth.md", "read stories/bugfix/", "check ARCHITECTURE.md", "look at the auth spec"]
+    priority: 35
+    slots:
+      paths: { type: string, required: true }   # file(s)/dir(s) the operator named mid-chat; recorded into upstream_paths
+  start:
+    # title sets the web action-button label (InputBar falls back to the raw
+    # intent name otherwise). idle's prose tells the operator to say "ready",
+    # so label the button to match — the intent key stays `start`.
+    title: "ready"
+    description: "Done discussing — distill the idea and move on to clarifying questions."
+    examples: ["ready", "i'm ready", "build the prd", "draft it", "let's go", "done discussing", "start"]
+    priority: 90
+  answer:
+    description: "Record an answer to a clarifying question; stays on the clarifying screen so you can work through the rest one at a time."
+    examples: ["platform developers", "time-to-first-PRD under 10 min", "no hard deadline", "internal tooling is out of scope"]
+    priority: 75
+    slots:
+      # `text` is the sole REQUIRED slot, which makes `answer` eligible as
+      # the clarifying room's `default_intent` (the free-text sink — see
+      # rooms/clarifying.yaml + docs/architecture/semantic-routing.md §1.5):
+      # any bare prose the operator types in the clarifying room routes here
+      # DETERMINISTICALLY (tier 4, before the LLM), filling `text` with the
+      # whole utterance. This closes the routing trap where a number-less
+      # answer fell through to the LLM and got mis-classified as
+      # `submit_answers` (whose optional `answers` slot greedily swallowed
+      # it, skipping the entire clarifying phase).
+      #
+      # `n` is OPTIONAL: free-text answers omit it. The `answer` arc hands
+      # the whole reply (`text`) to the answer_matcher agent, which reads the
+      # question list and decides which question(s) the reply answers — so an
+      # out-of-order, number-less answer still lands on the right question
+      # (see rooms/clarifying.yaml + prompts/match_answer.md). `n`, when an
+      # operator does name a number, is passed to the matcher as a hint.
+      # Making `n` required again would re-open the trap AND disqualify
+      # `answer` as the default_intent (which demands exactly one required
+      # string slot).
+      n:    { type: int,    required: false }  # optional question-number hint passed to the matcher
+      text: { type: string, required: true }   # the operator's reply (the whole utterance, when routed via default_intent)
+  submit_answers:
+    description: "Done answering this round — advance to the brief review with the answers gathered so far."
+    examples: ["submit", "done answering", "that's all", "draft it now"]
+    priority: 80
+    # No slots — `submit_answers` is a pure verb. The clarifying loop
+    # accumulates answers via `answer` (the free-text sink, LLM-matched), so
+    # submit carries no payload. A string slot here would (a) make submit a
+    # spurious "text intent" in the web composer — competing with `answer` to
+    # receive typed prose, the exact mis-route that sent a single answer
+    # straight to the brief — and (b) re-open the swallow-the-utterance trap.
+    # The operator submits with the explicit `submit` button / verb.
+  skip:
+    description: "Skip answering this round; move on to the brief with what we have."
+    examples: [skip, "no more questions", "just draft", "go ahead"]
+    priority: 60
+  ready:
+    description: "The brief is filled in — run the brief quality check (arms the judge; a passing brief auto-advances to references)."
+    examples: ["ready", "check the brief", "run the quality check", "is the brief good?", "review the brief"]
+    priority: 78
+  advance_brief:
+    description: "Synthetic — emitted by the brief judge on a `continue` verdict to auto-advance to the reference list. Not operator-typed."
+    priority: 5
+  seeded:
+    description: "Synthetic — emitted by the references_seed room after the optional semantic pre-seed runs, to advance to the references checkpoint. Not operator-typed."
+    priority: 5
+  change_existing:
+    description: "At the prior-art gate, amend an existing PRD instead of creating a new one — captures the path of the doc to amend."
+    examples: [amend, "use existing", "continue the existing one", "fold it in"]
+    priority: 85
+    slots:
+      target: { type: string, required: true }   # path to the existing PRD / doc to amend
+  override_new:
+    description: "At the prior-art gate, create a NEW PRD despite a detected overlap (discouraged)."
+    examples: [override, "create anyway", "new anyway", "start fresh"]
+    priority: 65
+  confirm:
+    description: "Confirm the current review step (the brief, or the reference list) and move on to the next phase."
+    examples: ["confirm", "proceed", "yes proceed", "looks right", "the brief is good", "references look good", "continue to the next step"]
+    priority: 82
+  regenerate:
+    description: "Re-generate the current step's machine output (clarification questions, or the reference list), optionally with feedback."
+    examples: [regenerate, "different questions", "ask again", "redo questions", "search again", "redo the references", "find different references"]
+    priority: 65
+    slots:
+      feedback: { type: string, required: false }
+  accept:
+    description: "Accept the PRD draft and finish."
+    examples: ["accept", "approve", "looks good", "lgtm", "ship it", "done"]
+    priority: 85
+  refine:
+    description: "Refine with feedback, building on the current artifact (NOT a fresh start): in drafting, re-draft the PRD with the same inputs; in references, revise the current reference list — keep what applies and add/drop/re-scope per the instruction."
+    examples: [refine, rework, redo, revise, "add a reference", "drop that doc", "also cite", "re-scope that section"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: true }
+  clarify:
+    description: "Go back for another round of clarification questions, KEEPING the answers so far — the analyst refines/combines the prior questions and asks only what's still missing (does NOT discard the record; that's restart_from clarifying)."
+    examples: [clarify, "more questions", "ask me more", "need more input", "refine the questions", "tweak the questions"]
+    priority: 68
+  restart_from:
+    description: "Restart from an earlier stage: idle (re-pitch, wipes the clarification log) or clarifying (re-question)."
+    examples: [restart_from, restart, "start over"]
+    priority: 60
+    slots:
+      stage: { type: string, required: false }
+  quit:
+    description: "Abandon PRD authoring."
+    examples: [quit, abort, bail, cancel]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: [look, "what now?"]
+    priority: 10
+
+# Intents lifted into a parent story's table when prd is imported.
+exports:
+  intents: [discuss, capture_existing, start, change_existing, override_new, answer, submit_answers, skip, ready, advance_brief, seeded, confirm, regenerate, accept, refine, clarify, restart_from, quit, look]
+
+# Named return points. Standalone load synthesises __exit__done /
+# __exit__abandoned terminals.
+exits:
+  done:
+    description: "PRD accepted; prd_artifact is final."
+    requires: [prd_artifact]
+  abandoned:
+    description: "Operator or LLM bailed."
+
+root: idle
+
+include:
+  - rooms/*.yaml

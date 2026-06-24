@@ -1,5 +1,5 @@
-// Integration tests for the Phase-7 turn-cache wiring (semantic-routing
-// proposal §2.2, §5.4, §7).
+// Integration tests for the Phase-7 turn-cache wiring (see
+// docs/architecture/semantic-routing.md "Turn cache").
 //
 // Race note: these tests deliberately do NOT call t.Parallel. The
 // machine package owns a package-level `eventSeq` counter (see
@@ -145,7 +145,7 @@ func TestCache_FirstTurnLLM_SecondTurnCache(t *testing.T) {
 		"second identical turn must hit the cache, not the LLM")
 }
 
-// TestCache_DifferentStatePath_IsMiss pins the §5.5 worked example:
+// TestCache_DifferentStatePath_IsMiss pins the worked example:
 // a cached row at state A must not serve a turn at state B with the
 // same input.
 func TestCache_DifferentStatePath_IsMiss(t *testing.T) {
@@ -190,7 +190,7 @@ func TestCache_DifferentStatePath_IsMiss(t *testing.T) {
 }
 
 // TestCache_SQLite_StrikesEvictAfterRevalidateFails exercises the
-// §7.2 strike-out path: a cached row that re-validates against a
+// strike-out path: a cached row that re-validates against a
 // machine whose allowed-intent list has shifted is struck three
 // times, then evicted. We can't easily mutate the machine
 // definition mid-test, so we drive the strike count up directly via
@@ -231,8 +231,8 @@ func TestCache_SQLite_StrikesEvictAfterRevalidateFails(t *testing.T) {
 	require.False(t, found, "row must be absent after eviction")
 }
 
-// TestCache_AppHashInvalidationAtSessionStart confirms the §7.1
-// behaviour the orchestrator owns: opening a session for an app
+// TestCache_AppHashInvalidationAtSessionStart confirms the
+// session-start invalidation behaviour the orchestrator owns: opening a session for an app
 // whose hash has changed wipes the stale rows on first cache use.
 //
 // Because the orchestrator's session-start sweep fires on first

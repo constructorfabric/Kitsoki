@@ -4,7 +4,7 @@ package main
 //
 // All tests are deterministic (no LLM, no real sessions). They build an
 // in-memory SQLite journal directly, write host.invoked + host.returned
-// entries for host.oracle.extract calls, then exercise runExtractSuggestSynonym
+// entries for host.agent.extract calls, then exercise runExtractSuggestSynonym
 // via execRoot or the inner helper.
 //
 // Patterns follow session_continue_journal_test.go and the journal sqlite_test.go
@@ -25,7 +25,7 @@ import (
 )
 
 // appendExtractPair writes a matching host.invoked + host.returned pair for a
-// host.oracle.extract call into the journal.
+// host.agent.extract call into the journal.
 func appendExtractPair(
 	t *testing.T,
 	w journal.Writer,
@@ -45,7 +45,7 @@ func appendExtractPair(
 		"resolvers": resolvers,
 	}
 	invokedBody, err := json.Marshal(map[string]any{
-		"namespace": "host.oracle.extract",
+		"namespace": "host.agent.extract",
 		"args":      callArgs,
 	})
 	if err != nil {
@@ -64,7 +64,7 @@ func appendExtractPair(
 
 	// HostReturned body.
 	returnedBody, err := json.Marshal(map[string]any{
-		"namespace": "host.oracle.extract",
+		"namespace": "host.agent.extract",
 		"data": map[string]any{
 			"submitted":         submitted,
 			"resolved_by":       resolvedBy,
@@ -211,7 +211,7 @@ func TestSuggestSynonym_NoExtractCalls(t *testing.T) {
 	if execErr != nil {
 		t.Fatalf("suggest-synonym: %v\n%s", execErr, out)
 	}
-	if !strings.Contains(out, "No host.oracle.extract calls found") {
+	if !strings.Contains(out, "No host.agent.extract calls found") {
 		t.Errorf("expected no-calls notice; got:\n%s", out)
 	}
 }

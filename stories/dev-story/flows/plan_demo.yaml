@@ -1,0 +1,56 @@
+# plan_demo — the deterministic, no-LLM driver for the ad-hoc structured plan
+# TOUR VIDEO (tools/runstatus/tests/playwright/plan-demo-video.spec.ts).
+#
+# Same propose→accept→apply→verify→plan_done walk as plan_apply_verify_green, but
+# the verify gate's host.starlark.run is STUBBED here (host_handlers) rather than
+# run for real against an inspect cassette. Why: `kitsoki web --flow` (the demo
+# server posture) stubs host.* via host_handlers and does NOT wire the testrunner's
+# starlark_inspect_cassette seam, so the real verify script would call REAL `gh`
+# (non-deterministic, networked) — violating the no-LLM/no-cost demo contract.
+# Stubbing host.starlark.run keeps the demo reproducible and free. The REAL
+# ctx.probe verify script is exercised by plan_apply_verify_green.yaml (testrunner,
+# with the inspect cassette) — that is where the engine capability is proven.
+#
+# This fixture also runs under `kitsoki test flows` as a green-path check.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Created GitHub issues for each file in issues/."
+        details: "Mapped frontmatter to title/body/labels; one issue per file."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+            mutating: true
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 16 }
+            reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+  # The verify gate (host.starlark.run) is stubbed green for the demo — see header.
+  host.starlark.run:
+    data:
+      ok: true
+      reason: "Migration verified: GitHub lists 16 issues for the repo (>= 16 expected)."
+
+turns:
+  - intent: { name: work, slots: { request: "import the issues folder in the repo to github" } }
+    expect_state: landing
+
+  - intent: { name: accept_plan, slots: {} }
+    expect_state: plan_done
+    expect_world:
+      verify_ok: true
+      verify_reason: "Migration verified: GitHub lists 16 issues for the repo (>= 16 expected)."
+      captured: 1
+
+expect_no_errors: true

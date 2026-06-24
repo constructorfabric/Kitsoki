@@ -18,6 +18,8 @@ import (
 // the longest key, and values reflow into the remaining width. Values
 // are pongo2-expanded before alignment so a template like
 // "{{ world.money }}" doesn't push the column.
+//
+// The zero value (nil Pairs) is usable and renders to "".
 type KV struct {
 	Pairs goyaml.MapSlice
 }
@@ -73,6 +75,22 @@ func (kv KV) Render(width int, env expr.Env, rr ViewRenderer) (string, error) {
 		keyCol := r.key + ":" + strings.Repeat(" ", maxKey-visibleLen(r.key))
 		sb.WriteString(keyCol)
 		sb.WriteString(kvSeparator)
+		// Linkify a markdown-artifact value as an OSC 8 terminal hyperlink
+		// — but only the LEAN v1 case: a single-token .md path that already
+		// fits the value column on one line. The escape carries zero visible
+		// width but many bytes, and the reflow below counts bytes, so a path
+		// that would wrap stays plain (and relies on /open). Detecting "fits
+		// and won't wrap" up front keeps the column math byte-identical to
+		// the plain render: when we linkify, the wrapped output is exactly
+		// one line whose visible text is the path itself.
+		linkText := ""
+		if v := strings.TrimSpace(r.value); v == r.value &&
+			!strings.Contains(r.value, "\n") &&
+			visibleLen(r.value) <= valWidth &&
+			isMarkdownPath(r.value) {
+			linkText = osc8Link(r.value, r.value)
+		}
+
 		// Value reflow — preserves any author-authored newlines inside
 		// the value (rare; "{{ world.notes }}" rendering to multi-line
 		// content). Each line is wrapped and continuation lines indent
@@ -84,7 +102,14 @@ func (kv KV) Render(width int, env expr.Env, rr ViewRenderer) (string, error) {
 			subLines := strings.Split(wrapped, "\n")
 			for _, sl := range subLines {
 				if first {
-					sb.WriteString(sl)
+					// linkText is set only when the whole value is this one
+					// fitting line, so emitting it here keeps the visible
+					// text (and every downstream column) unchanged.
+					if linkText != "" {
+						sb.WriteString(linkText)
+					} else {
+						sb.WriteString(sl)
+					}
 					first = false
 				} else {
 					sb.WriteByte('\n')

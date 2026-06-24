@@ -1,28 +1,279 @@
-# docs — STUB. Wave 3 wires `update_inline_docs` / `generate_docs`
-# intents to LLM-driven doc-editing rooms.
+# docs — draft a doc target, review it, publish | revise.
+#
+# Wave 3 fills the former STUB with a real pick target → draft → review →
+# publish | revise loop. This is dev-story's documentation surface: the
+# engineer names a doc target, the writer drafts it (host.agent.task, under the
+# read-only → write-mode opt-in posture), the operator reviews the close-out
+# note and either publishes (announces it out-of-band via iface.transport.post)
+# or revises (re-drafts).
+#
+#   docs (intake) ── draft_doc ──▶ docs_drafting
+#                                    │ on_enter: host.agent.task (write_mode
+#                                    │ read_only) → binds docs_draft
+#                                    ▼
+#                                docs_review  (the close-out note)
+#                                    ├─ publish_doc ▶ docs_publishing ─▶ docs_published ─▶ landing
+#                                    └─ revise_doc  ▶ docs (re-draft)
+#
+# Every host this loop touches is ALREADY in dev-story's allow-list
+# (host.agent.task) or is an iface default (iface.transport.post →
+# host.append_to_file). So the loop is fully no-LLM-gateable: flow fixtures
+# stub the writer task and assert the DETERMINISTIC routing — the draft bind,
+# the publish announcement, the revise re-arm — with no real LLM. See
+# flows/docs_*.yaml.
 
 states:
 
+  # ── Intake ────────────────────────────────────────────────────────
+  # The resting floor of the docs loop. The operator names a doc target (a
+  # package, a feature, a runbook); draft_doc captures it and enters drafting.
+  # Reachable from landing via go_docs; re-entered when the operator revises.
   docs:
-    description: "Docs — write / edit documentation (Wave 3 stub)."
-    # Flattened view (no extends/blocks) — `choice:` cannot live inside a
-    # `blocks:` map (typed metadata is lost through the inheritance
-    # pipeline; see docs/choice-widget.md §3.1). The base.pongo
-    # status/heading chrome is dropped on the standalone path.
+    description: "Docs — name a documentation target to draft."
+    relevant_world: [docs_target, docs_status, last_error]
+
     view:
-      - prose: "Docs (Wave 3 stub)."
+      - banner:
+          text:     "DOCS"
+          subtitle: "name a documentation target to draft"
+          color:    "#8B5CF6"   # violet — the writing surface
+      - prose: "Revising — describe what to change, then re-draft."
+        when: "world.docs_status == 'revising'"
+      - prose: "Name a doc target (e.g. `the inbox host capability`, `the deploy runbook`). The writer drafts it read-only by default — you review the draft, then publish or revise."
+        when: "world.docs_status != 'revising'"
+      - kv:
+          pairs:
+            "Last target": '{{ world.docs_target|default:"(none)" }}'
+            "Status":      '{{ world.docs_status|default:"(none)" }}'
+        when: "world.docs_target != ''"
+      - prose: "⚠ {{ world.last_error }}"
+        when: "world.last_error != ''"
       - choice:
           mode: single
           prompt: "Actions"
           items:
+            - label:  "draft_doc"
+              intent: draft_doc
+              hint:   "draft a doc for a target"
+              param:
+                slot:        target
+                type:        string
+                placeholder: "doc target (e.g. the inbox host capability)…"
+                required:    true
             - { label: "go_back", intent: go_back, hint: "return to the previous room" }
             - { label: "go_main", intent: go_main, hint: "back to the engineer's day landing" }
             - { label: "look",    intent: look,    hint: "re-render" }
-    relevant_world: []
+
     on:
+      draft_doc:
+        - target: docs_drafting
+          effects:
+            # Capture the target; clear the prior draft so the once: guard on
+            # docs_drafting re-arms (a fresh target gets a fresh draft), and
+            # reset the status + error.
+            - set:
+                docs_target: "{{ slots.target }}"
+                docs_draft:  {}
+                docs_status: ""
+                last_error:  ""
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
-        - target: main
+        - target: landing
       look:
         - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Name a doc target with `draft_doc` to draft it."
+
+  # ── Drafting — run the writer ─────────────────────────────────────
+  # Runs the doc writer (host.agent.task) to draft the target. Read-only by
+  # default → write-mode opt-in (the doc write holds for the grant; headless it
+  # stays read-only and reports what it would write). Binds the close-out note
+  # and advances to the review read-out.
+  docs_drafting:
+    description: "Drafting — writing the doc."
+    relevant_world: [docs_target, docs_draft, workdir]
+
+    # Read-only → write-mode opt-in. Valid because the room dispatches an agent
+    # (the on_enter host.agent.task). Mirrors incident_postmortem / applying.
+    write_mode: read_only
+
+    view:
+      - banner:
+          text:     "DRAFTING"
+          subtitle: "writing {{ world.docs_target }} · read-only until you approve the write"
+          color:    "#8B5CF6"
+      - prose: "Drafting…"
+
+    on_enter:
+      - invoke: host.agent.task
+        id: draft
+        once: true
+        with:
+          agent: landing_agent
+          working_dir: "{{ world.workdir }}"
+          acceptance:
+            schema: schemas/docs-draft.json
+          context:
+            prompt: prompts/docs_draft.md
+            args:
+              target:   "{{ world.docs_target }}"
+              doc_path: "{{ world.docs_path }}"
+        bind:
+          docs_draft: submitted
+        on_error: docs
+
+      - set: { docs_status: "drafted" }
+      - emit_intent: draft_ready
+
+    on:
+      draft_ready:
+        - target: docs_review
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Drafting…"
+
+  # ── Review — the draft read-out + publish/revise choice ───────────
+  # The draft close-out note. The operator publishes (announces it out-of-band)
+  # or revises (re-drafts from intake).
+  docs_review:
+    description: "Draft ready — publish or revise."
+    relevant_world: [docs_target, docs_draft]
+
+    view:
+      - banner:
+          text:     "DRAFT READY"
+          subtitle: "{{ world.docs_draft.summary }}"
+          color:    "#8B5CF6"
+      - kv:
+          pairs:
+            Target:      "{{ world.docs_target }}"
+            "Written to": '{{ world.docs_draft.file_path|default:"(read-only — would write)" }}'
+            Sections:    '{{ world.docs_draft.headings|join:", "|default:"(none)" }}'
+      - heading: "Disposition"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "publish"
+              intent: publish_doc
+              hint:   "announce the doc out-of-band"
+            - label:  "revise"
+              intent: revise_doc
+              hint:   "re-draft with changes"
+            - label:  "go_main"
+              intent: go_main
+              hint:   "back to the workbench"
+            - label:  "look"
+              intent: look
+              hint:   "re-render"
+
+    on:
+      publish_doc:
+        - target: docs_publishing
+      revise_doc:
+        - target: docs
+          effects:
+            - set: { docs_status: "revising" }
+            - say: "Revising — re-draft the doc."
+      go_main:
+        - target: landing
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Pick a disposition: publish or revise."
+
+  # ── Publishing — announce the doc out-of-band ─────────────────────
+  # Posts the doc summary out-of-band (iface.transport.post — the
+  # provider-neutral channel; default host.append_to_file, an instance rebinds
+  # to Slack / a docs index). Then advances to the published read-out.
+  docs_publishing:
+    description: "Publishing — announcing the doc."
+    relevant_world: [docs_target, docs_draft, docs_action, docs_status]
+
+    view:
+      - banner:
+          text:     "PUBLISHING"
+          subtitle: "announcing {{ world.docs_target }}"
+          color:    "#0EA5E9"
+      - prose: "Publishing…"
+
+    on_enter:
+      # Announce the doc out-of-band. once: keyed off docs_action so a /reload
+      # doesn't double-post.
+      - invoke: iface.transport.post
+        id: announce
+        once: true
+        with:
+          thread: "docs"
+          body: "DOC published [{{ world.docs_target }}] {{ world.docs_draft.summary }} — {{ world.docs_draft.file_path ?? '(in review)' }}"
+        bind:
+          docs_action: message_id
+
+      - set: { docs_status: "published" }
+      - emit_intent: doc_published
+
+    on:
+      doc_published:
+        - target: docs_published
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Publishing…"
+
+  # ── Published — the read-out ──────────────────────────────────────
+  # Terminal read-out. Offers a fresh doc or a return to the workbench.
+  docs_published:
+    description: "Doc published."
+    relevant_world: [docs_target, docs_draft, docs_action, docs_status]
+
+    view:
+      - banner:
+          text:     "PUBLISHED ✓"
+          subtitle: "{{ world.docs_target }}"
+          color:    "#10B981"
+      - kv:
+          pairs:
+            Target:      "{{ world.docs_target }}"
+            "Written to": '{{ world.docs_draft.file_path|default:"(read-only)" }}'
+            Announced:   '{{ world.docs_action|default:"(none)" }}'
+      - heading: "Next"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "go_docs"
+              intent: go_docs
+              hint:   "draft another doc"
+            - label:  "go_main"
+              intent: go_main
+              hint:   "back to the workbench"
+            - label:  "look"
+              intent: look
+              hint:   "re-render"
+
+    on:
+      go_docs:
+        - target: docs
+          effects:
+            - set: { docs_status: "", docs_target: "", last_error: "" }
+      go_main:
+        - target: landing
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: landing

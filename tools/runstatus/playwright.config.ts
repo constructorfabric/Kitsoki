@@ -12,6 +12,12 @@ export default defineConfig({
   use: {
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    // Playwright's default actionTimeout is 0 (INFINITE): a click on a missing /
+    // covered element hangs the whole run with no error. Cap it so actions
+    // fail fast and diagnosably instead. Generous vs expect.timeout (5s) for
+    // slower CI, still far below the per-test timeout.
+    actionTimeout: 15000,
+    navigationTimeout: 15000,
   },
   expect: {
     timeout: 5000,

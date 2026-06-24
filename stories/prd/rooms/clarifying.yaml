@@ -1,0 +1,290 @@
+# clarifying — generate clarifying questions, collect answers (multi-round).
+#
+# on_enter runs the analyst (host.agent.decide) which reads the idea, the
+# upstream docs, and the accumulated clarification_log and returns
+# { questions: [{id, question, why}] } — instructed to ask only genuinely
+# new questions (or an empty list) so round 2+ doesn't re-ask resolved
+# points.
+#
+# The transcript ACCUMULATES. submit_answers appends this round's Q&A to
+# world.clarification_log (newest round first, so the block leads with a
+# literal `── Round …` divider rather than `{{` — a bare reference that
+# both starts with `{{` and ends with `}}` short-circuits to the typed
+# expr and fails to compile; see proposal §5.5). String-concat append —
+# no array mutation. clarifying_budget caps the number of rounds.
+#
+# No `choice:` selector (same as rooms/idle.yaml): the operator answers
+# questions by typing them one at a time ("platform developers"), which
+# routes to the `answer` arc. A choice element would force the TUI into its
+# picker widget on entry and re-open it on every `answer` self-transition,
+# kicking the operator out of text-input mode after each reply. The action
+# verbs (submit / skip / regenerate / quit) live in the closing `prose:`
+# hint so the semantic router catches them as free text instead.
+#
+# `default_intent: answer` (see semantic-routing.md §1.5) is the crux: this
+# room is a free-text answering loop, so any prose that ISN'T one of the
+# verbs above must land on `answer` DETERMINISTICALLY. Without it, a bare
+# number-less answer can't fill the old required `n` slot, falls through to
+# the LLM router, and gets mis-classified as `submit_answers` — whose
+# optional `answers` slot swallows the whole utterance and skips the entire
+# clarifying phase (the production trap this room exists to prevent). The
+# sink fills `slots.text` with the whole utterance; the `answer` effect
+# attributes it to the next unanswered question (answered_count+1).
+
+states:
+
+  clarifying:
+    description: "Surface the gaps; ask the operator the questions that most change the PRD."
+    # The free-text sink: bare prose (anything that isn't submit / skip /
+    # regenerate / clarify / quit) routes deterministically to `answer`,
+    # filling its `text` slot with the whole utterance. See the header.
+    default_intent: answer
+    view:
+      - banner:
+          text:     "CLARIFYING"
+          subtitle: "Surface the gaps before drafting the PRD"
+          color:    "#3B82F6"   # blue — thinking
+      # Error surfacing — the analyst (on_enter decide) failed and on_error
+      # held us here (target: .) rather than bouncing to idle. last_error
+      # is set by the runtime; regenerate re-arms the decide for a retry.
+      - template: "⚠ **Questions generation failed** — {{ world.last_error }}. Type **regenerate** to try again, or **skip** to move on with what we have."
+        when: "world.last_error != ''"
+      - prose: "cycle {{ world.cycle }} · clarify round {{ world.clarifying_cycle }} · judge {{ world.judge_mode }}"
+      - kv:
+          pairs:
+            Idea:           '{{ world.idea|default:"(none)"|truncatechars:80 }}'
+            Upstream:       '{{ world.upstream_paths|default:"(none)" }}'
+            "Prior rounds": "{{ world.clarifying_cycle }}"
+      - heading: "Questions for you"
+      # Rendered as a `template:` (markdown), NOT `code:`. A code block never
+      # reflows — it preserves the author's layout verbatim, so the old
+      # `wordwrap:115` hard-wrapped every line at a fixed 115 columns and the
+      # block overflowed any narrower viewport (mobile web, a split TUI pane),
+      # forcing a horizontal scrollbar the operator had to drag to read a
+      # question. A template flows through Glamour on the TUI and the markdown
+      # renderer on web, so each question is a self-contained paragraph that
+      # wraps to whatever width it's shown at — no fixed column, no scroll.
+      # Hence no wordwrap filter: wrapping is the surface's job now.
+      #
+      # Each question renders as one paragraph: a bold stable number, the
+      # question, then the rationale italicised on its own soft-wrapped line.
+      # Answered questions drop out of this list (they're shown verbatim in
+      # "Answered so far" below). The `{% if %}` skips any question whose
+      # number is in world.answered_ids — but the displayed number is still
+      # forloop.Counter (the question's ORIGINAL 1-based position), so the
+      # remaining numbers stay stable with gaps (1, 3, 4…) rather than
+      # renumbering. We deliberately do NOT use a markdown ordered list
+      # (`1.`): renderers renumber those sequentially, which would erase the
+      # stable gaps. The bold `**n.**` is plain inline text, so the numbers
+      # survive. Stable numbers keep "answer 3" pointing at the same question
+      # across turns and keep the "Qn:" labels below consistent.
+      # `"|" + forloop.Counter + "|"` builds the delimited needle that the
+      # answer arc appends (the trailing/leading `|` make "|1|" a non-match
+      # inside "|12|"). The blank line between iterations separates the
+      # paragraphs; when every question is answered the list renders the
+      # all-answered hint instead of going blank.
+      - template: |
+          {% for q in world.clarifications.questions %}{% if not ("|" + forloop.Counter + "|" in world.answered_ids) %}**{{ forloop.Counter }}.** {{ q.question }}
+          ↳ *why: {{ q.why|default:"(no rationale given)" }}*
+
+          {% endif %}{% empty %}*(none — nothing material left to ask; type **skip** to move on)*{% endfor %}{% if world.clarifications.questions|length > 0 and world.answered_count >= world.clarifications.questions|length %}*(all questions answered — moving on to review the brief…)*{% endif %}
+      - prose: "Just type your answer and press enter — answers are taken in order, top to bottom, one at a time. The answers fill in below."
+      - heading: 'Answered so far ({{ world.answered_count }}/{{ world.clarifications.questions|length }})'
+      - code: |
+          {{ world.clarification_answers|default:"(none yet — type your answer to the next question above and press enter)" }}
+      # Running summary of every prior round's Q&A — shown only when we're
+      # back here on a second+ round (clarify from brief/references/drafting
+      # preserves clarification_log). Gives the operator the context the
+      # analyst already has, so the new questions read as a continuation
+      # rather than a fresh interrogation.
+      - heading: "Resolved in earlier rounds"
+        when:    "world.clarification_log"
+      - code: |
+          {{ world.clarification_log }}
+        when: "world.clarification_log"
+      # Verb hints — kept on every turn so the semantic router reliably
+      # catches the action verbs typed as free text. There is intentionally
+      # NO `choice:` selector here: this room is a free-text answering loop
+      # (bare prose routes via default_intent to the `answer` arc, which
+      # records it against the next unanswered question), and a choice
+      # element would make the TUI open the picker
+      # widget on entry AND on every `answer` self-transition (target: .),
+      # bouncing the operator out of text-input mode after each reply. Same
+      # selectorless free-text idiom as rooms/idle.yaml.
+      - prose: "Answer the questions above — once the last one's answered you'll move to the brief automatically. Or say **submit** to review the brief now, **skip** to move on with what we have, **regenerate** to re-ask the questions, or **quit** to abandon."
+    relevant_world: [idea, upstream_paths, workdir, clarifications, clarification_answers, answered_count, answered_ids, clarification_log, clarifying_cycle, clarifying_budget, prd_artifact, refine_feedback, cycle, judge_mode, last_error]
+    on_enter:
+      # Generate this round's questions. working_dir pins the analyst's
+      # Read/Grep to where the upstream docs live; its tool calls land as
+      # agent.tool_call trace events (serving the "what files were used"
+      # ask). Skipped state-seeding bypass: flow fixtures that seed
+      # initial_state=clarifying write events directly and do not re-fire
+      # this on_enter.
+      # `once: true` for reload-safety: keyed off its own bind
+      # (clarifications). /reload re-renders the stored question list; the
+      # `regenerate` arc clears clarifications (its own bind) to force a
+      # fresh analyst run. clarify/restart_from re-enter from elsewhere with
+      # clarifications cleared (or seeded empty), so they re-run too.
+      - invoke: host.agent.decide
+        once: true
+        id: analyst_questions
+        with:
+          agent: analyst
+          prompt_path: prompts/clarify.md
+          schema: schemas/clarifications.json
+          working_dir: "{{ world.workdir }}"
+          args:
+            idea:               "{{ world.idea }}"
+            upstream_paths:     "{{ world.upstream_paths }}"
+            clarification_log:  "{{ world.clarification_log }}"
+            follow_up:          "{{ world.prd_artifact.follow_up_questions }}"
+            feedback:           "{{ world.refine_feedback }}"
+        bind:
+          clarifications: submitted
+        # Stay HERE on a failed analyst run (don't bounce all the way back
+        # to idle's discovery chat) — the idea is already distilled, so the
+        # operator just needs to retry. The runtime sets last_error; the
+        # view surfaces it and points at regenerate (which re-arms once:).
+        on_error: .
+    on:
+      # Record ONE answer (the default_intent sink for bare prose; a direct
+      # intent may also pass an explicit `n`). Self-transition with `target: .`
+      # (NOT `target: clarifying`): `.` re-renders WITHOUT re-firing
+      # on_enter, so the question list is preserved and the analyst is
+      # NOT re-run on every reply (an explicit self-target would
+      # regenerate the questions each time — the same idiom idle's
+      # `discuss` and the `look` arc rely on). The reply is APPENDED to
+      # clarification_answers (string-concat, one "Qn: …" line per answer,
+      # newest at the bottom) so the operator watches the round fill in.
+      # answered_count drives the "Answered so far (N/total)" readout.
+      answer:
+        - target: .
+          effects:
+            # Hand the whole reply to the LLM matcher, which reads the
+            # question list and reports which question(s) this reply answers
+            # (by 1-based position) — so a number-less, out-of-order answer
+            # still lands on the right question. It returns only the DELTA
+            # for this reply: the new transcript lines (answers_block), the
+            # newly-answered positions ("|n|" fragments → answered_ids_append),
+            # and how many were newly answered (matched_count). slots.n, when
+            # the operator named a number, is passed as a hint. on_error: . so
+            # a matcher hiccup re-renders the room (last_error surfaced) rather
+            # than losing the operator's place.
+            - invoke: host.agent.decide
+              id: match_answer
+              with:
+                agent: answer_matcher
+                prompt_path: prompts/match_answer.md
+                schema: schemas/answer_match.json
+                args:
+                  questions:          "{{ world.clarifications }}"
+                  prior_answers:      "{{ world.clarification_answers }}"
+                  prior_answered_ids: "{{ world.answered_ids }}"
+                  reply:              "{{ slots.text }}"
+                  hint_number:        "{{ slots.n }}"
+              # Bind the matcher's delta by CONCATENATING onto the running
+              # accumulators in the bind template itself. A bind template sees
+              # both `world` (the pre-turn snapshot) and `result` (the host
+              # result, with the schema object under `submitted`), so the merge
+              # happens here — NOT in a later set:, which would not see the
+              # bind (host binds apply post-dispatch; see machine.go). int()
+              # keeps the count an integer (the JSON number arrives as a float).
+              bind:
+                clarification_answers: "{{ world.clarification_answers + result.submitted.answers_block }}"
+                answered_ids:          "{{ world.answered_ids + result.submitted.answered_ids_append }}"
+                answered_count:        "{{ int(world.answered_count + result.submitted.matched_count) }}"
+              # Auto-advance: the moment this reply resolves the LAST open
+              # question, fire the synthetic submit_answers intent so the
+              # operator drops straight into the brief review — no separate
+              # `submit` step. Guarded on len(questions) > 0 so a round with no
+              # questions doesn't trivially auto-submit on a stray reply.
+              # emit_intent: is a POST-BIND pass (DispatchPostBindEmits) — it
+              # sees the bound world (answered_count just set above) but NOT
+              # `result`, which is out of scope by then. Read the freshly-bound
+              # world.answered_count, the same idiom every bugfix checkpoint
+              # uses (e.g. stories/bugfix/rooms/reproducing.yaml emit_intent
+              # reads the bound world.llm_verdict). Referencing result here is
+              # what crashed the answer arc (nil result.submitted).
+              emit_intent: "{{ len(world.clarifications.questions) > 0 && int(world.answered_count) >= len(world.clarifications.questions) ? 'submit_answers' : '' }}"
+              on_error: .
+
+      # Done answering — advance to the brief review (NOT straight to
+      # drafting: brief + references are confirm-gated steps in between).
+      # Newest round FIRST so the block leads with the literal divider
+      # (see header).
+      submit_answers:
+        - target: brief
+          effects:
+            # No answer resolution here: `submit_answers` is a pure verb (no
+            # slots). The round's answers were accumulated by `answer` (the
+            # LLM-matched free-text sink) into clarification_answers already —
+            # submit just freezes the round into the log and advances.
+            # Build the transcript line in its OWN effect, so the
+            # `── Round N ──` divider reads the pre-increment clarifying_cycle
+            # and the just-resolved clarification_answers. Keeping the divider
+            # and the counter bump in one `set:` block is an ordering hazard:
+            # keys within a single set apply in Go's randomized map order, so
+            # the divider would intermittently see the already-incremented
+            # value (Round N+1). Separate effects run in declaration order,
+            # which is deterministic.
+            # Render the round's questions as a READABLE bullet list, not the
+            # raw clarifications object — `{{ .question }}` inside a kitsoki
+            # `{{ range }}` block binds each element to the allowed `item` root
+            # (the log-append set-effect can't use a pongo `{% for q %}` loop
+            # var). This keeps the accumulated transcript human-readable instead
+            # of splicing the questions object in as compact JSON, which leaked
+            # a machine format into the operator-facing brief.
+            - set:
+                clarification_log: |
+                  ── Round {{ world.clarifying_cycle + 1 }} ──
+                  Questions:
+                  {{ range world.clarifications.questions }}  - {{ .question }}
+                  {{ end }}Answers: {{ world.clarification_answers }}
+
+                  {{ world.clarification_log }}
+            - set:
+                clarifying_cycle: "{{ world.clarifying_cycle + 1 }}"
+            # Leaving cleanly → clear any stale analyst error.
+            - set:
+                last_error: ""
+
+      # No answers this round — move on with what we have. No log append.
+      skip:
+        - target: brief
+          effects:
+            - set:
+                last_error: ""
+
+      # Re-ask: self-transition re-fires on_enter (regenerates questions
+      # with refine_feedback). Budget gate bails out instead of looping.
+      regenerate:
+        - when: "world.clarifying_cycle >= world.clarifying_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "clarifying_budget_exhausted"
+                status:         "abandoned"
+        - target: clarifying
+          effects:
+            # Fresh questions are coming → discard this round's answers so
+            # they don't bleed into the regenerated list. Clear clarifications
+            # (the analyst decide's own bind) to re-arm its `once:` — without
+            # this the re-fired on_enter would silently no-op and re-show the
+            # SAME questions.
+            - set:
+                clarifications:        {}
+                refine_feedback:       "{{ slots.feedback ?? '' }}"
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+                clarifying_cycle:      "{{ world.clarifying_cycle + 1 }}"
+                cycle:                 "{{ world.cycle + 1 }}"
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_clarifying"
+                status:         "abandoned"
+      look:
+        - target: .

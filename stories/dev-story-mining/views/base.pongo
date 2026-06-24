@@ -1,0 +1,26 @@
+{% comment %}
+dev-story-mining — standalone base view. Mirrors stories/bugfix/views/base.pongo
+and the block contract in docs/stories/story-style.md §2.
+
+Consulted only when this story runs STANDALONE. When imported under a hub
+story, the AppRenderer resolves `extends: "base"` against the HOST's base.
+
+Block contract:
+  status   — top status line: job · cycle · judge mode
+  heading  — room title (default: state.description)
+  body     — main content (prose, kv, code)
+  choices  — action list
+  footer   — optional bottom matter
+
+The phase rooms use a flattened typed-element view (banner + choice) rather
+than `extends: base` because a `choice:` element cannot live inside a
+`blocks:` map — same idiom as stories/bugfix/rooms/reproducing.yaml.
+{% endcomment %}
+{% block status %}{{ world.job|default:"(no job)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

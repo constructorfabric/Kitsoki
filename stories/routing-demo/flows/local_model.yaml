@@ -1,0 +1,15 @@
+# Lesson 4 effects: the action intents record last_action. Whether a PARAPHRASE
+# routes to them is the router's job (local model) — covered by the turn --input
+# probes in README.md, not here. This locks the transitions.
+test_kind: flow
+app: ../app.yaml
+initial_state: local_model
+turns:
+  - intent: { name: check_weather }
+    expect_state: local_model
+    expect_world: { last_action: "check_weather (via local model)" }
+  - intent: { name: read_email }
+    expect_state: local_model
+    expect_world: { last_action: "read_email (via local model)" }
+  - intent: { name: back }
+    expect_state: hub

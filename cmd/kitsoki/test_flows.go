@@ -26,6 +26,7 @@ func testFlowsCmd() *cobra.Command {
 		failFast           bool
 		verbose            bool
 		allowMissRecording bool
+		traceOut           string
 	)
 
 	cmd := &cobra.Command{
@@ -60,6 +61,8 @@ Exit codes:
 				FailFast:              failFast,
 				Verbose:               verbose,
 				JSONOut:               jsonOut,
+				TracePath:             traceOut,
+				ImportResolver:        buildImportResolver(),
 			}
 
 			ctx := context.Background()
@@ -90,6 +93,9 @@ Exit codes:
 		"verbose per-turn output")
 	cmd.Flags().BoolVar(&allowMissRecording, "allow-missing-recording", false,
 		"treat recording misses as skips rather than failures")
+	cmd.Flags().StringVar(&traceOut, "trace-out", "",
+		"write the run's authoritative JSONL trace to this path (wires FlowOptions.TracePath; "+
+			"intended for single-fixture reconstruction so the fresh trace carries turn.end.view)")
 
 	return cmd
 }

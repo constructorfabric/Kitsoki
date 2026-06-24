@@ -1,0 +1,49 @@
+# integrate_aborted — host.run produced NO JSON outcome (an abort outside the
+# bash, e.g. host failure / OOM-kill / jq missing). stdout_json is ABSENT, so
+# integrate_outcome stays "" — but run_exit is bound non-empty post-host, so the
+# no-JSON guard fires and the room re-renders with a SYNTHESIZED non-blank
+# last_error (outcome="error") instead of stalling blank (#9b).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feature/x
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feature/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      2
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+      integrate_exec:
+        # No stdout_json at all → the stdout_json.* binds are skipped, but
+        # run_exit/run_stdout bind from exit_code/stdout. The guard
+        # (run_exit != '' && integrate_outcome == '') fires → integrate_aborted.
+        data:
+          ok:        false
+          exit_code: 1
+          stdout:    "fatal: host died before emitting JSON"
+
+turns:
+  - intent: { name: integrate, slots: {} }
+    expect_state: integrate
+    expect_world:
+      integrate_outcome: error
+      last_op_ok:        false
+      integrated_sha:    ""
+
+expect_no_errors: true

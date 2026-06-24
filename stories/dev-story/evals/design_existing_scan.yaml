@@ -1,0 +1,53 @@
+# Traceability:
+# - Source call site: stories/dev-story/rooms/design_search.yaml, host.agent.decide id `existing_scan`.
+# - Prompt: stories/dev-story/prompts/design_existing_state.md.
+# - Schema: stories/dev-story/schemas/existing-state.json.
+# - Purpose: early proposal overlap gate before creating a new workspace.
+kind: agent_eval
+app: ../app.yaml
+call: existing_scan
+agent: design_scout
+
+task:
+  goal: "Classify whether a design idea is new or should amend existing work."
+  boundedness:
+    max_turns: 1
+    tool_policy: read-only
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.95
+    max_p95_latency_ms: 7000
+    max_avg_cost_usd: 0.002
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low, medium]
+  repeat: 5
+
+comparator:
+  kind: field_subset
+
+examples:
+  - name: no-known-overlap
+    args:
+      idea: "Add a lightweight CLI command that exports the current workbench state as JSON."
+      existing_paths: ""
+    expect:
+      overlaps: []
+      roadmap_fit: "New utility surface; no supplied existing paths overlap."
+  - name: amend-existing-proposal
+    args:
+      idea: "Extend the model harness eval story with confidence-threshold sweeps."
+      existing_paths: "docs/proposals/agent-contract-eval.md, stories/model-harness-eval/README.md"
+    expect:
+      overlaps:
+        - path: "stories/model-harness-eval/README.md"
+          kind: "feature"
+          summary: "Existing model harness eval story should absorb confidence-threshold reporting."
+          recommendation: "amend"
+      roadmap_fit: "Amend the existing model harness eval work instead of starting a separate proposal."

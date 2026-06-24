@@ -1,0 +1,94 @@
+# deploy_succeed — the release happy path: target → preflight (go) → ship →
+# verify (healthy) → succeeded → landing.
+#
+# The full deterministic walk of the deploy loop's success branch, no LLM.
+# The preflight gate (host.agent.decide) and the health gate (host.agent.decide)
+# are STUBBED (their verdicts are canned); the preflight / ship / verify-probe
+# steps run the REAL host.run (printf — deterministic, no network) so the
+# recorded actions are asserted for real. Proves: start_deploy captures the
+# target and enters preflight; the post-bind guarded emit auto-routes on
+# verdict=='go'; the ship action records; the health gate routes on
+# healthy==true; and the loop lands on the succeeded read-out, then the
+# workbench, with deploy_status=='succeeded'.
+#
+# NOTE: both decides resolve to the SAME handler (host.agent.decide). Their
+# canned data is keyed by call id (by_call) so the gate gets the go verdict and
+# the health gate gets the healthy verdict.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: deploy
+initial_world: {}
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      # Preflight gate — clean preflight → go.
+      gate:
+        data:
+          ok: true
+          submitted:
+            verdict: "go"
+            summary: "Preflight clean for staging — tests green, tree clean."
+            blocking: []
+      # Health gate — green probe → healthy.
+      health:
+        data:
+          ok: true
+          submitted:
+            verdict: "healthy"
+            summary: "staging serving 200s, error-rate 0.1% — nominal."
+  # The recorded host.run steps — the flow harness does not execute real
+  # host.run, so stub their stdout deterministically (printf would otherwise
+  # return empty and bounce via on_error).
+  host.run:
+    by_call:
+      preflight:
+        data: { ok: true, stdout: "preflight ok for staging: tests green, tree clean", exit_code: 0 }
+      ship:
+        data: { ok: true, stdout: "deployed to staging", exit_code: 0 }
+      verify-probe:
+        data: { ok: true, stdout: "probe staging: health 200, error-rate 0.1%", exit_code: 0 }
+
+turns:
+  # Name the target → captured, enters preflight, both the preflight host.run
+  # and the gate decide fire, the post-bind emit auto-routes on verdict=='go'.
+  - intent: { name: start_deploy, slots: { target: "staging" } }
+    expect_state: deploy_gated
+    expect_host_calls:
+      - handler: host.run
+        args: { call: preflight }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: gate }
+        times: 1
+    expect_world:
+      deploy_target: "staging"
+      deploy_gate:
+        verdict: "go"
+        summary: "Preflight clean for staging — tests green, tree clean."
+        blocking: []
+
+  # Ship → the REAL host.run deploy action runs, sets shipped, emits the
+  # verify → verifying runs the probe + health gate → healthy → succeeded.
+  - intent: { name: ship, slots: {} }
+    expect_state: deploy_succeeded
+    expect_host_calls:
+      - handler: host.run
+        args: { call: ship }
+        times: 1
+      - handler: host.run
+        args: { call: verify-probe }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: health }
+        times: 1
+    expect_world:
+      deploy_status: "succeeded"
+      deploy_action: "deployed to staging"
+
+  # The read-out rests; go_main returns to the workbench.
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

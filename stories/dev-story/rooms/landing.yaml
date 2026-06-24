@@ -1,0 +1,587 @@
+# landing — the free-form workbench (dev-story's root, replacing `main`).
+#
+# The resting FLOOR of the engineer's day: a full-tool agent that behaves
+# like Claude Code (broad toolbox, drives real work) rather than a static
+# catalog. The operator describes what they want in their own words; a
+# question the agent need not act on is answered in place by the
+# read-only agent off-ramp; the highest-value `main` navigation survives
+# as quick-action buttons and as intents, so every pipeline is one
+# utterance / one click away.
+#
+# Read-only by default → opt into write. The room carries
+# `write_mode: read_only` (internal/host/write_mode_gate.go): the
+# landing_agent boots with its full toolbox but every MUTATING tool call
+# (Edit / Write / side-effecting Bash) holds for an operator write-mode
+# grant before the effect lands, recorded as a machine.write_mode_granted
+# event. Headless (cassettes / flows / no operator) the gate denies and
+# the agent stays read-only. The persona's bash_profile: read-only +
+# external_side_effect: false (app.yaml agents.landing_agent) make the
+# static and runtime postures agree, which the loader enforces.
+#
+# Structurally a hub like `main`: no @exit: of its own — it is where every
+# pipeline returns (the imports' exits re-point to: landing). The only
+# shift from `main` is the resting surface (an agent turn instead of a
+# catalog) plus the write-mode hold.
+#
+# VIEW SHAPE — flattened (no extends/blocks) so the `choice:` quick-action
+# block survives the render pipeline and the free-text floor appears
+# beneath it (docs/stories/choice-widget.md §3.1; the same shape
+# stories/off-ramp-demo/rooms/desk.yaml uses for its off-ramp floor).
+
+states:
+
+  landing:
+    description: "dev-story — the free-form workbench. Describe what you want, or pick a quick action."
+    relevant_world: [ticket_id, ticket_title, ticket_type, last_pr_url, status, inbox_unread, workdir, feature_branch, captured, landing_request, landing_note]
+
+    # Free-text sink (docs/architecture/semantic-routing.md §1.5). Prose
+    # the match tiers don't claim — a fresh request — routes
+    # deterministically (no LLM) to the `work` agent, filling its required
+    # `request` slot with the whole utterance. Affirmations while a plan is
+    # pending are intercepted BEFORE this sink by the pending-plan guard in
+    # `contextual_routing` (below), which routes them deterministically to
+    # `accept_plan` without an LLM call. Content-bearing follow-ups also hit
+    # the contextual guard and route to `work` (refine) with a recorded
+    # decision. The off-ramp below remains declared as the read-only floor
+    # for any path neither sink covers.
+    # See .context/landing-onpath-offpath-bail.md slice C.
+    default_intent: work
+
+    # Contextual routing (CRR slice 3): when a plan is pending at
+    # landing_note.plan, the pending-plan guard intercepts free-text input
+    # BEFORE default_intent fires — a bare affirmation routes to accept_plan
+    # (deterministic, no LLM) and content-bearing input routes to work
+    # (refine, also deterministic). This removes the prompt-only workaround
+    # that asked the workbench agent to infer "ok go ahead" as acceptance.
+    contextual_routing:
+      enabled: true
+      room_chat: work
+      plan_accept_intent: accept_plan
+      plan_refine_intent: work
+      pending_plan_path: landing_note.plan
+
+    # Read-only → write-mode opt-in. Completes agent-write-mode-opt-in.md
+    # Task 3.1 by opting the landing into the already-landed gate. Valid on
+    # this room because it dispatches an agent (the on_enter host.agent.task
+    # below) AND declares the agent off-ramp — both satisfy the loader's
+    # roomDispatchesAgent precondition.
+    write_mode: read_only
+
+    # Agent off-ramp (docs/stories/state-machine.md §11), lifted verbatim
+    # from main.yaml. Free text the router maps to no intent and the agent
+    # need not ACT on is answered in place by a read-only converse turn:
+    # the room stays put, the quick actions are still there next turn. We
+    # voice it with the same agent_qa persona the dedicated `agent` room
+    # uses, so an answered question reads the same either way.
+    agent_off_ramp:
+      agent: agent_qa
+
+    view:
+      - prose: "{{ world.last_error }}"
+        when: "world.last_error != ''"
+      - banner:
+          text:     "WORKBENCH"
+          subtitle: "free-form · read-only until you approve a change"
+          color:    "#06B6D4"
+        when: "world.last_error == ''"
+
+      # First-start banner — rendered until the operator's first request
+      # lands. Pairs with the on_enter once: sentinel below.
+      - prose: >
+          You're in the free-form workbench — describe what you want to do,
+          in your own words, and I'll work on it like Claude Code. I run
+          read-only by default and ask before making any change. Or pick a
+          quick action below to drop straight into a pipeline.
+        when: "world.last_error == '' && world.landing_request == ''"
+
+      # Echo the agent's last close-out note once it has run.
+      - heading: "Last result"
+        when: "(world.landing_note.summary ?? '') != ''"
+      - kv:
+          pairs:
+            Request: "{{ world.landing_request }}"
+            Summary: "{{ world.landing_note.summary }}"
+        when: "(world.landing_note.summary ?? '') != ''"
+      - code: '{{ world.landing_note.details|default:"" }}'
+        when: "(world.landing_note.details ?? '') != ''"
+
+      # The agent's suggested next steps (e.g. surfaced when a mutating edit
+      # was held read-only pending a write-mode grant). Rendered only when the
+      # array is non-empty so a note without next_steps shows nothing here.
+      - heading: "Next steps"
+        when: "world.landing_note.next_steps"
+      - template: |
+          {% for s in world.landing_note.next_steps %}- {{ s }}
+          {% endfor %}
+        when: "world.landing_note.next_steps"
+
+      # On-path bail. When the workbench agent concluded the request really
+      # belongs in a named pipeline it set landing_note.route; surface the
+      # reason here and offer a one-click jump as the FIRST quick action
+      # below (only one `choice:` element is allowed per view, so the bail
+      # button is folded into Quick actions rather than its own widget).
+      # Offered, NOT forced — every other quick action and the free-text
+      # floor stay available, so the operator can ignore this and keep
+      # working here. The button fires take_route, whose arc emit_intents
+      # the agent-chosen pipeline intent.
+      - heading: "On-path suggestion"
+        when: "(world.landing_note.route.intent ?? '') != ''"
+      - prose: "{{ world.landing_note.route.reason }}"
+        when: "(world.landing_note.route.intent ?? '') != ''"
+
+      # Proposed plan card. When the planner emitted a structured plan in its
+      # close-out note (schemas/plan.json), render it as a reviewable card —
+      # mirroring the on-path route block above. The Accept & apply button is
+      # folded into the single Quick actions choice below (only one choice:
+      # element is allowed per view); a free-text adjustment refines it (the
+      # work sink re-dispatches the planner with this plan as prior context).
+      - heading: "Proposed plan"
+        when: "len(world.landing_note.plan ?? '') > 0"
+      - kv:
+          pairs:
+            Goal:   "{{ world.landing_note.plan.goal }}"
+            Step:   "{{ world.landing_note.plan.step.description }}"
+            Verify: "{{ world.landing_note.plan.verify.reason }}"
+        when: "len(world.landing_note.plan ?? '') > 0"
+      - prose: "Accept & apply this plan from the quick actions below, or type an adjustment (\"dry-run first\", \"skip closed issues\") to refine it."
+        when: "len(world.landing_note.plan ?? '') > 0"
+
+      # The progressive-determinism read-out: how much free-form work has
+      # been mined into named structure this session (incremented by the
+      # slice-3 apply path; rendered read-only here).
+      - kv:
+          pairs:
+            "Captured this session": "{{ world.captured }}"
+
+      - heading: "Quick actions"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            # Accept & apply the proposed plan — top of the menu when a plan is
+            # present. Fires accept_plan, whose arc freezes accepted_plan and
+            # enters `applying`.
+            - label:  "Accept & apply this plan"
+              hint:   "run the step, then verify it landed (or type an adjustment to refine)"
+              intent: accept_plan
+              when:   "len(world.landing_note.plan ?? '') > 0"
+            # On-path bail — top of the menu when the agent suggested a path.
+            - label:  "→ {{ world.landing_note.route.label }}"
+              hint:   "jump onto the suggested pipeline (or ignore and keep working here)"
+              intent: take_route
+              when:   "(world.landing_note.route.intent ?? '') != ''"
+            - label:  "tickets"
+              hint:   "search and pick a ticket"
+              intent: go_ticket_search
+            - label:  "drive"
+              hint:   "push the picked ticket through its pipeline"
+              intent: drive
+              when:   "available('drive')"
+            - label:  "✗ drive — {{ blocked_reason('drive') }}"
+              hint:   "pick a ticket first"
+              intent: drive
+              when:   "!available('drive')"
+            - label:  "bugfix"
+              hint:   "drive the picked ticket through the bugfix pipeline"
+              intent: go_bugfix
+            - label:  "implement"
+              hint:   "drive the picked task through the implementation pipeline"
+              intent: go_implementation
+            - label:  "cypilot"
+              hint:   "drive the picked epic through the SDLC waterfall"
+              intent: go_cypilot
+            - label:  "pr"
+              hint:   "hand an open PR to pr-refinement"
+              intent: go_pr_refinement
+              when:   "available('go_pr_refinement')"
+            - label:  "✗ pr (no open PR yet)"
+              hint:   "drive a ticket to the PR stage first"
+              intent: go_pr_refinement
+              when:   "!available('go_pr_refinement')"
+            - label:  "code review"
+              hint:   "review a teammate's PR"
+              intent: go_code_review_story
+            - label:  "demo video"
+              hint:   "produce/refresh a tour video and gate it with vision QA"
+              intent: make_demo
+            - label:  "prd"
+              hint:   "author a PRD, then carry it into design"
+              intent: go_prd
+            - label:  "idea"
+              hint:   "draft an ad hoc proposal — no ticket needed"
+              intent: go_idea
+            - label:  "model eval"
+              hint:   "prepare model/harness effectiveness, speed, and cost reports"
+              intent: go_model_eval
+            - label:  "onboard"
+              hint:   "discover a project profile, review it, then apply local setup"
+              intent: go_init
+            - label:  "inbox"
+              hint:   "read notifications ({{ world.inbox_unread }} unread)"
+              intent: go_inbox
+            - label:  "look"
+              hint:   "re-render the workbench"
+              intent: look
+
+      - prose: "Type a request in your own words (\"fix the login crash\", \"pick TKT-014 and drive it\", \"ask claude how imports resolve\"), or pick a quick action above."
+        when: "world.last_error == ''"
+
+    on_enter:
+      # 1. First-start banner sentinel — fires once, reload-safe (the set is
+      #    guarded on its own world key so re-entry / look does not re-fire).
+      #    The view renders the banner while landing_request is still empty.
+      #    The richer first-run-per-project consent banner (epic slice 4)
+      #    layers on top of this later.
+      - when: "world.landing_started == false"
+        set: { landing_started: true }
+
+      # 2. The agent turn — the resting surface. host.agent.task with the
+      #    full-tool landing_agent; working_dir is world.workdir (empty ⇒ the
+      #    subprocess inherits the repo root, the dogfood default), the same
+      #    shape stories/bugfix/rooms/reproducing.yaml uses.
+      #    once: keyed off its bind (landing_note) so returning from a
+      #    pipeline / a `look` re-renders the stored note instead of
+      #    re-dispatching; the `work` arc clears landing_note to re-arm.
+      #    Guarded on a non-empty landing_request so a cold boot (no
+      #    utterance yet) shows the banner + quick actions without dispatching.
+      #    A mutating tool call the agent attempts holds for the write-mode
+      #    opt-in (write_mode: read_only above) before the effect lands.
+      - when: "world.landing_request != ''"
+        invoke: host.agent.task
+        once: true
+        with:
+          agent: landing_agent
+          working_dir: "{{ world.workdir }}"
+          acceptance:
+            schema: schemas/landing-note.json
+          context:
+            prompt: prompts/landing.md
+            args:
+              request: "{{ world.landing_request }}"
+              # Thread continuity — the prior turn's note (empty on the
+              # first request). The prompt frames it as "earlier you
+              # reported X; the operator now says Y" so a continuation
+              # ("ok go ahead") builds on it instead of starting fresh.
+              prior_summary: "{{ world.landing_prior_summary }}"
+              prior_details: "{{ world.landing_prior_details }}"
+              # The prior structured plan (empty {} when there was none). The
+              # prompt renders it so a continuation that adjusts the plan
+              # ("dry-run first") REFINES the prior plan instead of re-proposing
+              # from scratch. The default_intent: work sink is the refine path.
+              prior_plan: "{{ world.landing_plan_prior }}"
+        bind:
+          landing_note: submitted
+        on_error: landing
+
+      # 3. PlanProposed signal. When the agent's close-out note carried a
+      #    structured plan, narrate it (surfaces as a machine.say event) so the
+      #    proposed-plan decision is recorded in the trace. Guarded on the plan
+      #    being present so a plain exploration turn stays quiet. Reads
+      #    landing_note (bound by the task above), so it settles post-bind.
+      - when: "len(world.landing_note.plan ?? '') > 0"
+        say: "Plan proposed: {{ world.landing_note.plan.goal }} (verify mode: {{ world.landing_note.plan.verify.mode }}, mutating: {{ world.landing_note.plan.step.mutating }})."
+
+    on:
+      # Free-form work — the operator describes what they want. Captures the
+      # request, clears the prior note to re-arm the on_enter agent task,
+      # and self-targets so on_enter dispatches the landing_agent on the
+      # fresh request. `request` is required so the semantic router falls
+      # through to the LLM router and captures the whole utterance.
+      work:
+        # Onboarding command escape hatch. landing's default_intent captures
+        # unmatched prose into `work` before an LLM router runs, so natural
+        # utterances like "onboard ~/code/slidey" need a deterministic arm here
+        # or they dispatch the general workbench agent. Keep this narrow: only
+        # leading onboarding verbs route to the project onboarding flow.
+        - when: "hasPrefix(lower(trim(slots.request)), 'onboard') || hasPrefix(lower(trim(slots.request)), 'project onboarding') || hasPrefix(lower(trim(slots.request)), 'init project')"
+          target: init_discover
+          effects:
+            - set:
+                init_request:        "{{ slots.request }}"
+                init_discovery:      {}
+                init_run_ok:         false
+                init_run_output:     ""
+                init_apply_result:   {}
+                init_apply_ok:       false
+                init_apply_output:   ""
+                init_profile_status: "discovering"
+                init_feedback:       ""
+                last_error:          ""
+                prev_state:          "landing"
+        - target: landing
+          effects:
+            # Preserve the prior note BEFORE clearing landing_note so the
+            # next agent dispatch can continue the thread. All effects read the
+            # same pre-effect snapshot, so landing_prior_* / landing_plan_prior
+            # capture the OLD note even though landing_note is cleared below.
+            #
+            # Preserve the prior PLAN first, guarded + SEPARATE from the
+            # summary/details set: a free-text adjustment ("dry-run first") then
+            # re-dispatches the planner with the plan it last proposed so it
+            # REFINES it (prompts/landing.md folds landing_plan_prior in). A bare
+            # {{ ...plan }} on a note WITHOUT a plan (the common case) would null
+            # the entire set: block — hence the guard + a separate clear arm.
+            - when: "len(world.landing_note.plan ?? '') > 0"
+              set:
+                landing_plan_prior: "{{ world.landing_note.plan }}"
+            - when: "len(world.landing_note.plan ?? '') == 0"
+              set:
+                landing_plan_prior: {}
+            - set:
+                landing_prior_summary: "{{ world.landing_note.summary ?? '' }}"
+                landing_prior_details: "{{ world.landing_note.details ?? '' }}"
+                landing_request:       "{{ slots.request }}"
+                landing_note:          {}
+                last_error:            ""
+
+      # On-path bail (B). Fired by the "→ on-path" choice item when the
+      # workbench agent set landing_note.route. Projects the suggested
+      # ticket onto world, then emit_intents the agent-chosen pipeline
+      # intent (go_bugfix / drive / go_prd / …). The emit lands on one of
+      # the go_* / drive arcs below, so their existing guards (is a ticket
+      # picked?) and ticket_type routing still apply — no duplicated
+      # routing logic. The Turn loop dispatches transition-arm emits
+      # (machine.go applyEffectsTraced → dispatchEmittedIntents).
+      take_route:
+        - effects:
+            - set:
+                ticket_id:   "{{ world.landing_note.route.ticket_id ?? world.ticket_id }}"
+                ticket_type: "{{ world.landing_note.route.ticket_type ?? world.ticket_type }}"
+                last_error:  ""
+            - emit_intent: "{{ world.landing_note.route.intent }}"
+
+      # Accept & apply the proposed plan. Freeze the plan into accepted_plan
+      # (so a later landing_note clear can't disturb the executing plan), emit
+      # the PlanDecided signal (plan_decision + a say), clear last_error, and
+      # enter `applying`. Guarded on a plan being present so a stray button
+      # press without a plan is a guarded no-op. apply_plan is a strict alias.
+      accept_plan:
+        - when: "len(world.landing_note.plan ?? '') > 0"
+          target: applying
+          effects:
+            - set:
+                accepted_plan: "{{ world.landing_note.plan }}"
+                plan_decision: "accepted"
+                last_error:    ""
+            - say: "Plan accepted — applying: {{ world.landing_note.plan.goal }}"
+        - default: true
+          target: .
+          guard_hint: "No plan to apply — describe a concrete task so the agent can propose one."
+          effects:
+            - say: "There's no proposed plan to apply yet."
+      # apply_plan is a strict alias of accept_plan (same guard, same effects).
+      apply_plan:
+        - when: "len(world.landing_note.plan ?? '') > 0"
+          target: applying
+          effects:
+            - set:
+                accepted_plan: "{{ world.landing_note.plan }}"
+                plan_decision: "accepted"
+                last_error:    ""
+            - say: "Plan accepted — applying: {{ world.landing_note.plan.goal }}"
+        - default: true
+          target: .
+          guard_hint: "No plan to apply — describe a concrete task so the agent can propose one."
+          effects:
+            - say: "There's no proposed plan to apply yet."
+
+      # ── Re-homed main navigation (verbatim guards) ───────────────────
+      go_ticket_search:
+        - target: ticket_search
+          effects:
+            - set: { prev_state: "landing" }
+            - set: { last_error: "" }
+      go_workspace_manager:
+        - target: workspace_manager
+          effects:
+            - set: { prev_state: "landing" }
+      go_inbox:
+        - target: inbox
+          push_history: false
+          effects:
+            - set: { prev_state: "landing" }
+      go_agent:
+        - target: agent
+          effects:
+            - set: { prev_state: "landing" }
+      go_standup:
+        - target: standup
+          effects:
+            - set: { prev_state: "landing" }
+      go_prd:
+        - target: prd
+          effects:
+            - set: { prev_state: "landing", last_error: "" }
+      go_idea:
+        - target: design
+          effects:
+            - set: { prev_state: "landing", design_seed_idea: "" }
+      go_ideas:
+        - target: ideas
+          effects:
+            - set: { prev_state: "landing" }
+            - set: { last_error: "" }
+      go_model_eval:
+        - target: model_eval
+          effects:
+            - set: { prev_state: "landing" }
+      go_init:
+        - target: init_discover
+          effects:
+            - set:
+                prev_state:          "landing"
+                last_error:          ""
+                init_request:        ""
+                init_discovery:      {}
+                init_run_ok:         false
+                init_run_output:     ""
+                init_apply_result:   {}
+                init_apply_ok:       false
+                init_apply_output:   ""
+                init_profile_status: "discovering"
+                init_feedback:       ""
+      go_code_review:
+        - target: code_review
+          effects:
+            - set: { prev_state: "landing" }
+      go_deploy:
+        - target: deploy
+          effects:
+            - set: { prev_state: "landing" }
+      go_observability:
+        - target: observability
+          effects:
+            - set: { prev_state: "landing" }
+      go_incident:
+        - target: incident
+          effects:
+            - set: { prev_state: "landing" }
+      go_docs:
+        - target: docs
+          effects:
+            - set: { prev_state: "landing" }
+
+      # Auto-routing one-shot — ticket_type chooses the pipeline (verbatim
+      # from main.yaml: bug → bf, feature → impl, epic → cyp).
+      drive:
+        - when: "world.ticket_id != '' && world.ticket_type == 'bug'"
+          target: bf
+          effects:
+            - set: { last_error: "" }
+        - when: "world.ticket_id != '' && world.ticket_type == 'feature'"
+          target: impl
+          effects:
+            - set: { last_error: "" }
+        - when: "world.ticket_id != '' && world.ticket_type == 'epic'"
+          target: cyp
+          effects:
+            - set: { last_error: "" }
+        - when: "world.ticket_id == ''"
+          target: landing
+          guard_hint: "Pick a ticket first — type tickets."
+          effects:
+            - set:
+                last_error: |
+                  No ticket selected — pick one before entering the pipeline.
+
+                  Suggestions:
+                  - `tickets` — search and pick a ticket
+                  - `workspaces` — resume an in-progress workspace
+        - default: true
+          target: landing
+          guard_hint: "Ticket has no type set — re-pick from tickets so its type is recorded."
+          effects:
+            - set:
+                last_error: |
+                  The picked ticket has no type — the pipeline router can't determine which pipeline to use.
+
+                  Suggestions:
+                  - `tickets` — re-search and re-pick the ticket (type is recorded at pick time)
+
+      # Escape hatches — same destinations as drive, named explicitly.
+      go_bugfix:
+        - when: "world.ticket_id != ''"
+          target: bf
+          effects:
+            - set: { last_error: "" }
+        - default: true
+          target: landing
+          guard_hint: "Pick a ticket first — type tickets."
+          effects:
+            - set:
+                last_error: |
+                  No ticket selected — pick one before entering the bugfix pipeline.
+
+                  Suggestions:
+                  - `tickets` — search and pick a ticket
+                  - `workspaces` — resume an in-progress workspace
+      go_implementation:
+        - when: "world.ticket_id != ''"
+          target: impl
+          effects:
+            - set: { last_error: "" }
+        - default: true
+          target: landing
+          guard_hint: "Pick a ticket first — type tickets."
+          effects:
+            - set:
+                last_error: |
+                  No ticket selected — pick one before entering the implementation pipeline.
+
+                  Suggestions:
+                  - `tickets` — search and pick a ticket
+                  - `workspaces` — resume an in-progress workspace
+      go_cypilot:
+        - when: "world.ticket_id != ''"
+          target: cyp
+          effects:
+            - set: { last_error: "" }
+        - default: true
+          target: landing
+          guard_hint: "Pick a ticket first — type tickets."
+          effects:
+            - set:
+                last_error: |
+                  No ticket selected — pick one before entering the cypilot pipeline.
+
+                  Suggestions:
+                  - `tickets` — search and pick a ticket
+                  - `workspaces` — resume an in-progress workspace
+
+      go_pr_refinement:
+        - when: "world.last_pr_url != '' || world.feature_branch != ''"
+          target: pr
+          effects:
+            - set: { last_error: "" }
+        - default: true
+          target: landing
+          guard_hint: "No open PR yet — drive a ticket through the pipeline first."
+          effects:
+            - set:
+                last_error: |
+                  No open PR yet — you need an active workspace with a pushed branch.
+
+                  Suggestions:
+                  - Pick a bug or feature ticket and `drive` it through the pipeline to the PR stage
+
+      go_code_review_story:
+        - target: rev
+
+      # Demo-video loop — produce/refresh a tour video for a feature and gate
+      # it with the kitsoki-ui-qa vision review. Enters the demovid import
+      # compound; world_in: (app.yaml imports.demovid) projects the hub's
+      # workdir / base_branch + the demo input keys into the loop. Additive —
+      # placed after the other go_* / drive launch arcs, before the self-loop
+      # navigation, preserving existing arc order.
+      make_demo:
+        - target: demovid
+          effects:
+            - set: { last_error: "" }
+
+      # go_main / go_back / look now self-target the workbench floor.
+      go_main:
+        - target: landing
+      go_back:
+        - target: landing
+      look:
+        - target: .

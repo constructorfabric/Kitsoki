@@ -1,0 +1,79 @@
+# design_override_and_clarify — override_new despite an overlap, then the
+# clarify back-edge from refine to proposal.
+#
+# Covers the two arcs the happy/overlap flows don't: `override_new` (force a
+# new proposal even though the scout found an overlap — recorded as decision
+# "new") and `clarify` from the refine room (step all the way back to intake,
+# resetting all downstream state including the search results).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design_search
+initial_world:
+  judge_mode:         "human"
+  design_idea:      "Add a local model agent sidecar."
+  design_workspace: "docs/proposals/.workspace/lmo"
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      existing_scan:
+        data:
+          ok: true
+          submitted:
+            overlaps:
+              - { path: "docs/proposals/local-model-agent.md", kind: "accepted", summary: "Already proposes a sidecar.", recommendation: "amend" }
+            roadmap_fit: "Overlaps the accepted proposal."
+      references_research:
+        data:
+          ok: true
+          submitted: { items: [] }
+  # override_new now cascades through design_materialize, which mints the
+  # folder (uniquify), runs the semantic reference search, then advances.
+  host.agent.search:
+    data: { hits: [], top: null }
+  host.run:
+    by_call:
+      uniquify:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"slug":"lmo","workspace":"docs/proposals/.workspace/lmo"}'
+          stdout_json: { slug: "lmo", workspace: "docs/proposals/.workspace/lmo" }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/lmo/out.md", message_id: "out#1" }
+  # Stubs for design_refine on_enter (advanced to by override_new → materialize)
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.agent.task:
+    by_call:
+      refine_brief:
+        data:
+          ok: true
+          submitted: { summary: "Brief started.", gaps: ["Scope is unclear"] }
+
+turns:
+  # Force a new proposal despite the overlap — decision recorded as "new",
+  # no change_target set. Advances to design_refine.
+  - intent: { name: override_new, slots: {} }
+    expect_state: design_refine
+    expect_world:
+      design_overlap_decision: "new"
+      design_change_target:    ""
+
+  # Step back all the way to intake — resets search + brief state.
+  - intent: { name: clarify, slots: {} }
+    expect_state: design
+    expect_world:
+      design_existing_state:   {}
+      design_existing_path:    ""
+      design_overlap_decision: ""
+      design_change_target:    ""
+      design_references:       {}
+      design_references_path:  ""
+      design_brief_path:       ""
+      design_brief_decision:   {}
+      design_brief_cycle:      0
+      design_refine_analysis:  {}
+
+expect_no_errors: true

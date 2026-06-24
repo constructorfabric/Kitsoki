@@ -52,7 +52,7 @@ func TestBitbucketTransport_PostEncodesAndAuths(t *testing.T) {
 	require.NoError(t, err)
 
 	id, err := bt.Post(context.Background(),
-		transport.SessionKey{Transport: "bitbucket", Thread: "PROJ-89912"},
+		transport.SessionKey{Transport: "bitbucket", Thread: "PLTFRM-89912"},
 		transport.Message{
 			Title: "Validate",
 			Body:  "All checks pass.",

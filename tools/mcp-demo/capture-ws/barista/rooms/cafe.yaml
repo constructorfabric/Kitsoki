@@ -1,0 +1,95 @@
+states:
+  # ── lobby: the start room. One direct intent leads into the order room. ──
+  lobby:
+    description: "The cafe lobby — step up to order."
+    relevant_world: [drink]
+    view:
+      - prose: "Welcome to the kitsoki cafe. Step up to the counter when you're ready to order."
+      - heading: "Last order"
+      - kv:
+          pairs:
+            Drink: "{{ world.drink }}"
+      - choice:
+          mode: single
+          prompt: "Counter"
+          items:
+            - label: "start order"
+              hint: "step up and begin ordering"
+              intent: start_order
+            - label: "look"
+              hint: "look around the lobby"
+              intent: look
+    on:
+      start_order:
+        - target: order
+      look:
+        - target: .
+
+  # ── order: pick a drink. The pick is a plain transition that ALSO sets a
+  #    deterministic world key via a trivial `set:` effect (no slots/agent). ──
+  order:
+    description: "At the counter — pick your drink."
+    relevant_world: [drink]
+    view:
+      - prose: "What can I get you? Today the deterministic special is a flat white."
+      - choice:
+          mode: single
+          prompt: "Menu"
+          items:
+            - label: "flat white"
+              hint: "order a flat white"
+              intent: pick_flat_white
+            - label: "look"
+              hint: "look at the menu again"
+              intent: look
+    on:
+      pick_flat_white:
+        - target: confirm
+          effects:
+            - set: { drink: "flat white" }
+      look:
+        - target: .
+
+  # ── confirm: branch point. `done` ends the story; `order_another` loops back
+  #    to the lobby (clearing the drink). Both are direct transitions. ──
+  confirm:
+    description: "Order confirmed — your flat white is ready."
+    relevant_world: [drink]
+    view:
+      - prose: "One flat white, coming right up. Anything else?"
+      - heading: "Your order"
+      - kv:
+          pairs:
+            Drink: "{{ world.drink }}"
+      - choice:
+          mode: single
+          prompt: "Next"
+          items:
+            - label: "done"
+              hint: "take it and go"
+              intent: done
+            - label: "order another"
+              hint: "go back and order another"
+              intent: order_another
+            - label: "look"
+              hint: "look at your order again"
+              intent: look
+    on:
+      done:
+        - target: served
+      order_another:
+        - target: lobby
+          effects:
+            - set: { drink: "(nothing yet)" }
+      look:
+        - target: .
+
+  # ── served: terminal. ──
+  served:
+    terminal: true
+    description: "Enjoy your coffee!"
+    view:
+      - prose: "Here's your flat white. Enjoy! Re-run to order again."
+      - kv:
+          pairs:
+            Drink: "{{ world.drink }}"

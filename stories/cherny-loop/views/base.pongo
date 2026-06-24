@@ -1,0 +1,15 @@
+{% comment %}
+cherny-loop base view. Block contract shared across kitsoki stories
+(docs/stories/story-style.md §2): status / heading / body / choices / footer.
+
+The status line is the loop dashboard — iteration vs budget and $ spend vs
+ceiling — so the operator can watch the loop converge or run out of road.
+{% endcomment %}
+{% block status %}iter {{ world.iteration }}/{{ world.iteration_budget }}  ·  {{ world.gate_mode|default:"planner" }} gate  ·  ${{ world.session_cost_usd }}{% if world.cost_budget_usd > 0 %}/${{ world.cost_budget_usd }}{% endif %} spent{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

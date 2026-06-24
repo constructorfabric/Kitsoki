@@ -27,6 +27,37 @@ type Theme struct {
 	Border lipgloss.Color
 }
 
+// Brand palette — the Kitsoki "Mesa Sun" mark (docs/branding/logo.md).
+// These are fixed brand colours, not theme roles: the startup logo renders
+// in desert tones regardless of the active room theme, and themeMesa below
+// maps them onto the standard Theme slots for the branded welcome banner.
+const (
+	brandGold   = lipgloss.Color("#e0a23a") // sun
+	brandClay   = lipgloss.Color("#a8492b") // building
+	brandAdobe  = lipgloss.Color("#c97b4a") // lighter tier / accents
+	brandRust   = lipgloss.Color("#7d2e1c") // ground / shadow
+	brandShadow = lipgloss.Color("#3a2418") // doorway / deep shadow
+	brandPaper  = lipgloss.Color("#f0e3c8") // paper / reversed-mark text
+	brandSand   = lipgloss.Color("#b59b76") // muted sand — hints/subtitle
+	brandTeal   = lipgloss.Color("#3aa3a0") // optional cool accent
+)
+
+// themeMesa is the brand theme used by the startup welcome banner so the
+// first thing a user sees matches the Mesa Sun mark — gold sun accent,
+// clay building primary, rust border. It is not a per-room theme; only the
+// welcome banner reaches for it (see internal/tui/welcome.go).
+var themeMesa = &Theme{
+	Name:    "mesa",
+	Primary: brandClay,
+	Accent:  brandGold,
+	Info:    brandTeal,
+	Muted:   brandSand,
+	Warning: brandAdobe,
+	Error:   lipgloss.Color("#c84b31"), // desert red — distinct from clay
+	Text:    brandPaper,
+	Border:  brandRust,
+}
+
 // themeDefault matches today's tui/styles.go palette so the redesign
 // renders against the same baseline before per-room themes diverge.
 var themeDefault = &Theme{
@@ -87,6 +118,8 @@ var themeOffPath = &Theme{
 // to error-check a theme lookup.
 func ThemeByName(name string) *Theme {
 	switch name {
+	case "mesa":
+		return themeMesa
 	case "meta-blue":
 		return themeMetaBlue
 	case "meta-amber":
@@ -101,5 +134,5 @@ func ThemeByName(name string) *Theme {
 // AllThemes returns every shipped theme in stable order — used by the
 // preview CLI's bake-off mode (--theme all).
 func AllThemes() []*Theme {
-	return []*Theme{themeDefault, themeMetaBlue, themeMetaAmber, themeOffPath}
+	return []*Theme{themeDefault, themeMesa, themeMetaBlue, themeMetaAmber, themeOffPath}
 }

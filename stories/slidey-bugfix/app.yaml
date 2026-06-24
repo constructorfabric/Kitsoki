@@ -1,0 +1,102 @@
+# slidey-bugfix — the bugfix pipeline pointed at a real external repo (demo instance).
+#
+# A thin instance of the provider-neutral `bugfix` story, pre-bound to the real
+# slidey checkout (a Node/Vue narrated-deck renderer) and seeded with the
+# cards-timing-drift ticket. It exists so the tour-driven demo
+# (features/slidey-bugfix.yaml) starts with the bug context already in world —
+# ticket_id / workdir / node CI commands baked into the instance's world
+# DEFAULTS (which machine.WorldFromSchema applies on session start, so the
+# implementer's `when: workdir != ''` guard fires and the implementing room
+# shows the real applied fix). bf_autostart_attempted defaults true so bf.idle
+# stays parked and the tour drives `start` explicitly.
+#
+# The content shown is replayed verbatim from a real bug-fix run (see the demo's
+# flow + cassette); no engine or bugfix-room change is needed to retarget — the
+# seam is config, exactly like the gears-bugfix instance.
+
+app:
+  id: slidey-bugfix
+  version: 0.1.0
+  title: "Fix a real bug in slidey (cards-timing-drift) — the bugfix pipeline, end to end"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.local_files.ticket
+  - host.git
+  - host.local
+  - host.git_worktree
+  - host.append_to_file
+  - host.inbox.add
+  - host.agent.ask
+  - host.agent.decide
+  - host.agent.task
+  - host.diff.open
+  - host.run
+  - host.artifacts_dir
+
+imports:
+  bf:
+    source: ../bugfix
+    entry: idle
+    hosts: declared
+    host_bindings:
+      ticket:    host.local_files.ticket
+      vcs:       host.git
+      ci:        host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+    world_in:
+      ticket_id:       "{{ world.ticket_id }}"
+      ticket_title:    "{{ world.ticket_title }}"
+      ticket_url:      "{{ world.ticket_url }}"
+      thread:          "{{ world.thread }}"
+      workspace_id:    "{{ world.workspace_id }}"
+      workdir:         "{{ world.workdir }}"
+      base_branch:     "{{ world.base_branch }}"
+      feature_branch:  "{{ world.feature_branch }}"
+      bugfix_mode:     "{{ world.bugfix_mode }}"
+      bugfix_exit:     "open-PR"
+      judge_mode:      "{{ world.judge_mode }}"
+      test_cmd:        "{{ world.test_cmd }}"
+      build_cmd:       "{{ world.build_cmd }}"
+      bf_autostart_attempted: "{{ world.bf_autostart_attempted }}"
+    exits:
+      done:        { to: shipped }
+      abandoned:   { to: shipped }
+      pick_ticket: { to: shipped }
+      shipped:          { to: shipped }
+      needs-human:      { to: shipped }
+      not-reproducible: { to: shipped }
+      # bf triage-only mode terminal (unreachable here — full mode — but the
+      # loader requires every child exit be mapped).
+      triaged:          { to: shipped }
+
+# Instance world — the slidey cards-timing-drift profile (the demo's pre-set context).
+world:
+  ticket_id:       { type: string, default: "slidey-128" }
+  ticket_title:    { type: string, default: "Grid `cards` scenes with more than 6 items desync narration (estimate vs render drift)" }
+  ticket_url:      { type: string, default: "https://github.com/bradleysmith/slidey/issues/128" }
+  thread:          { type: string, default: "slidey-128" }
+  workspace_id:    { type: string, default: "bf-slidey-128" }
+  workdir:         { type: string, default: ".worktrees/bf-slidey-128" }
+  base_branch:     { type: string, default: "main" }
+  feature_branch:  { type: string, default: "fix/cards-item-timing-drift" }
+  bugfix_mode:     { type: string, default: "full" }
+  judge_mode:      { type: string, default: "human" }
+  test_cmd:        { type: string, default: "node --test test/timing.test.js" }
+  build_cmd:       { type: string, default: "" }
+  bf_autostart_attempted: { type: bool, default: true }
+
+states:
+  shipped:
+    description: "Fix landed on fix/cards-item-timing-drift — PR-ready, ticket resolved."
+    view:
+      - banner:
+          text:     "PR-READY"
+          subtitle: "slidey-128 fixed — branch fix/cards-item-timing-drift ready to open a pull request against slidey"
+          color:    "#22C55E"
+      - prose: "The bug-fix pipeline reproduced, proposed, implemented, tested, reviewed and validated the fix for the real slidey bug. The branch is ready for a PR; the ticket is resolved."
+    relevant_world: [ticket_id, ticket_title, feature_branch]
+
+root: bf

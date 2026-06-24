@@ -1,4 +1,6 @@
-// Package app — phase-template expansion (proposal §5).
+// Package app — phase-template expansion.
+//
+// See docs/stories/state-machine.md "Phase templates" for the authoring model.
 //
 // Phase templates declare reusable shapes; the `phases:` block instantiates
 // the template once per phase. The expander runs at load time, before
@@ -482,6 +484,12 @@ func substViewElement(el ViewElement, params map[string]any, next map[string]str
 		Subtitle: substString(el.Subtitle, params, next),
 		Color:    el.Color,
 		When:     substString(el.When, params, next),
+		// Media fields — handle and kind are not param-substituted (they
+		// come from world slots via pongo2 at render time); pass through as-is.
+		MediaHandle:  el.MediaHandle,
+		MediaCaption: substString(el.MediaCaption, params, next),
+		MediaKind:    el.MediaKind,
+		MediaPath:    substString(el.MediaPath, params, next),
 	}
 	if len(el.Items) > 0 {
 		out.Items = make([]ListItem, len(el.Items))

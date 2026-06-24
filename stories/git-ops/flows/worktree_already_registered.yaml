@@ -1,0 +1,44 @@
+# worktree_already_registered — worktree already exists → route to worktree_list.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: worktree_create
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  worktree_desc:      ""
+
+host_handlers:
+  host.run:
+    by_call:
+      create_worktree:
+        data:
+          ok:        false
+          exit_code: 0
+          stdout:    '{"branch":"add-login","path":".worktrees/add-login","output":"already registered","ok":false,"outcome":"already_registered"}'
+          stdout_json:
+            branch:  add-login
+            path:    .worktrees/add-login
+            output:  "already registered"
+            ok:      false
+            outcome: already_registered
+      list_worktrees:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"report":". [main] integration\n.worktrees/add-login [add-login] has-unique-commits (2)\n"}'
+          stdout_json:
+            report: ". [main] integration\n.worktrees/add-login [add-login] has-unique-commits (2)\n"
+
+turns:
+  - intent: { name: describe, slots: { desc: "add login" } }
+    expect_state: worktree_create
+    expect_world:
+      last_op_outcome: already_registered
+
+  - intent: { name: worktree_list, slots: {} }
+    expect_state: worktree_list
+
+expect_no_errors: true

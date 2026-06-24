@@ -21,7 +21,8 @@ import (
 
 // WithTurnCache wires a [turncache.Cache] into the orchestrator so
 // `Turn` can short-circuit free-form input that already resolved on a
-// previous turn (semantic-routing proposal §2.2, §5.4). The cache is
+// previous turn (see docs/architecture/semantic-routing.md "Turn
+// cache"). The cache is
 // optional — orchestrators created without WithTurnCache fall through
 // to the LLM whenever semroute misses.
 //
@@ -65,7 +66,7 @@ func WithTurnCache(c turncache.Cache) Option {
 // (description text, examples, view templates) MUST hash the same,
 // because none of those affect routing decisions. Conversely, an
 // edit that adds or removes a synonym MUST change the hash so the
-// §7.1 invalidation sweep flushes the stale cache rows.
+// session-start invalidation sweep flushes the stale cache rows.
 //
 // Implementation: SHA-1 over a canonicalised JSON encoding. Hex-
 // encoded to 16 characters (64 bits) — collisions are theoretically
@@ -84,7 +85,7 @@ func (o *Orchestrator) appHash() string {
 // uses for cache keys. Keeping it exported avoids a separate util
 // package — same algorithm, same input, same output.
 //
-// What the hash covers (semantic-routing proposal §7.1): app id,
+// What the hash covers: app id,
 // version, the per-intent title + sorted synonyms + sorted slot
 // names + each slot's Type + per-value slot synonyms, and the
 // app.routing bars / cap / enabled flag. Two AppDefs whose routing
@@ -101,7 +102,7 @@ func (o *Orchestrator) appHash() string {
 // for the required-slot check. Hashing Required would invalidate
 // every cached row when an author flips a slot from optional to
 // required, even though Validate already rejects every offending
-// row on its next read — the rejection counts toward the §7.2
+// row on its next read — the rejection counts toward the
 // strike budget and the row is evicted within three failed reads.
 // Trading three deferred re-validations for a global cache flush is
 // the wrong swap; Validate is cheap, and a stale row that survives
@@ -184,11 +185,13 @@ func ComputeAppHash(def *app.AppDef) string {
 		return "marshal-err"
 	}
 	sum := sha1.Sum(buf)
-	return hex.EncodeToString(sum[:8]) // 64-bit prefix; matches the proposal §3 sig width
+	return hex.EncodeToString(sum[:8]) // 64-bit prefix; matches the lexical signature width
 }
 
-// runStartSweeps runs the §7.1/§7.3/§7.4 cache maintenance pass once
-// per orchestrator. Idempotent; safe to call multiple times (the
+// runStartSweeps runs the invalidate / trim / cold-sweep cache
+// maintenance pass once per orchestrator (see
+// docs/architecture/semantic-routing.md "Flushing the cache").
+// Idempotent; safe to call multiple times (the
 // once-guard short-circuits subsequent calls). Errors are logged
 // rather than returned because a failing sweep must not stop the
 // session from opening — the cache merely degrades to its in-flight
@@ -203,7 +206,7 @@ func (o *Orchestrator) runStartSweeps(ctx context.Context) {
 			appID = o.def.App.ID
 		}
 		hash := o.appHash()
-		// §7.1 — wipe stale rows for THIS app at any prior hash.
+		// Wipe stale rows for THIS app at any prior hash.
 		if deleted, err := o.cache.InvalidateOtherHashes(ctx, appID, hash); err != nil {
 			o.logger.Warn(trace.EvTurnTurncacheHit,
 				slog.String("phase", "invalidate_other_hashes"),
@@ -216,7 +219,7 @@ func (o *Orchestrator) runStartSweeps(ctx context.Context) {
 				slog.String("app", appID),
 			)
 		}
-		// §7.4 — sweep cold rows.
+		// Sweep cold rows.
 		cfg := o.routingConfig()
 		if cfg.CacheMaxAge > 0 {
 			cutoff := time.Now().Add(-time.Duration(cfg.CacheMaxAge))
@@ -232,7 +235,7 @@ func (o *Orchestrator) runStartSweeps(ctx context.Context) {
 				)
 			}
 		}
-		// §7.3 — enforce the LRU cap.
+		// Enforce the LRU cap.
 		if cfg.CacheCap > 0 {
 			if deleted, err := o.cache.TrimLRU(ctx, appID, cfg.CacheCap, cfg.CacheTrimFraction); err != nil {
 				o.logger.Warn(trace.EvTurnTurncacheHit,
@@ -269,8 +272,9 @@ func (o *Orchestrator) stopwordsExtra() []string {
 }
 
 // turnCacheKey computes the cache key for the (app, state, input)
-// triple. The signature is derived from [lex.Signature] which is the
-// proposal's canonical stable lexical signature (§3).
+// triple. The signature is derived from [lex.Signature], the canonical
+// stable lexical signature (see docs/architecture/semantic-routing.md
+// "The lexical signature").
 func (o *Orchestrator) turnCacheKey(state app.StatePath, input string) turncache.Key {
 	appID := ""
 	if o.def != nil {
@@ -284,7 +288,7 @@ func (o *Orchestrator) turnCacheKey(state app.StatePath, input string) turncache
 	}
 }
 
-// tryTurnCache attempts to resolve input through the §5.4 cache. It
+// tryTurnCache attempts to resolve input through the turn cache. It
 // runs AFTER semroute has missed and BEFORE the LLM. Returns
 // (outcome, true, nil) on a successful cache hit + re-Validate;
 // (nil, false, nil) on miss or validation failure (which is the
@@ -292,7 +296,7 @@ func (o *Orchestrator) turnCacheKey(state app.StatePath, input string) turncache
 // orchestrator-side error.
 //
 // On a re-validate failure the row's strike count increments; the
-// third consecutive failure evicts the row (§7.2). The cache itself
+// third consecutive failure evicts the row. The cache itself
 // owns the strike threshold via [turncache.Config.RevalidateStrikes].
 //
 // On hit the orchestrator emits [trace.EvTurnTurncacheHit] before
@@ -392,7 +396,10 @@ func (o *Orchestrator) tryTurnCache(ctx context.Context, sid app.SessionID, inpu
 	// the machine.Turn under the session lock so the event log gets
 	// the canonical pair of TurnStarted+TurnEnded entries.
 	_ = result
-	outcome, err := o.SubmitDirectFromInput(ctx, sid, verdict.Intent, slots, input)
+	outcome, err := o.SubmitDirectRouted(ctx, sid, verdict.Intent, slots, input, RouteProvenance{
+		Source:     "turncache",
+		Confidence: verdict.Confidence,
+	})
 	if err != nil {
 		return nil, false, err
 	}

@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "landing_note",
+  "description": "The free-form landing agent's close-out note. The landing is exploratory work, not a structured artifact: the only required field is a one-line `summary` of what the agent did or found this turn. Everything else the agent learned lives in its trace + any files it touched (under a write-mode grant). This minimal, permissive schema satisfies the engine's host.agent.task acceptance contract (loader M6b requires a schema) while keeping the output as close to 'free' as the runtime allows — additionalProperties is open so the agent may attach anything.",
+  "type": "object",
+  "required": ["summary"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One line: what the agent did or found this turn."
+    },
+    "details": {
+      "type": "string",
+      "description": "Optional longer markdown narrative of the exploration / change."
+    },
+    "next_steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional suggested follow-ups (e.g. a pipeline to drive, a file to review)."
+    },
+    "route": {
+      "type": "object",
+      "description": "Optional on-path bail. Set ONLY when the request clearly belongs in a named pipeline reachable from the workbench (bugfix / implementation / cypilot / PR refinement / code review / PRD / design) rather than ad-hoc work the agent should just do here. When set, the workbench offers the operator a one-click jump onto that path — it is OFFERED, never forced. Leave unset for work the agent can carry out in place.",
+      "required": ["intent", "label", "reason"],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "enum": ["go_bugfix", "go_implementation", "go_cypilot", "go_pr_refinement", "go_code_review_story", "go_prd", "go_idea", "drive"],
+          "description": "The workbench navigation intent that enters the pipeline."
+        },
+        "ticket_id": {
+          "type": "string",
+          "description": "Optional — the ticket the pipeline should pick up, if the agent identified an existing one. Required for bugfix/implementation/cypilot/drive to clear their 'pick a ticket first' guard."
+        },
+        "ticket_type": {
+          "type": "string",
+          "enum": ["bug", "feature", "epic"],
+          "description": "Optional — the picked ticket's type. Only consulted when intent is 'drive' (which routes by type)."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human one-liner for the bail button, e.g. 'Fix this as a bugfix ticket'."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why this path fits — shown above the button."
+        }
+      },
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "description": "Optional executable plan. Set ONLY when the request is concrete, actionable work the agent can encode as a single run-then-verify step (e.g. 'migrate issues/ to GitHub'). When set, the workbench renders a reviewable plan card with Accept & apply; a free-text adjustment refines it (the work sink re-dispatches the planner with this plan as prior context). Leave unset for pure exploration / Q&A. Shape mirrors schemas/plan.json exactly.",
+      "additionalProperties": false,
+      "required": ["goal", "step", "verify"],
+      "properties": {
+        "goal": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One line: the contract this plan satisfies."
+        },
+        "step": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "description", "mutating"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["run", "agent"] },
+            "description": { "type": "string", "minLength": 1 },
+            "mutating": { "type": "boolean" }
+          }
+        },
+        "verify": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "reason"],
+          "properties": {
+            "mode": { "type": "string", "enum": ["script", "agent", "hybrid"] },
+            "script": { "type": "string" },
+            "inputs": { "type": "object", "additionalProperties": true },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

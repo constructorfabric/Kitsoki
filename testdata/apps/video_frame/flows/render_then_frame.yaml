@@ -1,0 +1,48 @@
+# render_then_frame — the video frame seam, end-to-end, with NO ffmpeg/LLM.
+#
+# Stubs each host verb to a fixed Result so the deterministic chain runs
+# offline: render (slidey stub) → frame grab (video.frame stub) → register
+# (artifacts_dir stub). Asserts the rendered video path, the grabbed frame
+# path, and the bound frame handle. Mirrors the proposal's Verification:
+# "render (stub) → sidecar present → host.video.frame (stub) → handle bound".
+test_kind: flow
+app: ../app.yaml
+initial_state: intro
+
+host_handlers:
+  host.slidey.render:
+    data:
+      ok:   true
+      path: "/tmp/video-frame-smoke/out.mp4"
+      mime: "video/mp4"
+      kind: "video"
+      chapters_path: "/tmp/video-frame-smoke/out.mp4.chapters.json"
+
+  host.video.frame:
+    data:
+      ok:   true
+      path: "/tmp/video-frame-smoke/frame-14300.png"
+      mime: "image/png"
+      kind: "image"
+
+  host.artifacts_dir:
+    data:
+      ok:     true
+      handle: "video-frame-smoke#1"
+      path:   ".artifacts/video-frame-smoke/frame.png"
+      mime:   "image/png"
+      kind:   "image"
+
+turns:
+  # `start` transitions intro → produce; produce's on_enter binds video_path
+  # (slidey stub), then frame_path (video.frame stub), then frame_handle
+  # (artifacts_dir stub) — one settle chain, no ffmpeg/LLM.
+  - intent: { name: start, slots: {} }
+    expect_state: produce
+    expect_world:
+      video_path:   "/tmp/video-frame-smoke/out.mp4"
+      frame_path:   "/tmp/video-frame-smoke/frame-14300.png"
+      frame_handle: "video-frame-smoke#1"
+
+expect_terminal: true
+expect_no_errors: true

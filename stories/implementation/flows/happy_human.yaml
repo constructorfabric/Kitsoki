@@ -3,7 +3,7 @@
 # → pr.ci_monitoring → pr.merge_executing → pr.merge_awaiting_reply →
 # @exit:done.
 #
-# Same stub layout as bugfix/flows/happy_human.yaml — one oracle stub
+# Same stub layout as bugfix/flows/happy_human.yaml — one agent stub
 # serves every executing room AND every judge prompt; one host.git
 # stub satisfies every iface.vcs.<op>; host.local serves iface.ci.<op>.
 
@@ -30,6 +30,12 @@ host_handlers:
 
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+
+  # handoff room's lost-work clean-tree check (host.run done_clean_tree_check):
+  # report a clean worktree so the open/proceed arcs enter the pr import. A
+  # dirty tree would route to @exit:abandoned — see flows/handoff_refuses_dirty_tree.yaml.
+  host.run:
+    data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
 
   # iface.workspace.* — prefix-fallback to host.git_worktree.
   host.git_worktree:
@@ -65,11 +71,11 @@ host_handlers:
       url:   "issues/tasks/tkt-t-001.md"
       status: "open"
 
-  # Oracle stub covers task_summary_artifact, code_artifact,
+  # Agent stub covers task_summary_artifact, code_artifact,
   # test_artifact, review_artifact, judge_verdict (all keys live on the
   # same envelope; additionalProperties: true on the artifact schemas
   # tolerates the unused fields per schema).
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

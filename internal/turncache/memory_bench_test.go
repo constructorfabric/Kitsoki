@@ -1,6 +1,7 @@
-// Benchmarks for the in-memory turn cache. The §2.2 / §5.4 budget is
-// "~80 µs" for a SQLite-backed Get; the in-memory layer must beat that
-// comfortably so the SQLite shim sits inside its own budget.
+// Benchmarks for the in-memory turn cache. The ~80 µs budget for a
+// SQLite-backed Get (see docs/architecture/semantic-routing.md) sets the
+// bar the in-memory layer must beat comfortably so the SQLite shim sits
+// inside its own budget.
 //
 // Run:
 //

@@ -1,0 +1,5 @@
+node_modules/
+test-results/
+playwright-report/
+# Raw live captures (intermediate); the curated termcast (casts/*.ts | *.json) is committed.
+casts/*.cast

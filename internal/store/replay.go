@@ -1,4 +1,7 @@
-// Package store — replay.go: journey reconstruction from an event history.
+package store
+
+// replay.go reconstructs a journey from an event history. See doc.go for the
+// package overview.
 //
 // BuildJourney folds an ordered History into a JourneyState by interpreting
 // each event according to its kind. The determinism contract: if you feed
@@ -17,8 +20,8 @@
 //	GuardRejected:     noted, state/world unchanged.
 //	TurnStarted:       noted (used by orchestrator, not machine core).
 //	TurnEnded:         noted.
+//	StorySnapshot/StoryChanged: noted — embedded story source, no fold effect.
 //	All other kinds:   silently ignored (forward-compatible with future kinds).
-package store
 
 import (
 	"encoding/json"
@@ -78,7 +81,10 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 			}
 
 		case EffectApplied:
-			// Payload: {"set": {...}} or {"increment": {...}} or {"say": "..."}
+			// Payload: {"set": {...}} or {"increment": {...}}.  Legacy traces
+			// (before say was split into MachineSay) may also carry {"say": "..."};
+			// the Say field is tolerated on decode and ignored here — narration
+			// now lands as a MachineSay event.
 			var p effectPayload
 			if err := json.Unmarshal(ev.Payload, &p); err != nil {
 				return nil, fmt.Errorf("replay: EffectApplied turn=%d seq=%d: %w", ev.Turn, ev.Seq, err)
@@ -99,6 +105,10 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 			}
 			// Say effects don't affect world state; skip.
 
+		case MachineSay:
+			// Operator narration: annotation only — say does not mutate
+			// world or state. No-op on replay.
+
 		case StateExited, StateEntered:
 			// Noted for debugging but don't affect JourneyState directly.
 
@@ -109,18 +119,18 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 		case ValidationFailed, GuardRejected:
 			// Failed intents: state and world are unchanged. Skip.
 
-		case TurnStarted, TurnEnded:
+		case TurnStarted, UserInputReceived, TurnEnded:
 			// Orchestrator-level bookkeeping. No state/world change.
 
-		case LLMCalled, LLMToolCall:
-			// LLM-layer events; no state/world change.
+		case LLMToolCall, AgentStreamEvent:
+			// LLM-layer event; no state/world change.
 
 		case HostInvoked, HostDispatched, HostReturned:
 			// Host side-effects are already materialized as EffectApplied events.
 			// Nothing to re-apply here.
 
 		case OffPathEntered, OffPathExited, OffPathQuestion, OffPathAnswer:
-			// Off-path turns do not mutate world or state (§7.7, §11).
+			// Off-path turns do not mutate world or state.
 			// All four kinds are annotation-only for the replay path.
 
 		case TimeoutFired:
@@ -135,6 +145,27 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 			// HarnessError surfaces the why-the-state-stopped story for
 			// operators reading the journal.
 
+		case MachineError:
+			// Annotation-only event recording a turn that aborted because
+			// machine.Turn returned an error (e.g. a non-compiling effect
+			// expression). No transition fired, so there is nothing to
+			// re-apply; the event exists purely so the trace records why
+			// the turn produced no state change.
+
+		case StorySnapshot, StoryChanged:
+			// The embedded story source (base snapshot + diffs). These make
+			// the trace self-contained for re-compilation and branching, but
+			// they do not mutate world or state — the journey fold ignores
+			// them. The story is consumed by StoryAtTurn + app.LoadFromFiles
+			// when reconstructing the machine, not here.
+
+		case MiningProposalRaised, MiningProposalDecided, MiningPassRan:
+			// The mining pass + surface-and-verdict records. They pin which
+			// mined recipe proposed which structure and whether it stuck, and
+			// which pass surfaced it, but carry no world/state effect of their
+			// own — an accept's edit reaches the journey via the StoryChanged its
+			// Reload emits. Folded as no-ops, exactly like GateDecided.
+
 		default:
 			// Forward-compatible: silently ignore unknown event kinds.
 		}
@@ -143,16 +174,23 @@ func BuildJourney(def *app.AppDef, initialState app.StatePath, initialWorld worl
 	return js, nil
 }
 
-// isOffPathEvent reports whether kind is one of the four off-path event
-// kinds that fire on the orchestrator's side-channel rather than as part
-// of a foreground turn. These events must NOT advance js.Turn during
-// replay — see the BuildJourney comment.
-func isOffPathEvent(kind EventKind) bool {
-	switch kind {
-	case OffPathEntered, OffPathExited, OffPathQuestion, OffPathAnswer:
-		return true
+// BuildJourneyUntil is like BuildJourney but stops before folding any event
+// whose turn number is >= beforeTurn. It is used by the rewind path to
+// reconstruct the pre-dispatch state for a given turn without modifying the
+// event log.
+//
+// Pass the same initialState/initialWorld as you would to BuildJourney — the
+// same snapshot-relative contract applies: history should already be the events
+// returned by LoadHistory (i.e. events after the latest snapshot), and
+// initialState/initialWorld should be initialised from that snapshot.
+func BuildJourneyUntil(def *app.AppDef, initialState app.StatePath, initialWorld world.World, history History, beforeTurn app.TurnNumber) (*JourneyState, error) {
+	filtered := make(History, 0, len(history))
+	for _, ev := range history {
+		if ev.Turn < beforeTurn {
+			filtered = append(filtered, ev)
+		}
 	}
-	return false
+	return BuildJourney(def, initialState, initialWorld, filtered)
 }
 
 // effectPayload is the JSON structure for an EffectApplied event payload.

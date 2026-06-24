@@ -1,0 +1,73 @@
+# plan_propose_render — the planner emits a structured plan; the workbench
+# renders the reviewable plan card (ad-hoc-structured-plan proposal, Task 1).
+#
+# The free-form work turn returns a landing-note that carries a `plan` (a
+# concrete migrate-issues task: one mutating run step + a script verify gate).
+# The on_enter agent task is stubbed (no claude subprocess) so this is no-LLM /
+# CI-fast. The workbench STAYS PUT (read-only floor) with the plan bound — the
+# plan card + Accept & apply quick action are what render from it. A `look`
+# re-renders the stored plan without re-dispatching (on_enter once: keyed off
+# landing_note).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world: {}
+
+host_handlers:
+  # The landing_agent planner. Stubbed: returns a close-out note WITH a
+  # structured plan (schemas/landing-note.json → plan mirrors schemas/plan.json).
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Planned the local issue → GitHub migration."
+        details: "Would create one GitHub issue per file in issues/, mapping frontmatter to title/body/labels."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+            mutating: true
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+turns:
+  # The operator describes a concrete, actionable migration. `work` captures it
+  # and re-arms the on_enter planner task (stubbed); the plan binds and the
+  # workbench rests as the read-only floor with the plan card present.
+  - intent: { name: work, slots: { request: "import the issues folder in the repo to github so we have issues to work with here" } }
+    expect_state: landing
+    # The plan card renders (the "Proposed plan" heading + the goal kv) AND the
+    # Accept & apply quick action is offered (the choice item folded into Quick
+    # actions). These are the proposal's render assertions — the plan is a
+    # reviewable card with an accept button, not just bound world state.
+    expect_view_matches: "Proposed plan[\\s\\S]*Migrate repo-local issues/ to GitHub issues[\\s\\S]*Accept & apply this plan"
+    expect_world:
+      landing_request: "import the issues folder in the repo to github so we have issues to work with here"
+      landing_note:
+        summary: "Planned the local issue → GitHub migration."
+        details: "Would create one GitHub issue per file in issues/, mapping frontmatter to title/body/labels."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+            mutating: true
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+  # The workbench stays put — the read-only floor. `look` re-renders the stored
+  # plan without re-dispatching (on_enter once: keyed off landing_note).
+  - intent: { name: look, slots: {} }
+    expect_state: landing
+    expect_world:
+      landing_request: "import the issues folder in the repo to github so we have issues to work with here"
+
+expect_no_errors: true

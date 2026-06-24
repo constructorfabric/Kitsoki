@@ -1,0 +1,51 @@
+# integrate_clean — `integrate branch=feature/x` rebases onto current main,
+# build_check green, merges → outcome="integrated", integrated_sha set,
+# last_op_outcome="integrated" carried back to main_ops.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main_ops
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+      integrate_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "abc1234"
+            last_op_ok:     true
+            last_error:     ""
+
+turns:
+  - intent: { name: integrate, slots: { branch: "feature/x" } }
+    expect_state: main_ops
+    expect_world:
+      integrate_branch: "feature/x"
+      integrate_outcome: integrated
+      integrated_sha:    "abc1234"
+      last_op_outcome:   integrated
+
+expect_no_errors: true

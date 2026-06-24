@@ -1,0 +1,150 @@
+/**
+ * Component tests for BugReportModal — the review-before-file surface. We drive
+ * the bugReport store to "reviewing" with a stubbed source (bugPreview resolves
+ * a held capture + HAR; reportBug resolves an issue id/path) and injected
+ * capture deps (no rrweb, no network). Then we mount the modal
+ * and assert: HAR summary rows render, the raw-HAR toggle reveals raw JSON,
+ * typing a description + clicking submit files with description + console_logs +
+ * error_info, and cancel returns the store to idle.
+ */
+
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { mount, flushPromises } from "@vue/test-utils";
+import { setActivePinia, createPinia } from "pinia";
+import BugReportModal from "../../src/components/BugReportModal.vue";
+import { useBugReportStore } from "../../src/stores/bugReport.js";
+import type { BugSource } from "../../src/stores/bugReport.js";
+
+function stubSource() {
+  return {
+    bugPreview: vi.fn().mockResolvedValue({
+      capture_id: "cap-123-0",
+      har: {
+        log: {
+          entries: [
+            {
+              request: { method: "POST", url: "/rpc" },
+              response: { status: 200 },
+            },
+            {
+              request: { method: "GET", url: "/rpc/events" },
+              response: { status: 500 },
+            },
+          ],
+        },
+      },
+      depth: 2,
+      capacity: 16,
+    }),
+    reportBug: vi
+      .fn()
+      .mockResolvedValue({ id: "id-1", path: "issues/bugs/id-1.md" }),
+    lastRpcError: vi.fn().mockReturnValue(null),
+  };
+}
+
+const deps = {
+  snapshotEvents: () => [{ type: 2 }, { type: 3 }],
+  recentConsole: () => [{ level: "warn", ts: 1, text: "heads up" }],
+  gatherErrorInfo: () => ({
+    errors: [{ message: "boom" }],
+    last_rpc: { method: "x", code: 1, message: "y" },
+  }),
+};
+
+async function toReviewing(source: ReturnType<typeof stubSource>) {
+  const store = useBugReportStore();
+  await store.trigger({
+    source: source as unknown as BugSource,
+    defaultTitle: "Bug report",
+    deps,
+  });
+  return store;
+}
+
+describe("BugReportModal", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    document.body.innerHTML = "";
+  });
+
+  it("renders nothing until the store is reviewing", () => {
+    mount(BugReportModal);
+    expect(document.querySelector('[data-testid="bug-modal"]')).toBeNull();
+  });
+
+  it("renders HAR summary rows and toggles raw HAR", async () => {
+    const source = stubSource();
+    await toReviewing(source);
+    mount(BugReportModal);
+    await flushPromises();
+
+    expect(document.querySelector('[data-testid="bug-modal"]')).not.toBeNull();
+    const rows = document.querySelectorAll('[data-testid="bug-modal-har-row"]');
+    expect(rows.length).toBe(2);
+    expect(rows[0].textContent).toContain("POST");
+    expect(rows[0].textContent).toContain("/rpc");
+
+    expect(document.querySelector('[data-testid="bug-modal-har-raw"]')).toBeNull();
+    (
+      document.querySelector(
+        '[data-testid="bug-modal-har-raw-toggle"]'
+      ) as HTMLButtonElement
+    ).click();
+    await flushPromises();
+    const raw = document.querySelector('[data-testid="bug-modal-har-raw"]');
+    expect(raw).not.toBeNull();
+    expect(raw!.textContent).toContain("/rpc/events");
+  });
+
+  it("submit files the held capture with description, console_logs, error_info", async () => {
+    const source = stubSource();
+    const store = await toReviewing(source);
+    mount(BugReportModal);
+    await flushPromises();
+
+    const desc = document.querySelector(
+      '[data-testid="bug-modal-description"]'
+    ) as HTMLTextAreaElement;
+    desc.value = "the foyer button does nothing";
+    desc.dispatchEvent(new Event("input"));
+    await flushPromises();
+
+    (
+      document.querySelector(
+        '[data-testid="bug-modal-submit"]'
+      ) as HTMLButtonElement
+    ).click();
+    await flushPromises();
+
+    expect(source.reportBug).toHaveBeenCalledTimes(1);
+    const params = source.reportBug.mock.calls[0][0];
+    expect(params.capture_id).toBe("cap-123-0");
+    expect(params.description).toBe("the foyer button does nothing");
+    expect(params.screenshot_png_b64).toBeUndefined();
+    expect(typeof params.console_logs).toBe("string");
+    expect(JSON.parse(params.console_logs)[0].text).toBe("heads up");
+    expect(typeof params.error_info).toBe("string");
+    expect(JSON.parse(params.error_info).errors[0].message).toBe("boom");
+    expect(typeof params.rrweb_events).toBe("string");
+
+    expect(store.status).toBe("filed");
+    expect(store.filed?.path).toBe("issues/bugs/id-1.md");
+  });
+
+  it("cancel discards and returns to idle", async () => {
+    const source = stubSource();
+    const store = await toReviewing(source);
+    mount(BugReportModal);
+    await flushPromises();
+
+    (
+      document.querySelector(
+        '[data-testid="bug-modal-cancel"]'
+      ) as HTMLButtonElement
+    ).click();
+    await flushPromises();
+    expect(store.status).toBe("idle");
+    expect(source.reportBug).not.toHaveBeenCalled();
+  });
+});

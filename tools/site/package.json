@@ -1,0 +1,18 @@
+{
+  "name": "kitsoki-site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview",
+    "stage:docs": "node scripts/stage-docs.mjs",
+    "stage:media": "node scripts/stage-media.mjs",
+    "check:leaks": "node scripts/check-leaks.mjs"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3",
+    "vue": "^3.5.13"
+  }
+}

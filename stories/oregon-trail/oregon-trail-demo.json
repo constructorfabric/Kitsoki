@@ -1,0 +1,522 @@
+{
+  "_comment": "Oregon Trail kitsoki demo — walks through a playthrough and calls out each kitsoki feature as it appears.",
+  "meta": {
+    "mode": "pitch",
+    "title": "Oregon Trail — kitsoki demo",
+    "narration": { "voice": "en-AU-NatashaNeural" }
+  },
+  "scenes": [
+
+    {
+      "type": "title",
+      "title": "The Oregon Trail",
+      "subtitle": "A kitsoki demo — 7 trail legs · 3 import layers · one playthrough"
+    },
+
+    {
+      "type": "narrative",
+      "eyebrow": "The classic game, reimplemented",
+      "body": "Oregon Trail 1985 — seven hundred miles of prairie, disease, broken axles, and river crossings — rebuilt as a kitsoki declarative state machine.",
+      "lede": "One story YAML. Every player action is a typed intent.",
+      "hold": 300,
+      "narration": "Oregon Trail rebuilt as a kitsoki state machine — every player action fires a declared state transition."
+    },
+
+    {
+      "type": "diagram-svg",
+      "title": "The room map",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1480 520",
+          "nodes": [
+            {
+              "id": "intro",
+              "label": "intro",
+              "sub": "wizard flow",
+              "x": 50, "y": 150, "w": 250, "h": 120
+            },
+            {
+              "id": "store",
+              "label": "store",
+              "sub": "general store",
+              "x": 400, "y": 150, "w": 290, "h": 120
+            },
+            {
+              "id": "trail",
+              "label": "trail ×7",
+              "sub": "phase template",
+              "x": 790, "y": 150, "w": 300, "h": 120,
+              "style": "primary"
+            },
+            {
+              "id": "ended",
+              "label": "ended",
+              "sub": "won · lost",
+              "x": 1190, "y": 150, "w": 240, "h": 120
+            },
+            {
+              "id": "events",
+              "label": "events",
+              "sub": "disease · river · bandits",
+              "x": 690, "y": 370, "w": 500, "h": 120
+            }
+          ],
+          "edges": [
+            { "from": "intro",  "to": "store" },
+            { "from": "store",  "to": "trail" },
+            { "from": "trail",  "to": "ended" },
+            { "from": "trail",  "to": "events", "label": "roll",   "side": "right" },
+            { "from": "events", "to": "trail",  "label": "resume", "side": "left" }
+          ]
+        }
+      ],
+      "caption": "Every screen is a kitsoki room. Transitions are declared; the agent routes free text to the matching intent.",
+      "hold": 240,
+      "narration": "Every screen is a kitsoki room. The agent routes free text to the matching intent."
+    },
+
+    {
+      "type": "transcript",
+      "app": "oregon-trail",
+      "session": "intro wizard",
+      "totals": { "turns": 3, "haveTokens": false, "haveCost": false },
+      "cards": [
+        {
+          "turn": 1,
+          "room": "intro_profession",
+          "user": { "text": "banker", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "pick_profession · profession:banker" }
+          ],
+          "effects": [
+            { "kind": "world", "changes": [
+              { "key": "profession", "before": "∅", "after": "banker" },
+              { "key": "money",      "before": "∅", "after": "$1,600" }
+            ]},
+            { "kind": "transition", "from": "intro_profession", "to": "intro_month", "intent": "pick_profession" }
+          ]
+        },
+        {
+          "turn": 2,
+          "room": "intro_month",
+          "user": { "text": "depart in may", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "pick_month · month:may" }
+          ],
+          "effects": [
+            { "kind": "world", "changes": [
+              { "key": "month", "before": "∅", "after": "may" }
+            ]},
+            { "kind": "transition", "from": "intro_month", "to": "intro_party_names", "intent": "pick_month" }
+          ]
+        },
+        {
+          "turn": 3,
+          "room": "intro_party_names",
+          "user": { "text": "name the party after the Beatles", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "generate_names · theme:Beatles" }
+          ],
+          "effects": [
+            { "kind": "tool", "name": "host.agent.decide", "ok": true, "detail": "party_namer · schema:party_names.json", "duration": "1.2s" },
+            { "kind": "world", "changes": [
+              { "key": "party_names", "before": "∅", "after": "John,Paul,George,Ringo,Pete" }
+            ]},
+            { "kind": "transition", "from": "intro_party_names", "to": "intro_party_names", "intent": "generate_names", "self": true }
+          ]
+        }
+      ],
+      "cardHold": 150,
+      "hold": 210,
+      "narration": "Casual phrasing, typed intents. 'Banker' fires pick_profession. 'Name the party after the Beatles' calls agent.decide — schema-typed JSON for five names."
+    },
+
+    {
+      "type": "trace",
+      "title": "Semantic routing at the general store",
+      "turns": [
+        {
+          "user": "i want 10 oxen, 2000 lbs food, 30 boxes bullets, 4 wheels",
+          "layers": [
+            { "name": "synonym", "result": "MISS" },
+            { "name": "slot",    "result": "MISS" },
+            { "name": "LLM",     "result": "HIT", "ms": 340 }
+          ],
+          "intent": "propose_purchase"
+        },
+        {
+          "user": "leave",
+          "layers": [
+            { "name": "synonym", "result": "HIT" }
+          ],
+          "intent": "leave_store",
+          "no_llm": true
+        }
+      ],
+      "caption": "Freeform basket orders need LLM slot extraction. Short commands hit synonyms — no LLM call.",
+      "hold": 240,
+      "narration": "Full basket orders need LLM slot extraction. Short commands hit synonyms — no agent call."
+    },
+
+    {
+      "type": "transcript",
+      "app": "oregon-trail",
+      "session": "general store",
+      "totals": { "turns": 3, "haveTokens": false, "haveCost": false },
+      "cards": [
+        {
+          "turn": 1,
+          "room": "general_store.idle",
+          "user": { "text": "i want 10 oxen, 2000 lbs food, 30 boxes bullets, 4 wheels, 2 axles, 2 tongues", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "propose_purchase · 7 slots extracted" }
+          ],
+          "effects": [
+            { "kind": "world", "changes": [
+              { "key": "proposal_items",      "before": "∅", "after": "10 oxen, 2000 lbs food…" },
+              { "key": "proposal_total_cost", "before": "∅", "after": "$788" }
+            ]},
+            { "kind": "transition", "from": "general_store.idle", "to": "general_store.reviewing", "intent": "propose_purchase" }
+          ]
+        },
+        {
+          "turn": 2,
+          "room": "general_store.reviewing",
+          "user": { "text": "actually give me 12 oxen", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "refine_purchase · oxen:12" }
+          ],
+          "effects": [
+            { "kind": "world", "changes": [
+              { "key": "proposal_oxen",       "before": "10",   "after": "12" },
+              { "key": "proposal_total_cost", "before": "$788", "after": "$868" },
+              { "key": "proposal_refine_count","before": "0",   "after": "1" }
+            ]},
+            { "kind": "transition", "from": "general_store.reviewing", "to": "general_store.reviewing", "intent": "refine_purchase", "self": true }
+          ]
+        },
+        {
+          "turn": 3,
+          "room": "general_store.reviewing",
+          "user": { "text": "accept_purchase", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "accept_purchase" }
+          ],
+          "effects": [
+            { "kind": "world", "changes": [
+              { "key": "money",    "before": "$1,600", "after": "$732" },
+              { "key": "oxen",     "before": "0",      "after": "12" },
+              { "key": "food_lbs", "before": "0",      "after": "2000" }
+            ], "more": 4 },
+            { "kind": "transition", "from": "general_store.reviewing", "to": "general_store.done", "intent": "accept_purchase" }
+          ]
+        }
+      ],
+      "cardHold": 150,
+      "hold": 210,
+      "narration": "Draft, refine, accept — all declarative. Each refinement is a world write; the same view template re-renders the updated proposal."
+    },
+
+    {
+      "type": "diagram-svg",
+      "title": "Phase templates — the structure",
+      "panels": [
+        {
+          "label": "",
+          "auto_layout": true,
+          "rankdir": "TB",
+          "ranksep": 120,
+          "nodes": [
+            {
+              "id": "tmpl",
+              "label": "trail_leg",
+              "sub": "template",
+              "style": "primary"
+            },
+            {
+              "id": "exec",
+              "label": "executing",
+              "sub": ".traveling"
+            },
+            {
+              "id": "wait",
+              "label": "awaiting",
+              "sub": "reply · checkpoint"
+            }
+          ],
+          "edges": [
+            { "from": "tmpl", "to": "exec" },
+            { "from": "exec", "to": "wait" },
+            { "from": "wait", "to": "exec", "label": "continue", "side": "left" }
+          ]
+        }
+      ],
+      "caption": "One YAML template declares the phase: enter, travel, pause, continue until the leg is done.",
+      "hold": 180,
+      "narration": "One YAML template — enter, travel, pause, continue. That's all a trail leg is."
+    },
+
+    {
+      "type": "diagram-svg",
+      "title": "Phase templates — seven legs from one YAML",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1100 1044",
+          "nodes": [
+            { "id": "a", "label": "leg_a", "sub": "Indep. → Kansas",          "x": 50, "y": 8,   "w": 1000, "h": 128 },
+            { "id": "b", "label": "leg_b", "sub": "Kansas → Fort Kearney",    "x": 50, "y": 156, "w": 1000, "h": 128 },
+            { "id": "c", "label": "leg_c", "sub": "Kearney → Chimney Rock",   "x": 50, "y": 304, "w": 1000, "h": 128 },
+            { "id": "d", "label": "leg_d", "sub": "Chimney → Fort Laramie",   "x": 50, "y": 452, "w": 1000, "h": 128 },
+            { "id": "e", "label": "leg_e", "sub": "Laramie → South Pass",     "x": 50, "y": 600, "w": 1000, "h": 128 },
+            { "id": "f", "label": "leg_f", "sub": "South Pass → Snake River", "x": 50, "y": 748, "w": 1000, "h": 128, "style": "secondary" },
+            { "id": "g", "label": "leg_g", "sub": "Snake River → Oregon City","x": 50, "y": 896, "w": 1000, "h": 128, "style": "secondary" }
+          ],
+          "edges": [
+            { "from": "a", "to": "b" },
+            { "from": "b", "to": "c" },
+            { "from": "c", "to": "d" },
+            { "from": "d", "to": "e" },
+            { "from": "e", "to": "f" },
+            { "from": "f", "to": "g" }
+          ]
+        }
+      ],
+      "caption": "Seven instances expanded at load time — each with its own mileage, landmark name, and world bindings.",
+      "hold": 210,
+      "narration": "Seven instances at load time — mileage constants, landmark names, zero copy-paste."
+    },
+
+    {
+      "type": "transcript",
+      "app": "oregon-trail",
+      "session": "trail guide",
+      "totals": { "turns": 3, "haveTokens": false, "haveCost": false },
+      "cards": [
+        {
+          "turn": 1,
+          "room": "leg_c_awaiting_reply",
+          "user": { "text": "consult the guide", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "consult_guide" }
+          ],
+          "effects": [
+            { "kind": "transition", "from": "leg_c_awaiting_reply", "to": "trail_guide.trail_guide_list", "intent": "consult_guide" }
+          ]
+        },
+        {
+          "turn": 2,
+          "room": "trail_guide.trail_guide_list",
+          "user": { "text": "how do we ford in spring snowmelt", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "ask_question · question extracted" }
+          ],
+          "effects": [
+            { "kind": "tool", "name": "host.chat.create", "ok": true, "detail": "scope:profession · mode:conversational", "duration": "14ms" },
+            { "kind": "transition", "from": "trail_guide.trail_guide_list", "to": "trail_guide.active_new", "intent": "ask_question" }
+          ]
+        },
+        {
+          "turn": 3,
+          "room": "trail_guide.active_new",
+          "user": null,
+          "flow": [
+            { "kind": "assistant", "tag": "agent · converse", "model": "claude-sonnet-4-6", "text": "The Kansas runs high in April — depth up to 1.6× normal. Ford only if shallow. Otherwise caulk and float; the oxen keep their footing. Spare axle in hand before you commit." }
+          ],
+          "effects": [
+            { "kind": "tool", "name": "host.chat.suggest_title", "ok": true, "detail": "auto-title: wagon fording advice", "duration": "8ms" },
+            { "kind": "world", "changes": [
+              { "key": "wagon_chat_turns", "before": "0", "after": "1" },
+              { "key": "wagon_chat_title", "before": "∅", "after": "wagon fording advice" }
+            ]},
+            { "kind": "transition", "from": "trail_guide.active_new", "to": "trail_guide.active", "intent": "ask_question" }
+          ]
+        }
+      ],
+      "cardHold": 150,
+      "hold": 210,
+      "narration": "At any checkpoint, consult the wagon master. A mode:conversational room backed by host.agent.converse — the same chat thread persists across the whole journey."
+    },
+
+    {
+      "type": "diagram-svg",
+      "title": "Story imports — three-layer composition",
+      "panels": [
+        {
+          "label": "Outer layer",
+          "viewBox": "0 0 800 410",
+          "nodes": [
+            {
+              "id": "ot",
+              "label": "oregon-trail",
+              "sub": "world · phases · rooms",
+              "x": 10, "y": 70, "w": 320, "h": 116,
+              "style": "primary"
+            },
+            {
+              "id": "fe",
+              "label": "frontier_event",
+              "sub": "scouting · bandits",
+              "x": 450, "y": 70, "w": 320, "h": 116,
+              "style": "secondary"
+            },
+            {
+              "id": "ot_out",
+              "label": "aftermath",
+              "sub": "resolved · fled · killed",
+              "x": 10, "y": 280, "w": 340, "h": 116
+            }
+          ],
+          "edges": [
+            { "from": "ot",  "to": "fe",     "label": "imports" },
+            { "from": "ot",  "to": "ot_out", "label": "exits", "side": "left" },
+            { "from": "fe",  "to": "ot_out", "label": "exit map", "side": "right", "elbow": true }
+          ]
+        },
+        {
+          "label": "Inner layer",
+          "viewBox": "0 0 800 410",
+          "nodes": [
+            {
+              "id": "fe",
+              "label": "frontier_event",
+              "sub": "scouting · bandits",
+              "x": 10, "y": 70, "w": 320, "h": 116,
+              "style": "secondary"
+            },
+            {
+              "id": "rob",
+              "label": "robbery",
+              "sub": "demand · resolution",
+              "x": 460, "y": 70, "w": 290, "h": 116
+            },
+            {
+              "id": "fe_out",
+              "label": "member_lost",
+              "sub": "party_alive - 1",
+              "x": 10, "y": 280, "w": 290, "h": 116
+            }
+          ],
+          "edges": [
+            { "from": "fe",  "to": "rob",    "label": "imports" },
+            { "from": "rob", "to": "fe_out", "label": "exit:killed", "side": "right", "elbow": true },
+            { "from": "fe",  "to": "fe_out", "label": "exit", "side": "left" }
+          ]
+        }
+      ],
+      "caption": "Three stories compose. World flows in via world_in projections. Exits flow out via named exit mappings. Each layer stays independently testable.",
+      "hold": 270,
+      "narration": "Three stories compose — oregon-trail imports frontier_event, which imports robbery. World projections in, exit mappings out."
+    },
+
+    {
+      "type": "transcript",
+      "app": "oregon-trail",
+      "session": "bandit encounter",
+      "totals": { "turns": 3, "haveTokens": false, "haveCost": false },
+      "cards": [
+        {
+          "turn": 1,
+          "room": "leg_d_awaiting_reply",
+          "user": { "text": "face_robbery", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "face_robbery" }
+          ],
+          "effects": [
+            { "kind": "world", "changes": [
+              { "key": "frontier__party_alive",  "before": "∅", "after": "5" },
+              { "key": "frontier__party_money",  "before": "∅", "after": "$312" },
+              { "key": "frontier__threat_level", "before": "∅", "after": "2" }
+            ]},
+            { "kind": "transition", "from": "leg_d_awaiting_reply", "to": "frontier_event.scouting", "intent": "face_robbery" }
+          ]
+        },
+        {
+          "turn": 2,
+          "room": "frontier_event.scouting → robbery.demand",
+          "user": { "text": "proceed", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "proceed" }
+          ],
+          "effects": [
+            { "kind": "transition", "from": "frontier_event.scouting", "to": "robbery.demand", "intent": "proceed" }
+          ]
+        },
+        {
+          "turn": 3,
+          "room": "robbery.demand",
+          "user": { "text": "pay them off", "direct": false },
+          "flow": [
+            { "kind": "decision", "verb": "route", "outcome": "tribute · $50" }
+          ],
+          "effects": [
+            { "kind": "world", "changes": [
+              { "key": "frontier__paid_amount", "before": "0", "after": "50" }
+            ]},
+            { "kind": "transition", "from": "robbery.demand", "to": "robbery_aftermath", "intent": "@exit:resolved" },
+            { "kind": "world", "changes": [
+              { "key": "money",      "before": "$312", "after": "$262" },
+              { "key": "last_event", "before": "∅",    "after": "bandit_resolved" }
+            ]}
+          ]
+        }
+      ],
+      "cardHold": 150,
+      "hold": 210,
+      "narration": "face_robbery enters the imported sub-story with world projections. On @exit:resolved, the parent's exit mapping debits money and routes back to the trail."
+    },
+
+    {
+      "type": "trace",
+      "title": "River crossings — method slot proposal",
+      "turns": [
+        {
+          "user": "ford the river",
+          "layers": [
+            { "name": "synonym", "result": "HIT" }
+          ],
+          "intent": "propose_crossing",
+          "no_llm": true
+        },
+        {
+          "user": "caulk and float",
+          "layers": [
+            { "name": "synonym", "result": "HIT" }
+          ],
+          "intent": "propose_crossing",
+          "no_llm": true
+        },
+        {
+          "user": "hire a ferryman",
+          "layers": [
+            { "name": "synonym", "result": "MISS" },
+            { "name": "slot",    "result": "MISS" },
+            { "name": "LLM",     "result": "HIT", "ms": 210 }
+          ],
+          "intent": "propose_crossing"
+        }
+      ],
+      "caption": "propose_crossing carries a method slot — ford, caulk, ferry, or wait. The slot value drives different transition arms and world effects.",
+      "hold": 270,
+      "narration": "River crossings propose a method — ford, caulk, ferry, or wait. Common phrasings hit synonyms; unusual ones fall to the LLM."
+    },
+
+    {
+      "type": "stat",
+      "value": "7",
+      "label": "trail legs · one template",
+      "detail": "Independence → Kansas → Kearney → Chimney Rock → Laramie → South Pass → Oregon City",
+      "hold": 210,
+      "narration": "Seven legs of trail — one phase template, no copy-paste."
+    },
+
+    {
+      "type": "cta",
+      "wordmark": "kitsoki",
+      "tagline": "Declare the workflow. Route the intent.",
+      "url": "github.com/cyberfabric/Kitsoki"
+    }
+
+  ]
+}

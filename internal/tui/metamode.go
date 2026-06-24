@@ -213,7 +213,7 @@ func metaEnterCmd(ctx context.Context, ctrl *metamode.Controller, snap metamode.
 // metamode.TurnContext.
 //
 // When sink is non-nil, it is installed on ctx via host.WithStreamSink
-// so the oracle-runner tees its stream-json events into the
+// so the agent-runner tees its stream-json events into the
 // transcript pane in real time. Nil sink falls back to the buffered
 // behaviour (slog only). host.WithStreamSink is itself nil-safe.
 func metaSendCmd(ctx context.Context, ctrl *metamode.Controller, sess *metamode.Session, userText string, turn metamode.TurnContext, sink host.StreamSink) tea.Cmd {

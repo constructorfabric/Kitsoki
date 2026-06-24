@@ -1,0 +1,49 @@
+# Traceability:
+# - Source call site: stories/dev-story/rooms/design_materialize.yaml, host.agent.decide id `references_research`.
+# - Prompt: stories/dev-story/prompts/design_references.md.
+# - Schema: stories/dev-story/schemas/references.json.
+# - Purpose: curate repo references for an ad hoc proposal before drafting.
+kind: agent_eval
+app: ../app.yaml
+call: references_research
+agent: design_researcher
+
+task:
+  goal: "Select the existing docs and proposal references that constrain a design idea."
+  boundedness:
+    max_turns: 1
+    tool_policy: read-only
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.90
+    max_p95_latency_ms: 9000
+    max_avg_cost_usd: 0.0025
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low, medium]
+  repeat: 5
+
+comparator:
+  kind: field_subset
+
+examples:
+  - name: proposal-authoring-references
+    args:
+      idea: "Standardize how ad hoc design proposals are authored and reviewed."
+      workspace: ".artifacts/design/proposal-authoring"
+      search_hits:
+        - path: "docs/proposals/README.md"
+          score: 0.94
+        - path: "docs/proposals/templates/story.md"
+          score: 0.82
+    expect:
+      items:
+        - path: "docs/proposals/README.md"
+          sections: "Proposal lifecycle"
+          rationale: "Defines proposal status and review conventions."

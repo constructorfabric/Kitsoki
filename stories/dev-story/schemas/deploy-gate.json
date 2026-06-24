@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "deploy_gate",
+  "description": "The deploy go/no-go verdict for a release target after preflight checks: a decision the deploy loop routes on, plus the reasoning and any blocking findings.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["go", "no_go"],
+      "description": "go = preflight is clean, safe to ship; no_go = a blocking finding means the deploy must not proceed."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One crisp line stating whether the target is safe to ship and why."
+    },
+    "blocking": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Concrete blocking findings from preflight when verdict is no_go (e.g. 'failing tests', 'dirty working tree'). Empty when go."
+    }
+  },
+  "required": ["verdict", "summary"]
+}

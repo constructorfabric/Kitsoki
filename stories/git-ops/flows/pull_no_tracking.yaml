@@ -1,0 +1,48 @@
+# pull_no_tracking — pull when no upstream tracking ref → info message, return to hub.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main_ops
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  upstream_tracking:  false
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"branch":"main","main_worktree_path":".","worktree_list":{"raw":""},"commits_ahead":0,"commits_behind":0,"has_uncommitted":false,"merge_in_progress":false,"no_common_ancestor":false,"upstream_tracking":false}'
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+      check_tracking:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"has_tracking":false}'
+          stdout_json:
+            has_tracking: false
+
+turns:
+  - intent: { name: pull, slots: {} }
+    expect_state: pull
+    expect_world:
+      last_op_outcome: no_tracking
+
+  - intent: { name: back, slots: {} }
+    expect_state: main_ops
+
+expect_no_errors: true

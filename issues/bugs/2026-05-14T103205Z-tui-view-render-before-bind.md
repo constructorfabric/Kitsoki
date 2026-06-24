@@ -3,11 +3,11 @@ id: 2026-05-14T103205Z-tui-view-render-before-bind
 title: "TUI view templates render BEFORE on_enter binds — first frame shows '(pending)' even when host call already returned"
 target: kitsoki
 filed_at: 2026-05-14T10:32:05Z
-status: open
+status: fixed
 severity: P2
 component: tui
 kitsoki_rev: 75c4f11
-trace_ref: ""
+trace_ref: "031c8bda — advisory lint; runtime fix predates in main"
 external: {}
 assignee: ""
 url: "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
@@ -23,8 +23,9 @@ PRE-bind world snapshot, so any template referencing the bound key
 shows the schema default (typically `""` or `0`) until the next intent
 turn refreshes the view.
 
-The recommended workaround is to author defensively with the `??`
-fallback operator:
+The contract notes in `docs/proposals/notes/dev-story-implementation-
+contract.md` §W2.8 acknowledge this and recommend authoring
+defensively with the `??` fallback operator:
 
     {{ world.pr_url ?? "(pending)" }}
 
@@ -72,5 +73,5 @@ enough to confuse the operator.
 - `internal/tui/transcript.go` — view render entry point.
 - `internal/orchestrator/orchestrator.go` — `runOnEnter` ordering vs
   TUI subscription notification.
-- `docs/authoring.md` — would document either the runtime fix or the
+- `docs/stories/authoring.md` — would document either the runtime fix or the
   `??` discipline.

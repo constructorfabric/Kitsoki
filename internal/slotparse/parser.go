@@ -18,8 +18,13 @@ type TokenRange struct {
 	Start, End int // half-open: tokens[Start:End] were consumed
 }
 
-// Result is returned by every parser. When OK is false, Value and
-// Consumed are zero-valued; callers fall through to the next strategy.
+// Result is returned by every parser.
+//
+// Hard contracts. When OK is true, Consumed is non-empty and covers
+// the consumed token ranges as half-open intervals; a parser may
+// report multiple disjoint ranges (money "$120" eats the "$" token
+// plus the digit token). When OK is false, Value and Consumed are
+// zero-valued and callers fall through to the next strategy.
 //
 // Reason is a stable diagnostic string ("digit", "spelled",
 // "synonym:rich guy", "fuzzy:banker", "dollar-sign", …). It exists
@@ -59,7 +64,8 @@ type Parser interface {
 //
 // Anything else (including the empty string) returns nil. The caller
 // is responsible for the type-not-supported branch; in the matcher
-// this means "the slot can only be filled by the LLM" (proposal §4.4).
+// this means "the slot can only be filled by the LLM" — see the slot
+// parser table in docs/architecture/semantic-routing.md.
 func For(slot app.Slot) Parser {
 	switch slot.Type {
 	case "int":
@@ -132,18 +138,3 @@ func (boolParser) Parse(tokens []lex.Token, _ app.Slot) Result { return ParseBoo
 type dateParser struct{}
 
 func (dateParser) Parse(tokens []lex.Token, _ app.Slot) Result { return ParseDate(tokens) }
-
-// --- shared helpers --------------------------------------------------
-
-// firstNonStop returns the index of the first token whose IsStop is
-// false. Returns len(tokens) when every token is a stopword. Callers
-// use this to skip leading filler ("please buy six" — skip "please")
-// cleanly without modifying the input slice.
-func firstNonStop(tokens []lex.Token) int {
-	for i, t := range tokens {
-		if !t.IsStop {
-			return i
-		}
-	}
-	return len(tokens)
-}

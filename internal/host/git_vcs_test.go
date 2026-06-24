@@ -27,7 +27,11 @@ type fakeResp struct {
 
 func (f *fakeRunner) run(ctx context.Context, dir, name string, args ...string) (string, string, int, error) {
 	key := name + " " + strings.Join(args, " ")
+	dirKey := dir + "|" + key
 	f.calls = append(f.calls, key)
+	if r, ok := f.responses[dirKey]; ok {
+		return r.stdout, r.stderr, r.code, r.err
+	}
 	if r, ok := f.responses[key]; ok {
 		return r.stdout, r.stderr, r.code, r.err
 	}
@@ -287,6 +291,42 @@ func TestGitVCS_PRStatus_NoGh(t *testing.T) {
 	}
 	if res.Error == "" {
 		t.Fatal("expected clean domain error when gh missing")
+	}
+}
+
+func TestGitVCS_Commit_StageAll_IncludesNewFile(t *testing.T) {
+	fr := newFakeRunner()
+	// stage_all: git add -A runs first, then git commit -m (no -a flag).
+	fr.responses["git add -A"] = fakeResp{}
+	fr.responses["git commit -m feat: new file"] = fakeResp{}
+	fr.responses["git rev-parse HEAD"] = fakeResp{stdout: "abc123\n"}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitVCSHandler(context.Background(), map[string]any{
+		"op":        "commit",
+		"message":   "feat: new file",
+		"stage_all": true,
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if res.Data["sha"] != "abc123" {
+		t.Fatalf("sha: %v", res.Data["sha"])
+	}
+	// Verify git add -A was called before git commit.
+	if len(fr.calls) < 2 {
+		t.Fatalf("expected at least 2 calls, got: %v", fr.calls)
+	}
+	if fr.calls[0] != "git add -A" {
+		t.Fatalf("expected first call to be 'git add -A', got: %q", fr.calls[0])
+	}
+	// Verify commit used plain -m (not -a), since stage_all already staged everything.
+	if strings.Contains(fr.calls[1], "commit -a") {
+		t.Fatalf("commit with stage_all should not use -a flag, got: %q", fr.calls[1])
 	}
 }
 

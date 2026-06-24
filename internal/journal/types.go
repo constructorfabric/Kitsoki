@@ -81,10 +81,10 @@ const KindClarifyRequested = "clarify.requested"
 // KindClarifyAnswered records the user's response to a clarification request.
 const KindClarifyAnswered = "clarify.answered"
 
-// KindOffPathQuestion records an off-path question submitted to the oracle.
+// KindOffPathQuestion records an off-path question submitted to the agent.
 const KindOffPathQuestion = "offpath.question"
 
-// KindOffPathAnswer records the oracle's answer to an off-path question.
+// KindOffPathAnswer records the agent's answer to an off-path question.
 const KindOffPathAnswer = "offpath.answer"
 
 // KindOffPathChatResolved records which chat was resolved for an off-path session.
@@ -118,7 +118,7 @@ const KindOffPathEntered = "offpath.entered"
 const KindOffPathExited = "offpath.exited"
 
 // KindViewRendered carries the literal rendered view text the TUI displayed at
-// the end of a turn (proposal §4.6). Resume reads these entries verbatim to
+// the end of a turn. Resume reads these entries verbatim to
 // rehydrate the transcript pane without re-evaluating any view template.
 const KindViewRendered = "view.rendered"
 
@@ -148,10 +148,10 @@ const KindChatDriveFailed = "chat.drive.failed"
 // without dispatch. Body: {drive_id, chat_id, reason}.
 const KindChatDriveDismissed = "chat.drive.dismissed"
 
-// ---- oracle call tracing (Phase N: full prompt/response capture) -------------
+// ---- agent call tracing (Phase N: full prompt/response capture) -------------
 
-// KindOracleCall records a completed oracle verb call with full prompt,
-// system prompt, and response payload. One entry per oracle.* call.
+// KindAgentCall records a completed agent verb call with full prompt,
+// system prompt, and response payload. One entry per agent.* call.
 //
 // Body shape:
 //
@@ -162,10 +162,10 @@ const KindChatDriveDismissed = "chat.drive.dismissed"
 // tool_calls and files_changed are NOT stored here — they are aggregated at
 // export time from KindTaskTool / KindTaskEnd entries in the same window.
 // call_id is a per-call UUID that correlates this entry with the lean slog
-// oracle.<verb>.complete record emitted in the same call.
-const KindOracleCall = "oracle.call"
+// agent.<verb>.complete record emitted in the same call.
+const KindAgentCall = "agent.call"
 
-// ---- oracle-split Phase 4 event kinds (task trace) ---------------------------
+// ---- agent-split Phase 4 event kinds (task trace) ---------------------------
 
 // KindTaskTool records a single tool call by a task agent. Body shape:
 //
@@ -190,6 +190,66 @@ const KindTaskAcceptanceAttempt = "task.acceptance.attempt"
 // replay_mode is one of "file_diff", "sandboxed_write", or
 // "external_side_effect".
 const KindTaskEnd = "task.end"
+
+// ---- artifact tracing -------------------------------------------------------
+
+// KindArtifactEmitted records that a host call produced a named media artifact
+// (e.g. a rendered PNG, MP4, PDF, HTML page, or slideshow). Emitted by the
+// host.artifacts_dir handler when the caller supplies src_path + kind instead
+// of body text.
+//
+// Body shape (ArtifactEvent):
+//
+//	{id, kind, mime, label, path, producer, size_bytes, created_at}
+//
+// id         — stable handle (<basename>#<counter>, same shape as message_id)
+// kind       — one of: video / image / pdf / html / slideshow
+// mime       — MIME type (e.g. "video/mp4", "image/png")
+// label      — human-readable display name (from args["label"])
+// path       — absolute path of the file under the artifacts root
+// producer   — host call name that produced the artifact (always "host.artifacts_dir")
+// size_bytes — file size in bytes after copy
+// created_at — timestamp of the copy operation
+const KindArtifactEmitted = "artifact.emitted"
+
+// ArtifactEvent is the body shape for KindArtifactEmitted entries.
+// Writers marshal this to json.RawMessage and assign it to Entry.Body.
+// Readers switch on Entry.Kind == KindArtifactEmitted and unmarshal here.
+type ArtifactEvent struct {
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind"`
+	Mime      string    `json:"mime,omitempty"`
+	Label     string    `json:"label,omitempty"`
+	Path      string    `json:"path"`
+	Producer  string    `json:"producer"`
+	SizeBytes int64     `json:"size_bytes"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ---- IDE link tracing -------------------------------------------------------
+
+// KindIDEContextCaptured records one host.ide.get_* pull whose result feeds a
+// decision (lands toward an agent prompt or a world slot). It is the labeled
+// datapoint that makes "the room decided X because the editor showed Y"
+// reconstructable from the trace alone. The raw host.ide.* request/response is
+// already covered by host.invoked/host.returned; this entry pins the IDE
+// provenance (which workspace/port served it) and a digest of the response so
+// the decision's editor inputs are auditable without re-opening the socket.
+//
+// Body shape:
+//
+//	{verb, request, response_digest, port, workspace}
+//
+// verb            — the host.ide.* verb ("get_diagnostics" | "get_selection" | "get_open_editors")
+// request         — the args map sent to the tool
+// response_digest — a short stable digest of the response (sha256 hex prefix of the
+//
+//	canonical JSON; NOT the raw selection text — keeps secrets/PII
+//	out of the trace per the selection-privacy lean)
+//
+// port            — link.Port()
+// workspace       — link.Workspace()
+const KindIDEContextCaptured = "ide.context_captured"
 
 // ---- Predicate helpers ------------------------------------------------------
 

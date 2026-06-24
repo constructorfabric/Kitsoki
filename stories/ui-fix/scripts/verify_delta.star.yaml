@@ -1,0 +1,4 @@
+inputs: {}
+
+outputs:
+  result: { type: object }

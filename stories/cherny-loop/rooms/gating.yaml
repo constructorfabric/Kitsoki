@@ -1,0 +1,149 @@
+states:
+  # gating — the CHECKER half of one autonomous loop step. Entered by iterating's
+  # auto-emitted `check`. on_enter runs the configured checker (deterministic
+  # script or adversarial agent) and routes on the verdict + budgets via guarded
+  # emit_intents — all of which run with no operator input, so the loop advances
+  # itself. A failed gate with budget left emits `loop_again`, which re-enters
+  # `iterating` (a real state change, so its on_enter — the next maker step —
+  # runs). Goal-met always wins; otherwise a budget guard ends the run.
+  gating:
+    description: "Loop step — checking the goal"
+    relevant_world: [gate_mode, gate_ok, script_gate_ok, agent_gate_ok, gate_exit_code, iteration, iteration_budget, session_cost_usd, cost_budget_usd, worktree_path]
+    on_enter:
+      # Both gates run in the worktree (cwd/working_dir), so they check the
+      # maker's actual changes in the isolated branch, not the operator's checkout.
+      # Script gate — deterministic, free, incorruptible. Passes iff exit 0.
+      - invoke: host.run
+        id: "gate-{{ world.iteration }}"
+        when: "world.gate_mode == 'script' || world.gate_mode == 'hybrid'"
+        with:
+          cmd: "{{ world.gate_command }}"
+          cwd: "{{ world.worktree_path }}"
+          fail_on_error: false
+        bind:
+          gate_ok:        ok
+          script_gate_ok: ok
+          gate_exit_code: exit_code
+          gate_stdout:    stdout
+      # Agent gate — adversarial review for goals no test can encode.
+      - invoke: host.agent.decide
+        id: "gate-{{ world.iteration }}"
+        when: "world.gate_mode == 'agent' || world.gate_mode == 'hybrid'"
+        with:
+          prompt: prompts/gate_review.md
+          schema: schemas/gate_verdict.json
+          agent: gate_reviewer
+          working_dir: "{{ world.worktree_path }}"
+          args:
+            goal:          "{{ world.goal_text }}"
+            goal_artifact: "{{ world.goal_artifact }}"
+            prompt_focus:  "{{ world.gate_prompt_focus }}"
+            script_ok:     "{{ world.script_gate_ok }}"
+            script_output: "{{ world.gate_stdout }}"
+        bind:
+          gate_ok:       submitted.pass
+          agent_gate_ok: submitted.pass
+          gate_reason:   submitted.reason
+      - say: "Gate iteration {{ world.iteration }} → {% if world.gate_ok == true %}PASS ✓{% else %}FAIL ✗{% endif %}"
+      # Guarded routing — each reads gate_ok, so all are false pre-bind and
+      # exactly one is true post-bind (the decision-emit discipline).
+      - when: "(world.gate_mode != 'hybrid' && world.gate_ok == true) || (world.gate_mode == 'hybrid' && world.script_gate_ok == true && world.agent_gate_ok == true)"
+        emit_intent: mark_achieved
+      - when: "((world.gate_mode != 'hybrid' && world.gate_ok == false) || (world.gate_mode == 'hybrid' && world.script_gate_ok != '' && world.agent_gate_ok != '' && (world.script_gate_ok == false || world.agent_gate_ok == false))) && world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd"
+        emit_intent: mark_cost_exhausted
+      - when: "((world.gate_mode != 'hybrid' && world.gate_ok == false) || (world.gate_mode == 'hybrid' && world.script_gate_ok != '' && world.agent_gate_ok != '' && (world.script_gate_ok == false || world.agent_gate_ok == false))) && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration >= world.iteration_budget"
+        emit_intent: mark_iter_exhausted
+      - when: "((world.gate_mode != 'hybrid' && world.gate_ok == false) || (world.gate_mode == 'hybrid' && world.script_gate_ok != '' && world.agent_gate_ok != '' && (world.script_gate_ok == false || world.agent_gate_ok == false))) && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration < world.iteration_budget"
+        emit_intent: loop_again
+        slots:
+          feedback: "{{ world.gate_stdout }}{{ world.gate_reason }}"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Gating iteration {{ world.iteration }}…"
+        choices:
+          - list:
+              items:
+                - label: "look"
+    on:
+      mark_achieved:
+        # Commit the maker's work to workspace_branch before exiting.
+        # The maker runs with read-only bash, so the commit is a story invoke
+        # (iface.vcs.commit → host.git). `committing` is a thin intermediate
+        # state so the invoke fires at the right time (on_enter of a new state,
+        # after all gating binds are settled — unlike in gating.on_enter where
+        # the invoke's `when:` would see pre-bind gate_ok).
+        - target: committing
+          effects:
+            - set: { goal_achieved: true, terminal_reason: "achieved" }
+      mark_cost_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - set: { terminal_reason: "cost_budget" }
+      mark_iter_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - set: { terminal_reason: "iteration_budget" }
+      # Re-enter iterating (a real state change) so the next maker step runs —
+      # this is what makes the loop autonomous, carrying the failure forward.
+      loop_again:
+        - target: iterating
+          effects:
+            - set:
+                last_gate_failure: "{{ slots.feedback }}"
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Gating…"
+
+  # committing — thin intermediate state that commits the maker's work to
+  # workspace_branch before @exit:achieved. Entered only via mark_achieved,
+  # so goal_achieved + terminal_reason are already set. The invoke runs in
+  # on_enter (post-bind world), which is why the commit is here rather than
+  # in gating.on_enter (where gate_ok would still be pre-bind at machine time).
+  committing:
+    description: "Commit the maker's work before exiting"
+    relevant_world: [worktree_path, maker_summary, commit_sha]
+    on_enter:
+      - invoke: iface.vcs.commit
+        id: "commit-achieved"
+        when: "world.worktree_path != ''"
+        with:
+          workdir: "{{ world.worktree_path }}"
+          message: "{{ world.maker_summary }}"
+          files: []
+          stage_all: true
+        bind:
+          commit_sha: sha
+      - emit_intent: mark_committed
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Committing maker's work…"
+        choices:
+          - list:
+              items:
+                - label: "look"
+    on:
+      mark_committed:
+        - target: "@exit:achieved"
+          effects:
+            # Re-pin terminal_reason on the direct exit arc so imports that
+            # inspect exit-arc effects (not on_enter binds) see it set.
+            # Mirrors the import-safe re-pin discipline in ship-it/integrate.yaml.
+            - set: { terminal_reason: "achieved" }
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+      look:
+        - target: .

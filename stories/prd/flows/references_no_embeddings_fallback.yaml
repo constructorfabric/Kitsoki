@@ -1,0 +1,74 @@
+# references_no_embeddings_fallback — the semantic pre-seed fails cleanly
+# when embeddings are unconfigured.
+#
+# host.agent.search is stubbed to ERROR (the sentinel an unconfigured
+# embedding endpoint returns). Its on_error: references is a SELF-redirect:
+# the runtime stays in references WITHOUT re-firing on_enter, so the
+# researcher step below still runs with reference_hits left empty — the
+# from-scratch fallback. A handled on_error does NOT trip expect_no_errors,
+# and because the search hit nothing the researcher's search_hits arg is
+# empty, so prompts/references.md renders no pre-seed section.
+#
+# This is the "no embedding endpoint" path: the pre-seed is a pure
+# optimisation, and its absence must not break the references room.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: brief
+initial_world:
+  idea:          "A CLI for X"
+  workdir:       "."
+  prd_workspace: ".artifacts/prd/a-cli-for-x"
+  brief_path:    ".artifacts/prd/a-cli-for-x/001-brief.md"
+  judge_mode:    "human"
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  # Embeddings unconfigured → the search call errors. references_seed's
+  # on_error: references advances to the checkpoint ANYWAY with empty hits.
+  host.agent.search:
+    error: "embeddings not configured: app.routing.embedding.endpoint is empty"
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        items:
+          - { path: "docs/auth.md", sections: "Tokens", rationale: "token model the PRD must honour" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd/a-cli-for-x/003-references.md", message_id: "003#1" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "PRD: Example CLI"
+        summary_markdown:    "## PRD: Example CLI\n\nA sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics."
+        file_path:           ".artifacts/prd/a-cli-for-x/004-prd.md"
+        confidence:          0.84
+        needs_clarification: false
+        follow_up_questions: []
+
+turns:
+  # confirm the brief → references_seed: the search errors (handled by
+  # on_error), so the room advances to references with reference_hits left
+  # empty. The researcher still curates the list — the room is fully
+  # functional without the pre-seed. The researcher runs in the on_error
+  # chain, so it's asserted by its WORLD effect (references bound) not via
+  # expect_host_calls.
+  - intent: { name: confirm, slots: {} }
+    expect_state: references
+    expect_world:
+      reference_hits: []
+      references:
+        items:
+          - { path: "docs/auth.md", sections: "Tokens", rationale: "token model the PRD must honour" }
+    expect_host_calls:
+      - handler: host.agent.search
+
+  # And the checkpoint flows on to drafting normally.
+  - intent: { name: confirm, slots: {} }
+    expect_state: drafting
+
+# A HANDLED on_error (search → references) does not count as an error here;
+# the room recovered cleanly.
+expect_no_errors: true

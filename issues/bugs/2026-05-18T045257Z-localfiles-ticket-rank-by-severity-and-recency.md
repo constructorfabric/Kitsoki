@@ -43,7 +43,7 @@ func bugSummary(b *BugFile) map[string]any {
 ```
 
 But the on-disk schema (per `issues/README.md` and
-`issues/README.md` §2) uses
+`docs/proposals/bug-format-proposal.md` §2) uses
 `severity: P0|P1|P2|P3`, **not** `priority:`. Existing bug files
 confirm — every file under `issues/bugs/` has `severity:` set and
 `priority:` absent. Result: `t.priority` is the empty string for
@@ -122,7 +122,7 @@ Two distinct defects in `internal/host/localfiles_ticket.go` produce one rendere
 
 ### Defect 1 — `bugSummary` reads `priority:`, but bug files use `severity:`
 
-`internal/host/localfiles_ticket.go:473-482` projects `"priority": b.frontString("priority")`. On-disk bug frontmatter uses `severity: P0|P1|P2|P3` (see `issues/README.md` and `issues/README.md` §2). Every existing file under `issues/bugs/` confirms — `severity:` present, `priority:` absent. Result: `t.priority` is `""` for every locally-filed ticket, so the view's `{% if t.priority %} · {{ t.priority }}{% endif %}` badge in `stories/dev-story/rooms/ticket_search.yaml:40` never renders.
+`internal/host/localfiles_ticket.go:473-482` projects `"priority": b.frontString("priority")`. On-disk bug frontmatter uses `severity: P0|P1|P2|P3` (see `issues/README.md` and `docs/proposals/bug-format-proposal.md` §2). Every existing file under `issues/bugs/` confirms — `severity:` present, `priority:` absent. Result: `t.priority` is `""` for every locally-filed ticket, so the view's `{% if t.priority %} · {{ t.priority }}{% endif %}` badge in `stories/dev-story/rooms/ticket_search.yaml:40` never renders.
 
 ### Defect 2 — `listAllBugs` sorts by `ID` ASC
 
@@ -186,7 +186,7 @@ Two distinct defects in `internal/host/localfiles_ticket.go` produce one rendere
 "priority": b.frontString("priority"),   // ← reads "priority"
 ```
 
-On-disk bug frontmatter uses `severity: P0|P1|P2|P3` (per `issues/README.md` and `issues/README.md` §2). Every file under `issues/bugs/` has `severity:` set; none has `priority:`. So `t.priority` is `""` for every locally-filed ticket, and the view's `{% if t.priority %} · {{ t.priority }}{% endif %}` badge in `stories/dev-story/rooms/ticket_search.yaml:40` never renders.
+On-disk bug frontmatter uses `severity: P0|P1|P2|P3` (per `issues/README.md` and `docs/proposals/bug-format-proposal.md` §2). Every file under `issues/bugs/` has `severity:` set; none has `priority:`. So `t.priority` is `""` for every locally-filed ticket, and the view's `{% if t.priority %} · {{ t.priority }}{% endif %}` badge in `stories/dev-story/rooms/ticket_search.yaml:40` never renders.
 
 ### Defect 2 — `listAllBugs` sorts by `ID` ASC
 
@@ -244,7 +244,7 @@ _phase: reproducing_2026-05-18T045257Z-localfiles-ticket-rank-by-severity-and-re
 ## Root cause
 Two defects in `internal/host/localfiles_ticket.go`:
 
-1. **Wrong key in projection.** `bugSummary` (line 478) reads `b.frontString("priority")`, but bug files use `severity:` (`issues/README.md`, `issues/README.md` §2). The summary's `priority` field is therefore always `""`, and the view's `{% if t.priority %}` badge never renders.
+1. **Wrong key in projection.** `bugSummary` (line 478) reads `b.frontString("priority")`, but bug files use `severity:` (`issues/README.md`, `docs/proposals/bug-format-proposal.md` §2). The summary's `priority` field is therefore always `""`, and the view's `{% if t.priority %}` badge never renders.
 2. **Wrong sort key.** `listAllBugs` (line 295) sorts strictly by `BugFile.ID` ASC. Because IDs are ISO-timestamp-prefixed, this is effectively filed_at ASC. Severity has zero weight in the order; a `|reverse` in the view papers over the recency half but does nothing about severity.
 
 ## Fix
@@ -260,7 +260,7 @@ Two defects in `internal/host/localfiles_ticket.go`:
 - `stories/dev-story/rooms/ticket_search.yaml`
 
 ## Confidence
-0.9 — both defects are pinpointed by FAILing repro tests on HEAD, the on-disk schema is documented in `issues/README.md` and `issues/README.md`, and the fix surface is small and local. The 0.1 uncertainty is that the `dev-story-implementation-contract.md` §2.1 still documents `priority`; aligning the contract is a follow-up doc edit (called out in alternatives), not required for the repro tests to pass.
+0.9 — both defects are pinpointed by FAILing repro tests on HEAD, the on-disk schema is documented in `issues/README.md` and `docs/proposals/bug-format-proposal.md`, and the fix surface is small and local. The 0.1 uncertainty is that the `dev-story-implementation-contract.md` §2.1 still documents `priority`; aligning the contract is a follow-up doc edit (called out in alternatives), not required for the repro tests to pass.
 
 _phase: proposing_2026-05-18T045257Z-localfiles-ticket-rank-by-severity-and-recency_0_
 
@@ -282,7 +282,7 @@ Two distinct defects in `internal/host/localfiles_ticket.go` produce one rendere
 "priority": b.frontString("priority"),   // ← reads "priority"
 ```
 
-On-disk bug frontmatter uses `severity: P0|P1|P2|P3` (per `issues/README.md` and `issues/README.md` §2). Every file under `issues/bugs/` has `severity:` set; none has `priority:`. So `t.priority` is `""` for every locally-filed ticket, and the view's `{% if t.priority %} · {{ t.priority }}{% endif %}` badge in `stories/dev-story/rooms/ticket_search.yaml:40` never renders.
+On-disk bug frontmatter uses `severity: P0|P1|P2|P3` (per `issues/README.md` and `docs/proposals/bug-format-proposal.md` §2). Every file under `issues/bugs/` has `severity:` set; none has `priority:`. So `t.priority` is `""` for every locally-filed ticket, and the view's `{% if t.priority %} · {{ t.priority }}{% endif %}` badge in `stories/dev-story/rooms/ticket_search.yaml:40` never renders.
 
 ### Defect 2 — `listAllBugs` sorts by `ID` ASC
 

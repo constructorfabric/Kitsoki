@@ -1,0 +1,123 @@
+states:
+  # iterating — the MAKER half of one autonomous loop step. on_enter makes the
+  # smallest change toward the goal (fed the previous gate's failure as feedback),
+  # persists the iteration, then AUTO-EMITS `check` → gating with no operator
+  # input. gating runs the checker and either terminates or emits `loop_again`
+  # back here. The operator kicks the loop off once (launch) and watches it run.
+  #
+  # Maker ≠ checker: the maker is an agent (this room); the checker is
+  # deterministic code or a separate adversarial context (gating). The maker
+  # cannot grade itself.
+  #
+  # Autonomy rides emit_intent self-chaining, capped at EmitIntentMaxDepth (8)
+  # per turn. A full iteration is two hops (check → loop_again), so an
+  # auto-from-launch run completes within one turn for budgets up to ~3. Larger
+  # budgets want the background-job runner (see README → autonomy).
+  iterating:
+    description: "Loop step — maker at work"
+    relevant_world: [iteration, iteration_budget, goal_text, goal_artifact, maker_summary, last_gate_failure, session_cost_usd, worktree_path]
+    on_enter:
+      - increment: { iteration: 1 }
+      # working_dir pins the maker's cwd to the worktree minted at launch, so its
+      # Edit/Write land in the isolated branch under .worktrees/, never the
+      # operator's checkout. (Reads still see the whole repo.)
+      - invoke: host.agent.task
+        id: "maker-{{ world.iteration }}"
+        with:
+          agent: maker
+          working_dir: "{{ world.worktree_path }}"
+          acceptance:
+            schema: schemas/maker_output.json
+          context:
+            prompt: prompts/maker.md
+            args:
+              goal:              "{{ world.goal_text }}"
+              goal_artifact:     "{{ world.goal_artifact }}"
+              anchor_files:      "{{ world.anchor_files }}"
+              iteration:         "{{ world.iteration }}"
+              last_gate_failure: "{{ world.last_gate_failure != '' ? world.last_gate_failure : '(first iteration — baseline failure carried in)' }}"
+        bind:
+          maker_summary: submitted.summary
+        on_error: iterating_error
+      - invoke: host.artifacts_dir
+        with:
+          thread: "iteration-{{ world.iteration }}"
+          title:  "Iteration {{ world.iteration }}"
+          body:   "**Maker:** {{ world.maker_summary }}\n\n**Prior gate failure:** {{ world.last_gate_failure != '' ? world.last_gate_failure : '(baseline)' }}"
+          phase_id: "cherny-loop"
+      - say: "Iteration {{ world.iteration }}/{{ world.iteration_budget }} · {{ world.maker_summary }}"
+      # Auto-advance to the checker — no operator prod. (Reset the verdict so
+      # gating's routing emits defer to its post-bind pass.)
+      - set: { gate_ok: "", script_gate_ok: "", agent_gate_ok: "", gate_stdout: "", gate_reason: "" }
+      - emit_intent: check
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - banner:
+              text:     "ITERATING"
+              subtitle: "The loop runs itself — make · gate · route, until met or budget"
+              color:    "#8B5CF6"
+          - kv:
+              pairs:
+                Goal:      "{{ world.goal_text }}"
+                Artifact:  '{{ world.goal_artifact|default:"(repo)" }}'
+                Iteration: "{{ world.iteration }} of {{ world.iteration_budget }}"
+          - heading: "Maker · this step"
+          - prose: '{{ world.maker_summary|default:"_(pending)_" }}'
+          - heading: "Gate failure fed to this step"
+          - code: '{{ world.last_gate_failure|default:"(none yet — first step off the baseline)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "abort"
+                  hint:  "abandon the loop"
+                - label: "look"
+    on:
+      check:
+        - target: gating
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "The loop runs itself — `abort` to stop it, or `look`."
+
+  # Maker host-call failure lands here rather than silently bouncing.
+  iterating_error:
+    description: "Maker call failed"
+    relevant_world: [last_error, iteration]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The maker call failed on iteration {{ world.iteration }}."
+          - code: '{{ world.last_error|default:"(no error detail)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "retry"
+                  hint:  "run the loop step again"
+                - label: "abort"
+                - label: "look"
+    on:
+      retry:
+        - target: iterating
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Type `retry` or `abort`."

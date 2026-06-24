@@ -1,7 +1,7 @@
 // Package testrunner — orchestrator-path flow runner tests.
 //
 // These tests exercise the orchestrator-backed turn loop introduced in the
-// background-jobs slice. They run without any LLM oracle and use only intent:
+// background-jobs slice. They run without any LLM agent and use only intent:
 // turns together with in-memory host stubs.
 package testrunner_test
 
@@ -122,7 +122,7 @@ expect_no_errors: true
 // ─── TestRunFlows_OrchestratorPath_Timeout ───────────────────────────────────
 
 // TestRunFlows_OrchestratorPath_Timeout verifies the Timeout: runtime
-// (gap §9.5).  The fixture seeds the session into a state whose `timeout:`
+// The fixture seeds the session into a state whose `timeout:`
 // declares a 10-day deadline, then uses `advance_clock: "11d"` to fire the
 // synthetic transition.  Post-advance assertions land on the terminal
 // destination state.
@@ -167,7 +167,7 @@ func TestRunFlows_LegacyPath_StillWorks(t *testing.T) {
 	require.NoError(t, err, "legacy path RunFlows should not fail")
 	require.NotEmpty(t, report.Results, "should have at least one result")
 
-	// At least one flow should pass (or be skipped due to missing oracle).
+	// At least one flow should pass (or be skipped due to missing agent).
 	for _, r := range report.Results {
 		if r.Skipped {
 			continue

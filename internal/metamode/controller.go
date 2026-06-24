@@ -23,7 +23,7 @@ var osStat = os.Stat
 
 // Controller orchestrates Enter / Send / Exit for meta-mode chats. It
 // holds the pluggable seams (chat store, agent registry, app
-// definition, oracle, clock) and contains no transport-specific code
+// definition, agent, clock) and contains no transport-specific code
 // itself. Tests inject fakes; production wiring uses the adapters in
 // adapter.go.
 type Controller struct {
@@ -34,16 +34,16 @@ type Controller struct {
 	Agents agents.Registry
 	// AppDef supplies the loaded meta_modes: declarations.
 	AppDef *app.AppDef
-	// Oracle issues a single LLM turn. Implementation owns the
+	// Agent issues a single LLM turn. Implementation owns the
 	// claude shellout (or, in tests, a fake).
-	Oracle OracleCaller
+	Agent AgentCaller
 	// Clock is the time source for Snapshot.EnteredAt (and any future
 	// timestamps). Defaults to time.Now when zero.
 	Clock func() time.Time
 }
 
 // ChatStore is the controller-facing chat store seam. ResolveMeta
-// covers Enter; GetMeta / ListMeta / ArchiveMeta cover the Phase A.5
+// covers Enter; GetMeta / ListMeta / ArchiveMeta cover the chat
 // discovery surface (/meta list, /meta resume, /meta new). WithLock
 // is the singleton-lock primitive shared with the rest of the chats
 // subsystem — see Controller.Send for why meta-mode turns now
@@ -78,34 +78,58 @@ type ChatStore interface {
 // ErrChatBusy is returned (wrapped) by Controller.Send when the chat
 // lock is held by another driver. Callers (the TUI metaSendCmd path)
 // should use errors.Is to detect it and render a busy-chat message
-// rather than the generic "oracle ask: …" wrapper.
+// rather than the generic "agent ask: …" wrapper.
 var ErrChatBusy = errors.New("metamode: chat busy")
 
-// OracleCaller is the controller-facing LLM seam. The Ask method
+// AgentCaller is the controller-facing LLM seam. The Ask method
 // represents one turn against an agent: system prompt + user message
 // in, reply + new claude session id out.
 //
 // The adapter in adapter.go implements this against
-// host.OracleAskWithMCPHandler. See adapter.go's package comment for
+// host.AgentAskWithMCPHandler. See adapter.go's package comment for
 // the constraints the real handler imposes (no native SystemPrompt
 // arg, no native tool-allowlist arg on the non-chat path) — the
 // adapter does the translation so the controller stays typed.
-type OracleCaller interface {
+type AgentCaller interface {
 	Ask(ctx context.Context, in AskInput) (AskOutput, error)
 }
 
 // AskInput is the typed input to one LLM turn.
 type AskInput struct {
-	SystemPrompt    string
-	UserMessage     string
-	ToolAllowlist   []string
-	Cwd             string
+	// SystemPrompt is the agent's system prompt. The adapter prefixes
+	// it to the user text (the handler has no native system-prompt arg).
+	SystemPrompt string
+	// UserMessage is the user's turn with the TurnContext preamble
+	// already prepended by the controller.
+	UserMessage string
+	// ToolAllowlist is the agent's declared tool surface. Forwarded as
+	// a visible hint; the handler does not gate by tool name today.
+	ToolAllowlist []string
+	// MCPServers is the mcp_servers map handed to the agent's claude
+	// subprocess (materialised into a --mcp-config file by the handler).
+	// The controller populates it with the studio server scoped to the
+	// story tree so the agent can validate / test / drive the story. Nil
+	// for the no-LLM stub path (which ignores it).
+	MCPServers map[string]any
+	// Cwd is the working directory the claude subprocess runs in, so
+	// its Read/Write/Edit tools land in the right story tree. Empty
+	// means the handler's own resolution rules apply.
+	Cwd string
+	// ClaudeSessionID is the per-chat claude session id for turn-to-turn
+	// memory. Captured and plumbed, but not yet honoured on the handler's
+	// non-chat path (see the package "# Non-goals").
 	ClaudeSessionID string
 }
 
 // AskOutput is the typed output from one LLM turn.
 type AskOutput struct {
-	Reply              string
+	// Reply is the assistant's text, with source-color sentinels
+	// stripped so it is safe to persist and re-feed on the next turn.
+	Reply string
+	// NewClaudeSessionID is the session id to record for resume. When
+	// the handler returns none, the adapter echoes the input id so the
+	// controller's "did it change?" check stays a no-op rather than
+	// clobbering a real id with empty.
 	NewClaudeSessionID string
 }
 
@@ -172,11 +196,17 @@ func (c *Controller) Enter(ctx context.Context, snap Snapshot, modeName string) 
 // from Room ("meta:foo" → "foo"); FirstUserMessage is truncated to
 // 100 chars (empty if no user turn yet).
 type ChatListing struct {
-	ID               string
-	ModeName         string
-	ScopeKey         string
-	Title            string
-	UpdatedAt        time.Time
+	// ID is the chat row's full ULID, for /meta resume.
+	ID string
+	// ModeName is the mode parsed from Room ("meta:foo" → "foo").
+	ModeName string
+	// ScopeKey is the entry state path the chat is keyed to.
+	ScopeKey string
+	// Title is the mode label (or mode name when unlabelled).
+	Title string
+	// UpdatedAt is the last-activity time; listings sort by it desc.
+	UpdatedAt time.Time
+	// FirstUserMessage is a truncated preview of the opening user turn.
 	FirstUserMessage string
 }
 
@@ -290,7 +320,7 @@ func (c *Controller) EnterByChatID(ctx context.Context, snap Snapshot, modeName,
 		return nil, fmt.Errorf("metamode.EnterByChatID: chat %q is not a meta chat (room=%q)", chatID, room)
 	}
 	// `self` chats key against the synthetic SelfAppID across all apps
-	// (proposal §1 cross-app keying). Allow them to resume from any
+	// (cross-app keying; see SelfAppID). Allow them to resume from any
 	// running app; reject only when the chat's app_id matches neither
 	// the running app nor SelfAppID.
 	if chat.AppID() != c.AppDef.App.ID && chat.AppID() != SelfAppID {
@@ -407,7 +437,10 @@ func (c *Controller) ResolveChatIDPrefix(ctx context.Context, appID, prefix stri
 // than one chat ID shares the given prefix. The TUI uses the typed
 // shape to render a disambiguation list to the user.
 type AmbiguousPrefixError struct {
-	Prefix  string
+	// Prefix is the ambiguous prefix the user typed.
+	Prefix string
+	// Matches is every full chat ID that shares Prefix, for the
+	// disambiguation list.
 	Matches []string
 }
 
@@ -431,26 +464,27 @@ func truncatePreview(s string, max int) string {
 }
 
 // Send issues one turn on the session: appends the user message,
-// dispatches to the oracle, persists the new claude session id, then
+// dispatches to the agent, persists the new claude session id, then
 // appends the assistant reply.
 //
 // turn carries the per-turn ambient context (state path, app file,
 // rendered view, world snapshot). The controller prepends a [context]
 // block built from those fields to the user message before handing it
-// to the oracle. When turn is the zero value, the preamble is empty
+// to the agent. When turn is the zero value, the preamble is empty
 // and Send behaves like the old (turn-less) signature did.
 //
 // Ordering rationale: SetClaudeSessionID runs BEFORE the assistant
 // append so a write failure on the session id can't strand an answered
 // turn with no resume path. AppendMessage("user") happens FIRST so a
-// later oracle failure still leaves the user's question visible in the
+// later agent failure still leaves the user's question visible in the
 // transcript. The same ordering pattern is used by
-// host.runOracleAskWithMCPWithChat (see oracle_ask_with_mcp.go) so
+// host.runAgentAskWithMCPWithChat (see agent_ask_with_mcp.go) so
 // transcripts stay consistent with the orchestrator-driven path.
 //
-// WS-A4 wraps this method (or composes it) to set ReloadRequested
-// when an authoring.apply tool call lands during the turn. WS-A3
-// always returns ReloadRequested:false.
+// ReloadRequested is set on the returned SendResult whenever the turn
+// changed any file in the story tree (the agent edited app.yaml, an
+// include, a prompt, …), so the TUI reloads the orchestrator before the
+// next turn. A turn that changed nothing returns ReloadRequested:false.
 func (c *Controller) Send(ctx context.Context, s *Session, userText string, turn TurnContext) (SendResult, error) {
 	if c == nil {
 		return SendResult{}, fmt.Errorf("metamode.Send: nil controller")
@@ -461,8 +495,8 @@ func (c *Controller) Send(ctx context.Context, s *Session, userText string, turn
 	if s.Chat == nil {
 		return SendResult{}, fmt.Errorf("metamode.Send: session has no chat handle")
 	}
-	if c.Oracle == nil {
-		return SendResult{}, fmt.Errorf("metamode.Send: nil oracle caller")
+	if c.Agent == nil {
+		return SendResult{}, fmt.Errorf("metamode.Send: nil agent caller")
 	}
 
 	mode := ""
@@ -480,12 +514,12 @@ func (c *Controller) Send(ctx context.Context, s *Session, userText string, turn
 	chatID := s.Chat.ID()
 
 	// Acquire the per-chat singleton lock. Held across the user
-	// append, oracle dispatch, and assistant append — every other
+	// append, agent dispatch, and assistant append — every other
 	// driver (kitsoki chat continue, the drive dispatcher,
 	// kitsoki chat attach) acquires the same lock, so meta turns
 	// can't interleave with them against the same row. On contention
 	// we surface ErrChatBusy so the TUI renders a friendly message
-	// rather than a generic oracle-error wrapper.
+	// rather than a generic agent-error wrapper.
 	var (
 		result   SendResult
 		innerErr error
@@ -514,7 +548,7 @@ func (c *Controller) Send(ctx context.Context, s *Session, userText string, turn
 // callback in Send can hold it cleanly. ctx here is the locked
 // context — short-lived helpers (heartbeats) that ride on the lock
 // would attach to it, but meta-mode does not need a heartbeat goroutine
-// since oracle.Ask is a one-shot call.
+// since agent.Ask is a one-shot call.
 func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string, turn TurnContext, chatID, mode string) (SendResult, error) {
 	if err := s.Chat.AppendMessage("user", userText); err != nil {
 		slog.ErrorContext(ctx, "metamode.send.append_user_failed",
@@ -537,12 +571,27 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 		ClaudeSessionID: s.Chat.ClaudeSessionID(),
 	}
 
+	// Attach the studio MCP server scoped to the story tree so the agent can
+	// validate / test / drive the story it's reasoning about. Read-only modes
+	// (story.ask → {Read,Glob,Grep}) get a server without story.write so the
+	// Q&A surface cannot edit the story. Built unconditionally — the no-LLM
+	// stub AgentCaller ignores MCPServers, so flows/cassettes are unaffected;
+	// only the real claude adapter spawns it. A binary-resolution failure is
+	// non-fatal: the agent degrades to its plain Read/Edit toolset.
+	if turn.AppFile != "" {
+		if servers, err := studioMCPServers(filepath.Dir(turn.AppFile), !editCapable(in.ToolAllowlist)); err != nil {
+			slog.WarnContext(ctx, "metamode.studio_mcp.skip", "chat_id", chatID, "err", err.Error())
+		} else {
+			in.MCPServers = servers
+		}
+	}
+
 	// Snapshot the story directory tree before the LLM call so we can
 	// detect direct edits to ANY file in the story (app.yaml, includes,
 	// prompts, scripts) — not just the manifest — and trigger an
 	// orchestrator reload + surface the change list on the way out.
 	//
-	// Imported-manifest dirs (proposal §16.4) are folded in as extra
+	// Imported-manifest dirs are folded in as extra
 	// roots so an edit in a sibling story (e.g. `stories/robbery/`
 	// while running `stories/oregon-trail/`) is detected the same way.
 	var (
@@ -558,22 +607,22 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 	}
 	preStat = statAppFile(turn.AppFile)
 
-	slog.DebugContext(ctx, "metamode.oracle.ask",
+	slog.DebugContext(ctx, "metamode.agent.ask",
 		"chat_id", chatID,
 		"cwd", in.Cwd,
 		"tools", in.ToolAllowlist,
 		"claude_session_id", in.ClaudeSessionID,
 	)
-	out, err := c.Oracle.Ask(ctx, in)
+	out, err := c.Agent.Ask(ctx, in)
 	if err != nil {
-		slog.ErrorContext(ctx, "metamode.oracle.error",
+		slog.ErrorContext(ctx, "metamode.agent.error",
 			"chat_id", chatID,
 			"mode", mode,
 			"err", err.Error(),
 		)
-		return SendResult{Err: err}, fmt.Errorf("metamode.Send: oracle ask: %w", err)
+		return SendResult{Err: err}, fmt.Errorf("metamode.Send: agent ask: %w", err)
 	}
-	slog.DebugContext(ctx, "metamode.oracle.reply",
+	slog.DebugContext(ctx, "metamode.agent.reply",
 		"chat_id", chatID,
 		"reply_chars", len(out.Reply),
 		"new_claude_session_id", out.NewClaudeSessionID,
@@ -593,7 +642,7 @@ func (c *Controller) sendLocked(ctx context.Context, s *Session, userText string
 
 	// Reload trigger: the agent edited ANY file in the story directory
 	// tree (app.yaml, an include, a prompt, a script…) — or in any
-	// imported child story's directory (proposal §16.4).
+	// imported child story's directory.
 	var (
 		changedFiles    []string
 		changedAbsPaths []string
@@ -731,7 +780,7 @@ func snapshotKeyToAbsPath(k, treeRoot string) string {
 }
 
 // appFileStat captures the mtime + size of one file so direct edits
-// between two oracle calls can be detected. Zero value means "no file"
+// between two agent calls can be detected. Zero value means "no file"
 // (path empty or stat failed).
 type appFileStat struct {
 	exists bool
@@ -792,8 +841,8 @@ func importedDirsFor(manifestPaths []string) []string {
 // reload-detection. Symlinks are not followed.
 //
 // extraRoots is the optional list of additional directories to fold in:
-// every imported manifest's directory (story-imports proposal §16.4),
-// so an edit in a sibling story (`stories/robbery/` while running
+// every imported manifest's directory, so an edit in a sibling story
+// (`stories/robbery/` while running
 // `stories/oregon-trail/`) triggers reload. Each extra root is walked
 // the same way as the main root. Keys in the returned snapshot are
 // prefixed with the absolute path so two roots with same-named files
@@ -926,16 +975,10 @@ func displayKey(k string) string {
 
 // Exit finalizes a meta-mode session.
 //
-// Disposition of pending proposals (decision flagged in the WS-A3
-// report): the meta-mode proposal §6.4 explicitly says that on
-// reentry the chat resumes "with that proposal still draft", so
-// drafts MUST survive Exit when the mode is persistent. We therefore
-// touch the ledger nothing in the nominal case — drafts remain so the
-// next Enter (which re-resolves the same chat for the same state) can
-// pick them up. Truly orphan proposals (the rare case where a Propose
-// call produced a shadow dir but the LLM crashed mid-turn before
-// recording it in the ledger) are out of scope for this method: by
-// definition they aren't in the ledger.
+// Persistent modes (the default) survive Exit untouched: re-entering
+// the same mode from the same state resumes the same chat with its full
+// transcript, so edits-in-progress and conversational context carry
+// over. Exit is deliberately a no-op for them.
 //
 // Ephemeral modes (mode.Persist == false): when the author opts out
 // of persistence, Exit archives the backing chat so it stops showing
@@ -1067,7 +1110,21 @@ func resolveCwd(m *app.MetaModeDef, a agents.Agent, appFile string) string {
 // filepath.Abs. If filepath.Abs fails (a real rarity — it only
 // errors when the OS can't get the cwd), the original is returned
 // rather than losing the value.
+//
+// Env vars are expanded FIRST, before the absolute/relative split.
+// The builtin kitsoki.* meta modes carry raw `Cwd: "${KITSOKI_REPO}"`,
+// and KITSOKI_REPO holds an absolute path — so expanding before the
+// IsAbs check lets it short-circuit as already-absolute. Expanding
+// afterwards (the old order) ran filepath.Abs on the literal
+// "${KITSOKI_REPO}" token, prepending the process cwd, and produced a
+// doubled "<cwd>/<abs-repo>" path that broke the claude chdir. Agent
+// DefaultCwd arrives pre-expanded, so ExpandEnv is a harmless no-op
+// there.
 func absolutiseAgainst(raw, baseDir string) string {
+	if raw == "" {
+		return ""
+	}
+	raw = os.ExpandEnv(raw)
 	if raw == "" {
 		return ""
 	}
@@ -1084,9 +1141,9 @@ func absolutiseAgainst(raw, baseDir string) string {
 }
 
 // metaRoom produces the chat-room key for a meta mode by name.
-// "meta:<modeName>" matches the convention in the meta-mode proposal
-// §3.1 step 3 and the existing `kitsoki chat list --scope-prefix meta:`
-// listing path.
+// "meta:<modeName>" matches the convention documented in
+// docs/stories/meta-mode.md and the existing
+// `kitsoki chat list --scope-prefix meta:` listing path.
 func metaRoom(modeName string) string { return "meta:" + modeName }
 
 // SelfAppID is the synthetic app_id under which kitsoki-target meta
@@ -1094,8 +1151,8 @@ func metaRoom(modeName string) string { return "meta:" + modeName }
 // could declare `app.id: kitsoki-self` and collide), so chats keyed
 // against it survive across every running app — a `kitsoki.edit`
 // conversation started while playing cloak is the same row the user
-// reopens while playing dev-story. Cross-app keying is the proposal §1
-// design (option a).
+// reopens while playing dev-story. Cross-app keying is documented in
+// docs/stories/meta-mode.md.
 const SelfAppID = "kitsoki-self"
 
 // isKitsokiTargetMode reports whether modeName addresses kitsoki itself
@@ -1106,7 +1163,7 @@ const SelfAppID = "kitsoki-self"
 // Covers both the new grouped keys (`kitsoki.edit`, `kitsoki.ask`,
 // `kitsoki.bug`) and the legacy single-token `self` key for any
 // in-flight back-compat callers — but the latter is no longer surfaced
-// by the trigger parser per proposal §7 clean break.
+// by the trigger parser.
 func isKitsokiTargetMode(modeName string) bool {
 	if modeName == "self" {
 		return true
@@ -1145,7 +1202,7 @@ func metaScopeKey(modeName, statePath string) string {
 // view the user is staring at, and the resolved world variables. The
 // preamble below glues those fields together into a single text block
 // the controller prepends to the user message before dispatching to
-// the oracle. The agent (story-author.md) is taught to read this
+// the agent. The agent (story-author.md) is taught to read this
 // preamble and use it to pin propose calls to the right file.
 //
 // Format choices:

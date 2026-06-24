@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""judge_verdict_after.py — AFTER oracle-split.
+"""judge_verdict_after.py — AFTER agent-split.
 
-Invokes the judge via `kitsoki oracle decide` (or, when
-KITSOKI_ORACLE_SOCK is set, via the unix-socket JSON-RPC daemon — zero
+Invokes the judge via `kitsoki agent decide` (or, when
+KITSOKI_AGENT_SOCK is set, via the unix-socket JSON-RPC daemon — zero
 extra process overhead).
 
 Improvements over the "before" version:
@@ -12,9 +12,9 @@ Improvements over the "before" version:
     The KITSOKI_SESSION_ID env var (set by the state machine or by the
     operator's shell) threads the subprocess decision into the parent
     session so the full execution tree is queryable in one place.
-  - JSON output is guaranteed by the oracle's submit-schema enforcement;
+  - JSON output is guaranteed by the agent's submit-schema enforcement;
     no regex scraping.
-  - When KITSOKI_ORACLE_SOCK is set the call goes over the unix socket
+  - When KITSOKI_AGENT_SOCK is set the call goes over the unix socket
     rather than forking a new process — useful when running many judges
     in parallel (e.g. bulk CI triage).
 
@@ -23,7 +23,7 @@ Usage:
     python judge_verdict_after.py <ticket_id> <artifact_title> <artifact_body>
 
     # Socket path (daemon already running):
-    KITSOKI_ORACLE_SOCK=/tmp/kitsoki-oracle.sock \\
+    KITSOKI_AGENT_SOCK=/tmp/kitsoki-agent.sock \\
         python judge_verdict_after.py <ticket_id> <artifact_title> <artifact_body>
 """
 
@@ -64,7 +64,7 @@ def _rpc_call(sock_path: str, method: str, params: dict) -> dict:
     return resp.get("result", {})
 
 
-# ── oracle decide helpers ──────────────────────────────────────────────────────
+# ── agent decide helpers ──────────────────────────────────────────────────────
 
 def _call_via_socket(sock_path: str, ticket_id: str, artifact_title: str, artifact_body: str) -> dict:
     params = {
@@ -76,11 +76,11 @@ def _call_via_socket(sock_path: str, ticket_id: str, artifact_title: str, artifa
             "artifact_body":  artifact_body,
         }),
     }
-    result = _rpc_call(sock_path, "oracle.decide", params)
+    result = _rpc_call(sock_path, "agent.decide", params)
     # result["data"]["submitted"] holds the typed verdict
     submitted = result.get("data", {}).get("submitted", {})
     if not submitted:
-        raise ValueError(f"oracle.decide returned no submitted data: {result}")
+        raise ValueError(f"agent.decide returned no submitted data: {result}")
     return submitted
 
 
@@ -95,7 +95,7 @@ def _call_via_cli(ticket_id: str, artifact_title: str, artifact_body: str) -> di
     # (The state machine sets KITSOKI_SESSION_ID before launching scripts.)
     result = subprocess.run(
         [
-            "kitsoki", "oracle", "decide",
+            "kitsoki", "agent", "decide",
             "--prompt", _PROMPT,
             "--schema", _SCHEMA,
             "--args-json", args_json,
@@ -106,12 +106,12 @@ def _call_via_cli(ticket_id: str, artifact_title: str, artifact_body: str) -> di
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"kitsoki oracle decide failed ({result.returncode}):\n{result.stderr.strip()}")
-    # kitsoki oracle decide prints JSON to stdout when stdout is not a TTY.
+        raise RuntimeError(f"kitsoki agent decide failed ({result.returncode}):\n{result.stderr.strip()}")
+    # kitsoki agent decide prints JSON to stdout when stdout is not a TTY.
     data = json.loads(result.stdout)
     submitted = data.get("data", {}).get("submitted", {})
     if not submitted:
-        raise ValueError(f"oracle decide returned no submitted data: {data}")
+        raise ValueError(f"agent decide returned no submitted data: {data}")
     return submitted
 
 
@@ -129,7 +129,7 @@ def main() -> None:
     artifact_title = sys.argv[2]
     artifact_body  = sys.argv[3]
 
-    sock_path = os.environ.get("KITSOKI_ORACLE_SOCK", "")
+    sock_path = os.environ.get("KITSOKI_AGENT_SOCK", "")
     if sock_path:
         verdict = _call_via_socket(sock_path, ticket_id, artifact_title, artifact_body)
     else:

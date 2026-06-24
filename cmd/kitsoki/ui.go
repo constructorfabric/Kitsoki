@@ -1,5 +1,5 @@
 // ui.go — implements `kitsoki ui preview`, the renderer-only design
-// playground for the single-pane chat TUI.
+// playground for the single-pane chat TUI. See docs/tui/README.md.
 //
 // The subcommand exists for three reasons:
 //
@@ -7,7 +7,7 @@
 //     block template, run `kitsoki ui preview --block menu`, see the diff.
 //  2. Golden tests — output is byte-stable given the same width + theme +
 //     fixture, so the renderer can be pinned against regressions.
-//  3. Documentation — paste preview output into proposals/docs without
+//  3. Documentation — paste preview output into docs without
 //     hand-drawing ASCII.
 //
 // It is intentionally renderer-only: no orchestrator, no machine, no
@@ -37,7 +37,9 @@ func uiCmd() *cobra.Command {
 		Short: "TUI design tools (preview, golden-fixture rendering)",
 		Long: `The 'ui' command tree contains design tools for the single-pane chat
 TUI. They are renderer-only — no app loading, no state machine, no MCP —
-so they can run anywhere a Go binary can.`,
+so they can run anywhere a Go binary can.
+
+See docs/tui/README.md for the single-pane TUI architecture.`,
 	}
 	cmd.AddCommand(uiPreviewCmd())
 	return cmd
@@ -91,7 +93,7 @@ Examples:
 	cmd.Flags().StringVar(&block, "block", "",
 		"render just one block kind (header, user_turn, routing_status, routing, agent_turn, system_notice, slash_output, menu, inbox, background_complete, footer, prompt). Overrides --view.")
 	cmd.Flags().StringVar(&theme, "theme", "default",
-		"colour palette: default | meta-blue | meta-amber | off-path | all (bake-off)")
+		"colour palette: default | mesa | meta-blue | meta-amber | off-path | all (bake-off)")
 	cmd.Flags().IntVar(&width, "width", 80,
 		"terminal width to render against")
 	cmd.Flags().StringVar(&fixture, "fixture", "",
@@ -281,8 +283,9 @@ func renderSingleBlock(r *blocks.Renderer, name string) (string, error) {
 		return r.World(blocks.WorldFixture()), nil
 	case "welcome":
 		return r.WelcomeBlock(blocks.Welcome{
+			Logo:     true,
 			Title:    "kitsoki · cypilot",
-			Subtitle: "welcome demo",
+			Subtitle: "v1.2.0 · by brad",
 			Hints: []string{
 				"/help        list commands",
 				"/world       inspect current state",

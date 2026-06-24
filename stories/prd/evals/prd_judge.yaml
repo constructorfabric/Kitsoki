@@ -1,0 +1,56 @@
+# Traceability:
+# - Source call site: stories/prd/rooms/drafting.yaml, host.agent.decide id `judge_verdict`.
+# - Prompt: stories/prd/prompts/judge_prd.md.
+# - Schema: stories/prd/schemas/judge_verdict.json.
+# - Purpose: checkpoint judge for accepting, refining, or clarifying a drafted PRD.
+kind: agent_eval
+app: ../app.yaml
+call: judge_verdict
+agent: judge
+
+task:
+  goal: "Judge whether a drafted PRD is ready for operator acceptance."
+  boundedness:
+    max_turns: 1
+    tool_policy: none
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.95
+    max_p95_latency_ms: 7000
+    max_avg_cost_usd: 0.002
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low, medium]
+  repeat: 5
+
+comparator:
+  kind: enum
+  field: intent
+
+examples:
+  - name: solid-prd-accept
+    args:
+      idea: "A dashboard for triaging background job completions."
+      artifact_title: "Background Job Triage Dashboard PRD"
+      artifact_body: "Problem, users, goals, non-goals, requirements, workflows, edge cases, and acceptance criteria are all specified."
+    expect:
+      verdict: pass
+      intent: accept
+      reason: "The PRD covers users, goals, requirements, workflow, and acceptance criteria."
+      confidence: 0.92
+  - name: missing-requirements-refine
+    args:
+      idea: "A dashboard for triaging background job completions."
+      artifact_title: "Dashboard PRD"
+      artifact_body: "We should build a dashboard. It will be useful."
+    expect:
+      verdict: fail
+      intent: refine
+      reason: "The draft lacks concrete requirements, workflow details, and acceptance criteria."
+      confidence: 0.88

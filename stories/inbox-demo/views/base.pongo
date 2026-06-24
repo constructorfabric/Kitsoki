@@ -1,0 +1,9 @@
+{% comment %}
+Async Inbox Demo — app-wide base view. Minimal chrome; rooms override body
+and choices.
+{% endcomment %}
+{% block status %}Async Inbox Demo{% endblock %}
+{% block heading %}{{ state.description }}{% endblock %}
+{% block body %}{% endblock %}
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

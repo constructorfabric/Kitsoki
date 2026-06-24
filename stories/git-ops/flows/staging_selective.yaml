@@ -1,0 +1,67 @@
+# staging_selective — stage a specific file via add_file (slot: path).
+# Asserts: git add called with the specific path, not -A.
+# Starts from branch_ops so staging on_enter fires on entry.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  has_uncommitted:    true
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      1
+            commits_behind:     0
+            has_uncommitted:    true
+            no_common_ancestor: false
+      classify_staging:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            staged:     ""
+            modified:   "internal/host/run.go"
+            untracked:  ""
+            suspicious: ""
+      git_add_file:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    ""
+
+turns:
+  # Enter staging: on_enter fires and classifies
+  - intent: { name: stage, slots: {} }
+    expect_state: staging
+    expect_world:
+      git_status:
+        staged:     ""
+        modified:   "internal/host/run.go"
+        untracked:  ""
+        suspicious: ""
+
+  # Stage specific file
+  - intent: { name: add_file, slots: { path: "internal/host/run.go" } }
+    expect_state: staging
+    expect_world:
+      last_op_ok:      true
+      last_op_outcome: ""
+      add_path:        "internal/host/run.go"
+
+  - intent: { name: back, slots: {} }
+    expect_state: branch_ops
+
+expect_no_errors: true

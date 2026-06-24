@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "mine_artifact",
+  "description": "Summary of an intent-mining run over recent transcripts, read from the emitted reports (never invented).",
+  "type":    "object",
+  "required": ["brief_path", "intent_count", "summary_markdown"],
+  "properties": {
+    "brief_path":    { "type": "string", "minLength": 4, "description": "Path to the emitted BRIEF.md for this job." },
+    "intent_count":  { "type": "integer", "minimum": 0, "description": "Total intents catalogued." },
+    "deterministic": { "type": "integer", "minimum": 0, "description": "Count of 🟢 fully-deterministic intents." },
+    "agent_gated":  { "type": "integer", "minimum": 0, "description": "Count of 🟡 agent-gated intents." },
+    "irreducible":   { "type": "integer", "minimum": 0, "description": "Count of 🔴 irreducible-llm intents." },
+    "summary_markdown": { "type": "string", "minLength": 40, "description": "Human-readable summary of the run delivered to the transport." }
+  },
+  "additionalProperties": true
+}

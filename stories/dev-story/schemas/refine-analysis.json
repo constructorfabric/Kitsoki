@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "refine_analysis",
+  "description": "Brief refinement analysis: the refiner's assessment after reading the idea and search results.",
+  "type": "object",
+  "required": ["gaps", "summary"],
+  "additionalProperties": false,
+  "properties": {
+    "gaps": {
+      "type": "array",
+      "description": "Specific, actionable gaps in the brief given the search findings — things the brief still needs to address. Empty list means the brief is solid.",
+      "items": { "type": "string" }
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-sentence assessment of the brief's current state — what it has and what's missing."
+    }
+  }
+}

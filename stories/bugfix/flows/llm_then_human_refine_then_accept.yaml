@@ -34,7 +34,7 @@ host_handlers:
   host.git_worktree:   { data: { ok: true, log: "" } }
   host.git:            { data: { ok: true, sha: "abc", diff: "" } }
   host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -47,7 +47,7 @@ host_handlers:
         reason:     "Need a deterministic reproducer rather than a shell trace."
         confidence: 0.9
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -60,7 +60,7 @@ host_handlers:
         reason:     "Need a deterministic reproducer rather than a shell trace."
         confidence: 0.9
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -74,8 +74,8 @@ host_handlers:
         confidence: 0.9
 
 turns:
-  # start enters reproducing; on_enter runs the artifact oracle, then
-  # the judge oracle (binds llm_verdict={verdict:refine,...}), then
+  # start enters reproducing; on_enter runs the artifact agent, then
+  # the judge agent (binds llm_verdict={verdict:refine,...}), then
   # emit_intent fires `refine`. The refine arc self-transitions, sets
   # refine_feedback, and increments reproducing_cycle. Net landing:
   # reproducing with cycle=1.

@@ -1,0 +1,76 @@
+# design_refine_clarify_loop — the brief quality gate's clarify loop.
+#
+# In the refine room, `ready` increments design_brief_cycle (which arms
+# the on_enter judge for the first time) and re-enters with a FULL target.
+# A `clarify` verdict from the judge re-renders here with the specific gaps
+# and does NOT advance — the gate out of the refine room IS a passing brief,
+# so a non-passing brief keeps the operator here to address the questions
+# (or edit the brief directly).
+#
+# The brief already exists on disk (design_brief_path set) and the refiner
+# has already run (design_refine_analysis set). So on re-entry after
+# `ready`, only the brief judge fires (the scaffold and refiner are `once:`
+# guarded by their binds).
+#
+# The `continue` verdict that auto-advances is covered by design_happy_path.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design_refine
+initial_world:
+  judge_mode:             "human"
+  design_idea:          "Add a per-session working folder primitive."
+  design_slug:          "wf"
+  design_workspace:     "docs/proposals/.workspace/wf"
+  design_brief_path:    "docs/proposals/.workspace/wf/001-brief.md"
+  design_refine_analysis:
+    summary: "Idea is clear; impact section needs more detail."
+    gaps:    ["Specify cleanup timing", "Name the engine seam"]
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.agent.task:
+    by_call:
+      refine_brief:
+        data:
+          ok: true
+          submitted:
+            summary: "Idea is clear; impact section needs more detail."
+            gaps:    ["Specify cleanup timing", "Name the engine seam"]
+  host.agent.decide:
+    by_call:
+      brief_check:
+        data:
+          ok: true
+          submitted:
+            verdict:   "clarify"
+            reason:    "The What-changes is vague and no kind is named."
+            questions: ["Which engine seam does this touch?", "What does the operator do differently?"]
+
+turns:
+  # ready → judge is armed (cycle 0→1) → judge says clarify → stay in refine.
+  - intent: { name: ready, slots: {} }
+    expect_state: design_refine
+    expect_world:
+      design_brief_cycle: 1
+      design_brief_path:  "docs/proposals/.workspace/wf/001-brief.md"
+      design_brief_decision:
+        verdict:   "clarify"
+        reason:    "The What-changes is vague and no kind is named."
+        questions: ["Which engine seam does this touch?", "What does the operator do differently?"]
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: "brief_check" }
+    # Scaffold and refiner are once-guarded (brief_path and refine_analysis are
+    # already set), so they must NOT re-run on re-entry.
+    expect_no_host_calls: [host.artifacts_dir]
+
+  # Edited the brief / talked more, ready again → still clarify → cycle 1→2,
+  # no advance: the brief still hasn't passed review.
+  - intent: { name: ready, slots: {} }
+    expect_state: design_refine
+    expect_world:
+      design_brief_cycle: 2
+
+expect_no_errors: true

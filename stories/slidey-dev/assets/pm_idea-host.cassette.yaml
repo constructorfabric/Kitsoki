@@ -1,0 +1,165 @@
+# Generated from stories/slidey-dev/flows/pm_idea.yaml host_handlers (no LLM): backs host.* calls under
+# --harness replay; the recording supplies free-text routing.
+kind: host_cassette
+app_id: slidey-dev
+app_version: 0.1.0
+match_on:
+- handler
+- call
+episodes:
+- id: open_file_1
+  match:
+    handler: host.ide.open_file
+  response:
+    data:
+      ok: true
+      connected: false
+- id: resolve_2
+  match:
+    handler: host.chat.resolve
+  response:
+    data:
+      ok: true
+      chat_id: chat-1
+      title: Speaker-notes export idea
+      is_new: true
+- id: converse_3
+  match:
+    handler: host.agent.converse
+  response:
+    data:
+      ok: true
+      answer: A printable per-scene handout exported straight from the deck spec.
+      chat_id: chat-1
+      claude_session_id: sess-1
+- id: search_4
+  match:
+    handler: host.agent.search
+  response:
+    data:
+      hits: []
+      top: null
+- id: decide_match_answer
+  match:
+    handler: host.agent.decide
+    call: match_answer
+  response:
+    data:
+      ok: true
+      submitted:
+        answers_block: 'Q1: presenters reviewing a deck before a talk
+
+          Q2: decks-exported-to-notes-without-rendering-video
+
+          '
+        answered_ids_append: '|1||2|'
+        matched_count: 2
+- id: decide_name_slug
+  match:
+    handler: host.agent.decide
+    call: name_slug
+  response:
+    data:
+      ok: true
+      submitted:
+        slug: speaker-notes-export
+        rationale: the slidey feature the design is authored for
+- id: decide_existing_scan
+  match:
+    handler: host.agent.decide
+    call: existing_scan
+  response:
+    data:
+      ok: true
+      submitted:
+        overlaps: []
+        roadmap_fit: A net-new spec-derived output alongside video/PDF/web; no overlap with existing outputs.
+- id: decide_references_research
+  match:
+    handler: host.agent.decide
+    call: references_research
+  response:
+    data:
+      ok: true
+      submitted:
+        items:
+        - path: docs/prd/speaker-notes-export.md
+          sections: "\xA75"
+          rationale: the PRD this design realizes
+- id: decide_default
+  match:
+    handler: host.agent.decide
+  response:
+    data:
+      ok: true
+      submitted:
+        questions:
+        - id: q1
+          question: Who is the primary actor and where do they use the handout?
+          why: scopes the persona
+        - id: q2
+          question: What is the single most important success metric?
+          why: defines done
+- id: task_prd_author
+  match:
+    handler: host.agent.task
+    call: prd_author
+  response:
+    data:
+      ok: true
+      submitted:
+        title: 'PRD: Speaker-Notes Export'
+        summary_markdown: "# PRD: Speaker-Notes Export\n\n## Problem & Context\nA slidey deck is one JSON\
+          \ spec that renders to video, PDF, and an\ninteractive web player \u2014 but a presenter rehearsing\
+          \ a talk has no\nprintable, per-scene handout of what each scene says.\n\n## Target Users\n\
+          Presenters and deck authors reviewing a deck before a talk.\n\n## Goals\n- A `slidey deck.json\
+          \ --notes out.md` flag that emits a per-scene\n  handout (eyebrow + body + narration) from the\
+          \ same spec.\n- Deterministic and LLM-free: same spec in, same notes out.\n\n## Requirements\n\
+          - Functional: one Markdown section per scene, in spec order.\n- Non-functional: headline metric\
+          \ is\n  decks-exported-to-notes-without-rendering-video.\n\n## Open Questions\n- Should scenes\
+          \ with no narration be skipped or emitted empty?\n"
+        file_path: .artifacts/prd/speaker-notes-export/004-prd.md
+        confidence: 0.84
+        needs_clarification: false
+        follow_up_questions: []
+  # Fallback for any host.agent.task that is NOT the prd_author call — notably
+  # the dev-story landing room's on_enter landing_agent (no `call:` id). Under
+  # --harness replay the landing task would otherwise fall through to the REAL
+  # agent backend (a live LLM); this benign, instant note keeps the whole walk
+  # no-LLM and deterministic. First-match-wins keeps prd_author specific above.
+- id: task_landing_fallback
+  match:
+    handler: host.agent.task
+  response:
+    data:
+      ok: true
+      submitted:
+        summary: "Noted the speaker-notes-export idea; the PRD pipeline is the right home for it."
+        route:
+          intent: go_prd
+          label: "Start a PRD"
+          reason: "A net-new spec-derived output belongs in PRD discovery."
+        confidence: 0.8
+        needs_clarification: false
+        follow_up_questions: []
+- id: run_mint_workspace
+  match:
+    handler: host.run
+    call: mint_workspace
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        slug: speaker-notes-export
+        workspace: .artifacts/prd/speaker-notes-export
+- id: run_publish
+  match:
+    handler: host.run
+    call: publish
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        prd_file: docs/prd/speaker-notes-export.md

@@ -5,6 +5,7 @@ package harness
 import (
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"kitsoki/internal/app"
+	"kitsoki/internal/sysprompt"
 )
 
 // BuildStablePrefixForTest exposes buildStablePrefix for testing.
@@ -29,5 +30,23 @@ func ParseValidatedPayloadForTest(raw []byte) (mcp.CallToolParams, error) {
 
 // BuildClaudeArgsForTest exposes buildClaudeArgs for testing.
 func BuildClaudeArgsForTest(cfg ClaudeCLIConfig) []string {
-	return buildClaudeArgs(cfg, "")
+	return buildClaudeArgs(cfg, "", "")
+}
+
+// BuildClaudeArgsWithSystemPromptForTest exposes buildClaudeArgs with a
+// system prompt set, for testing the --system-prompt override wiring.
+func BuildClaudeArgsWithSystemPromptForTest(cfg ClaudeCLIConfig, systemPrompt string) []string {
+	return buildClaudeArgs(cfg, "", systemPrompt)
+}
+
+// RoutingSystemPromptForTest exposes the composed routing system prompt (the
+// kitsoki → project → routing layers) the harness would pass via
+// --system-prompt for the given turn, without execing claude.
+func RoutingSystemPromptForTest(h *ClaudeCLIHarness, in TurnInput) string {
+	composed := sysprompt.Compose(sysprompt.Spec{
+		Verb:    sysprompt.Route,
+		Project: projectLayer(h.appDef),
+		Task:    h.stablePrefix + buildSubmitInstruction(h.cfg.validatorTool()),
+	})
+	return composed.SystemPrompt
 }

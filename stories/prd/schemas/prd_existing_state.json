@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "prd_existing_state",
+  "description": "The scout's report on whether the idea overlaps a PRD / requirement doc already in the tree. An empty `overlaps` list is valid and means the idea is genuinely new.",
+  "type": "object",
+  "required": ["overlaps", "roadmap_fit"],
+  "properties": {
+    "overlaps": {
+      "type": "array",
+      "description": "Existing PRDs / requirement docs the idea duplicates, extends, or conflicts with. Empty ⇒ no overlap found.",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "summary", "recommendation"],
+        "properties": {
+          "path":    { "type": "string", "minLength": 1, "description": "Path of the overlapping doc." },
+          "kind":    { "type": "string", "enum": ["in_progress", "accepted", "feature"], "description": "in_progress ⇒ a PRD draft still being authored; accepted ⇒ a published PRD; feature ⇒ an upstream requirement / feature doc." },
+          "summary": { "type": "string", "minLength": 4, "description": "One line: what the existing doc covers and how it overlaps." },
+          "recommendation": { "type": "string", "enum": ["amend", "supersede", "new"], "description": "amend ⇒ fold the idea into this; supersede ⇒ replace it; new ⇒ overlap is incidental, proceed new." }
+        },
+        "additionalProperties": true
+      }
+    },
+    "roadmap_fit": { "type": "string", "description": "Where the idea fits relative to the current PRD set / product direction." }
+  },
+  "additionalProperties": true
+}

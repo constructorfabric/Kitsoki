@@ -1,0 +1,189 @@
+# yaml-language-server: $schema=feature.schema.json
+id: slidey-bugfix
+kind: story-demo
+title: Fix a real bug in slidey, end to end
+tagline: kitsoki's bug-fix pipeline reproduces, fixes, tests and validates a real slidey bug — a grid-cards narration-timing drift.
+summary: "The bugfix pipeline run against the real slidey repo (a Node/Vue narrated-deck renderer), fixing a frame-timing drift: grid `cards` scenes with more than six items had their narration desynced because the frame estimator over-counted each card beyond the table by ten frames. Every room is a deterministic state-machine beat: reproduce the drift with a failing unit test, propose the one-line root-cause fix, implement it in an isolated worktree, run slidey's real node --test suite, self-review the diff, validate end to end, and close out — ready to open a PR. The content is replayed verbatim from a real fix run; the render is no-LLM and deterministic."
+narrative: "The high-value slidey integration: kitsoki, pointed at a real Node deck-renderer repo. The agent reproduced the bug from the estimator/renderer lock-step contract, found the divergent fallback (estimator counted 30 frames where the renderer holds 20 for cards beyond cards_item_5), wrote the one-line fix plus a self-deriving regression test, and the targeted node --test suite went green (19/19; 94/94 whole-repo). What you see here is that real run, replayed deterministically — same frames every time, no API cost."
+docs:
+  - stories/slidey-bugfix/app.yaml
+  - stories/bugfix/README.md
+related:
+  - gears-bugfix
+  - dev-story-bugfix
+demo:
+  spec: tests/playwright/slidey-bugfix-video.spec.ts
+  artifactDir: slidey-bugfix
+  videoBase: slidey-bugfix-demo
+  posterStep: sb-intro-home
+  story: stories/slidey-bugfix
+  flow: stories/slidey-bugfix/flows/tour.yaml
+  hostCassette: stories/slidey-bugfix/cassettes/tour.cassette.yaml
+tour:
+  export: SLIDEY_BUGFIX_TOUR_STEPS
+  steps:
+    - id: sb-intro-home
+      route: home
+      title: Fix a real bug in slidey
+      body: "kitsoki's bug-fix pipeline, pointed at the real slidey repo — a Node/Vue narrated-deck renderer. We'll fix a grid-cards narration-timing drift end to end: reproduce → propose → implement → test → review → validate → done. Every room is a deterministic state-machine step kitsoki runs the same way every time — this whole walk is replayed from a real fix run, no LLM in the loop now."
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 6000
+      drive: []
+    - id: sb-intro-story
+      route: home
+      target: story-card
+      title: The bug-fix pipeline
+      body: "This card is the bug-fix pipeline, bound to an external checkout — the slidey Node repo — so the agent reads and edits real renderer code in an isolated git worktree, and CI runs the project's real node --test suite. The ticket is slidey-128. Let's run it."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: story-card
+      dwellMs: 5500
+      drive: []
+    - id: sb-intro-start
+      route: home
+      target: new-session-btn
+      title: Spin up a run
+      body: Click New session to create a fresh, independently-traced run of the bug-fix pipeline against slidey issue 128.
+      placement: right
+      kind: action
+      advance: route-match
+      advanceRoute: interactive
+      waitForTarget: new-session-btn
+      dwellMs: 3500
+      drive: []
+    - id: sb-intro-observe
+      route: interactive
+      target: observe-link
+      title: Drive here, observe there
+      body: "We're on the drive view: each operator accept advances the pipeline exactly one room, and the state badge tracks where we are. The ticket — slidey-128, grid `cards` scenes with more than six items desync their narration — is already loaded. Let's reproduce it."
+      placement: bottom
+      kind: explain
+      advance: next
+      waitForTarget: observe-link
+      dwellMs: 5500
+      drive: []
+    - id: sb-reproduce
+      route: any
+      target: chat-transcript
+      title: Reproduce the bug
+      body: "bf.reproducing — the agent confirms the bug is real before touching code. The frame estimator and the renderer must produce identical frame totals (a documented lock-step contract). For a grid cards scene the estimator sums `cards_item_<i> ?? 30` over every card, but the table only keys items 0–5; the renderer holds `?? 20`. A failing unit test on an 8-item grid shows the 20-frame overcount: estimate 484 vs render 464. Accept to move on."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 8000
+      drive:
+        - { type: wait-state, state: bf.idle }
+        - { type: click-intent, intent: bf__start }
+        - { type: wait-state, state: bf.reproducing }
+        - { type: reveal-turn }
+    - id: sb-propose
+      route: any
+      target: chat-transcript
+      title: Propose a root-cause fix
+      body: "bf.proposing — root cause confirmed: the estimator's `?? 30` fallback disagrees with the renderer's `?? 20` for cards beyond cards_item_5. The fix is a one-line change in `src/timing.js` aligning the fallback to 20, plus a self-deriving regression test. Accept the proposal."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7000
+      drive:
+        - { type: click-intent, intent: bf__accept }
+        - { type: wait-state, state: bf.proposing }
+        - { type: reveal-turn }
+    - id: sb-implement
+      route: any
+      target: chat-transcript
+      title: Implement the fix
+      body: "bf.implementing — the agent edits `src/timing.js` in an isolated worktree: the grid-cards per-item fallback changes from `?? 30` to `?? 20`, with a comment documenting the lock-step contract, plus the regression test in `test/timing.test.js`. The change is committed to the fix/cards-item-timing-drift branch. Accept to run the tests."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7000
+      drive:
+        - { type: click-intent, intent: bf__accept }
+        - { type: wait-state, state: bf.implementing }
+        - { type: reveal-turn }
+    - id: sb-test
+      route: any
+      target: chat-transcript
+      title: Run the real node tests
+      body: "bf.testing — CI runs the project's real suite: `node --test test/timing.test.js`. The new regression proves the 8-item grid estimate now matches the renderer-true total, and the module is green — 19 passed, 0 failed. The fix is proven, not just plausible. Accept to self-review."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7500
+      drive:
+        - { type: click-intent, intent: bf__accept }
+        - { type: wait-state, state: bf.testing }
+        - { type: reveal-turn }
+    - id: sb-review
+      route: any
+      target: chat-transcript
+      title: Self-review the diff
+      body: "bf.reviewing — the agent reviews its own diff against the worktree before anyone else sees it: scope is one fallback value, in-table grids (≤6 cards) and every other scene type are untouched, and the regression derives its expectation from the renderer's own rule. Accept to validate end to end."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7000
+      drive:
+        - { type: click-intent, intent: bf__accept }
+        - { type: wait-state, state: bf.reviewing }
+        - { type: reveal-turn }
+    - id: sb-validate
+      route: any
+      target: chat-transcript
+      title: Validate end to end
+      body: "bf.validating — a full check: the whole slidey suite passes (94 passed, 0 failed, 3 pre-existing skips), the targeted timing suite is 19/19, and the originally-reported symptom is gone — a >6-item grid cards scene now estimates exactly the frames the renderer emits, so narration stays in sync. Outcome: pass. Accept to close out."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7500
+      drive:
+        - { type: click-intent, intent: bf__accept }
+        - { type: wait-state, state: bf.validating }
+        - { type: reveal-turn }
+    - id: sb-done
+      route: any
+      target: chat-transcript
+      title: Close out the fix
+      body: "bf.done — the pipeline has reproduced, proposed, implemented, tested, reviewed and validated the fix. The close-out artifact captures the lessons and the metrics. The branch fix/cards-item-timing-drift is ready to open a pull request against slidey. One more accept resolves the ticket."
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7500
+      drive:
+        - { type: click-intent, intent: bf__accept }
+        - { type: wait-state, state: bf.done }
+        - { type: reveal-turn }
+    - id: sb-resolved
+      route: any
+      target: state-badge
+      title: Ticket resolved, PR-ready
+      body: "The fix is committed to fix/cards-item-timing-drift, the ticket transitions to resolved, and the run reaches its PR-ready close-out. The whole arc — a real slidey bug, reproduced to PR-ready fix — ran as one deterministic, replayable graph."
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: state-badge
+      dwellMs: 6500
+      drive:
+        - { type: click-intent, intent: bf__accept }
+        - { type: wait-state, state: shipped }
+        - { type: dwell-ms, ms: 1500 }
+    - id: sb-outro
+      route: any
+      title: That's a real bug, fixed
+      body: "You watched kitsoki's bug-fix pipeline take a real slidey bug from a symptom to a tested, validated, PR-ready fix — every room a deterministic, replayable state-machine step, the content drawn from a genuine fix run. Hit '?' anytime to replay this tour."
+      placement: center
+      kind: explain
+      advance: next
+      dwellMs: 6000

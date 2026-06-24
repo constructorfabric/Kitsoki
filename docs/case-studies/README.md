@@ -1,6 +1,6 @@
 # Case studies
 
-Worked examples of [progressive determinism](../concept.md#4-progressive-determinism)
+Worked examples of [progressive determinism](../architecture/concept.md#4-progressive-determinism)
 applied to real workflows. Each case study tells the same story from a
 different angle:
 
@@ -28,6 +28,36 @@ on prompt incantations to enforce structure.
   with typed artifacts at every phase, deterministic boundaries between
   them, and a failing test as the reproduction artifact. The pipeline
   ships as the [`bugfix`](../../stories/bugfix/) story.
+
+- **[git-ops-cost.md](git-ops-cost.md)** — the *how much*. Puts a price
+  tag on progressive determinism using **real telemetry** from real
+  Claude Code sessions. The four git-ops operations run as the
+  [`git-ops`](../../stories/git-ops/) story for a committed $0.0955, flat
+  in session length — versus a raw agentic loop where 98–99% of every
+  turn's cost is *reprocessing the prior conversation* to reach the next
+  action (the demo-building session itself cost $546). Introduces the
+  real-cost extractor [`cost_extract.py`](../../tools/session-mining/cost_extract.py)
+  (reads recorded `message.usage`, exact) and the reprocessing-tax framing.
+  Now generated **per story** by
+  [`cost_report.py`](../../tools/session-mining/cost_report.py) (`make
+  cost-report`): the deterministic story cost vs the real raw-agentic
+  cost of the same operations, with a per-intent distribution.
+
+- **[bugfix-bakeoff.md](bugfix-bakeoff.md)** — the *does it work better*.
+  A 2×4 factorial (kitsoki pipeline vs. a naive single multi-stage prompt,
+  across GLM-5.2 / Opus 4.8 / Sonnet 4.6 / GPT-5.5) over 5 real bugs, each
+  from its hermetic parent-commit baseline and graded against the fix's own
+  regression test as a hidden oracle. Asks the headline question: **is
+  structure worth more than a bigger model?** Framework at
+  [`tools/bugfix-bakeoff/`](../../tools/bugfix-bakeoff/). _(template — awaiting
+  live-run data.)_
+
+- **[routing-model-cost-study.md](routing-model-cost-study.md)** — the
+  model-selection lever after deterministic routing has already done its
+  job. Mines real Kitsoki turns into a routing corpus, compares available
+  Haiku / synthetic-small / GPT-mini-style candidates, and argues for
+  room-by-room cheap-router promotion with explicit hard-negative tests
+  and fallback rather than a global model downgrade.
 
 Future studies (planned, not yet written):
 

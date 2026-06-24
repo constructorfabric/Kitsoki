@@ -1,27 +1,436 @@
-# incident — STUB. Wave 3 imports `stories/incident/` (or whatever
-# the on-call story is called).
+# incident — production on-call response loop.
+#
+# Wave 3 fills the former STUB with a real alert → triage → mitigate |
+# escalate | monitor → postmortem loop. This is dev-story's on-call surface:
+# the engineer pastes a production alert, the on-call agent triages it
+# (severity + recommended action via host.agent.decide), and the loop routes
+# on the recommendation:
+#
+#   incident (intake) ── report_incident ──▶ incident_triaging
+#                                              │ on_enter: host.agent.decide
+#                                              │ binds incident_triage
+#                                              ▼
+#                                          incident_triaged  (the verdict)
+#                                              ├─ mitigate ▶ incident_mitigating ─▶ incident_resolved
+#                                              ├─ escalate ▶ incident_escalating ─▶ incident_resolved
+#                                              └─ monitor  ▶ incident (parked)
+#                                          incident_resolved
+#                                              └─ write_postmortem ▶ incident_postmortem ─▶ landing
+#
+# Every host this loop touches is ALREADY in dev-story's allow-list
+# (host.agent.decide, host.agent.task, host.run, host.inbox.add) or is an
+# iface default (iface.transport.post → host.append_to_file). So the loop is
+# fully no-LLM-gateable: flow fixtures stub the two agent calls and assert the
+# DETERMINISTIC routing — severity-based dispositions, the recorded mitigation
+# action, the postmortem write — with no real LLM. See flows/incident_*.yaml.
+#
+# Decision-emit discipline (the cherny pattern): incident_triage.recommendation
+# is unset until the decide binds, so the post-bind guarded emits in
+# incident_triaging defer to the post-bind pass — exactly one fires once the
+# verdict settles. The room is `decider: llm`-pinned so STAGED mode (kitsoki
+# web) auto-fires the deterministic route instead of stalling for a human (the
+# operator already decided by pasting the alert + the agent's recommendation).
 
 states:
 
+  # ── Intake ────────────────────────────────────────────────────────
+  # The resting floor of the on-call loop. The operator pastes a production
+  # alert; report_incident captures it and enters triage. Reachable from
+  # landing via go_incident; re-entered (parked) when triage recommends
+  # `monitor`.
   incident:
-    description: "Incident — production triage (Wave 3 stub)."
-    # Flattened view (no extends/blocks) — `choice:` cannot live inside a
-    # `blocks:` map (typed metadata is lost through the inheritance
-    # pipeline; see docs/choice-widget.md §3.1).
+    description: "Incident — paste a production alert to triage."
+    relevant_world: [incident_alert, incident_status, last_error]
+
     view:
-      - prose: "Incident (Wave 3 stub)."
+      - banner:
+          text:     "INCIDENT — ON CALL"
+          subtitle: "paste a production alert to triage"
+          color:    "#DC2626"   # red — the on-call surface
+      - prose: "Parked — watching this alert. Re-triage if it worsens, or report a new one."
+        when: "world.incident_status == 'monitoring'"
+      - prose: "Describe or paste a production alert. The on-call agent will triage it — severity, blast radius, and the recommended next action."
+        when: "world.incident_status != 'monitoring'"
+      - kv:
+          pairs:
+            "Last alert":  '{{ world.incident_alert|default:"(none)" }}'
+            "Disposition": '{{ world.incident_status|default:"(none)" }}'
+        when: "world.incident_alert != ''"
+      - prose: "⚠ {{ world.last_error }}"
+        when: "world.last_error != ''"
       - choice:
           mode: single
           prompt: "Actions"
           items:
+            - label:  "report_incident"
+              intent: report_incident
+              hint:   "triage a production alert"
+              param:
+                slot:        alert
+                type:        string
+                placeholder: "paste the alert / page text…"
+                required:    true
             - { label: "go_back", intent: go_back, hint: "return to the previous room" }
             - { label: "go_main", intent: go_main, hint: "back to the engineer's day landing" }
             - { label: "look",    intent: look,    hint: "re-render" }
-    relevant_world: []
+
     on:
+      report_incident:
+        - target: incident_triaging
+          effects:
+            # Capture the alert; clear the prior triage so the once: guard on
+            # incident_triaging re-arms (a fresh alert gets a fresh verdict),
+            # and reset the disposition + error.
+            - set:
+                incident_alert:  "{{ slots.alert }}"
+                incident_triage: {}
+                incident_status: ""
+                last_error:      ""
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
-        - target: main
+        - target: landing
       look:
         - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Paste an alert with `report_incident` to triage it."
+
+  # ── Triage ────────────────────────────────────────────────────────
+  # Runs the on-call triage agent (host.agent.decide) against the alert,
+  # binds the structured verdict, and AUTO-ROUTES on the recommendation via
+  # post-bind guarded emits. The operator sees the verdict in incident_triaged
+  # (where they can override the recommendation by picking a different
+  # disposition).
+  incident_triaging:
+    description: "Triaging the alert — classifying severity + next action."
+    relevant_world: [incident_alert, incident_triage]
+    # decider: llm — the route is DETERMINISTIC once the verdict binds (the
+    # post-bind emits read incident_triage.recommendation directly). Without
+    # this pin the globally-available navigation intents make this room look
+    # like a decision gate, so STAGED mode (kitsoki web) would stall awaiting a
+    # human. The pin forces the deterministic guarded emit to auto-fire (the
+    # LLM decider is only a fallback if NO guard matches — impossible once the
+    # recommendation is bound). Mirrors verifying.yaml.
+    decider: llm
+
+    view:
+      - banner:
+          text:     "TRIAGING"
+          subtitle: "classifying the alert"
+          color:    "#F59E0B"
+      - prose: "{{ world.incident_alert }}"
+      - prose: "Triaging…"
+
+    on_enter:
+      # once: re-render the cached verdict on /reload instead of re-spending the
+      # LLM; report_incident clears incident_triage to re-arm.
+      - invoke: host.agent.decide
+        id: triage
+        once: true
+        with:
+          prompt: prompts/incident_triage.md
+          schema: schemas/incident-triage.json
+          agent: gate_reviewer
+          args:
+            alert: "{{ world.incident_alert }}"
+        bind:
+          incident_triage: submitted
+        on_error: incident
+
+      - say: "Triage → {{ world.incident_triage.severity }} · {{ world.incident_triage.recommendation }}"
+
+      # Post-bind guarded emits (the cherny decision-emit discipline). Each
+      # reads incident_triage.recommendation, which is unset pre-bind — so none
+      # fires until the verdict settles, then exactly one does.
+      - when: "world.incident_triage.recommendation == 'mitigate'"
+        emit_intent: triage_mitigate
+      - when: "world.incident_triage.recommendation == 'escalate'"
+        emit_intent: triage_escalate
+      - when: "world.incident_triage.recommendation == 'monitor'"
+        emit_intent: triage_monitor
+
+    on:
+      triage_mitigate:
+        - target: incident_triaged
+      triage_escalate:
+        - target: incident_triaged
+      triage_monitor:
+        - target: incident_triaged
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Triaging…"
+
+  # ── Triaged — the verdict + disposition choice ────────────────────
+  # The verdict read-out. The recommendation is carried from the triage emit
+  # but the operator can override — pick any disposition. mitigate / escalate
+  # run a real action; monitor parks the alert back at intake.
+  incident_triaged:
+    description: "Triage verdict — pick a disposition."
+    relevant_world: [incident_alert, incident_triage]
+
+    view:
+      - banner:
+          text:     "TRIAGED — {{ world.incident_triage.severity|upper }}"
+          subtitle: "{{ world.incident_triage.summary }}"
+          color:    "#F59E0B"
+      - kv:
+          pairs:
+            Severity:        "{{ world.incident_triage.severity }}"
+            "Suspected cause": '{{ world.incident_triage.suspected_cause|default:"(unknown)" }}'
+            Recommendation:  "{{ world.incident_triage.recommendation }}"
+            Mitigation:      '{{ world.incident_triage.mitigation|default:"(n/a)" }}'
+      - heading: "Disposition"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "mitigate"
+              intent: mitigate
+              hint:   "apply the recommended fix now"
+            - label:  "escalate"
+              intent: escalate
+              hint:   "page the owning team"
+            - label:  "watch"
+              intent: watch
+              hint:   "park the alert and watch"
+            - label:  "go_main"
+              intent: go_main
+              hint:   "back to the workbench"
+            - label:  "look"
+              intent: look
+              hint:   "re-render"
+
+    on:
+      mitigate:
+        - target: incident_mitigating
+      escalate:
+        - target: incident_escalating
+      watch:
+        - target: incident
+          effects:
+            - set: { incident_status: "monitoring" }
+            - say: "Parked — watching the alert."
+      go_main:
+        - target: landing
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Pick a disposition: mitigate, escalate, or monitor."
+
+  # ── Mitigating — apply the recommended fix ────────────────────────
+  # Runs the recorded mitigation action (host.run — a recordable, deterministic
+  # shell step; an instance rebinds this to a real runbook executor). v1 echoes
+  # the mitigation into a recorded action line; the discipline is the same as
+  # the bugfix pipeline's run steps. Binds incident_action, sets the
+  # disposition, and advances to the resolved read-out.
+  incident_mitigating:
+    description: "Mitigating — applying the recommended fix."
+    relevant_world: [incident_triage, incident_action, incident_status]
+
+    view:
+      - banner:
+          text:     "MITIGATING"
+          subtitle: "applying the recommended fix"
+          color:    "#0EA5E9"
+      - kv:
+          pairs:
+            Action: "{{ world.incident_triage.mitigation }}"
+      - prose: "Applying…"
+
+    on_enter:
+      # Recorded mitigation action. host.run in argv mode so the mitigation
+      # text (from world) is passed as data, never interpolated into a shell
+      # string. once: keyed off the bind so /reload re-renders the recorded
+      # result instead of re-running the action.
+      - invoke: host.run
+        id: apply-mitigation
+        once: true
+        with:
+          cmd: "printf"
+          args: ["applied mitigation: %s", "{{ world.incident_triage.mitigation }}"]
+        bind:
+          incident_action: stdout
+        on_error: incident_triaged
+
+      - set: { incident_status: "mitigated" }
+      - emit_intent: write_postmortem
+
+    on:
+      write_postmortem:
+        - target: incident_resolved
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Applying the mitigation…"
+
+  # ── Escalating — page the owning team ─────────────────────────────
+  # Posts the alert + triage verdict out-of-band (iface.transport.post — the
+  # provider-neutral channel; default host.append_to_file, an instance rebinds
+  # to PagerDuty / Slack / Jira) and mirrors it into the operator's inbox.
+  # Then advances to the resolved read-out (a paged incident still gets a
+  # postmortem). No mitigation action — escalation is the disposition.
+  incident_escalating:
+    description: "Escalating — paging the owning team."
+    relevant_world: [incident_alert, incident_triage, incident_action, incident_status]
+
+    view:
+      - banner:
+          text:     "ESCALATING"
+          subtitle: "paging the owning team"
+          color:    "#DC2626"
+      - kv:
+          pairs:
+            Severity: "{{ world.incident_triage.severity }}"
+            Summary:  "{{ world.incident_triage.summary }}"
+      - prose: "Paging…"
+
+    on_enter:
+      # Post the page out-of-band. once: keyed off incident_action so a
+      # /reload doesn't double-page.
+      - invoke: iface.transport.post
+        id: page
+        once: true
+        with:
+          thread: "incident"
+          body: "PAGE [{{ world.incident_triage.severity }}] {{ world.incident_triage.summary }} — cause: {{ world.incident_triage.suspected_cause ?? 'unknown' }}"
+        bind:
+          incident_action: message_id
+
+      # Mirror the page into the operator's inbox so it surfaces on the hub.
+      - invoke: host.inbox.add
+        id: page-inbox
+        with:
+          kind: "incident"
+          title: "[{{ world.incident_triage.severity }}] {{ world.incident_triage.summary }}"
+          body: "{{ world.incident_alert }}"
+
+      - set: { incident_status: "escalated" }
+      - emit_intent: write_postmortem
+
+    on:
+      write_postmortem:
+        - target: incident_resolved
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Paging the owning team…"
+
+  # ── Resolved — offer the postmortem ───────────────────────────────
+  # The action landed (mitigated or escalated). Offer to write the blameless
+  # postmortem (the close-out discipline) or return to the workbench.
+  incident_resolved:
+    description: "Incident handled — write a postmortem or return."
+    relevant_world: [incident_triage, incident_action, incident_status]
+
+    view:
+      - banner:
+          text:     "{{ world.incident_status|upper }} ✓"
+          subtitle: "{{ world.incident_triage.summary }}"
+          color:    "#10B981"
+      - kv:
+          pairs:
+            Severity:    "{{ world.incident_triage.severity }}"
+            Disposition: "{{ world.incident_status }}"
+            Action:      '{{ world.incident_action|default:"(none)" }}'
+      - heading: "Close out"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "write_postmortem"
+              intent: write_postmortem
+              hint:   "write a blameless postmortem"
+            - label:  "go_main"
+              intent: go_main
+              hint:   "back to the workbench"
+            - label:  "look"
+              intent: look
+              hint:   "re-render"
+
+    on:
+      write_postmortem:
+        - target: incident_postmortem
+      go_main:
+        - target: landing
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: landing
+
+  # ── Postmortem — write the blameless write-up ─────────────────────
+  # Runs the on-call writer (host.agent.task) to author a short blameless
+  # postmortem at docs/incidents/<…>.md. Read-only by default → write-mode
+  # opt-in (the postmortem write holds for the grant; headless it stays
+  # read-only and reports what it would write). Binds the close-out note, sets
+  # the resolved status, and returns to the workbench.
+  incident_postmortem:
+    description: "Writing the postmortem."
+    relevant_world: [incident_triage, incident_postmortem, incident_status, workdir]
+
+    # Read-only → write-mode opt-in. Valid because the room dispatches an agent
+    # (the on_enter host.agent.task). Mirrors applying.yaml.
+    write_mode: read_only
+
+    view:
+      - banner:
+          text:     "POSTMORTEM"
+          subtitle: "writing the blameless write-up · read-only until you approve the write"
+          color:    "#8B5CF6"
+      - kv:
+          pairs:
+            Summary:   '{{ world.incident_postmortem.summary|default:"(pending — writer has not returned)" }}'
+            "Written to": '{{ world.incident_postmortem.file_path|default:"(pending)" }}'
+      - prose: "Writing…"
+
+    on_enter:
+      - invoke: host.agent.task
+        id: write-postmortem
+        once: true
+        with:
+          agent: landing_agent
+          working_dir: "{{ world.workdir }}"
+          acceptance:
+            schema: schemas/incident-postmortem.json
+          context:
+            prompt: prompts/incident_postmortem.md
+            args:
+              alert:           "{{ world.incident_alert }}"
+              severity:        "{{ world.incident_triage.severity }}"
+              summary:         "{{ world.incident_triage.summary }}"
+              suspected_cause: "{{ world.incident_triage.suspected_cause }}"
+              resolution:      "{{ world.incident_status }}: {{ world.incident_action }}"
+              postmortem_path: "{{ world.incident_path }}"
+        bind:
+          incident_postmortem: submitted
+        on_error: incident_resolved
+
+      - set: { incident_status: "resolved" }
+      - say: "Postmortem written — incident closed."
+
+    on:
+      go_main:
+        - target: landing
+      go_back:
+        - target: incident_resolved
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: landing

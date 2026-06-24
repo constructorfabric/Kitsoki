@@ -1,0 +1,71 @@
+# staging_classify_suspicious — staging detects .npmrc as suspicious.
+# add_all before confirmation → interstitial shown.
+# confirm_add_all → git add -A proceeds.
+# Starts from branch_ops so staging on_enter fires on entry.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  has_uncommitted:    true
+  suspicious_confirmed: false
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      1
+            commits_behind:     0
+            has_uncommitted:    true
+            no_common_ancestor: false
+      classify_staging:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            staged:     ""
+            modified:   internal/foo.go
+            untracked:  .npmrc
+            suspicious: ".npmrc "
+      git_add_all_confirmed:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    ""
+
+turns:
+  # Enter staging: on_enter fires and classifies files
+  - intent: { name: stage, slots: {} }
+    expect_state: staging
+    expect_world:
+      git_status:
+        staged:     ""
+        modified:   internal/foo.go
+        untracked:  .npmrc
+        suspicious: ".npmrc "
+
+  # add_all before confirmation → interstitial
+  - intent: { name: add_all, slots: {} }
+    expect_state: staging
+    expect_world:
+      last_op_outcome: confirm_suspicious
+
+  # operator confirms: suspicious_confirmed set to true in effect, then cleared after git add
+  - intent: { name: confirm_add_all, slots: {} }
+    expect_state: staging
+    expect_world:
+      last_op_outcome: ""
+      last_op_ok:      true
+
+expect_no_errors: true

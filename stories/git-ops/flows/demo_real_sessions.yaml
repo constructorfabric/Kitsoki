@@ -1,0 +1,231 @@
+# demo_real_sessions — the git-ops UI demo, driven by FOUR scenarios mined from
+# real Claude Code sessions (no-LLM). This replaces the old synthetic grand-tour
+# flow: every turn here corresponds to a verbatim `user_text` a developer actually
+# typed in a recorded session (tools/session-mining/examples/git-ops/), and the
+# host stubs below reproduce that session's REAL outcome.
+#
+#   ① "commit the staged fix"                       → commit  (sess-commit-happy)
+#         agent authors the message it really landed: fix(auth): handle nil
+#         session on expiry. accept → branch_ops.
+#   ② "rebase onto main and resolve the conflicts"  → rebase  (sess-rebase-conflict)
+#         the real rebase conflicted in TWO source files (session.go + token.go);
+#         the agent auto-resolves both, build check passes, → branch_ops. This
+#         multi-file conflict is the corpus's FIXTURE-GAP (coverage.worked.md row
+#         4) — no prior fixture exercised a 2× app-code auto-resolve. Now covered.
+#   ③ "merge the feature branch into main"          → merge_into_main (sess-merge-direct)
+#         guards pass, --no-ff merge succeeds, → main_ops.
+#   ④ "set up a worktree for the new cache feature" → worktree_create (sess-worktree)
+#         creates .worktrees/feat-cache -b feat-cache, exactly the recorded cmd.
+#
+# These four are one developer's natural feature-branch lifecycle, so they stitch
+# into a single coherent session. Recorded with
+# `kitsoki web --flow <this> --mode one-shot`. The root `idle` router auto-routes
+# to branch_ops at session boot (RunInitialOnEnter follows idle's on_enter
+# emit_intent), so the web demo's first user turn is the real `commit`. `--mode
+# one-shot` runs each turn's full emit cascade (so the conflicting rebase
+# auto-resolves in one turn). Host calls are stubbed here; the git-ops video spec
+# submits the intents and renders each turn's verbatim user_text as the chat
+# bubble (submitIntent displayLabel). This CLI flow starts at branch_ops
+# (initial_state) — where the web demo lands after boot — so its turns: list
+# doubles as a CLI flow test of the same drive order.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/auth
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+  has_uncommitted:    true
+  commits_ahead:      1
+  commits_behind:     0
+  rebase_done:        false
+  rebase_base_sha:    ""
+  build_check_cmd:    "echo 'build ok'"
+  suspicious_confirmed: false
+
+host_handlers:
+  host.run:
+    by_call:
+      # idle entry (web sessions start at the story root `idle`)
+      detect_context:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/auth
+            route:              on_branch
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            on_integration:     false
+            commits_ahead:      1
+            commits_behind:     0
+            has_uncommitted:    true
+            merge_in_progress:  false
+            no_common_ancestor: false
+
+      # branch_ops hub entry (and re-entry after each feature-branch op)
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/auth
+            main_worktree_path: "."
+            worktree_list:      { raw: ". main" }
+            commits_ahead:      1
+            commits_behind:     0
+            has_uncommitted:    true
+            no_common_ancestor: false
+
+      # ① commit: single-script diff_stat returns staged_diff_stat + route.
+      # The real session's fix touched the auth session handler.
+      diff_stat:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            staged_diff_stat: " internal/auth/session.go | 6 +++++-\n 1 file changed, 5 insertions(+), 1 deletion(-)"
+            route:            "look"
+            squash_mode:      false
+      git_commit:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "[feat/auth 1a2b3c4] fix(auth): handle nil session on expiry"
+
+      # ② rebase: hits a conflict the agent auto-resolves. one-shot runs the full
+      # conflict→resolve→continue cascade in one turn → branch_ops/rebase_done.
+      rebase_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            pre_rebase_tag:  "feat-auth-pre-rebase-backup"
+            last_op_output:  "CONFLICT (content): Merge conflict in internal/auth/session.go\nCONFLICT (content): Merge conflict in internal/auth/token.go"
+            rebase_base_sha: "base5678"
+            rebase_done:     false
+            conflict_origin: rebase
+      # the recorded session conflicted in TWO source files (multi-file resolve —
+      # the corpus FIXTURE-GAP this demo closes).
+      gather_conflict_files:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            conflict_files: "internal/auth/session.go internal/auth/token.go "
+            gosum_only:     false
+      rebase_continue_cmd:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            output:       "Successfully rebased and updated refs/heads/feat-auth."
+            ok:           true
+            new_conflict: false
+      build_check_after_rebase:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "build ok"
+
+      # ③ merge_into_main: guards pass, merge succeeds, build ok
+      merge_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:           merged
+            descendant_ok:     true
+            merge_in_progress: false
+            last_op_ok:        true
+            last_op_output:    "Merge made by 'ort' strategy."
+            stash_ref:         ""
+            rebase_done:       false
+
+      # main_ops hub entry (after the merge lands on the integration hub)
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: ". main" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+
+      # ④ worktree_create: the recorded cmd was `git worktree add .worktrees/feat-cache -b feat-cache`
+      create_worktree:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:  feat-cache
+            path:    .worktrees/feat-cache
+            output:  "Preparing worktree (new branch 'feat-cache')"
+            ok:      true
+            outcome: created
+
+  # ① commit-message author (host.agent.decide) — the message the real session landed
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        type:    fix
+        scope:   auth
+        summary: "handle nil session on expiry"
+        body:    null
+        message: "fix(auth): handle nil session on expiry"
+
+  # ② conflict resolver (host.agent.task) — auto-resolves BOTH conflicted files
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        resolved:           true
+        confidence:         0.91
+        unresolvable_files: []
+        resolution_summary: "Took main's session/token structs and re-applied feat-auth's expiry guard across session.go and token.go."
+        reason:             null
+
+turns:
+  # ① "commit the staged fix"
+  - intent: { name: commit, slots: {} }
+    expect_state: commit
+    expect_world:
+      commit_message: "fix(auth): handle nil session on expiry"
+  - intent: { name: accept, slots: {} }
+    expect_state: branch_ops
+    expect_world:
+      commit_message: ""
+
+  # ② "rebase onto main and resolve the conflicts" (multi-file, auto-resolved)
+  - intent: { name: rebase, slots: {} }
+    expect_state: branch_ops
+    expect_world:
+      rebase_done: true
+
+  # ③ "merge the feature branch into main"
+  - intent: { name: merge_into_main, slots: {} }
+    expect_state: merge_into_main
+    expect_world:
+      last_op_outcome: merged
+  - intent: { name: back, slots: {} }
+    expect_state: main_ops
+
+  # ④ "set up a worktree for the new cache feature"
+  - intent: { name: worktree_create, slots: {} }
+    expect_state: worktree_create
+  - intent: { name: describe, slots: { desc: "cache feature" } }
+    expect_state: worktree_create
+    expect_world:
+      last_op_outcome: created
+
+expect_no_errors: true

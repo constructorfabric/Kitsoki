@@ -1,0 +1,89 @@
+# Host cassette for the cherny-loop web demo (kitsoki web --host-cassette,
+# alongside --harness replay). Backs every host.* call along the autonomous run
+# with a DISTINCT, realistic response per iteration, matched on the call-site id
+# (maker-N / gate-N; gate-0 is the baseline) threaded into args.call by the
+# room's templated invoke `id:`. Converging rate-limiter story: each gate
+# surfaces a deeper failure (burst → refill → race → deadlock) and each maker
+# fixes the one just named.
+kind: host_cassette
+app_id: cherny-loop
+generated_at: "2026-06-19T00:00:00Z"
+match_on: [handler, call]
+
+episodes:
+  # ── Worktree mint (iface.workspace.create → host.git_worktree.create) ──────
+  # Minted once at launch, before the baseline gate; pins the maker + gate cwd.
+  - id: worktree-create
+    match: { handler: host.git_worktree.create }
+    response:
+      data:
+        ok: true
+        path: ".worktrees/cherny-loop"
+  # ── Baseline + gate runs (host.run, script gate) ──────────────────────────
+  - id: gate-0-baseline
+    match: { handler: host.run, call: gate-0 }
+    response:
+      data:
+        ok: false
+        exit_code: 1
+        stdout: |-
+          --- FAIL: TestAllow_Burst (0.00s)
+              limiter_test.go:34: burst of 5 rejected at request #4 (want all 5 allowed)
+          FAIL	kitsoki/internal/ratelimit	0.012s
+  - id: gate-1-refill
+    match: { handler: host.run, call: gate-1 }
+    response:
+      data:
+        ok: false
+        exit_code: 1
+        stdout: |-
+          --- FAIL: TestAllow_Refill (0.00s)
+              limiter_test.go:52: after 1s, 0 tokens refilled (want 10 at rate 10/s)
+          FAIL	kitsoki/internal/ratelimit	0.011s
+  - id: gate-2-race
+    match: { handler: host.run, call: gate-2 }
+    response:
+      data:
+        ok: false
+        exit_code: 1
+        stdout: |-
+          --- FAIL: TestAllow_Concurrent (0.02s)
+              limiter_test.go:68: data race: 12/100 goroutines double-spent a token
+          FAIL	kitsoki/internal/ratelimit	0.024s
+  - id: gate-3-deadlock
+    match: { handler: host.run, call: gate-3 }
+    response:
+      data:
+        ok: false
+        exit_code: 1
+        stdout: |-
+          --- FAIL: TestAllow_Concurrent (1.20s)
+              limiter_test.go:68: timeout: Allow held the lock across time.Sleep (deadlock)
+          FAIL	kitsoki/internal/ratelimit	1.231s
+
+  # ── Maker iterations (host.agent.task) ───────────────────────────────────
+  - id: maker-1
+    match: { handler: host.agent.task, call: maker-1 }
+    response:
+      data:
+        submitted:
+          summary: "Initialize the bucket with tokens=burst so a cold limiter allows a full burst"
+  - id: maker-2
+    match: { handler: host.agent.task, call: maker-2 }
+    response:
+      data:
+        submitted:
+          summary: "Refill tokens by elapsed×rate on each Allow, capped at the burst size"
+  - id: maker-3
+    match: { handler: host.agent.task, call: maker-3 }
+    response:
+      data:
+        submitted:
+          summary: "Guard the token read-modify-write with a mutex to kill the double-spend race"
+
+  # ── Per-iteration artifact write (host.artifacts_dir) ─────────────────────
+  - id: artifact-write
+    match: { handler: host.artifacts_dir }
+    response:
+      data: { ok: true }
+    replay: any

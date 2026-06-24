@@ -1,0 +1,106 @@
+# yaml-language-server: $schema=feature.schema.json
+id: web-inbox
+kind: feature
+title: The async inbox
+tagline: Background work notifies you when it lands — toast, badge, jump back.
+summary: "A background host call launched from the chat composer completes while you're elsewhere: the runtime auto-posts a completion notification over SSE, the global inbox badge increments, a toast appears, and one click teleports the session back to the originating room."
+promo:
+  order: 45
+demo:
+  spec: tests/playwright/web-inbox-video.spec.ts
+  artifactDir: web-inbox
+  videoBase: web-inbox-demo
+  posterStep: wi-intro-home
+  story: stories/inbox-demo
+  flow: stories/inbox-demo/flows/background_notifies.yaml
+tour:
+  export: WEB_INBOX_TOUR_STEPS
+  steps:
+    - id: wi-intro-home
+      route: home
+      title: Start at the story library
+      body: Every run begins here, in the story library. We'll demonstrate the async inbox on a tiny story whose only job is to launch background work — exactly the shape that produces a runtime notification.
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 5000
+    - id: wi-intro-story
+      route: home
+      target: story-card
+      title: The async-inbox demo story
+      body: This story dispatches a long-running task in the background. When the task finishes, the runtime posts a notification — and that is what the global inbox surfaces, no matter which room you're in.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: story-card
+      dwellMs: 5000
+    - id: wi-intro-start
+      route: home
+      target: new-session-btn
+      title: Spin up a run
+      body: Click New session to create a fresh, independently-traced run of the story and drop into its interactive chat view.
+      placement: right
+      kind: action
+      advance: route-match
+      advanceRoute: interactive
+      waitForTarget: new-session-btn
+      dwellMs: 3500
+    - id: wi-launch
+      route: interactive
+      target: intent-btn-start
+      title: Launch the background task
+      body: Click start to kick off the background host call. It runs asynchronously — you keep control of the session while it works, and the inbox will tell you when it's done.
+      placement: top
+      kind: action
+      advance: click-target
+      waitForTarget: intent-btn-start
+      dwellMs: 2500
+    - id: wi-toast
+      route: interactive
+      target: inbox-toast
+      title: A toast for the completion
+      body: For a success or action-required notification the inbox raises a transient toast the instant the background job completes. It auto-dismisses after a few seconds — or you can click it to jump straight to the room the work came from.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: inbox-toast
+      dwellMs: 3000
+    - id: wi-badge
+      route: interactive
+      target: inbox-badge
+      title: The global inbox badge lights up
+      body: Even after the toast fades the count persists on the global inbox badge — fixed in the chrome, visible on every route. When the background job reached a terminal state the runtime posted a notification, the server fanned it out over the global notifications SSE stream, and this badge incremented. The same badge also counts active work such as queued or failed subagents, while attention color is reserved for work that needs intervention.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: inbox-badge-count
+      dwellMs: 5500
+    - id: wi-panel
+      route: interactive
+      target: inbox-item
+      title: The inbox panel
+      body: "Opening the badge reveals the full inbox panel: prioritized active work first, then notification history. Notification-backed work, including matching job rows, offers a jump action backed by the same teleport target as the toast; failed subagent rows open focused chat context."
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: inbox-panel
+      dwellMs: 5000
+    - id: wi-jump
+      route: interactive
+      target: inbox-jump
+      title: Jump to the originating room
+      body: Click 'jump →' on the notification. The inbox teleports the session back to the exact room the background job was launched from — the notification carries that origin state, so a one-click jump lands you where the work happened.
+      placement: left
+      kind: action
+      advance: click-target
+      waitForTarget: inbox-jump
+      dwellMs: 4500
+    - id: wi-done
+      route: interactive
+      title: That's the async inbox
+      body: A background turn posted a runtime notification, the global badge reflected it alongside the active-work queue, a toast surfaced it, and one click teleported the session back to its originating room — all deterministic, no LLM. Hit '?' anytime to replay this tour.
+      placement: center
+      kind: explain
+      advance: next
+      dwellMs: 5000

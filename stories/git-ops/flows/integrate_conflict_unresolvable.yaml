@@ -1,0 +1,54 @@
+# integrate_conflict_unresolvable — a rebase conflict the auto-rebase can't
+# resolve. integrate aborts the partial rebase, leaves the tree clean, routes
+# out with outcome="conflict" and the REAL last_error (no swallowed success).
+#
+# This is the failure-surfacing the loop reads as needs-human. Crucially:
+# last_op_outcome is NOT "integrated" and last_op_ok is false.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feature/x
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feature/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      2
+            commits_behind:     1
+            has_uncommitted:    false
+            no_common_ancestor: false
+      integrate_exec:
+        data:
+          ok:        false
+          exit_code: 0
+          stdout_json:
+            outcome:        conflict
+            integrated_sha: ""
+            last_op_ok:     false
+            last_error:     "CONFLICT (content): Merge conflict in internal/foo.go\nerror: could not apply a1b2c3d"
+
+turns:
+  - intent: { name: integrate, slots: {} }
+    # A conflict STAYS in integrate so the last_error view renders; it never
+    # reports integrated.
+    expect_state: integrate
+    expect_world:
+      integrate_outcome: conflict
+      last_op_ok:        false
+      integrated_sha:    ""
+      last_error:        "CONFLICT (content): Merge conflict in internal/foo.go\nerror: could not apply a1b2c3d"
+
+expect_no_errors: true

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "incident_postmortem",
+  "description": "The close-out note the on-call writer produces after an incident is resolved: a short, blameless postmortem and the path it was written to.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One-line outcome (what broke, what fixed it)."
+    },
+    "file_path": {
+      "type": "string",
+      "description": "Path the postmortem markdown was written to (empty when headless / not written)."
+    },
+    "follow_ups": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Concrete follow-up actions to prevent recurrence."
+    }
+  },
+  "required": ["summary"]
+}

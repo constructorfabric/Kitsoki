@@ -1,0 +1,35 @@
+# stash_sandwich — stash WIP around a merge or rebase.
+#
+# Used when the target worktree is dirty before a merge operation.
+# stash_worktree is set by the calling room before transitioning here.
+
+states:
+
+  stash_sandwich:
+    description: "Stash WIP, execute pending operation, restore stash."
+    relevant_world: [stash_ref, stash_worktree, last_op_output, last_op_ok]
+    view:
+      - kv:
+          pairs:
+            "Stash ref": '{{ world.stash_ref|default:"(none)" }}'
+            "Worktree":  '{{ world.stash_worktree|default:"(unknown)" }}'
+      - prose: "Stash operation failed: {{ world.last_op_output }}"
+        when: "world.last_op_ok == false"
+      - prose: "Stash pop conflicted. Routing to conflict resolver."
+        when: "world.last_op_outcome == 'stash_pop_conflict'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "back"
+              hint:  "return to hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on:
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

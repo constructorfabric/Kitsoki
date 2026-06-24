@@ -1,0 +1,66 @@
+# refine_existing — the REFINE input mode: the worktree already has a demo video
+# and the operator asks for an UPDATE (video_expectation: "update"), so the maker
+# refines the existing cut rather than creating one from scratch. The maker still
+# re-records this turn (the deterministic gate requires a fresh mtime), the video
+# gate passes, QA passes, and the loop terminates achieved — exactly the create
+# path's shape, but driven as a refine. Proves the story supports "refine the
+# video in addition to creating it from scratch": video_expectation flows through
+# to the maker (args.video_expectation == "update") and the loop is identical.
+test_kind: flow
+app: ../app.yaml
+initial_state: generating
+initial_world:
+  worktree_path:     ".worktrees/demo"
+  base_ref:          "main"
+  proposal_path:     "PROPOSAL.md"
+  feature_slug:      "agent-actions"
+  video_expectation: "update"        # ← refine an existing video, don't start over
+
+host_handlers:
+  host.run:
+    by_call:
+      compute-diff:   { data: { ok: true, exit_code: 0, stdout: "+ added line of the feature diff" } }
+      read-proposal:  { data: { ok: true, exit_code: 0, stdout: "Refine the existing agent-actions demo: tighten the pacing." } }
+      stamp-epoch:    { data: { ok: true, exit_code: 0, stdout: "1750000000" } }
+      validate-1:     { data: { ok: true, exit_code: 0, stdout: "video gate PASS — existing demo re-recorded this turn" } }
+      qa-1:           { data: { ok: true, exit_code: 0, stdout: "PASS" } }
+      read-qa-report: { data: { ok: true, exit_code: 0, stdout: "(no failures)" } }
+  host.agent.task:
+    by_call:
+      maker-1:
+        data:
+          submitted:
+            summary:         "Refined the existing agent-actions tour: tightened pacing, re-recorded at watch-speed."
+            video_path:      ".artifacts/tour/agent-actions.mp4"
+            frames_dir:      ".artifacts/tour/frames"
+            chapters_path:   ".artifacts/tour/agent-actions.chapters.json"
+            feature_md_path: ".artifacts/ui-qa/feature.md"
+            scenarios_path:  ".artifacts/ui-qa/scenarios.yaml"
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  # A non-look self-target into the root re-fires on_enter; the whole refine loop
+  # runs in one turn: compute-diff/read-proposal/stamp-epoch → maker-1 (refine) →
+  # validate-1 (ok) → to_qa → qa-1 (ok) → mark_achieved → @exit:achieved.
+  - intent: { name: retry, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      terminal_reason:   "achieved"
+      iteration:         1
+      video_expectation: "update"
+      video_valid:       true
+      qa_ok:             true
+      maker_summary:     "Refined the existing agent-actions tour: tightened pacing, re-recorded at watch-speed."
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: maker-1 }
+        times: 1
+      - handler: host.run
+        args: { call: validate-1 }
+        times: 1
+      - handler: host.run
+        args: { call: qa-1 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

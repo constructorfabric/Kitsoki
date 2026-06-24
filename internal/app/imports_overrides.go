@@ -1,4 +1,6 @@
-// Package app — story-imports overrides (§10).
+// Package app — story-imports overrides.
+//
+// See docs/stories/imports.md for the import/override authoring model.
 //
 // Overrides patch a child app's states / intents / prompts at import time.
 // The import declares:
@@ -49,7 +51,7 @@ func applyOverrides(child *AppDef, ov *ImportOverrides, file, alias, parentBaseD
 	// State overrides — replace by child-local name. The match must exist
 	// somewhere in the child's state tree (top-level or nested); we only
 	// replace top-level matches in v1 because nested replacement gets
-	// surprising (the proposal §10 says "replaces the child's state of
+	// surprising (the override contract says "replaces the child's state of
 	// that name" without disambiguating nesting; we pick the safe rule).
 	for _, name := range sortedKeys(ov.States) {
 		newState := ov.States[name]
@@ -76,7 +78,7 @@ func applyOverrides(child *AppDef, ov *ImportOverrides, file, alias, parentBaseD
 	// Prompt overrides — copy parent's file into the location the child
 	// reads from. The simplest correct implementation: read the override
 	// file from the parent's dir, write it to the child's expected path
-	// in a temp area, then point any host.oracle.* invocation that reads
+	// in a temp area, then point any host.agent.* invocation that reads
 	// that path at the override.
 	//
 	// In practice prompt-bearing invocations carry the path as a
@@ -164,6 +166,16 @@ func rebaseWithMap(with map[string]any, childDir string) {
 			continue
 		}
 		with[key] = filepath.Join(childDir, raw)
+	}
+	// host.agent.task nests prompt/prompt_path under with.context and the
+	// acceptance schema under with.acceptance.schema. Both must rebase to the
+	// defining story's dir, else the runtime joins them against the PARENT
+	// app dir ($KITSOKI_APP_DIR) and the file isn't found.
+	if ctx, ok := with["context"].(map[string]any); ok {
+		rebaseWithMap(ctx, childDir)
+	}
+	if acc, ok := with["acceptance"].(map[string]any); ok {
+		rebaseWithMap(acc, childDir)
 	}
 }
 

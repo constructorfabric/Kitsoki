@@ -1,0 +1,50 @@
+# Barista — a tiny, fully-deterministic coffee-order story for a demo capture.
+#
+# NO LLM anywhere. Every intent is a plain room transition with NO slots, NO
+# agent/decide gates, NO host calls, and NO free-text routing. The whole story
+# is driven by DIRECT intents (submitted by name), so it can be replayed over
+# MCP `session.submit` with no model in the loop.
+#
+# Shape:
+#   lobby  --start_order-->  order
+#   order  --pick_flat_white--> confirm   (sets world.drink = "flat white")
+#   confirm --done-->        served       (terminal)
+#   confirm --order_another--> lobby      (clears world.drink)
+
+app:
+  id: barista
+  version: 0.1.0
+  title: "Barista — deterministic coffee order"
+  author: "kitsoki"
+  license: "CC0"
+
+# A single cosmetic world key, set by a trivial deterministic `set:` effect on
+# the pick transition. No agent, no host, no slots feed it.
+world:
+  drink: { type: string, default: "(nothing yet)" }
+
+intents:
+  start_order:
+    title: "Start an order"
+    description: "Step up to the counter and begin ordering."
+    examples: ["start", "order", "begin"]
+  pick_flat_white:
+    title: "Order a flat white"
+    description: "Choose a flat white."
+    examples: ["flat white", "pick flat white"]
+  done:
+    title: "All done"
+    description: "Take the coffee and leave."
+    examples: ["done", "finish", "leave"]
+  order_another:
+    title: "Order another"
+    description: "Go back and order another coffee."
+    examples: ["another", "again", "more"]
+  look:
+    title: "Look around"
+    examples: ["look", "where am i"]
+
+root: lobby
+
+include:
+  - rooms/*.yaml

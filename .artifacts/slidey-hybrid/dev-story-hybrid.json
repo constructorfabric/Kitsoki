@@ -1,0 +1,139 @@
+{
+  "meta": {
+    "title": "Kitsoki — a dev story, end to end on the slidey repo",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": "rose-pine-moon",
+    "narration": {
+      "voice": "en-AU-NatashaNeural"
+    },
+    "mode": "pitch"
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Kitsoki · dev story",
+      "title": "From an idea to a merged PR",
+      "subtitle": "one feature and one bug, end to end, on the slidey repo",
+      "narration": "This is one dev story end to end on the slidey repository — from a product idea to a merged pull request, with kitsoki driving every step."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The cast",
+      "lede": "Four roles, one shared, traceable pipeline.",
+      "body": "A product manager starts with an idea. An architect turns requirements into a design. A developer decomposes the design into tasks, fixes a bug that lands mid-stream, and ships the feature. Every hand-off is a notification; every artifact is a validated, replayable output.",
+      "narration": "A product manager, an architect, and a developer share one traceable pipeline. Every hand-off is a notification, and every artifact is a validated, replayable output."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "1 · Product manager",
+      "lede": "An idea becomes a validated PRD plus mockups.",
+      "body": "The PM starts with a one-line idea — add a feature to slidey — and kitsoki runs the conversation-driven intake: it asks clarifying questions, drafts the PRD, and produces an HTML mockup deck. The PRD and mockups are the validated output of this phase.",
+      "narration": "The product manager starts with a one-line idea: add a feature to slidey. Kitsoki runs a conversation-driven intake — clarifying questions, a drafted PRD, and a mockup deck — and the PRD plus mockups are the validated output."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "1 · Product manager",
+      "title": "Idea → PRD + mockups",
+      "rrweb": "clips/pm-idea.rrweb.json",
+      "chapters": "auto",
+      "caption": "Conversation-driven PRD intake on the slidey repo",
+      "narration": "Here the PM drives the intake live: the brief is refined into a PRD and a mockup deck, all replayed deterministically with no model in the loop."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "2 · Architect",
+      "lede": "Requirements become a design epic, slices, and ADRs.",
+      "body": "The architect gets a notification — new requirements ready. They review the PRD, ask questions, then produce the design: a design epic broken into slices, with ADRs and mermaid diagrams, summarised in a slidey deck. The design is this phase's validated output.",
+      "narration": "The architect is notified that new requirements are ready. They review, ask questions, and produce the design — an epic broken into slices, ADRs, and mermaid diagrams — summarised in a slidey deck."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "2 · Architect",
+      "title": "Requirements → design",
+      "rrweb": "clips/architect-design.rrweb.json",
+      "chapters": "auto",
+      "caption": "PRD → design epic, slices, and ADRs",
+      "narration": "The architect walks from the PRD into a structured design, with each slice and decision captured as a traceable artifact."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "3 · Developer · decomposition",
+      "lede": "The design becomes a validated work plan.",
+      "body": "The developer is notified that a new design is ready. They review it, ask questions, and decompose the design epic and slices into right-sized tasks. The decomposed work plan is the output — and it takes time to produce, so it runs in the background.",
+      "narration": "The developer reviews the new design and decomposes its epic and slices into right-sized tasks. The work plan is the output, and because it takes time, it runs in the background."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "3 · Developer · decomposition",
+      "title": "Design → work plan",
+      "rrweb": "clips/decomposition.rrweb.json",
+      "chapters": "auto",
+      "caption": "Design epic decomposed into agent-sized briefs",
+      "narration": "The design is decomposed into a validated manifest of agent-sized briefs, ready to fan out into development."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "4 · Developer · the interrupt",
+      "lede": "A bug lands mid-stream — triage says one-shot.",
+      "body": "While the decomposition runs, a new bug is opened against slidey. The bug-fix room triages it and recommends a one-shot, unsupervised fix. The developer says go. Kitsoki reproduces the bug, proposes a root-cause fix, implements it in an isolated worktree, runs the real test suite, self-reviews, and validates — closing out PR-ready.",
+      "narration": "Mid-stream, a bug is opened against slidey. The bug-fix room triages it as a one-shot unsupervised fix. The developer says go, and kitsoki reproduces, fixes, tests, reviews, and validates it — closing out ready for a pull request."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "4 · Developer · bug fix",
+      "title": "Bug → reproduce → fix → validate",
+      "rrweb": "clips/slidey-bugfix.rrweb.json",
+      "chapters": "auto",
+      "caption": "The bug-fix pipeline on a real slidey bug",
+      "narration": "Every room is a deterministic state-machine beat: reproduce, propose, implement in a worktree, run the real test suite, self-review, and validate."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "5 · Developer · feature delivery",
+      "lede": "Tasks complete in the background; demo videos arrive.",
+      "body": "The decomposition finishes; the developer reviews it and transitions it into development in the background. As portions complete, demo videos are produced and land in the inbox — and the developer refines the functionality directly in the videos, pointing at exactly what to change with spatial-oracle annotations.",
+      "narration": "The work plan moves into background development. As portions complete, demo videos arrive in the inbox, and the developer refines the functionality by pointing right at it — location-tied, spatial-oracle feedback."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "5 · Developer · refine",
+      "title": "Demo videos → spatial refine",
+      "rrweb": "clips/feature-refine.rrweb.json",
+      "chapters": "auto",
+      "caption": "Annotate the rendered frame → an anchored refine pass",
+      "narration": "A reviewer points at an exact element on the rendered frame, and that anchor flows into a refine pass that edits precisely what was pointed at."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "6 · Developer · ship",
+      "lede": "Bug fix done, feature done — open the PRs.",
+      "body": "The developer is notified the bug fix is done, reviews the slidey summary with its reproduction and validation video, and opens the PR. Then they open the PR for the feature epic with its demo video. The story closes where it started: a slidey repo, now two PRs richer.",
+      "narration": "The bug fix is done; the developer reviews its summary and opens the pull request. Then the feature epic's PR goes up with its demo video. Two pull requests, every step on the record."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "6 · Developer · ship",
+      "title": "Summary → open PR",
+      "rrweb": "clips/open-pr.rrweb.json",
+      "chapters": "auto",
+      "caption": "Reproduction + validation summary → pull request",
+      "narration": "The summary carries the reproduction and validation evidence straight into the pull request."
+    },
+    {
+      "type": "cta",
+      "narration": "And the whole film is a no-LLM, byte-deterministic replay: the runtime is a state machine, and the model is just a traceable callee.",
+      "wordmark": "Kitsoki",
+      "tagline": "Every frame is a deterministic, no-LLM replay",
+      "url": "the runtime is a state machine; the model is a traceable callee"
+    }
+  ]
+}

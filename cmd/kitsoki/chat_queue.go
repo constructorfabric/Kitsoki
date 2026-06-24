@@ -1,6 +1,7 @@
 // chat_queue.go — implements `kitsoki chat queue ...` subcommands.
 //
-// The queue is the chat_input_queue table: a FIFO of
+// The queue is the chat_input_queue table (see
+// docs/proposals/claude-code-sessions-proposal.md §6.3): a FIFO of
 // pending turn requests against a chat. Subcommands here are the
 // power-user / scripting surface; state-machine apps use
 // host.chat.drive instead.

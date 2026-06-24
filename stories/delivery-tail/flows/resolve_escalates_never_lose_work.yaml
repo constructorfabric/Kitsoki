@@ -1,0 +1,49 @@
+# resolve_escalates_never_lose_work — the agent CANNOT resolve → @exit:needs-human,
+# never losing work: the checkpoint ref is surfaced in last_error so the operator
+# can restore the pre-landing branch state.
+#
+# resolve checkpoints → re-rebase leaves conflict in progress → cr agent reports
+# resolved:false → auto_escalate (headless) → @exit:escalated → import maps to
+# @exit:needs-human with last_error carrying the checkpoint ref.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+  resolve_attempts:   1
+
+host_handlers:
+  host.run:
+    by_call:
+      resolve_checkpoint:
+        data: { stdout_json: { checkpoint_outcome: saved, checkpoint_ref: "refs/kitsoki/checkpoints/land-burst-fix", checkpoint_label: "land-burst-fix", checkpoint_sha: "ckpt123", checkpoint_dirty: false } }
+      resolve_rebase:
+        data: { stdout_json: { resolve_outcome: conflict, resolve_output: "never-seen conflict in: internal/ratelimit/bucket.go" } }
+      gather_conflict_files:
+        data: { stdout_json: { conflict_files: "internal/ratelimit/bucket.go", gosum_only: false } }
+  host.agent.task:
+    data:
+      submitted:
+        resolved:           false
+        confidence:         0.2
+        resolution_summary: "Both sides rewrote refill() incompatibly; cannot reconcile safely."
+        unresolvable_files: ["internal/ratelimit/bucket.go"]
+        reason:             "semantic conflict — needs a human decision on the intended refill semantics"
+
+turns:
+  - intent: { name: begin_resolve, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:             needs-human
+      checkpoint_outcome: saved
+      checkpoint_ref:     "refs/kitsoki/checkpoints/land-burst-fix"
+
+expect_terminal: true
+expect_no_errors: true

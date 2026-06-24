@@ -1,0 +1,161 @@
+kind: host_cassette
+app_id: bugfix
+app_version: "1"
+record_mode: none
+match_on:
+  - handler
+
+episodes:
+
+  # ── Non-agent stubs (replay:any) ────────────────────────────────────────────
+
+  - id: append_to_file_any
+    match:
+      handler: host.append_to_file
+    response:
+      data: { ok: true, message_id: "msg-1" }
+    replay: any
+
+  - id: inbox_add_any
+    match:
+      handler: host.inbox.add
+    response:
+      data: { ok: true, id: "ib-1" }
+    replay: any
+
+  - id: git_worktree_any
+    match:
+      handler: host.git_worktree
+    response:
+      data: { ok: true, log: "synced" }
+    replay: any
+
+  - id: git_any
+    match:
+      handler: host.git
+    response:
+      data: { ok: true, sha: "abc123", diff: "diff --git a/x b/x\n+1\n", files: [] }
+    replay: any
+
+  - id: local_any
+    match:
+      handler: host.local
+    response:
+      data: { ok: true, log: "PASS: 4 tests", passed: 4, failed: 0 }
+    replay: any
+
+  # ── Agent stubs with agent: blocks (replay:any) ─────────────────────────────
+  # These write agent.call.start + agent.call.complete events to the trace
+  # so the runstatus waterfall, decision-detail, confidence-bar, annotation,
+  # and replay tour steps have real data to display.
+
+  - id: agent_task_any
+    match:
+      handler: host.agent.task
+    response:
+      data:
+        ok: true
+        submitted:
+          summary_title: "Reproduction confirmed"
+          summary_markdown: "The ESC key is silently discarded during `ModeAwaitingLLM`."
+          bug_verified: true
+          confidence: 0.88
+          status: "passed"
+          outcome: "pass"
+    agent:
+      verb: task
+      agent: "bugfix"
+      model: "claude-sonnet-4-6"
+      duration_ms: 2100
+      response: '{"summary_title":"Reproduction confirmed","confidence":0.88,"status":"passed"}'
+      # Recorded agent-action transcript (claude stream-json, verbatim). On replay
+      # this is written to <run>/transcripts/<call_id>.jsonl + .timings and
+      # referenced from agent.call.complete by a transcript_ref pointer — the
+      # "Agent actions" drawer renders it. Additive: code paths that don't read
+      # transcript: ignore it, so the trace-features-video spec replay is unchanged.
+      transcript:
+        format: claude-stream-json
+        events:
+          - '{"type":"system","subtype":"init","session_id":"sess-repro-1","model":"claude-sonnet-4-6"}'
+          - '{"type":"assistant","message":{"content":[{"type":"text","text":"I''ll read the failing test first."}]}}'
+          - '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_01","name":"Read","input":{"file_path":"internal/foo/bar_test.go"}}]}}'
+          - '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"func TestBar(t *testing.T) {\n  got := Bar(3)\n  if got != 6 { t.Fatalf(\"got %d\", got) }\n}"}]}}'
+          - '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_02","name":"Grep","input":{"pattern":"func Bar","path":"internal/foo"}}]}}'
+          - '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_02","content":"internal/foo/bar.go:12:func Bar(n int) int {"}]}}'
+          # A run of streaming thinking-token COUNTERS (estimated_tokens ticking up
+          # while the model reasons) precedes the thinking block — the real claude
+          # stream-json shape. The drawer must fold these into the thinking row, not
+          # render a wall of empty SYS rows or orphan a counter ahead of its tools.
+          - '{"type":"system","subtype":"thinking_tokens","estimated_tokens":1,"estimated_tokens_delta":1}'
+          - '{"type":"system","subtype":"thinking_tokens","estimated_tokens":2,"estimated_tokens_delta":1}'
+          - '{"type":"system","subtype":"thinking_tokens","estimated_tokens":3,"estimated_tokens_delta":1}'
+          - '{"type":"system","subtype":"thinking_tokens","estimated_tokens":5,"estimated_tokens_delta":2}'
+          - '{"type":"system","subtype":"thinking_tokens","estimated_tokens":7,"estimated_tokens_delta":2}'
+          - '{"type":"system","subtype":"thinking_tokens","estimated_tokens":9,"estimated_tokens_delta":2}'
+          - '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"The off-by-one is in the loop bound."}]}}'
+          - '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_03","name":"Edit","input":{"file_path":"internal/foo/bar.go","old_string":"for i := 0; i < n-1; i++","new_string":"for i := 0; i < n; i++"}}]}}'
+          - '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_03","content":"edited"}]}}'
+          - '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_04","name":"Bash","input":{"command":"go test ./internal/foo/..."}}]}}'
+          - '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_04","content":"ok  internal/foo  0.42s"}]}}'
+          - '{"type":"result","subtype":"success","result":"Reproduction confirmed; fixed the off-by-one.","usage":{"input_tokens":1200,"output_tokens":640},"total_cost_usd":0.04}'
+        timings: [0, 180, 320, 540, 760, 980, 1000, 1020, 1040, 1070, 1100, 1140, 1180, 1340, 1560, 1720, 1980, 2100]
+    replay: any
+
+  - id: agent_decide_any
+    match:
+      handler: host.agent.decide
+    response:
+      data:
+        ok: true
+        submitted:
+          decision: "accept"
+          confidence: 0.92
+          reason: "The reproduction evidence is clear and the fix approach is sound."
+          alternatives:
+            - intent: "refine"
+              score: 0.41
+            - intent: "skip"
+              score: 0.07
+    agent:
+      verb: decide
+      agent: "bugfix"
+      model: "claude-sonnet-4-6"
+      duration_ms: 1500
+      response: '{"decision":"accept","confidence":0.92,"reason":"The reproduction evidence is clear and the fix approach is sound.","alternatives":[{"intent":"refine","score":0.41},{"intent":"skip","score":0.07}]}'
+      # Recorded agent-action transcript for the decide submit → validate → nudge
+      # cycle (proposal "The decide submit → validate → nudge cycle"). The arc:
+      # a bad submit (amount as a string) → schema reject → the host nudge it
+      # injected (the -p stream never echoes this) → a good re-submit → accept →
+      # the terminal result. The _kitsoki rows are additive; a parser keying on
+      # claude "type" values skips them. Replays byte-verbatim — no live tool runs.
+      transcript:
+        format: claude-stream-json
+        events:
+          - '{"type":"system","subtype":"init","session_id":"sess-decide-1","model":"claude-sonnet-4-6"}'
+          - '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"The reproduction is clear; I''ll accept and submit the verdict."}]}}'
+          - '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_0a","name":"mcp__validator__submit","input":{"decision":"refund","amount":"lots"}}]}}'
+          - '{"_kitsoki":"validator_reject","source":"schema","reason":"amount: expected number, got string \"lots\""}'
+          - '{"_kitsoki":"nudge","outer_iter":1,"text":"Your previous turn ended without successfully calling submit.\n\nThe last submission attempt was rejected:\namount: expected number, got string \"lots\"\n\nYou MUST call the validator''s submit tool with a valid JSON verdict to continue."}'
+          - '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_0b","name":"mcp__validator__submit","input":{"decision":"refund","amount":49.0}}]}}'
+          - '{"_kitsoki":"validator_accept","outer_iter":1}'
+          - '{"type":"result","subtype":"success","result":"refund","usage":{"input_tokens":1400,"output_tokens":320},"total_cost_usd":0.03}'
+        timings: [0, 220, 480, 540, 560, 980, 1180, 1500]
+    replay: any
+
+  - id: agent_ask_any
+    match:
+      handler: host.agent.ask
+    response:
+      data:
+        ok: true
+        submitted:
+          decision: "accept"
+          confidence: 0.89
+          reason: "Artifact satisfies all constraints."
+    agent:
+      verb: ask
+      agent: "bugfix"
+      model: "claude-sonnet-4-6"
+      duration_ms: 980
+      response: '{"decision":"accept","confidence":0.89,"reason":"Artifact satisfies all constraints."}'
+    replay: any

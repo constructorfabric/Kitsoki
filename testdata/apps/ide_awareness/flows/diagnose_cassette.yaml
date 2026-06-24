@@ -1,0 +1,31 @@
+# diagnose_cassette — slice-1 verification (item 3): host.ide.* served from a
+# recorded cassette, proving replay opens NO socket.
+#
+# Parallel of diagnose_stub.yaml's connected branch, but the host.ide.
+# get_diagnostics response is sourced from cassettes/diagnose.cassette.yaml
+# instead of an inline host_handlers stub. The cassette dispatcher returns the
+# recorded Result.Data directly; it never constructs an ide.Link, never reads a
+# lock file, never dials ws://127.0.0.1. The companion Go test
+# (TestIDEFlow_CassetteReplay_NoSocket) hardens this by pointing $HOME at an
+# empty temp dir so any real discovery/dial would fail — the flow still passes.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+host_cassette: ../cassettes/diagnose.cassette.yaml
+strict_cassette_coverage: true
+
+turns:
+  - intent:
+      name: diagnose
+      slots: {}
+    expect_state: reviewed
+    expect_world:
+      diagnostics:
+        - { file: "/ws/a.go", message: "undefined: x", severity: "error" }
+    expect_host_calls:
+      - handler: host.ide.get_diagnostics
+
+expect_terminal: true
+expect_no_errors: true

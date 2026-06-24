@@ -1,101 +1,144 @@
-// export_status.go — implements the `kitsoki export-status` subcommand.
+// export_status.go — implements the `kitsoki export-status` subcommand, which
+// exports a run as a self-contained Snapshot artifact. The -o extension picks
+// the format: ".html" emits the bundled runstatus SPA with the snapshot
+// inlined (opens over file://), anything else emits raw Snapshot JSON.
 //
-// Two modes:
+// Two input modes:
 //
-//  1. --from-trace <path.jsonl> --app <app.yaml> [options]
-//     Reads a recorded JSONL trace, loads the AppDef, synthesises a Snapshot,
-//     and writes JSON to -o <out>. This is the fixture-generator path.
+//  1. --from-trace <path.jsonl> --app <app.yaml> [overrides]
+//     Reads a recorded JSONL trace, loads the AppDef, and builds a Snapshot
+//     via runstatus.SnapshotFromTrace. The fixture-generator path.
 //
-//  2. -o status.html  (live/active session mode)
-//     Not yet implemented in this branch. Prints a message and exits 2.
+//  2. --from-snapshot <path.json>
+//     Wraps an existing Snapshot JSON in the bundled SPA as a self-contained
+//     HTML artifact (requires -o *.html). The Go replacement for the former
+//     tools/runstatus/scripts/build-artifact.mjs.
+//
+// For a live, updating view of an in-progress run, see `kitsoki status serve`
+// (cmd/kitsoki/status_serve.go) and docs/tracing/run-status-ui.md.
+//
+// # Media artifact sidecar export
+//
+// After writing the HTML or JSON output, both modes scan the session's journal
+// (the SQLite store at [defaultDBPath]) for [journal.KindArtifactEmitted]
+// entries and copy each artifact file into an `artifacts/` subdirectory next
+// to the output file, matching the `./artifacts/<handle>` relative URL that
+// [tools/runstatus/src/data/snapshot-source.ts] uses to serve media elements
+// in file:// (offline) mode.
+//
+// The scan is best-effort: if the store cannot be opened (e.g. no live session
+// exists for the trace, or the DB is absent), or if a source file has been
+// deleted, the copy is skipped with a warning and the export continues. The
+// HTML/JSON output is always written regardless of whether any artifacts could
+// be copied.
 package main
 
 import (
-	"bufio"
-	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
-	_ "modernc.org/sqlite" // SQLite driver for journal open
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/runstatus"
-	"kitsoki/internal/viz"
+	"kitsoki/internal/runstatus/web"
+	"kitsoki/internal/store"
 )
 
 func exportStatusCmd() *cobra.Command {
 	var (
 		fromTrace    string
+		fromSnapshot string
 		appPath      string
 		currentState string
 		sessionID    string
 		startedAt    string
 		outPath      string
 		withMermaid  bool
-		journalPath  string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "export-status",
-		Short: "Export a run snapshot as a self-contained JSON artifact",
-		Long: `Export a kitsoki run as a self-contained Snapshot JSON file.
+		Short: "Export a run snapshot as a self-contained JSON or HTML artifact",
+		Long: `Export a kitsoki run as a self-contained Snapshot — either the raw
+Snapshot JSON or a single-file HTML artifact with the runstatus SPA inlined.
+The output format is chosen by the -o extension: ".html" emits the bundled
+UI, anything else emits Snapshot JSON. HTML output needs the SPA bundled into
+the binary (run 'make build', which runs 'pnpm build' under tools/runstatus/).
 
-Fixture-generator mode (from a recorded trace):
+From a recorded trace (the fixture-generator path):
   kitsoki export-status --from-trace run.jsonl --app myapp.yaml -o status.snapshot.json
+  kitsoki export-status --from-trace run.jsonl --app myapp.yaml -o status.html
 
   Options for --from-trace:
     --current-state <path>   override current state (default: derived from last trace event)
     --session-id <id>        override session ID (default: derived from trace)
     --started-at <iso8601>   override start time (default: earliest trace event time)
 
-Live-mode export (reads the in-process ring buffer):
-  kitsoki export-status -o status.html
-  (not yet implemented)`,
+From an existing Snapshot JSON (wrap it as a self-contained HTML artifact —
+this is the Go replacement for the old scripts/build-artifact.mjs):
+  kitsoki export-status --from-snapshot status.snapshot.json -o status.html
+
+For a live, updating view of an in-progress run, use 'kitsoki status serve'.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if outPath == "" {
 				return fmt.Errorf("--out / -o is required")
 			}
+			if fromTrace != "" && fromSnapshot != "" {
+				return fmt.Errorf("--from-trace and --from-snapshot are mutually exclusive")
+			}
+
+			// ── --from-snapshot mode (snapshot JSON → HTML artifact) ───────
+			if fromSnapshot != "" {
+				return runExportFromSnapshot(fromSnapshot, outPath)
+			}
 
 			// ── --from-trace mode ─────────────────────────────────────────
 			if fromTrace != "" {
-				return runExportFromTrace(fromTrace, appPath, currentState, sessionID, startedAt, outPath, withMermaid, journalPath)
+				return runExportFromTrace(fromTrace, appPath, currentState, sessionID, startedAt, outPath, withMermaid)
 			}
 
-			// ── Live mode stub ────────────────────────────────────────────
-			// The in-process ring buffer read path and the single-file HTML
-			// template are tracked on a separate branch (not this branch).
-			fmt.Fprintln(cmd.ErrOrStderr(), "not yet implemented")
-			os.Exit(2)
-			return nil // unreachable; satisfies the compiler
+			return fmt.Errorf("one of --from-trace or --from-snapshot is required " +
+				"(for a live view use `kitsoki status serve`)")
 		},
 	}
 
 	cmd.Flags().StringVar(&fromTrace, "from-trace", "", "path to a JSONL trace file produced by kitsoki run --trace")
+	cmd.Flags().StringVar(&fromSnapshot, "from-snapshot", "", "path to an existing Snapshot JSON to wrap as a self-contained HTML artifact (requires -o *.html)")
 	cmd.Flags().StringVar(&appPath, "app", "", "path to the app.yaml (required with --from-trace)")
 	cmd.Flags().StringVar(&currentState, "current-state", "", "override current state path (dotted, e.g. bar.dark)")
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "override session ID")
 	cmd.Flags().StringVar(&startedAt, "started-at", "", "override session start time (RFC3339, e.g. 2026-05-25T10:00:00Z)")
-	cmd.Flags().StringVarP(&outPath, "out", "o", "", "output file path (required)")
+	cmd.Flags().StringVarP(&outPath, "out", "o", "", "output file path (required); .html emits the bundled UI, otherwise Snapshot JSON")
 	cmd.Flags().BoolVar(&withMermaid, "with-mermaid", true, "populate mermaid.source and mermaid.node_map (default true when --from-trace is used)")
-	cmd.Flags().StringVar(&journalPath, "journal", "", "path to kitsoki SQLite journal DB; when supplied, oracle events are enriched with full prompt/response detail")
 
 	return cmd
 }
 
 // runExportFromTrace reads a JSONL trace and an app.yaml, synthesises a
-// Snapshot, and writes it as indented JSON to outPath.
-func runExportFromTrace(tracePath, appPath, currentStateFlag, sessionIDFlag, startedAtFlag, outPath string, withMermaid bool, journalPath string) error {
+// Snapshot, and writes it as indented JSON (or, for an .html out path, as a
+// self-contained HTML artifact) to outPath.
+func runExportFromTrace(tracePath, appPath, currentStateFlag, sessionIDFlag, startedAtFlag, outPath string, withMermaid bool) error {
 	if appPath == "" {
 		return fmt.Errorf("--app is required with --from-trace")
 	}
 
 	// ── Parse trace events ────────────────────────────────────────────────
-	events, err := parseTraceFile(tracePath)
+	f, err := os.Open(tracePath)
+	if err != nil {
+		return fmt.Errorf("open trace %q: %w", tracePath, err)
+	}
+	defer func() { _ = f.Close() }()
+	events, err := runstatus.ParseTrace(f, func(line int, perr error) {
+		fmt.Fprintf(os.Stderr, "export-status: skip trace line %d: %v\n", line, perr)
+	})
 	if err != nil {
 		return fmt.Errorf("parse trace %q: %w", tracePath, err)
 	}
@@ -108,375 +151,272 @@ func runExportFromTrace(tracePath, appPath, currentStateFlag, sessionIDFlag, sta
 		return err
 	}
 
-	// ── Synthesise SessionHeader ──────────────────────────────────────────
-	header := synthesiseSessionHeader(def, events, sessionIDFlag, currentStateFlag, startedAtFlag)
-
-	// ── Journal merge (optional) ──────────────────────────────────────────
-	// When --journal is supplied, load all oracle.call entries from the SQLite
-	// journal and merge their full payloads into oracle.<verb>.complete events.
-	if journalPath != "" {
-		if mergeErr := mergeJournalIntoEvents(journalPath, header.SessionID, events); mergeErr != nil {
-			// Non-fatal: degrade gracefully; log and continue.
-			fmt.Fprintf(os.Stderr, "export-status: journal merge failed (continuing without prompt/response detail): %v\n", mergeErr)
-		}
-	} else {
-		// Inform the user when no journal is wired so the omission is visible.
-		fmt.Fprintln(os.Stderr, "export-status: journal not available; oracle events will lack prompt/response detail")
-	}
-
-	// ── Task tool_calls / files_changed aggregation ───────────────────────
-	// Scan the trace for task.tool and task.end events and attach them as
-	// tool_calls / files_changed on the matching oracle.task.complete events.
-	// This runs after journal merge so journal-side data always wins if both
-	// sources provide the same key.
-	aggregateTaskDetails(events)
-
-	// ── Mermaid ───────────────────────────────────────────────────────────
-	// When --with-mermaid (default true) call FlowchartWithMap so the
-	// exported snapshot has a fully-populated diagram and node map.
-	// The UI degrades gracefully when Source is empty (no diagram panel),
-	// so --with-mermaid=false is a valid way to produce a lighter fixture.
-	var mermaid runstatus.MermaidSnapshot
-	if withMermaid {
-		result, err := viz.FlowchartWithMap(def, viz.FlowchartOptions{
-			Detail: viz.DetailStates,
-		})
-		if err != nil {
-			// Non-fatal: degrade gracefully rather than aborting the export.
-			fmt.Fprintf(os.Stderr, "export-status: mermaid generation failed (continuing without diagram): %v\n", err)
-		} else {
-			mermaid = runstatus.MermaidSnapshot{
-				Source:  result.Source,
-				NodeMap: result.NodeMap,
-			}
-		}
-	}
-
 	// ── Build Snapshot ────────────────────────────────────────────────────
-	snap := runstatus.Snapshot{
-		Session: header,
-		App:     def,
-		Mermaid: mermaid,
-		Events:  events,
+	// SnapshotFromTrace aggregates task detail, synthesises the header (flag
+	// overrides win), and renders the diagram (--with-mermaid). The UI degrades
+	// gracefully when the diagram is empty, so --with-mermaid=false is a valid
+	// way to produce a lighter fixture.
+	snap := runstatus.SnapshotFromTrace(def, events, runstatus.HeaderOverrides{
+		SessionID:    sessionIDFlag,
+		CurrentState: currentStateFlag,
+		StartedAt:    startedAtFlag,
+	}, withMermaid)
+
+	// ── HTML output ─────────────────────────────────────────────────────
+	// When -o is *.html, marshal the in-memory snapshot and wrap it in the
+	// bundled SPA. The trace path has no prompt sidecars (prompts are inline
+	// in the events already), so no SidecarDir is set.
+	if hasHTMLExt(outPath) {
+		snapJSON, err := json.Marshal(snap)
+		if err != nil {
+			return fmt.Errorf("marshal snapshot: %w", err)
+		}
+		if err := writeHTMLArtifact(snapJSON, runstatus.ArtifactOptions{
+			Name:    artifactBaseName(outPath),
+			Commit:  gitShort("HEAD"),
+			Branch:  gitBranch(),
+			BuiltAt: time.Now(),
+		}, outPath); err != nil {
+			return err
+		}
+		copyMediaArtifacts(snap.Session.SessionID, filepath.Dir(outPath))
+		return nil
 	}
 
-	// ── Write output ──────────────────────────────────────────────────────
+	// ── JSON output ───────────────────────────────────────────────────────
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("create output directory: %w", err)
 	}
-	f, err := os.Create(outPath)
+	out, err := os.Create(outPath)
 	if err != nil {
 		return fmt.Errorf("create output file %q: %w", outPath, err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = out.Close() }()
 
-	enc := json.NewEncoder(f)
+	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(snap); err != nil {
 		return fmt.Errorf("encode snapshot: %w", err)
 	}
+	copyMediaArtifacts(snap.Session.SessionID, filepath.Dir(outPath))
 	return nil
 }
 
-// parseTraceFile reads a JSONL trace file line by line and returns a slice of
-// TraceEvent values. Lines that fail to parse are skipped with a warning
-// rather than aborting so a partial trace still produces a usable fixture.
-func parseTraceFile(path string) ([]runstatus.TraceEvent, error) {
-	f, err := os.Open(path)
+// runExportFromSnapshot reads an existing Snapshot JSON file and wraps it in a
+// self-contained HTML artifact. This is the Go replacement for the old
+// tools/runstatus/scripts/build-artifact.mjs: it inlines prompt sidecars
+// (resolved relative to the snapshot's directory) and injects the snapshot
+// into the bundled SPA. Requires an .html output path.
+func runExportFromSnapshot(snapshotPath, outPath string) error {
+	if !hasHTMLExt(outPath) {
+		return fmt.Errorf("--from-snapshot requires an .html output path (e.g. -o status.html); "+
+			"got %q", outPath)
+	}
+	snapJSON, err := os.ReadFile(snapshotPath)
 	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-
-	var events []runstatus.TraceEvent
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1<<20), 1<<20) // 1 MB line buffer, same as the trace pretty-printer
-
-	lineNum := 0
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var ev runstatus.TraceEvent
-		if err := json.Unmarshal(line, &ev); err != nil {
-			// Non-fatal: skip and warn. Real runs may have a partial final line
-			// if the process was interrupted mid-write.
-			fmt.Fprintf(os.Stderr, "export-status: skip trace line %d: %v\n", lineNum, err)
-			continue
-		}
-		events = append(events, ev)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan trace file: %w", err)
-	}
-	return events, nil
-}
-
-// synthesiseSessionHeader derives a SessionHeader from the parsed trace events
-// and any flag overrides supplied by the caller.
-//
-// Derivation rules (flags win over trace-derived values):
-//   - SessionID: flag --session-id, else first non-empty session_id from events.
-//   - AppID: always from the loaded AppDef.
-//   - CurrentState: flag --current-state, else state_path from the last event.
-//   - Turn: max turn seen across all events.
-//   - StartedAt: flag --started-at (RFC3339), else earliest non-zero event Time.
-//   - Terminal: looks up CurrentState in AppDef; true if State.Terminal == true.
-func synthesiseSessionHeader(def *app.AppDef, events []runstatus.TraceEvent, sessionIDFlag, currentStateFlag, startedAtFlag string) runstatus.SessionHeader {
-	var (
-		sessionID    string
-		currentState string
-		maxTurn      int
-		startedAt    time.Time
-	)
-
-	// Walk events to collect derived values.
-	for _, ev := range events {
-		// SessionID: first non-empty session_id.
-		if sessionID == "" && ev.SessionID != "" {
-			sessionID = ev.SessionID
-		}
-		// CurrentState: state_path from the last event that has one.
-		if ev.StatePath != "" {
-			currentState = ev.StatePath
-		}
-		// Turn: max.
-		if ev.Turn > maxTurn {
-			maxTurn = ev.Turn
-		}
-		// StartedAt: earliest non-zero time.
-		if !ev.Time.IsZero() && (startedAt.IsZero() || ev.Time.Before(startedAt)) {
-			startedAt = ev.Time
-		}
+		return fmt.Errorf("read snapshot %q: %w", snapshotPath, err)
 	}
 
-	// Apply flag overrides.
-	if sessionIDFlag != "" {
-		sessionID = sessionIDFlag
+	root := repoRoot(snapshotPath)
+	opts := runstatus.ArtifactOptions{
+		Name:         artifactBaseName(outPath),
+		Commit:       gitShort("HEAD"),
+		Branch:       gitBranch(),
+		BuiltAt:      time.Now(),
+		SidecarDir:   filepath.Dir(snapshotPath),
+		RegenComment: runstatus.RegenComment(relTo(root, snapshotPath), relTo(root, outPath)),
 	}
-	if currentStateFlag != "" {
-		currentState = currentStateFlag
+	if err := writeHTMLArtifact(snapJSON, opts, outPath); err != nil {
+		return err
 	}
-	if startedAtFlag != "" {
-		if t, err := time.Parse(time.RFC3339, startedAtFlag); err == nil {
-			startedAt = t
-		}
-	}
-
-	// Terminal: look up currentState in AppDef.
-	// We use app.Compile to access LookupState without reimplementing the
-	// dot-path walk. The cost is negligible (no I/O).
-	terminal := isStateTerminal(def, currentState)
-
-	return runstatus.SessionHeader{
-		SessionID:    sessionID,
-		AppID:        def.App.ID,
-		CurrentState: currentState,
-		Turn:         maxTurn,
-		StartedAt:    startedAt,
-		Terminal:     terminal,
-	}
-}
-
-// isStateTerminal returns true when the state at the given dot-path in def has
-// Terminal == true. Returns false for unknown paths and empty paths.
-func isStateTerminal(def *app.AppDef, statePath string) bool {
-	if def == nil || statePath == "" {
-		return false
-	}
-	compiled := app.Compile(def)
-	s, ok := compiled.LookupState(app.StatePath(statePath))
-	return ok && s != nil && s.Terminal
-}
-
-// ── Journal merge helpers ─────────────────────────────────────────────────────
-
-// mergeJournalIntoEvents opens the SQLite journal at journalPath, loads all
-// oracle.call entries for sessionID, and enriches matching trace events with
-// the full prompt/response payload.
-//
-// Correlation key: oracle.<verb>.complete slog events carry a `call_id` attr
-// that matches the `call_id` field in the KindOracleCall journal body. When
-// the call_id is found in both places, the full journal payload is merged into
-// the event's Attrs map.
-//
-// If the journal is unavailable or contains no matching entries, the function
-// returns without modifying the events (best-effort enrichment).
-func mergeJournalIntoEvents(journalPath, sessionID string, events []runstatus.TraceEvent) error {
-	if journalPath == "" || sessionID == "" {
-		return nil
-	}
-
-	db, err := sql.Open("sqlite", journalPath+"?mode=ro")
-	if err != nil {
-		return fmt.Errorf("open journal %q: %w", journalPath, err)
-	}
-	defer func() { _ = db.Close() }()
-
-	oracleCalls, err := journal.LoadOracleCalls(db, app.SessionID(sessionID))
-	if err != nil {
-		return fmt.Errorf("load oracle calls: %w", err)
-	}
-	if len(oracleCalls) == 0 {
-		return nil
-	}
-
-	for i := range events {
-		if !runstatus.IsOracleCompleteMsg(events[i].Msg) {
-			continue
-		}
-		callID, _ := events[i].Attrs["call_id"].(string)
-		if callID == "" {
-			continue
-		}
-		body, ok := oracleCalls[callID]
-		if !ok {
-			continue
-		}
-		// Merge the full journal payload into the event's Attrs.
-		runstatus.MergeOracleBodyIntoAttrs(events[i].Attrs, body)
+	// Best-effort media sidecar copy: extract the session_id from the snapshot
+	// JSON and copy artifact files next to the HTML output.
+	sessionID := sessionIDFromSnapshotJSON(snapJSON)
+	if sessionID != "" {
+		copyMediaArtifacts(sessionID, filepath.Dir(outPath))
 	}
 	return nil
 }
 
-// taskTraceWindow accumulates task.tool and task.end data keyed by task_trace_id.
-type taskTraceWindow struct {
-	toolCalls    []map[string]any
-	filesChanged []map[string]any
+// writeHTMLArtifact renders snapshotJSON into the bundled SPA and writes the
+// resulting self-contained HTML to outPath (creating parent dirs).
+func writeHTMLArtifact(snapshotJSON []byte, opts runstatus.ArtifactOptions, outPath string) error {
+	index, err := web.IndexHTML()
+	if err != nil {
+		return err
+	}
+	html, err := runstatus.RenderArtifact(index, snapshotJSON, opts)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("create output directory: %w", err)
+	}
+	if err := os.WriteFile(outPath, html, 0o644); err != nil {
+		return fmt.Errorf("write artifact %q: %w", outPath, err)
+	}
+	return nil
 }
 
-// aggregateTaskDetails scans the trace events and, for every
-// oracle.task.complete event, attaches tool_calls (from task.tool trace events)
-// and files_changed (from task.end trace events) that were emitted during the
-// same task invocation.
-//
-// Correlation key: task.tool events carry parent_trace_id referencing the
-// task_trace_id from task.start; task.end carries task_trace_id directly;
-// oracle.task.complete carries task_trace_id in its attrs.
-//
-// All of these are slog trace events in the same JSONL file, so no journal
-// access is needed.
-func aggregateTaskDetails(events []runstatus.TraceEvent) {
-	byTraceID := make(map[string]*taskTraceWindow)
+// hasHTMLExt reports whether path ends in .html (case-insensitive).
+func hasHTMLExt(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".html")
+}
 
-	// Pass 1: collect task.tool and task.end events indexed by task_trace_id.
-	for i := range events {
-		ev := &events[i]
-		switch ev.Msg {
-		case "task.tool":
-			traceID, _ := ev.Attrs["parent_trace_id"].(string)
-			if traceID == "" {
-				traceID, _ = ev.Attrs["trace_id"].(string)
-			}
-			if traceID == "" {
-				continue
-			}
-			w := taskTraceWindowFor(byTraceID, traceID)
-			w.toolCalls = append(w.toolCalls, taskToolCallFromEvent(ev))
+// artifactBaseName returns the output file name without its extension, used as
+// the banner "fixture:" label.
+func artifactBaseName(outPath string) string {
+	base := filepath.Base(outPath)
+	return strings.TrimSuffix(base, filepath.Ext(base))
+}
 
-		case "task.end":
-			traceID, _ := ev.Attrs["task_trace_id"].(string)
-			if traceID == "" {
-				continue
-			}
-			w := taskTraceWindowFor(byTraceID, traceID)
-			// files_changed on task.end is []string (path list). Build minimal
-			// entries; the UI degrades gracefully when diff is absent.
-			if rawFiles, ok := ev.Attrs["files_changed"]; ok && w.filesChanged == nil {
-				w.filesChanged = buildFilesChanged(rawFiles)
-			}
-		}
+// gitShort returns `git rev-parse --short <rev>` or "" on failure.
+func gitShort(rev string) string { return gitOutput("rev-parse", "--short", rev) }
+
+// gitBranch returns the current branch name or "" on failure.
+func gitBranch() string { return gitOutput("rev-parse", "--abbrev-ref", "HEAD") }
+
+// gitOutput runs git with args and returns trimmed stdout, or "" on any error.
+func gitOutput(args ...string) string {
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return ""
 	}
+	return strings.TrimSpace(string(out))
+}
 
-	if len(byTraceID) == 0 {
+// repoRoot returns the git top-level for the directory containing ref, falling
+// back to that directory when git is unavailable.
+func repoRoot(ref string) string {
+	dir := filepath.Dir(ref)
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
+	if out, err := cmd.Output(); err == nil {
+		return strings.TrimSpace(string(out))
+	}
+	return dir
+}
+
+// relTo returns target relative to base, or target unchanged if that fails.
+func relTo(base, target string) string {
+	absBase, err1 := filepath.Abs(base)
+	absTarget, err2 := filepath.Abs(target)
+	if err1 != nil || err2 != nil {
+		return target
+	}
+	if rel, err := filepath.Rel(absBase, absTarget); err == nil {
+		return rel
+	}
+	return target
+}
+
+// copyMediaArtifacts copies media artifact files referenced in the session's
+// journal into <outDir>/artifacts/<id> so that the snapshot HTML can resolve
+// them via the relative URL ./artifacts/<handle> used by snapshot-source.ts.
+//
+// The scan opens the default session store (see [defaultDBPath]) and calls
+// [journal.Reader.ReplayTyped] to find every [journal.KindArtifactEmitted]
+// entry for the session.  For each entry the source file is copied to
+// <outDir>/artifacts/<id>.  Both the DB open and individual file copies are
+// best-effort: any failure is printed to stderr and the function continues so
+// the caller's export always completes, even when the journal or source files
+// are unavailable (e.g. offline replay of an old fixture trace).
+func copyMediaArtifacts(sessionID, outDir string) {
+	if sessionID == "" {
 		return
 	}
 
-	// Pass 2: attach aggregated data to oracle.task.complete events.
-	for i := range events {
-		ev := &events[i]
-		if ev.Msg != "oracle.task.complete" {
+	// Open the session store to get the journal reader.
+	dbPath := defaultDBPath()
+	s, err := store.Open(dbPath)
+	if err != nil {
+		// DB absent or inaccessible — silently skip (common for fixture traces).
+		return
+	}
+	defer func() { _ = s.Close() }()
+
+	jr, err := journal.NewSQLiteReader(s.DB())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "export-status: open journal reader: %v\n", err)
+		return
+	}
+
+	sid := app.SessionID(sessionID)
+	seq, errFn := jr.ReplayTyped(sid)
+
+	artifactsDir := filepath.Join(outDir, "artifacts")
+	dirCreated := false
+
+	for entry := range seq {
+		if entry.Kind != journal.KindArtifactEmitted {
 			continue
 		}
-		traceID, _ := ev.Attrs["task_trace_id"].(string)
-		if traceID == "" {
+		var ev journal.ArtifactEvent
+		if err := json.Unmarshal(entry.Body, &ev); err != nil {
+			fmt.Fprintf(os.Stderr, "export-status: unmarshal artifact event: %v\n", err)
 			continue
 		}
-		w, ok := byTraceID[traceID]
-		if !ok {
+		if ev.ID == "" || ev.Path == "" {
 			continue
 		}
-		if ev.Attrs == nil {
-			ev.Attrs = make(map[string]any)
-		}
-		if len(w.toolCalls) > 0 {
-			if _, already := ev.Attrs["tool_calls"]; !already {
-				ev.Attrs["tool_calls"] = w.toolCalls
+
+		// Ensure the artifacts directory exists on first use.
+		if !dirCreated {
+			if mkErr := os.MkdirAll(artifactsDir, 0o755); mkErr != nil {
+				fmt.Fprintf(os.Stderr, "export-status: create artifacts dir %q: %v\n", artifactsDir, mkErr)
+				break
 			}
+			dirCreated = true
 		}
-		if len(w.filesChanged) > 0 {
-			if _, already := ev.Attrs["files_changed"]; !already {
-				ev.Attrs["files_changed"] = w.filesChanged
-			}
+
+		dest := filepath.Join(artifactsDir, ev.ID)
+		if copyErr := copyFileForExport(ev.Path, dest); copyErr != nil {
+			// Source may have been deleted or moved; warn and continue.
+			fmt.Fprintf(os.Stderr, "export-status: skip artifact %q: %v\n", ev.ID, copyErr)
 		}
+	}
+
+	// Non-nil error means the scan ended on a DB error (not a clean end).
+	if scanErr := errFn(); scanErr != nil {
+		fmt.Fprintf(os.Stderr, "export-status: scan journal: %v\n", scanErr)
 	}
 }
 
-// taskTraceWindowFor returns the taskTraceWindow for traceID, creating it if needed.
-func taskTraceWindowFor(m map[string]*taskTraceWindow, traceID string) *taskTraceWindow {
-	if w, ok := m[traceID]; ok {
-		return w
-	}
-	w := &taskTraceWindow{}
-	m[traceID] = w
-	return w
-}
-
-// taskToolCallFromEvent converts a task.tool trace event into the tool_calls
-// entry shape defined in ORACLE_ATTRS.md.
-func taskToolCallFromEvent(ev *runstatus.TraceEvent) map[string]any {
-	entry := make(map[string]any)
-	if seq, ok := ev.Attrs["seq"]; ok {
-		entry["seq"] = seq
-	}
-	if tool, ok := ev.Attrs["tool"].(string); ok {
-		entry["tool"] = tool
-	}
-	// input_preview is the only args info available from the lean slog event.
-	if preview, ok := ev.Attrs["input_preview"].(string); ok && preview != "" {
-		entry["args"] = map[string]any{"preview": preview}
-	} else if preview, ok := ev.Attrs["preview"].(string); ok && preview != "" {
-		entry["args"] = map[string]any{"preview": preview}
-	}
-	// output_preview is what the task transport records as the result.
-	if out, ok := ev.Attrs["output_preview"].(string); ok && out != "" {
-		entry["result"] = out
-	}
-	return entry
-}
-
-// buildFilesChanged converts the raw files_changed value from a task.end slog
-// event into the files_changed shape defined in ORACLE_ATTRS.md. When the
-// value is a []string (path list), status defaults to "modified" and diff is
-// absent; the UI renders a path-only entry in that case.
-func buildFilesChanged(rawFiles any) []map[string]any {
-	// JSON-decoded []interface{} of strings.
-	arr, ok := rawFiles.([]any)
-	if !ok {
-		return nil
-	}
-	var out []map[string]any
-	for _, item := range arr {
-		path, _ := item.(string)
-		if path == "" {
-			continue
+// copyFileForExport copies src to dst, skipping gracefully when src does not
+// exist.  Returns an error only when src exists but the copy fails.
+func copyFileForExport(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Source gone — treat as a warning, not a hard failure.
+			return fmt.Errorf("source file not found: %w", err)
 		}
-		out = append(out, map[string]any{
-			"path":   path,
-			"status": "modified",
-		})
+		return fmt.Errorf("open source %q: %w", src, err)
 	}
-	return out
+	defer func() { _ = in.Close() }()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("create dest %q: %w", dst, err)
+	}
+	defer func() { _ = out.Close() }()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return fmt.Errorf("copy to %q: %w", dst, err)
+	}
+	return out.Close()
+}
+
+// sessionIDFromSnapshotJSON extracts the session_id from the top-level
+// "session" object of a serialised [runstatus.Snapshot] JSON blob.
+// Returns "" when the field is absent or the JSON cannot be parsed.
+func sessionIDFromSnapshotJSON(snapJSON []byte) string {
+	var partial struct {
+		Session struct {
+			SessionID string `json:"session_id"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(snapJSON, &partial); err != nil {
+		return ""
+	}
+	return partial.Session.SessionID
 }

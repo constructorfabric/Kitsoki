@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "map_artifact",
+  "description": "Cross-reference of the brief's in-scope decision themes against the target story's existing gate inventory.",
+  "type":    "object",
+  "required": ["themes", "summary_markdown"],
+  "properties": {
+    "themes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One row per recurring decision theme.",
+      "items": {
+        "type": "object",
+        "required": ["theme", "status"],
+        "properties": {
+          "theme":     { "type": "string", "description": "Plain-English decision the user/agent repeatedly faced." },
+          "intents":   { "type": "integer", "minimum": 1, "description": "Distinct mined intents exhibiting this theme." },
+          "home_room": { "type": "string", "description": "Room file path that owns (or would own) this decision." },
+          "status":    { "type": "string", "enum": ["ALREADY-MODELED", "ENRICH", "GAP"], "description": "Whether a gate already covers it, the room needs one, or no room models it." },
+          "decider":   { "type": "string", "description": "Proposed decider kind: default-rule / LLM / human." },
+          "validator": { "type": "string", "description": "The brief's validator — becomes the gate's deterministic re-check." }
+        },
+        "additionalProperties": true
+      }
+    },
+    "summary_markdown": { "type": "string", "minLength": 40, "description": "Human-readable map delivered to the transport." }
+  },
+  "additionalProperties": true
+}

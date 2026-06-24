@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "types": ["node", "vscode"]
+  },
+  "include": ["src", "tests"],
+  "_comment": "Two tests deliberately import across the runstatus package boundary (an ESM, \"type\":\"module\" package) and are excluded from THIS CommonJS-resolution tsc program, which cannot model the cross-package ESM graph (rootDir + module-format conflicts that are meaningless here). Both are still fully exercised by their real runners: bridge-relay.integration.test.ts (tsx + node:test via `pnpm test`) imports the SPA's BridgeTransport to guard the postMessage wire format; vscode-tour.e2e.spec.ts (Playwright's esbuild transform via `pnpm e2e` / `make vscode-e2e-fast`, the de-risk gate) imports the generated WEATHER_REPORT_TOUR_STEPS manifest so the recorded narration cannot drift from the live web tour.",
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests/bridge-relay.integration.test.ts",
+    "tests/vscode-tour.e2e.spec.ts"
+  ]
+}

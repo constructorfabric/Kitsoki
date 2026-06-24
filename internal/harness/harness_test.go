@@ -147,6 +147,65 @@ func TestReplayHarness_RecordingMiss(t *testing.T) {
 	assert.Equal(t, "hack the mainframe", miss.Input)
 }
 
+// TestReplayHarness_ClarifyEntry asserts that an entry marked `clarify: true`
+// yields a *ClarifyResponse (the same error type the live harness returns when
+// the LLM can't map an utterance), while an ordinary intent entry in the same
+// recording still resolves to its intent. This is the deterministic no-LLM
+// hook that lets a replay demo drive the orchestrator's clarify branch (and an
+// opt-in agent off-ramp).
+func TestReplayHarness_ClarifyEntry(t *testing.T) {
+	tmp := t.TempDir()
+	rec := filepath.Join(tmp, "recording.yaml")
+	require.NoError(t, os.WriteFile(rec, []byte(`kind: recording
+entries:
+  - state: "lobby"
+    input: "tell me a joke"
+    clarify: true
+    message: "I route rooms, I don't free-associate."
+  - state: "lobby"
+    input: "look"
+    intent:
+      name: "look"
+`), 0o644))
+
+	h, err := harness.NewReplay(rec)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	// Clarify entry → *ClarifyResponse with the recorded message.
+	_, err = h.RunTurn(ctx, makeTurnInput("lobby", "tell me a joke"))
+	require.Error(t, err)
+	var clarify *harness.ClarifyResponse
+	require.ErrorAs(t, err, &clarify)
+	assert.Equal(t, "I route rooms, I don't free-associate.", clarify.Message)
+
+	// Intent entry in the same recording still resolves to its intent.
+	params, err := h.RunTurn(ctx, makeTurnInput("lobby", "look"))
+	require.NoError(t, err)
+	intent, _ := extractIntent(t, params)
+	assert.Equal(t, "look", intent)
+}
+
+// TestReplayHarness_ClarifyWithIntentRejected asserts that an entry which sets
+// both clarify:true and an intent name fails fast at load — the two kinds are
+// mutually exclusive.
+func TestReplayHarness_ClarifyWithIntentRejected(t *testing.T) {
+	tmp := t.TempDir()
+	rec := filepath.Join(tmp, "recording.yaml")
+	require.NoError(t, os.WriteFile(rec, []byte(`kind: recording
+entries:
+  - state: "lobby"
+    input: "tell me a joke"
+    clarify: true
+    intent:
+      name: "look"
+`), 0o644))
+
+	_, err := harness.NewReplay(rec)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "clarify")
+}
+
 // TestReplayHarness_MalformedRecording asserts that a missing-kind recording file fails fast.
 func TestReplayHarness_MalformedRecording(t *testing.T) {
 	tmp := t.TempDir()

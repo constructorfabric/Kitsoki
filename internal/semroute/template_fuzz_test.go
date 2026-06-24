@@ -7,7 +7,7 @@ import (
 	"kitsoki/internal/app"
 )
 
-// FuzzTemplate seeds the matcher with §5.2 templates and jittered
+// FuzzTemplate seeds the matcher with worked-example templates and jittered
 // inputs. Invariants: no panics, Confidence ∈ [0, 1], slot/missing-
 // slot accounting stays consistent.
 //
@@ -39,7 +39,7 @@ func FuzzTemplate(f *testing.F) {
 		f.Fatalf("Compile: %v", err)
 	}
 
-	// Seeds — §5.2 + jittered variants.
+	// Seeds — worked-example templates + jittered variants.
 	seeds := []string{
 		"buy 6 oxen and 200 lbs food for 240",
 		"buy 6 oxen for 240",

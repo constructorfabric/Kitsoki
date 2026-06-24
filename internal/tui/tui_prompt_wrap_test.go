@@ -12,7 +12,7 @@ import (
 )
 
 // TestPromptTextareaWrapsLongInput is the golden assertion for the
-// textinput→textarea swap (proposal §"Input fixes"). At an 80-column
+// textinput→textarea swap. At an 80-column
 // width, a paragraph longer than the wrap column must produce a prompt
 // View() that spans ≥ 2 display rows, with no truncation of any
 // constituent word.

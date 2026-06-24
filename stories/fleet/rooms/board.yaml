@@ -1,0 +1,84 @@
+# board — the dispatcher loop head; re-pins after each brief.
+#
+# on_enter runs fleet_board.py: it folds any just-returned ship-it disposition
+# (_ship_disposition: shipped|parked, set by the dispatch exit projection) into
+# the brief's status, recounts shipped/parked/pending, and picks the next
+# pending brief. set:/increment can't mutate list elements, so this recompute is
+# a deterministic host.run, not pongo (the work-decomposition discipline).
+#
+# Routing (post-bind guarded emits):
+#   pending brief & lock free → dispatch
+#   no pending                → all_done → summary
+
+states:
+
+  board:
+    description: "Fan-out dispatcher — pick the next pending brief or finish."
+    relevant_world: [fleet_briefs, current_brief, merge_lock_held, has_pending,
+                     shipped_count, parked_count, pending_count]
+    view:
+      - prose: "Fanning out {{ len(world.fleet_briefs) }} brief(s). One brief integrates at a time (merge-lock); failures park and the rest continue."
+      - kv:
+          pairs:
+            Shipped: '{{ world.shipped_count }}'
+            Parked:  '{{ world.parked_count }}'
+            Pending: '{{ world.pending_count }}'
+            Lock:    '{% if world.merge_lock_held %}held{% else %}free{% endif %}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # Reset the routing verdict BEFORE the recompute so the post-bind emit
+      # guards below defer until fleet_board.py rebinds it. board is re-entered
+      # after every brief; without this reset the PRIOR pass's board_route
+      # (e.g. "dispatch") is still in world, so the pre-bind guard fires the
+      # stale route immediately instead of waiting for the fresh recompute —
+      # the decision-emit discipline (cherny gating resets gate_ok the same way).
+      - set: { board_route: "" }
+      # Fold the just-returned disposition + recompute next/counts. The mark args
+      # are empty on the FIRST board entry (nothing dispatched yet) — fleet_board
+      # then just recounts and picks the first pending brief.
+      # id carries the briefs-resolved count so each board recompute is a
+      # distinct, addressable host call (fleet_board-0, -1, …) — the cherny
+      # gate-{{ iteration }} pattern, so flow fixtures can stub each pass.
+      - invoke: host.run
+        id: "fleet_board-{{ world.dispatched_count }}"
+        with:
+          cmd: python3
+          args:
+            - "stories/fleet/scripts/fleet_board.py"
+            - "{{ world.fleet_state_path }}"
+            - "{{ world.current_brief.id }}"
+            - "{{ world._ship_disposition }}"
+            - "{{ world._ship_last_error }}"
+        bind:
+          fleet_briefs:  "stdout_json.fleet_briefs"
+          current_brief: "stdout_json.next_brief"
+          has_pending:   "stdout_json.has_pending"
+          board_route:   "stdout_json.route"
+          shipped_count: "stdout_json.shipped_count"
+          parked_count:  "stdout_json.parked_count"
+          pending_count: "stdout_json.pending_count"
+        on_error: board
+      # Clear the just-consumed disposition so the NEXT board entry doesn't
+      # re-fold it.
+      - set:
+          _ship_disposition: ""
+          _ship_last_error:  ""
+      # Post-bind routing on the single mutually-exclusive route string the
+      # board script computed. board_route is "" pre-bind (default), so neither
+      # emit fires until the recompute settles, then exactly one does.
+      - when: "world.board_route == 'dispatch' && world.merge_lock_held == false"
+        emit_intent: dispatch_next
+      - when: "world.board_route == 'done'"
+        emit_intent: all_done
+    on:
+      dispatch_next:
+        - target: dispatch
+      all_done:
+        - target: summary
+      look:
+        - target: .

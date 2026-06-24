@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -170,4 +171,110 @@ func buildOneShotOrch(t *testing.T, def *app.AppDef, h harness.Harness) *orchest
 	return orchestrator.New(def, m, s, h,
 		orchestrator.WithHostRegistry(hostReg),
 	)
+}
+
+// TestTraceTurn_HappyPath exercises the trace-backed turn path end-to-end:
+//   - first call: creates the JSONL file, appends events for turn 1
+//   - second call: loads the existing trace, resumes, appends events for turn 2
+//
+// Uses the cloak story and the "go" intent (go west → cloakroom).
+func TestTraceTurn_HappyPath(t *testing.T) {
+	tracePath := filepath.Join(t.TempDir(), "cloak-test.jsonl")
+
+	// --- Turn 1: new trace ---
+	turn1Events := runTraceTurnInProcess(t, tracePath, "go", map[string]any{"direction": "west"})
+	assert.NotEmpty(t, turn1Events, "turn 1 should produce events")
+
+	// The trace file must exist and be non-empty.
+	data, err := os.ReadFile(tracePath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "session.header", "trace must start with session.header")
+	assert.Contains(t, string(data), "turn.start", "trace must contain TurnStarted event")
+
+	// --- Turn 2: resume from existing trace ---
+	turn2Events := runTraceTurnInProcess(t, tracePath, "hang_cloak", nil)
+	assert.NotEmpty(t, turn2Events, "turn 2 should produce events")
+
+	// Both turns' events should be in the file.
+	data2, err := os.ReadFile(tracePath)
+	require.NoError(t, err)
+	lines := 0
+	for _, line := range bytes.Split(bytes.TrimSpace(data2), []byte("\n")) {
+		if len(bytes.TrimSpace(line)) > 0 {
+			lines++
+		}
+	}
+	// At minimum: 1 header + events from 2 turns (TurnStarted, etc.)
+	assert.Greater(t, lines, 5, "trace should have at least 5 lines after 2 turns")
+}
+
+// TestTraceTurn_NewEvents_PrintedToStdout verifies that only the events from
+// the current turn are printed to stdout (not the full trace history).
+func TestTraceTurn_NewEvents_PrintedToStdout(t *testing.T) {
+	tracePath := filepath.Join(t.TempDir(), "stdout-test.jsonl")
+
+	// Turn 1.
+	events1 := runTraceTurnInProcess(t, tracePath, "go", map[string]any{"direction": "west"})
+	// Turn 2.
+	events2 := runTraceTurnInProcess(t, tracePath, "hang_cloak", nil)
+
+	// Events from turn 2 must not re-emit events from turn 1.
+	for _, ev := range events2 {
+		assert.NotEqual(t, 1, ev["turn"], "turn-2 stdout should not re-emit turn-1 events (got turn=1)")
+	}
+	assert.Greater(t, len(events1)+len(events2), 2, "should have events in both turns")
+}
+
+// runTraceTurnInProcess calls runTraceTurn directly (in-process) against the
+// cloak story and returns the events printed to stdout as a slice of maps.
+func runTraceTurnInProcess(t *testing.T, tracePath, intent string, slots map[string]any) []map[string]any {
+	t.Helper()
+
+	// Build the orchestrator manually (same as runTraceTurn does internally).
+	def := loadCloak(t)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	require.NoError(t, os.MkdirAll(filepath.Dir(tracePath), 0o755))
+	sink, err := store.OpenJSONL(tracePath)
+	require.NoError(t, err)
+	// Close the sink when this helper returns so the flock is released before
+	// the next call (t.Cleanup runs at test end, too late for sequential calls).
+	defer func() { _ = sink.Close() }()
+
+	hostReg := host.NewRegistry()
+	host.RegisterBuiltins(hostReg)
+
+	orch := orchestrator.New(def, m, s, &noRunHarness{},
+		orchestrator.WithHostRegistry(hostReg),
+		orchestrator.WithEventSink(sink),
+		orchestrator.WithEventSinkAuthority(true),
+	)
+
+	histBefore := len(sink.History())
+
+	sid, err := orch.NewSession(context.Background())
+	require.NoError(t, err)
+
+	slotMap := make(map[string]any)
+	for k, v := range slots {
+		slotMap[k] = v
+	}
+
+	_, err = orch.SubmitDirect(context.Background(), sid, intent, slotMap)
+	require.NoError(t, err)
+
+	// Collect newly appended events (what the CLI prints to stdout).
+	newEvents := sink.History()[histBefore:]
+	out := make([]map[string]any, 0, len(newEvents))
+	for _, ev := range newEvents {
+		b, _ := json.Marshal(ev)
+		var m map[string]any
+		require.NoError(t, json.Unmarshal(b, &m))
+		out = append(out, m)
+	}
+	return out
 }

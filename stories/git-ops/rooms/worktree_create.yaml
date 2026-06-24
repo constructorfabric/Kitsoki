@@ -1,0 +1,118 @@
+# worktree_create — create a new linked worktree under .worktrees/.
+
+states:
+
+  worktree_create:
+    description: "Create a new linked worktree under .worktrees/ on a new branch."
+    relevant_world: [worktree_desc, worktree_branch_name, worktree_path, integration_branch, last_op_outcome]
+    view:
+      - prose: "Provide a short description to derive a branch name for the new worktree."
+      - kv:
+          pairs:
+            Description:   '{{ world.worktree_desc|default:"(not yet provided)" }}'
+            "Branch name": '{{ world.worktree_branch_name|default:"(derived from description)" }}'
+            Path:          '{{ world.worktree_path|default:"(derived from branch name)" }}'
+            Base:          '{{ world.integration_branch }}'
+      - heading: "Branch exists — no worktree"
+        when: "world.last_op_outcome == 'branch_exists'"
+      - prose: "Branch {{ world.worktree_branch_name }} exists but has no linked worktree."
+        when: "world.last_op_outcome == 'branch_exists'"
+      - heading: "Already registered"
+        when: "world.last_op_outcome == 'already_registered'"
+      - prose: "Worktree {{ world.worktree_path }} is already registered. Use worktree_list to view it."
+        when: "world.last_op_outcome == 'already_registered'"
+      - heading: "Stale directory"
+        when: "world.last_op_outcome == 'stale_dir'"
+      - prose: "Directory {{ world.worktree_path }} exists on disk but is not registered. Remove it manually or run git worktree repair."
+        when: "world.last_op_outcome == 'stale_dir'"
+      - heading: "Created"
+        when: "world.last_op_outcome == 'created'"
+      - prose: "Worktree created at {{ world.worktree_path }} on branch {{ world.worktree_branch_name }}."
+        when: "world.last_op_outcome == 'created'"
+      - prose: "Creation failed: {{ world.last_op_output }}"
+        when: "world.last_op_ok == false && world.last_op_outcome == ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "describe desc=<short description>"
+              hint:  "set description and create the worktree"
+              intent: describe
+              param:
+                slot:        desc
+                type:        string
+                placeholder: "add login"
+                required:    false
+            - label: "worktree_list"
+              hint:  "view existing worktrees"
+              intent: worktree_list
+              when:  "world.last_op_outcome == 'already_registered'"
+            - label: "back"
+              hint:  "return to hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on:
+      describe:
+        - when: "slots.desc != '' && slots.desc != nil"
+          target: worktree_create
+          effects:
+            - set:
+                worktree_desc:   "{{ slots.desc }}"
+                last_op_outcome: ""
+            - invoke: host.run
+              id: create_worktree
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    set -e
+                    export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+                    DESC="{{ world.worktree_desc }}"
+                    BRANCH=$(echo "$DESC" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g' | sed 's/-\+/-/g' | sed 's/^-//;s/-$//')
+                    WT_PATH=".worktrees/$BRANCH"
+                    INTEGRATION="{{ world.integration_branch }}"
+                    if git worktree list --porcelain 2>/dev/null | grep -q "^worktree.*$WT_PATH"; then
+                      jq -n --arg branch "$BRANCH" --arg path "$WT_PATH" \
+                        '{outcome:"already_registered",branch:$branch,path:$path,ok:false,output:"already registered"}'
+                      exit 0
+                    fi
+                    if [ -d "$WT_PATH" ]; then
+                      jq -n --arg branch "$BRANCH" --arg path "$WT_PATH" \
+                        '{outcome:"stale_dir",branch:$branch,path:$path,ok:false,output:"stale directory"}'
+                      exit 0
+                    fi
+                    if git rev-parse --verify "$BRANCH" >/dev/null 2>&1; then
+                      jq -n --arg branch "$BRANCH" --arg path "$WT_PATH" \
+                        '{outcome:"branch_exists",branch:$branch,path:$path,ok:false,output:"branch exists"}'
+                      exit 0
+                    fi
+                    OUTPUT=$(git worktree add "$WT_PATH" -b "$BRANCH" "$INTEGRATION" 2>&1)
+                    EXIT=$?
+                    jq -n \
+                      --arg branch "$BRANCH" \
+                      --arg path "$WT_PATH" \
+                      --arg output "$OUTPUT" \
+                      --argjson ok "$([ $EXIT -eq 0 ] && echo true || echo false)" \
+                      --arg outcome "$([ $EXIT -eq 0 ] && echo created || echo '')" \
+                      '{branch:$branch,path:$path,output:$output,ok:$ok,outcome:$outcome}'
+                cwd: "{{ world.working_dir }}"
+              bind:
+                worktree_branch_name: "stdout_json.branch"
+                worktree_path:        "stdout_json.path"
+                last_op_output:       "stdout_json.output"
+                last_op_ok:           "stdout_json.ok"
+                last_op_outcome:      "stdout_json.outcome"
+              on_error: worktree_create
+        - target: worktree_create
+          effects:
+            - say: "Provide a description: describe desc=<short description>."
+      worktree_list:
+        - target: worktree_list
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

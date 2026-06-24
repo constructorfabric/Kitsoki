@@ -1,0 +1,37 @@
+# route_merge_doit — utterance "doit" (rebase_done=true) → routes to merge_into_main.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  has_uncommitted:    false
+  commits_ahead:      2
+  rebase_done:        true
+  rebase_base_sha:    "abc1234"
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"branch":"feat/x","main_worktree_path":".","worktree_list":{"raw":""},"commits_ahead":2,"commits_behind":0,"has_uncommitted":false,"no_common_ancestor":false}'
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      2
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+
+turns:
+  - intent: { name: merge_into_main, slots: {} }
+    expect_state: merge_into_main
+
+expect_no_errors: true

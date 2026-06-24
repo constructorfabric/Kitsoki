@@ -1,11 +1,11 @@
 {% comment %}
 cypilot — sub-story base view. Mirrors stories/oregon-trail/views/base.pongo
-and follows the style-guide block convention (docs/story-style.md §2).
+and follows the style-guide block convention (docs/stories/story-style.md §2).
 
 This base IS consulted only when cypilot runs STANDALONE. When imported under
 dev-story (alias `cyp`), the AppRenderer resolves `extends: "base"` against
 the HOST's views/base.pongo (dev-story's), not this one. See
-docs/proposals/view-elements-proposal.md §5.6 and stories/robbery/views/base.pongo
+docs/stories/story-style.md and stories/robbery/views/base.pongo
 for the same pattern.
 
 Block contract — shared across stories so any room composes into any host:

@@ -1,0 +1,41 @@
+# media-demo — minimal story for the media-artifact Playwright spec.
+#
+# Contains a single room "show_media" that renders one video/mp4 and one
+# image/png media element. Used as the story fixture when running against
+# a real kitsoki binary (see media-artifact.spec.ts comments for the
+# mock-server approach used when the binary is unavailable).
+
+app:
+  id: media-demo
+  version: 0.1.0
+  title: "Media Demo"
+  author: "kitsoki"
+  license: "CC0"
+
+hosts: []
+
+world:
+  artifact_path: { type: string, default: "" }
+
+states:
+  show_media:
+    description: "Show a video and an image via media ViewElements."
+    view:
+      - prose: "Here are your media artifacts:"
+      - media:
+          handle: demo-video
+          kind: video
+          caption: "A demo video clip"
+      - media:
+          handle: demo-image
+          kind: image
+          caption: "A demo screenshot"
+    on:
+      done:
+        - target: finished
+
+  finished:
+    description: "All done."
+    terminal: true
+    view:
+      - prose: "Media review complete."

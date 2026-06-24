@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.vsix
+.vscode-test/
+test-results/
+playwright-report/
+# The embedded SPA is a generated artifact (built from tools/runstatus), staged
+# by `node esbuild.mjs` (or `make build`) — never committed. Mirrors how
+# internal/runstatus/web/assets gitignores the built index.html. Only the
+# .gitkeep placeholder is tracked so webview.ts's media root always exists.
+media/spa/index.html

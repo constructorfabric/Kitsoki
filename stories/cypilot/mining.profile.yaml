@@ -1,0 +1,49 @@
+# mining.profile.yaml — scope config for mining cypilot coverage from real
+# Claude Code transcripts. Co-located so the story self-describes its mine.
+#
+# This is SCOPE CONFIGURATION, not an auto-classifier. It tells coverage_prep.py
+# (1) which sessions to distill (the grep prefilter), (2) which mined intents are
+# in-scope (the action tags), and (3) which rooms are CANDIDATE owners of each
+# action tag — a STARTING POINT for the human/LLM map in coverage.md, never an
+# assertion. The verdict (CONFORMS / DIVERGES / FIXTURE-GAP / COVERAGE-GAP /
+# OUT-OF-SCOPE) is assigned by reading the room bash + the recovered outcome, not
+# mechanically. See docs/stories/story-coverage-mining.md.
+
+story: cypilot
+
+scope:
+  # prep.py --grep words. RECALL-ONLY prefilter: a substring scan over the whole
+  # raw jsonl, so it over-matches prose ("the prd says", "design this"). It widens
+  # the net; the real scoping is the human read in the map. cypilot is an SDLC
+  # waterfall, so the words track its artifact stages.
+  grep: [prd, adr, design, decomposition, "phase plan", "implement the", "write the spec", "run the tests"]
+  sample: recency          # mine how we work *now*
+  max: 25
+
+  # post-filter to these action tags (vocab/tags.yaml). The waterfall produces
+  # specs/docs (write-docs), turns each into code (implement-from-spec), runs the
+  # test gate (verify-by-running), and signs off on each artifact (review-feedback).
+  # The non_goals boundary below is enforced by reading user_text, not by tag.
+  action_tags: [write-docs, implement-from-spec, verify-by-running, review-feedback]
+
+# Candidate rooms per action tag — a starting point for the human map, joined into
+# the coverage.md "candidate room" column by coverage_prep.py. Room ids are the
+# files under stories/cypilot/rooms/.
+owns:
+  write-docs:           [prd, adr, design, decomposition]
+  implement-from-spec:  [feature, code]
+  verify-by-running:    [code]
+  review-feedback:      [prd, adr, design, decomposition, feature, code]
+
+# v1 non-goals. cypilot is the artifact-production middle of a larger pipeline:
+# ticket intake + workspace creation are the PARENT story's job (dev-story), and
+# the PR-refinement / merge handoff happens AFTER @exit:code_ready. The
+# validation_failed exit is declared but not yet exercised by the rooms. A matching
+# intent is OUT-OF-SCOPE, not a gap. Matched against the verbatim user_text, since
+# the action tags above are too coarse to separate these from in-scope work.
+non_goals: [ticket-intake, workspace-creation, pr-refinement, open-pr, merge-to-main, "validation-failed exit"]
+
+# Marker substrings coverage_prep.py scans the verbatim user_text for to HINT that
+# an in-scope-by-tag intent is actually an OUT-OF-SCOPE non_goal. A hint that
+# routes the human's attention — never an automatic verdict.
+non_goal_markers: ["open a pr", "create a pr", "open the pr", "pull request", "merge to main", "merge into main", "create the ticket", "file a ticket", "create the workspace", "create a worktree", "refine the pr"]

@@ -1,9 +1,9 @@
 # bugfix — general-purpose, provider-neutral bug-fix pipeline.
 #
-# Wave 1 / Slice α of the dev-story / bugfix unify design: the 7
-# visible rooms (idle → reproducing → proposing → implementing →
-# testing → reviewing → validating → done) collapse a 14-phase
-# pipeline into one state machine. Each room has an `_executing` substate that drives
+# Wave 1 / Slice α (see docs/proposals/notes/dev-story-implementation-contract.md):
+# the 7 visible rooms (idle → reproducing → proposing → implementing → testing
+# → reviewing → validating → done) collapse the cyber-repo's 14-phase pipeline
+# into one state machine. Each room has an `_executing` substate that drives
 # the LLM call producing the artifact, and (for checkpointed rooms) an
 # `_awaiting_reply` substate that posts the artifact, mirrors it to the local
 # inbox, optionally runs an LLM-judge, and waits for accept / refine /
@@ -50,11 +50,23 @@ app:
 # they are not wrapped by an iface.
 hosts:
   - host.inbox.add
-  - host.oracle.ask
-  - host.oracle.decide
-  - host.oracle.task
+  - host.agent.ask
+  - host.agent.decide
+  - host.agent.task
+  # Review-diff: open the committed fix (feature_branch vs base_branch) in the
+  # operator's editor (with a captured accept/reject verdict) or a view-only
+  # system difftool. The reviewing room's `review_externally` arc drives it; the
+  # verdict routes advance/redo. See docs/architecture/hosts.md#hostdiffopen.
+  - host.diff.open
+  # host.run — the pre-fix regression gate (testing room) + the ship-it tail's
+  # integrate/verify/cleanup host.run sites (imported as `tail`).
+  - host.run
+  # The ship-it tail import declares these; unioned at load so the imported
+  # integrate/verify/cleanup rooms resolve their host bindings.
+  - host.git_worktree
+  - host.artifacts_dir
 
-# Persona table (oracle-split proposal §3.5).
+# Persona table (agent-split proposal §3.5).
 #
 # Each persona declares the model, tool surface, and blast-radius
 # classification for one class of LLM work. The verb at every call site
@@ -77,6 +89,18 @@ agents:
     system_prompt: "You are a bug reproduction analyst. Read the codebase, reproduce the reported bug, identify the affected components, and produce a structured reproduction artifact."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
+    external_side_effect: false
+
+  # triager — triage-only mode. Read-only assessment of whether the reported
+  # bug STILL EXISTS in the current working tree, emitting a standardized
+  # verdict (ALREADY-FIXED | STILL-LIVE | PARTIAL | UNCLEAR) with concrete code
+  # evidence. No worktree, no fix, no judge — the verdict IS the deliverable.
+  triager:
+    system_prompt: "You are a bug triage analyst. Read the reported bug, then inspect the current codebase (the cited files/functions, the Suggested-fix section, and any regression test) to determine whether the defect still exists in the working tree. Emit a standardized triage verdict citing concrete code evidence (file:line, function name, or a regression test) — never prose alone."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
     external_side_effect: false
 
   proposer:
@@ -89,18 +113,21 @@ agents:
     system_prompt: "You are a software engineer applying a proposed fix. Read the proposal artifact, locate the affected files, and apply the minimal correct edit to fix the bug."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile: read-only
     external_side_effect: false
 
   test_author:
     system_prompt: "You are a software engineer reviewing test coverage and authoring regression tests. Read the applied fix, run the tests, and produce a structured test-review artifact."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile: read-only
     external_side_effect: false
 
   validator:
     system_prompt: "You are a validation engineer verifying a fix in a full environment. Build the project, run tests, check the fix applies, and produce a structured validation artifact."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
     external_side_effect: false
 
   judge:
@@ -123,7 +150,8 @@ host_interfaces:
       get:
         input:  { id: string }
         output: { id: string, title: string, body: string, status: string,
-                  priority: string, assignee: string, url: string, comments: list }
+                  priority: string, assignee: string, url: string, comments: list,
+                  repro_command: string }
       comment:
         input:  { id: string, body: string, thread: string }
         output: { ok: bool, comment_id: string }
@@ -146,7 +174,12 @@ host_interfaces:
         input:  { workdir: string }
         output: { diff: string, files: list }
       commit:
-        input:  { workdir: string, message: string, files: list }
+        # stage_all: when true the handler runs `git add -A` first, so NEW
+        # untracked files (e.g. a test the test_author wrote) AND deletions
+        # are captured — `files:` and the `-a` fallback both miss untracked.
+        # The testing room sets this so a test-phase edit can never be
+        # stranded uncommitted (the lost-work split). See git_vcs.go.
+        input:  { workdir: string, message: string, files: list, stage_all: bool }
         output: { ok: bool, sha: string }
       push:
         input:  { workdir: string, remote: string }
@@ -188,7 +221,13 @@ host_interfaces:
         input:  { id: string }
         output: { id: string, path: string, branch: string, dirty: bool }
       create:
-        input:  { name: string, ticket_id: string, base: string }
+        # `id` is the workspace identity (pins the on-disk .worktrees/<id>
+        # dir basename); `name` is the branch; `base` is the branch to
+        # root from. Matches host.git_worktree's worktreeCreate, which
+        # reads id/name/base — bf.idle passes `id:` from world.workspace_id.
+        # The earlier `ticket_id` label was stale: no caller passed it and
+        # the handler never read it.
+        input:  { id: string, name: string, base: string }
         output: { ok: bool, path: string }
       sync:
         input:  { id: string }
@@ -197,9 +236,9 @@ host_interfaces:
 
   # 2.5 transport — out-of-band channel for checkpoint artifacts. For
   # kitsoki-dev this is `host.append_to_file` (appends a comment block to the
-  # local bug file); a downstream Jira-backed parent story will rebind
-  # to `host.jira_comment`. host.stdout (no-op) is available for tests
-  # that don't care about the side effect.
+  # local bug file); cyber-repo's parent story will rebind to
+  # `host.jira_comment`. host.stdout (no-op) is available for tests that
+  # don't care about the side effect.
   transport:
     description: "Out-of-band channel for posting proposals, checkpoints, status."
     operations:
@@ -234,6 +273,81 @@ world:
   # ── Pipeline control ──────────────────────────────────────────────────
   bugfix_mode:      { type: string, default: "full" }            # full | quick
 
+  # ── Exit slot (slice 4 — bugfix convergence) ───────────────────────────
+  # The bug-fix pipeline ends one of two ways:
+  #
+  #   direct-ship — compose the ship-it tail (integrate → re-verify the
+  #                 regression gate on the MERGED commit → cleanup) and land
+  #                 the fix on LOCAL main. @exit:shipped on green; @exit:needs-human
+  #                 on any integrate/verify/cleanup failure OR a regression gate
+  #                 that was never RED pre-fix. This is the self-hosting loop.
+  #   open-PR     — today's behaviour: walk reviewing → validating → done and hand
+  #                 the close-out artifact to pr-refinement (parent stories lift
+  #                 @exit:done). For human-review flows.
+  #
+  # Default direct-ship for the self-hosting loop. Parent stories that want the
+  # PR-handoff tail (dev-story, gears-bugfix) project bugfix_exit: open-PR via
+  # world_in. See stories/bugfix/README.md (the exit slot + RED→GREEN gate).
+  bugfix_exit:      { type: string, default: "direct-ship" }     # direct-ship | open-PR
+
+  # ── RED→GREEN regression gate (slice 4) ────────────────────────────────
+  # The bugfix-specific discipline ship-it does NOT cover: the regression test
+  # must FAIL before the fix and PASS after. The testing room runs the gate on
+  # the PRE-FIX snapshot and records whether it was RED there (regression_red_pre_fix);
+  # the shared ship-it verify room re-runs the SAME gate on the MERGED commit and
+  # records GREEN (verify_ok). A fix whose regression test was never RED pre-fix
+  # (a characterization test), or isn't GREEN on merged main, routes to
+  # @exit:needs-human — never @exit:shipped. See stories/bugfix/README.md.
+  gate_command:           { type: string, default: "" }    # the deterministic regression gate (re-run on merged commit)
+  # default_landing_gate — the gate the delivery tail re-runs on the MERGED commit
+  # when the ticket carries NO repro_command (gate_command empty). Landing should
+  # never ship blind: even without a bug-specific regression test we re-prove the
+  # build + suite pass on main. Instances retarget it (kitsoki-dev pins the story
+  # flow suite for story fixes; a Rust repo pins cargo). The never-RED trap is
+  # enforced ONLY when a real regression gate (gate_command) was configured.
+  default_landing_gate:   { type: string, default: "go build ./... && go test ./..." }
+  # landing_gate — what the tail actually re-verifies: the regression gate when a
+  # repro_command is present, else default_landing_gate. Computed in the testing
+  # room's direct-ship landing arm and projected into the tail's gate_command.
+  landing_gate:           { type: string, default: "" }
+  regression_red_pre_fix: { type: bool,   default: false } # the gate FAILED on the pre-fix snapshot (RED)
+  regression_pre_fix_log: { type: string, default: "" }    # the pre-fix gate's output tail (audit)
+  regression_gate_checked: { type: bool,  default: false } # the pre-fix gate actually ran (vs skipped)
+
+  # ── Repro RED-gate (reproducing room) ──────────────────────────────────
+  # The bugfix-repro-gate slice: a ticket can carry a `repro_command:`
+  # frontmatter field, projected into world.gate_command at ticket-load. The
+  # `reproducing` room runs it RED-first on the unchanged (pre-fix) worktree
+  # BEFORE the LLM reproducer — non-zero exit (RED, bug reproduces) → proceed
+  # to proposing; zero exit (GREEN, cannot reproduce) → @exit:not-reproducible.
+  # `repro_checked` latches the one-shot run (mirrors regression_gate_checked).
+  # Empty gate_command ⇒ the gate is skipped ⇒ current LLM-only reproducing
+  # behaviour (backward compatible). See docs/stories/bugfix.md.
+  repro_checked:          { type: bool,   default: false } # the pre-fix repro gate ran in reproducing
+
+  # ── Lost-work guard (clean-tree invariant) ──────────────────────────────
+  # The maker rooms mutate the worktree (implementer writes the fix,
+  # test_author writes/repairs tests). Every such edit MUST land in a commit
+  # before an exit — `git rebase`/`merge` move only committed content, so an
+  # uncommitted/untracked file would ship an empty or partial shell while the
+  # working tree (which the gates read) looks green. The `done` room re-reads
+  # `git status --porcelain` and routes a dirty tree to @exit:needs-human
+  # rather than @exit:done — the open-PR analogue of the integrate room's
+  # existing direct-ship guard (delivery-tail/rooms/integrate.yaml).
+  worktree_dirty:        { type: bool,   default: false }  # done's git-status check found uncommitted/untracked work
+  worktree_dirty_files:  { type: string, default: "" }     # the porcelain listing (carried into last_error)
+
+  # ── CI command profile (provider-neutral retargeting) ───────────────────
+  # The ci interface defaults to host.local, whose run_tests/build default to
+  # `go test ./...` / `go build ./...`. An instance targeting a non-Go repo
+  # (e.g. the gears-rust Rust workspace) sets these so the testing / validating
+  # rooms forward them to host.local's `test_cmd` / `build_cmd` args. Empty
+  # (the default) preserves the Go behaviour — host.local's splitOverride
+  # treats "" as "use the built-in default", so Go stories are unaffected.
+  # See internal/host/local_ci.go (splitOverride) + docs/architecture/hosts.md.
+  test_cmd:         { type: string, default: "" }   # e.g. "cargo test -p cf-gears-toolkit config"
+  build_cmd:        { type: string, default: "" }   # e.g. "cargo build -p cf-gears-toolkit"
+
   # bf_autostart_attempted gates bf.idle's on_enter setup+autostart
   # chain so it fires exactly once per session per ticket. Without
   # this, an on_error bounce back to idle would re-fire the chain
@@ -250,20 +364,19 @@ world:
 
   # ── L2 cycle budgets — per-checkpoint refine counters + budgets ──────
   #
-  # Wave 3 / Phase 4 — port of an upstream bugfix pipeline's L2
-  # cycle-budget pattern.  Each checkpointed room maintains its own
-  # `<phase>_cycle` counter; when `refine` fires the counter
-  # increments and the room re-executes. When the counter hits
-  # `<phase>_budget` the refine arc redirects to `@exit:abandoned`
-  # with `abandon_reason: <phase>_cycle_budget_exhausted` — the
-  # operator gets one bail-out instead of an infinite loop.
+  # Wave 3 / Phase 4 — port of the cyber-repo bugfix's L2 cycle-budget
+  # pattern (HALLY-MIGRATION §2.6). Each checkpointed room maintains its
+  # own `<phase>_cycle` counter; when `refine` fires the counter increments
+  # and the room re-executes. When the counter hits `<phase>_budget` the
+  # refine arc redirects to `@exit:abandoned` with `abandon_reason:
+  # <phase>_cycle_budget_exhausted` — the operator gets one bail-out
+  # instead of an infinite loop.
   #
-  # Budgets default to 3 (matches the upstream pipeline's L2 retry
-  # caps); operators can override per-session by setting
-  # `<phase>_budget` in initial_world.  `cycle_budget` is the
-  # documented global default — kept here for vocabulary parity but
-  # not currently used directly by any arc (each phase reads its own
-  # `_budget` key).
+  # Budgets default to 3 (matches cyber-repo's L2 retry caps); operators
+  # can override per-session by setting `<phase>_budget` in initial_world.
+  # `cycle_budget` is the documented global default — kept here for parity
+  # with the proposal §4.2 vocabulary but not currently used directly by
+  # any arc (each phase reads its own `_budget` key).
   reproducing_cycle:    { type: int, default: 0 }
   proposing_cycle:      { type: int, default: 0 }
   implementing_cycle:   { type: int, default: 0 }
@@ -292,9 +405,10 @@ world:
   abandon_reason:      { type: string, default: "" }
 
   # ── Per-room artifacts (objects; each holds {summary_title, summary_markdown, …}) ─
+  triage_verdict:            { type: object, default: {} }  # triage-only mode: standardized verdict (schemas/triage_verdict.json)
   reproduction_artifact:     { type: object, default: {} }
   propose_fix_artifact:      { type: object, default: {} }
-  implement_artifact:        { type: object, default: {} }  # implementing oracle output (files_changed, applied, blockers)
+  implement_artifact:        { type: object, default: {} }  # implementing agent output (files_changed, applied, blockers)
   implement_review_artifact: { type: object, default: {} }  # testing-room artifact (yes, the name predates the implement_artifact split)
   validate_artifact:         { type: object, default: {} }
   done_artifact:             { type: object, default: {} }
@@ -307,6 +421,21 @@ world:
   pr_url:           { type: string, default: "" }
   ci_state:         { type: string, default: "" }
   ci_log:           { type: string, default: "" }  # last CI run log; scratch
+
+  # ── Review-diff (host.diff.open) — populated by reviewing_external ────────
+  review_verdict:       { type: string, default: "" }   # "accept" | "reject" | "" (no verdict)
+  review_surface:       { type: string, default: "" }   # "ide" | "difftool:<name>" | "none"
+  review_reviewed:      { type: bool,   default: false } # did any surface actually show the diff?
+  review_changed_files: { type: list,   default: [] }    # paths handed to the diff surface
+
+  # ── ship-it tail handoff (slice 4 — direct-ship) ─────────────────────
+  # The maker→tail seam, identical to cherny-loop's @exit:achieved handoff that
+  # ship-it's `integrate` room reads. bugfix's implementing/testing rooms leave
+  # the worktree + branch populated; the ship-it tail import projects these into
+  # the tail's own world (worktree_path / workspace_branch / gate_command).
+  worktree_path:    { type: string, default: "" }   # the bugfix worktree (== workdir); set when entering the tail
+  shipped_sha:      { type: string, default: "" }   # the merged commit, set after a green re-verify
+  last_error:       { type: string, default: "" }   # the real failure on any needs-human arc
 
   # ── Story-level "done" sink for standalone runs ──────────────────────
   status:           { type: string, default: "open" }
@@ -368,6 +497,13 @@ intents:
     description: "Default — walk all phases. Set bugfix_mode=full and start from reproducing."
     examples: [full_pipeline, "full", "all phases"]
     priority: 75
+  # Triage-only: a read-only verdict on whether the bug still exists in the
+  # current tree (no worktree, no fix). Cheap pre-flight before committing the
+  # full maker pipeline to a ticket. Terminal: @exit:triaged carrying the verdict.
+  triage:
+    description: "Triage-only: assess whether the bug still exists in the current tree and emit a standardized verdict (ALREADY-FIXED | STILL-LIVE | PARTIAL | UNCLEAR). No fix pipeline."
+    examples: [triage, "assess", "is it still a bug", "verdict only", "just triage"]
+    priority: 75
   change_ticket:
     description: "From idle: hand control back to the parent's ticket picker so the operator can choose a (different) ticket before starting."
     examples: [change_ticket, "pick ticket", "find ticket", "tickets"]
@@ -380,25 +516,120 @@ intents:
     description: "Re-render the current view."
     examples: [look, "what now?"]
     priority: 10
+  # ── Review-diff (reviewing room). review_externally is operator-chosen;
+  # review_rejected / review_inconclusive are emitted by reviewing_external
+  # from the host.diff.open verdict (never typed). ─────────────────────────
+  review_externally:
+    description: "Open the fix's diff in the editor / system diff viewer and capture the verdict."
+    examples: [review_externally, "review the diff", "open the diff", "review in editor"]
+    priority: 65
+  review_rejected:
+    description: "The operator rejected the diff at the external review surface — bounce back to implementing."
+    examples: [review_rejected]
+    priority: 1
+  review_inconclusive:
+    description: "The diff surface produced no accept/reject (view-only difftool, or none available) — fall back to the inline review choice."
+    examples: [review_inconclusive]
+    priority: 1
+  # ── direct-ship routing (slice 4). Internal guarded emits from testing's
+  # accept arc: ship_direct enters the ship-it tail import; gate_not_red routes
+  # to @exit:needs-human when the regression test was never RED pre-fix. ──────
+  ship_direct:
+    description: "(internal) regression test was RED pre-fix → enter the ship-it tail (integrate → re-verify → cleanup)."
+    examples: []
+    priority: 1
+  gate_not_red:
+    description: "(internal) the regression gate was never RED on the pre-fix snapshot (a characterization test) → needs-human, never shipped."
+    examples: []
+    priority: 1
+  # ── repro RED-gate routing (reproducing room). Internal guarded emit: the
+  # repro_command was GREEN on the unchanged worktree → the bug cannot be
+  # reproduced → route to @exit:not-reproducible (needs-human). ──────────────
+  not_reproducible:
+    description: "(internal) the repro_command passed (GREEN) on the unchanged worktree → the bug does not currently reproduce → needs-human, never fixed."
+    examples: []
+    priority: 1
 
 # Intents exposed to importing parent stories. Wave 2 (dev-story hub)
 # `intents.import: [start, proceed, accept, refine, restart_from, quit]`
 # lifts these into the parent's bare intent table so an operator can
 # drive the imported pipeline without typing the `bf__` prefix.
 exports:
-  intents: [start, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, change_ticket, quit, look]
+  intents: [start, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, triage, change_ticket, quit, look]
 
 # Named return points. A parent story (dev-story / kitsoki-dev / cyber-devstory)
 # maps each to one of its own states. Standalone load synthesises
 # `__exit__done` and `__exit__abandoned` terminals.
 exits:
   done:
-    description: "Pipeline succeeded; ready to hand off to pr-refinement."
+    description: "Pipeline succeeded (open-PR exit); ready to hand off to pr-refinement."
     requires: [done_artifact]
   abandoned:
     description: "User or LLM bailed."
   pick_ticket:
     description: "Operator wants to (re-)pick a ticket. Parent should route back to its ticket picker; no abandonment, no artifact required."
+  # ── triage-only exit ─────────────────────────────────────────────────────
+  triaged:
+    description: "Triage-only mode produced a standardized verdict on whether the bug still exists. Carries world.triage_verdict; no fix was attempted."
+    requires: [triage_verdict]
+  # ── direct-ship exits (slice 4) — the shared ship-it tail terminals ──────
+  shipped:
+    description: "direct-ship: the fix integrated to local main, the regression gate re-verified GREEN on the merged commit, worktree cleaned up."
+    requires: [shipped_sha]
+  needs-human:
+    description: "direct-ship: an integrate/verify/cleanup failure, or a regression gate that was never RED pre-fix or isn't GREEN on merged main. Carries the real error."
+    requires: [last_error]
+  # ── repro RED-gate exit (reproducing room) ───────────────────────────────
+  not-reproducible:
+    description: "The ticket's repro_command passed (GREEN) on the unchanged worktree — the bug does not currently reproduce. Needs a human to confirm wontfix / cannot-reproduce or supply a sharper repro. Carries the gate's output as last_error."
+    requires: [last_error]
+
+# ── The shared ship-it tail (slice 4 — compose, don't reinvent) ──────────
+#
+# direct-ship composes ship-it's integrate → verify → cleanup → report tail
+# instead of bugfix's weaker validating → PR-handoff. The tail is IMPORTED, not
+# copied: ship-it's `integrate` room (lost-work-safe rebase onto CURRENT main +
+# build-check + merge), its `verify` room (re-run the IDENTICAL regression gate
+# on the MERGED commit), and its `cleanup` room are reused verbatim. The maker
+# rooms (reproducing → proposing → implementing → testing) feed the tail at
+# `integrate` exactly as cherny-loop's @exit:achieved feeds ship-it — the same
+# worktree_path / workspace_branch handoff seam.
+#
+# Entered at `integrate` (NOT ship-it's `configure` root), so the cherny-loop
+# maker ship-it would otherwise run is bypassed — bugfix IS the maker here. The
+# regression gate's RED-pre-fix half is recorded by bugfix's `testing` room
+# (regression_red_pre_fix); the GREEN-post-fix half is the tail's `verify`.
+imports:
+  tail:
+    source: ../delivery-tail
+    entry: integrate
+    # Project bugfix's maker handoff → the delivery-tail's world. gate_command is
+    # the regression gate (same command verify re-runs on the merged commit);
+    # workspace_branch/worktree_path are the maker's worktree; main_worktree_path
+    # is "." (the integration tree, where integrate/verify/cleanup run).
+    world_in:
+      # The tail re-verifies landing_gate on the merged commit: the regression
+      # gate when the ticket had a repro_command, else default_landing_gate.
+      gate_command:       "{{ world.landing_gate }}"
+      workspace_id:       "{{ world.workspace_id }}"
+      workspace_branch:   "{{ world.feature_branch }}"
+      worktree_path:      "{{ world.worktree_path }}"
+      base_branch:        "{{ world.base_branch }}"
+      main_worktree_path: "."
+      brief:              "{{ world.ticket_id }} — {{ world.ticket_title }}"
+    exits:
+      # ship-it's @exit:shipped → bugfix @exit:shipped, carrying the merged sha up.
+      shipped:
+        to: "@exit:shipped"
+        set:
+          shipped_sha: "{{ world.tail__shipped_sha }}"
+          status:      "shipped"
+      # ship-it's @exit:needs-human → bugfix @exit:needs-human, carrying the error.
+      needs-human:
+        to: "@exit:needs-human"
+        set:
+          last_error: "{{ world.tail__last_error }}"
+          status:     "needs-human"
 
 # Root state — the operator-controlled entry point. Children fold this into
 # `bf` (or similar alias) and `entry: idle` enters here.

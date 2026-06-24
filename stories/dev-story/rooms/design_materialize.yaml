@@ -1,0 +1,193 @@
+# design_materialize — mint the workspace + curate references (post-gate).
+#
+# Stage 2.5 of the proposal pipeline, reached ONLY once the operator has
+# committed to a brand-new proposal (confirm with no overlap, or override_new
+# despite one). This is where the side-effects the scout gate deferred finally
+# happen:
+#   1. uniquify   — host.run mints the unique workspace folder on disk.
+#   2. 002 write  — persist the scout's existing-state report into the folder.
+#   3. references — the design_researcher curates reference materials.
+#   4. 003 write  — persist references into the folder; this LAST step carries
+#                   emit_intent: materialized, which auto-advances to
+#                   design_refine in the same turn.
+#
+# The operator never rests here: on_enter runs and the emit_intent transition
+# fires straight through to design_refine. The room only renders its own
+# view if the auto-advance somehow does not fire (a manual `confirm` is the
+# escape hatch).
+#
+# Reload-safety: uniquify, the 002 write, and references_research are
+# `once: true` (keyed off their binds), so a /reload re-renders from cache
+# instead of re-minting the folder or re-running the researcher. The final
+# 003 write is intentionally NOT once: — it is a cheap idempotent rewrite and
+# its emit_intent must fire on every entry so a reloaded session is carried
+# forward rather than stranded in this transient room.
+#
+# The amend path (change_existing) does NOT pass through here: it points the
+# workspace at the existing draft and goes straight to design_refine, so no
+# new folder is ever created for an idea that already has one.
+
+states:
+
+  design_materialize:
+    description: "Minting the workspace and curating references."
+    view:
+      - banner:
+          text:     "PREPARING"
+          subtitle: "Creating workspace + curating references"
+          color:    "#F59E0B"
+      - kv:
+          pairs:
+            Idea:      '{{ world.design_idea }}'
+            Workspace: '{{ world.design_workspace|default:"(minting…)" }}'
+      - prose: "Setting up the design workspace — this advances automatically. If it does not, `confirm` to continue."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "confirm"
+              hint:   "continue to brief authoring"
+              intent: confirm
+            - label:  "quit"
+              hint:   "abandon this design"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [design_idea, design_slug, design_workspace, design_existing_state, design_existing_path, design_references, design_references_path]
+    on_enter:
+      # 1. Mint the unique workspace folder. once: keyed off design_slug +
+      #    design_workspace; design_slug is set at intake but
+      #    design_workspace is empty on a fresh new-proposal entry, so the
+      #    call runs (allBindTargetsSet is false until BOTH are set).
+      - invoke: host.run
+        once: true
+        id: uniquify
+        with:
+          cmd: python3
+          args:
+            - "stories/dev-story/scripts/design_workspace.py"
+            - "{{ world.design_slug }}"
+        bind:
+          design_slug:      "stdout_json.slug"
+          design_workspace: "stdout_json.workspace"
+        on_error: design_search
+      # 2. Persist the scout's existing-state report into the new folder.
+      #    once: keyed off design_existing_path.
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          thread:   "002-existing-state"
+          workdir:  "{{ world.design_workspace }}"
+          content:  "{{ world.design_existing_state }}"
+        bind:
+          design_existing_path: path
+        on_error: design_search
+      # 3a. Semantic search: find chunks in docs/ that are close to the idea.
+      #     Requires app.routing.embedding.endpoint to be set; if not configured
+      #     (the sentinel returns an error) on_error silently skips to step 3b
+      #     with design_reference_hits left empty. once: keyed off
+      #     design_reference_hits.
+      - invoke: host.agent.search
+        once: true
+        id: reference_search
+        with:
+          query:  "{{ world.design_idea }}"
+          corpus:
+            - "docs/proposals/templates/**/*.md"
+            - "docs/proposals/*.md"
+            - "docs/architecture/**/*.md"
+            - "docs/stories/**/*.md"
+            - ".agents/skills/**/*.md"
+          top_k:     10
+          min_score: 0.30
+          chunk:
+            max:  1200
+            mode: heading
+        bind:
+          design_reference_hits: data
+        on_error: design_materialize_researcher
+      # 3b. Researcher: curate reference materials from the semantic hits.
+      #     The search hits pre-seed the researcher so it spends LLM calls on
+      #     judgment (which hits matter, what sections, why) rather than
+      #     scanning the entire repo. Falls back cleanly when hits are empty.
+      #     once: keyed off design_references.
+      - invoke: host.agent.decide
+        once: true
+        id: references_research
+        with:
+          agent: design_researcher
+          prompt_path: prompts/design_references.md
+          schema: schemas/references.json
+          working_dir: "{{ world.workdir == '' ? '.' : world.workdir }}"
+          args:
+            idea:        "{{ world.design_idea }}"
+            workspace:   "{{ world.design_workspace }}"
+            search_hits: "{{ world.design_reference_hits.hits }}"
+        bind:
+          design_references: submitted
+        on_error: design_search
+      # 4. Persist references AND auto-advance. NOT once: — the emit_intent
+      #    must fire on every entry (including /reload) so the transient room
+      #    always carries the session forward to design_refine.
+      - invoke: host.artifacts_dir
+        with:
+          thread:   "003-references.json"
+          workdir:  "{{ world.design_workspace }}"
+          content:  "{{ world.design_references }}"
+        bind:
+          design_references_path: path
+        emit_intent: "materialized"
+        on_error: design_search
+    on:
+      # Synthetic — fired by the post-bind emit_intent on the 003 write.
+      materialized:
+        - target: design_refine
+
+      # Manual escape hatch if the auto-advance does not fire.
+      confirm:
+        - target: design_refine
+
+      quit:
+        - target: landing
+          effects:
+            - set:
+                last_error:         "design abandoned while preparing workspace"
+                prev_state:         "landing"
+                design_seed_idea: ""
+      look:
+        - target: .
+
+  # Reached when host.agent.search is unconfigured (sentinel returns error).
+  # Runs the researcher without semantic hits and advances to design_refine.
+  design_materialize_researcher:
+    description: "Curating references (no semantic search)."
+    view:
+      - prose: "Curating references…"
+    on_enter:
+      - invoke: host.agent.decide
+        once: true
+        id: references_research_no_embed
+        with:
+          agent: design_researcher
+          prompt_path: prompts/design_references.md
+          schema: schemas/references.json
+          working_dir: "{{ world.workdir == '' ? '.' : world.workdir }}"
+          args:
+            idea:      "{{ world.design_idea }}"
+            workspace: "{{ world.design_workspace }}"
+        bind:
+          design_references: submitted
+        on_error: design_search
+      - invoke: host.artifacts_dir
+        with:
+          thread:   "003-references.json"
+          workdir:  "{{ world.design_workspace }}"
+          content:  "{{ world.design_references }}"
+        bind:
+          design_references_path: path
+        emit_intent: "materialized"
+        on_error: design_search
+    on:
+      materialized:
+        - target: design_refine

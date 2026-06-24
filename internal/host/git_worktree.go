@@ -1,9 +1,8 @@
 // Package host — host.git_worktree — git-worktree-backed workspace provider.
 //
-// Implements the `workspace` host_interface from the dev-story
-// implementation contract.  A single prefix-fallback handler
-// dispatches the four workspace ops via the `op` arg.  Operations
-// shell out to `git worktree`.
+// Implements the `workspace` host_interface (see docs/architecture/hosts.md).  A
+// single prefix-fallback handler dispatches the four workspace ops via
+// the `op` arg.  Operations shell out to `git worktree`.
 //
 // Convention: workspace ID == the worktree's directory basename; the
 // worktrees live under `<repo>/.worktrees/<id>` (matching the
@@ -12,10 +11,42 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
+
+// ownerSentinelFile is the basename of the per-worktree sentinel that records
+// which kitsoki session created a worktree. worktreeCreate writes it on a
+// successful `git worktree add` and reads it in the idempotency short-circuit
+// to refuse handing one session's live tree to a different session — the
+// host-side safety net for the destructive shared-checkout bug
+// (2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git).
+const ownerSentinelFile = ".kitsoki-owner"
+
+// writeOwnerSentinel records sid as the owning session of the worktree at path.
+// Empty sid is a no-op (callers that omit the session dimension leave no
+// sentinel — the short-circuit then treats an absent sentinel as shareable for
+// back-compat). Best-effort: a write failure is non-fatal to create.
+func writeOwnerSentinel(path, sid string) {
+	if strings.TrimSpace(sid) == "" {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(path, ownerSentinelFile), []byte(sid), 0o644)
+}
+
+// readOwnerSentinel returns the session id recorded for the worktree at path,
+// or "" when no sentinel is present (or it is unreadable/empty).
+func readOwnerSentinel(path string) string {
+	b, err := os.ReadFile(filepath.Join(path, ownerSentinelFile))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
 
 // GitWorktreeHandler implements host.git_worktree (prefix-fallback).
 //
@@ -52,6 +83,10 @@ func GitWorktreeHandler(ctx context.Context, args map[string]any) (Result, error
 		return worktreeCreate(ctx, repo, args)
 	case "sync":
 		return worktreeSync(ctx, repo, args)
+	case "cleanup_scan":
+		return worktreeCleanupScan(ctx, repo, args)
+	case "cleanup_apply":
+		return worktreeCleanupApply(ctx, repo, args)
 	default:
 		return Result{Error: fmt.Sprintf("host.git_worktree: unknown op %q", op)}, nil
 	}
@@ -105,6 +140,10 @@ func worktreeCreate(ctx context.Context, repo string, args map[string]any) (Resu
 	if strings.TrimSpace(name) == "" {
 		return Result{Error: "workspace.create: name argument is required"}, nil
 	}
+	resolvedRepo, repoErr := resolveWorktreeRepo(ctx, repo)
+	if repoErr != "" {
+		return Result{Error: "workspace.create: " + repoErr}, nil
+	}
 	base, _ := args["base"].(string)
 	// Explicit `id:` (from world.workspace_id) wins; fall back to the
 	// slashes-flattened branch for callers that only supply `name`.
@@ -118,15 +157,35 @@ func worktreeCreate(ctx context.Context, repo string, args map[string]any) (Resu
 	if strings.TrimSpace(id) == "" {
 		id = strings.ReplaceAll(name, "/", "-")
 	}
-	path := filepath.Join(repo, ".worktrees", id)
+	// session_id is the calling session's identity (projected into the
+	// story as world.session_id). It is optional — callers that omit it
+	// leave no ownership sentinel and keep the legacy shareable behaviour —
+	// but when present it lets the idempotency short-circuit refuse to hand
+	// one session's live tree to a DIFFERENT session.
+	sessionID := strings.TrimSpace(worktreeStringArg(args, "session_id"))
+	path := filepath.Join(resolvedRepo, ".worktrees", id)
 
 	// Idempotency: if a worktree is already registered at our path
 	// with our target branch, treat as success. This keeps re-entry
 	// to bf.idle (e.g. after a process restart that lost
 	// bf_autostart_attempted=true) from failing on a workspace that
 	// already exists from a prior run.
-	if existing, ok := findWorktreeByPath(ctx, repo, path); ok {
+	//
+	// Safety net: before returning that existing tree as "ok", consult the
+	// `.kitsoki-owner` sentinel. If it names a DIFFERENT session than the
+	// caller, REFUSE — handing session B session A's live working tree is
+	// the destructive shared-checkout bug
+	// (2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git):
+	// a routine `git checkout -- <file>` in one session silently and
+	// unrecoverably reverts the other's uncommitted WIP. An absent sentinel
+	// (legacy worktree, or a caller that omitted session_id) or a matching
+	// one still short-circuits to success, preserving legitimate same-session
+	// re-entry after a restart.
+	if existing, ok := findWorktreeByPath(ctx, resolvedRepo, path); ok {
 		if existing.Branch == name {
+			if owner := readOwnerSentinel(path); owner != "" && sessionID != "" && owner != sessionID {
+				return Result{Error: fmt.Sprintf("workspace.create: %q is already checked out by session %q; refusing to share — concurrent sessions on the same ticket must use distinct worktrees", id, owner)}, nil
+			}
 			return Result{Data: map[string]any{"ok": true, "path": path}}, nil
 		}
 		return Result{Error: fmt.Sprintf("workspace.create: %q already exists at %s but holds branch %q (wanted %q)", id, path, existing.Branch, name)}, nil
@@ -138,11 +197,12 @@ func worktreeCreate(ctx context.Context, repo string, args map[string]any) (Resu
 	if base != "" {
 		gitArgs = append(gitArgs, base)
 	}
-	_, stderr, code, err := cliExec(ctx, repo, "git", gitArgs...)
+	_, stderr, code, err := cliExec(ctx, resolvedRepo, "git", gitArgs...)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("workspace.create: exec: %v", err)}, nil
 	}
 	if code == 0 {
+		writeOwnerSentinel(path, sessionID)
 		return Result{Data: map[string]any{"ok": true, "path": path}}, nil
 	}
 
@@ -154,11 +214,12 @@ func worktreeCreate(ctx context.Context, repo string, args map[string]any) (Resu
 	// to a fresh worktree at our path instead.
 	if branchExistsError(stderr, name) {
 		retryArgs := []string{"worktree", "add", path, name}
-		_, retryStderr, retryCode, retryErr := cliExec(ctx, repo, "git", retryArgs...)
+		_, retryStderr, retryCode, retryErr := cliExec(ctx, resolvedRepo, "git", retryArgs...)
 		if retryErr != nil {
 			return Result{Error: fmt.Sprintf("workspace.create: exec (reattach): %v", retryErr)}, nil
 		}
 		if retryCode == 0 {
+			writeOwnerSentinel(path, sessionID)
 			return Result{Data: map[string]any{
 				"ok":     true,
 				"path":   path,
@@ -173,6 +234,42 @@ func worktreeCreate(ctx context.Context, repo string, args map[string]any) (Resu
 	}
 
 	return Result{Error: fmt.Sprintf("workspace.create: %s", strings.TrimSpace(stderr))}, nil
+}
+
+// resolveWorktreeRepo returns the absolute git toplevel used to anchor
+// .worktrees/<id>. An omitted repo used to mean "whatever cwd the kitsoki
+// process currently has", which made browser/server sessions return relative
+// paths that later agent calls could not chdir into. Resolve through git so the
+// worktree path is anchored to the repository that owns the running story.
+func resolveWorktreeRepo(ctx context.Context, repo string) (string, string) {
+	repo = strings.TrimSpace(repo)
+	if repo != "" {
+		abs, err := filepath.Abs(repo)
+		if err != nil {
+			return "", fmt.Sprintf("resolve repo %q: %v", repo, err)
+		}
+		return abs, ""
+	}
+	stdout, stderr, code, err := cliExec(ctx, "", "git", "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", fmt.Sprintf("resolve repo: %v", err)
+	}
+	if code != 0 {
+		msg := strings.TrimSpace(stderr)
+		if msg == "" {
+			msg = "git rev-parse --show-toplevel failed"
+		}
+		return "", msg
+	}
+	root := strings.TrimSpace(stdout)
+	if root == "" {
+		return "", "git rev-parse --show-toplevel returned an empty path"
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Sprintf("resolve repo %q: %v", root, err)
+	}
+	return abs, ""
 }
 
 // findWorktreeByPath returns the worktreeInfo registered for the
@@ -269,6 +366,239 @@ func worktreeSync(ctx context.Context, repo string, args map[string]any) (Result
 		"ok":  true,
 		"log": pullOut,
 	}}, nil
+}
+
+func worktreeCleanupScan(ctx context.Context, repo string, args map[string]any) (Result, error) {
+	base := strings.TrimSpace(worktreeStringArg(args, "base"))
+	if base == "" {
+		base = "main"
+	}
+	exclude := strings.TrimSpace(worktreeStringArg(args, "exclude"))
+	protected := cleanupProtectedBranches(worktreeStringArg(args, "protected"))
+
+	stdout, stderr, code, err := cliExec(ctx, repo, "git", "worktree", "list", "--porcelain")
+	if err != nil {
+		return Result{Error: fmt.Sprintf("workspace.cleanup_scan: list worktrees: %v", err)}, nil
+	}
+	if code != 0 {
+		return Result{Error: fmt.Sprintf("workspace.cleanup_scan: list worktrees: %s", strings.TrimSpace(stderr))}, nil
+	}
+	worktrees := parseWorktreePorcelain(stdout)
+	attached := map[string]bool{}
+	var primaryPath string
+	if len(worktrees) > 0 {
+		primaryPath = worktrees[0].Path
+	}
+	out := make([]map[string]any, 0, len(worktrees))
+	for _, wt := range worktrees {
+		if wt.Branch != "" {
+			attached[wt.Branch] = true
+		}
+		if wt.Path == primaryPath {
+			continue
+		}
+		wt.Dirty = worktreeDirty(ctx, wt.Path)
+		c := cleanupCandidate(ctx, repo, wt, base, protected, exclude, "worktree")
+		c["actions"] = []string{"worktree_remove", "branch_delete"}
+		out = append(out, c)
+	}
+
+	branchOut, branchErr, branchCode, branchExecErr := cliExec(ctx, repo, "git", "branch", "--format=%(refname:short)")
+	if branchExecErr != nil {
+		return Result{Error: fmt.Sprintf("workspace.cleanup_scan: list branches: %v", branchExecErr)}, nil
+	}
+	if branchCode != 0 {
+		return Result{Error: fmt.Sprintf("workspace.cleanup_scan: list branches: %s", strings.TrimSpace(branchErr))}, nil
+	}
+	for _, branch := range strings.Split(branchOut, "\n") {
+		branch = strings.TrimSpace(strings.TrimPrefix(branch, "* "))
+		if branch == "" || attached[branch] {
+			continue
+		}
+		wt := worktreeInfo{Branch: branch, Path: ""}
+		c := cleanupCandidate(ctx, repo, wt, base, protected, exclude, "branch")
+		c["actions"] = []string{"branch_delete"}
+		out = append(out, c)
+	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i]["recommended"] != out[j]["recommended"] {
+			return out[i]["recommended"] == true
+		}
+		return fmt.Sprint(out[i]["branch"]) < fmt.Sprint(out[j]["branch"])
+	})
+	recommended := 0
+	for _, c := range out {
+		if c["recommended"] == true {
+			recommended++
+		}
+	}
+	return Result{Data: map[string]any{
+		"ok":                true,
+		"base":              base,
+		"exclude":           exclude,
+		"candidates":        out,
+		"recommended_count": recommended,
+	}}, nil
+}
+
+func worktreeCleanupApply(ctx context.Context, repo string, args map[string]any) (Result, error) {
+	candidates, parseErr := cleanupCandidatesArg(args["candidates"])
+	if parseErr != "" {
+		return Result{Error: "workspace.cleanup_apply: " + parseErr}, nil
+	}
+	if len(candidates) == 0 {
+		return Result{Data: map[string]any{"ok": true, "deleted": []map[string]any{}, "skipped": []map[string]any{}}}, nil
+	}
+	var deleted []map[string]any
+	var skipped []map[string]any
+	var errs []string
+	for _, raw := range candidates {
+		c, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		branch := strings.TrimSpace(fmt.Sprint(c["branch"]))
+		path := strings.TrimSpace(fmt.Sprint(c["path"]))
+		if c["recommended"] != true {
+			skipped = append(skipped, map[string]any{"branch": branch, "path": path, "reason": "not recommended"})
+			continue
+		}
+		if path != "" {
+			_, stderr, code, err := cliExec(ctx, repo, "git", "worktree", "remove", path)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s: worktree remove: %v", branch, err))
+				continue
+			}
+			if code != 0 {
+				errs = append(errs, fmt.Sprintf("%s: worktree remove: %s", branch, strings.TrimSpace(stderr)))
+				continue
+			}
+		}
+		if branch != "" {
+			_, stderr, code, err := cliExec(ctx, repo, "git", "branch", "-d", branch)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s: branch delete: %v", branch, err))
+				continue
+			}
+			if code != 0 {
+				errs = append(errs, fmt.Sprintf("%s: branch delete: %s", branch, strings.TrimSpace(stderr)))
+				continue
+			}
+		}
+		deleted = append(deleted, map[string]any{"branch": branch, "path": path})
+	}
+	data := map[string]any{"ok": len(errs) == 0, "deleted": deleted, "skipped": skipped}
+	if len(errs) > 0 {
+		data["errors"] = errs
+		return Result{Data: data, Error: "workspace.cleanup_apply: " + strings.Join(errs, "; ")}, nil
+	}
+	return Result{Data: data}, nil
+}
+
+func cleanupCandidate(ctx context.Context, repo string, wt worktreeInfo, base string, protected map[string]bool, exclude string, kind string) map[string]any {
+	branch := wt.Branch
+	id := filepath.Base(wt.Path)
+	if wt.Path == "" {
+		id = branch
+	}
+	merged := branchMerged(ctx, repo, branch, base)
+	reason := "branch is merged into " + base
+	recommended := true
+	switch {
+	case branch == "":
+		recommended, reason = false, "detached worktree has no branch"
+	case protected[branch]:
+		recommended, reason = false, "protected branch"
+	case wt.Dirty:
+		recommended, reason = false, "worktree has uncommitted changes"
+	case exclude != "" && cleanupCandidateMatches(wt, exclude):
+		recommended, reason = false, "excluded by refinement"
+	case !merged:
+		recommended, reason = false, "branch is not merged into "+base
+	}
+	return map[string]any{
+		"id":          id,
+		"kind":        kind,
+		"path":        wt.Path,
+		"branch":      branch,
+		"base":        base,
+		"merged":      merged,
+		"dirty":       wt.Dirty,
+		"recommended": recommended,
+		"reason":      reason,
+	}
+}
+
+func cleanupProtectedBranches(extra string) map[string]bool {
+	out := map[string]bool{
+		"main": true, "master": true, "develop": true, "dev": true,
+		"trunk": true, "release": true,
+	}
+	for _, b := range strings.Split(extra, ",") {
+		b = strings.TrimSpace(b)
+		if b != "" {
+			out[b] = true
+		}
+	}
+	return out
+}
+
+func cleanupCandidateMatches(wt worktreeInfo, needle string) bool {
+	needle = strings.ToLower(strings.TrimSpace(needle))
+	if needle == "" {
+		return false
+	}
+	hay := strings.ToLower(filepath.Base(wt.Path) + " " + wt.Path + " " + wt.Branch)
+	return strings.Contains(hay, needle)
+}
+
+func branchMerged(ctx context.Context, repo, branch, base string) bool {
+	if strings.TrimSpace(branch) == "" {
+		return false
+	}
+	_, _, code, err := cliExec(ctx, repo, "git", "merge-base", "--is-ancestor", branch, base)
+	return err == nil && code == 0
+}
+
+func worktreeDirty(ctx context.Context, path string) bool {
+	out, _, code, err := cliExec(ctx, path, "git", "status", "--porcelain")
+	return err == nil && code == 0 && strings.TrimSpace(out) != ""
+}
+
+func worktreeStringArg(args map[string]any, key string) string {
+	if args == nil {
+		return ""
+	}
+	v, _ := args[key].(string)
+	return v
+}
+
+func cleanupCandidatesArg(raw any) ([]any, string) {
+	switch v := raw.(type) {
+	case nil:
+		return nil, ""
+	case []any:
+		return v, ""
+	case []map[string]any:
+		out := make([]any, 0, len(v))
+		for _, c := range v {
+			out = append(out, c)
+		}
+		return out, ""
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return nil, ""
+		}
+		var out []any
+		if err := json.Unmarshal([]byte(s), &out); err != nil {
+			return nil, fmt.Sprintf("candidates must be a list or JSON list: %v", err)
+		}
+		return out, ""
+	default:
+		return nil, fmt.Sprintf("candidates must be a list, got %T", raw)
+	}
 }
 
 // ─── porcelain parser ───────────────────────────────────────────────────────

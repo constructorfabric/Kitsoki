@@ -18,9 +18,9 @@ func newTestWorld() world.World {
 				"role": "dev",
 			},
 		},
-		"tickets":   []any{"PROJ-89912", "PROJ-90001"},
-		"counter":   3,
-		"on_break":  true,
+		"tickets":     []any{"PLTFRM-89912", "PLTFRM-90001"},
+		"counter":     3,
+		"on_break":    true,
 		"placeholder": nil,
 	}}
 }

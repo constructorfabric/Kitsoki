@@ -1,0 +1,69 @@
+# design_reload_safe — on_enter is idempotent: a room whose result is
+# already present does NOT re-run its agent call.
+#
+# Proves the reload-safety contract for the search room. We start in intake
+# with a distinctive design_existing_state preset. The existing_scan stub
+# returns a DIFFERENT (empty) result — so if the once: guard failed and the
+# scan re-ran, the preset would be overwritten. Asserting the preset survives
+# proves the scan was skipped.
+#
+# We advance via the intake `discuss` arc to trigger the search room's
+# on_enter. The search room runs ONLY the scout, whose once: guard keys off
+# design_existing_state — already set in initial_world, so it is skipped.
+# (Intake no longer mints the workspace folder; that moved behind the scout
+# gate into design_materialize.)
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design
+initial_world:
+  judge_mode:         "human"
+  design_idea:      "Add a per-session working folder primitive."
+  design_slug:      "wf"
+  design_workspace: "docs/proposals/.workspace/wf"
+  # Both search results already present — the once: guards must preserve them.
+  design_existing_path:  "docs/proposals/.workspace/wf/002-existing-state.md"
+  design_existing_state:
+    overlaps:
+      - { path: "docs/proposals/PRESET-SURVIVED.md", kind: "accepted", summary: "preset", recommendation: "amend" }
+    roadmap_fit: "preset-survived"
+  design_references_path: "docs/proposals/.workspace/wf/003-references.json"
+  design_references:
+    items:
+      - { path: "docs/PRESET-REF.md", sections: "§1", rationale: "preset reference" }
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      name_slug:
+        data: { ok: true, submitted: { slug: "wf", rationale: "working folder" } }
+      # If the once: guard failed, this would fire and overwrite the preset.
+      existing_scan:
+        data: { ok: true, submitted: { overlaps: [], roadmap_fit: "SHOULD-NOT-RUN" } }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/wf/out.md", message_id: "out#1" }
+
+turns:
+  # Intake message → advance to design_search. The intake arc calls name_slug
+  # (agent.decide), but the search room's on_enter once: guards (keyed off
+  # design_existing_state and design_references — both already set) SKIP both
+  # the scout and researcher. Presets survive verbatim — not overwritten by the
+  # "SHOULD-NOT-RUN" stubs — which is the assertion this flow makes.
+  - intent: { name: discuss, slots: { message: "I want a per-session working folder" } }
+    expect_state: design_search
+    expect_world:
+      design_existing_state:
+        overlaps:
+          - { path: "docs/proposals/PRESET-SURVIVED.md", kind: "accepted", summary: "preset", recommendation: "amend" }
+        roadmap_fit: "preset-survived"
+    # name_slug (agent.decide) IS called in the intake arc — the search room's
+    # existing_scan is the one we're asserting did NOT run. We verify via the
+    # world assertion: if the preset survived (not overwritten by the
+    # "SHOULD-NOT-RUN" stub), the once: guard worked. Intake no longer mints the
+    # workspace, so no host.run uniquify fires here.
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: "name_slug" }
+    expect_no_host_calls: [host.run]
+
+expect_no_errors: true

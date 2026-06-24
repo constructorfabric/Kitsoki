@@ -1,0 +1,67 @@
+# deploy_no_go — the blocked-gate branch: target → preflight (NO_GO) → the
+# operator cancels → parked back at intake → a fresh start_deploy re-arms.
+#
+# The branch where preflight finds a blocker. The gate decide recommends no_go,
+# the post-bind emit routes to the verdict, the operator takes `cancel_deploy`
+# (the ship affordance is hidden on a no_go gate) — which loops back to the
+# intake room (no ship, no verify) and records the cancelled status. Then a
+# SECOND deploy is started from the parked room, re-arming preflight
+# (deploy_gate cleared) — proving the loop re-gates cleanly after a no-go.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: deploy
+initial_world: {}
+
+host_handlers:
+  # A blocking preflight → no_go. Serves both the first gate and the re-gate
+  # after the cancel (same handler/call id, both the `gate` call site).
+  host.agent.decide:
+    by_call:
+      gate:
+        data:
+          ok: true
+          submitted:
+            verdict: "no_go"
+            summary: "Preflight failed for prod — uncommitted changes + failing tests."
+            blocking: ["dirty working tree", "3 failing tests"]
+  host.run:
+    by_call:
+      preflight:
+        data: { ok: true, stdout: "preflight FAILED for prod: dirty tree, 3 failing tests", exit_code: 0 }
+
+turns:
+  # First deploy → preflight → no_go recommended → gated verdict.
+  - intent: { name: start_deploy, slots: { target: "prod" } }
+    expect_state: deploy_gated
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: gate }
+        times: 1
+    expect_world:
+      deploy_gate:
+        verdict: "no_go"
+        summary: "Preflight failed for prod — uncommitted changes + failing tests."
+        blocking: ["dirty working tree", "3 failing tests"]
+
+  # Cancel — `cancel_deploy` loops back to intake, records cancelled, ships
+  # nothing.
+  - intent: { name: cancel_deploy, slots: {} }
+    expect_state: deploy
+    expect_world:
+      deploy_status: "cancelled"
+
+  # A fresh deploy from the parked room — start_deploy clears the prior verdict
+  # + status (re-arming the once: preflight + gate), enters preflighting, the
+  # gate re-fires, and the post-bind emit routes to the verdict again. Proves
+  # the park is not a dead end: the loop re-gates cleanly.
+  - intent: { name: start_deploy, slots: { target: "prod" } }
+    expect_state: deploy_gated
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: gate }
+        times: 1
+    expect_world:
+      deploy_target: "prod"
+
+expect_no_errors: true

@@ -177,12 +177,12 @@ const transitionArgs = computed(() => asRecord(props.args));
 .hbd__kv--footer {
   margin-top: 0.2rem;
   padding-top: 0.35rem;
-  border-top: 1px solid #1e293b;
+  border-top: 1px solid var(--k-border, #1e293b);
 }
 
 /* ── label ───────────────────────────────────────────────────────────────── */
 .hbd__label {
-  color: #94a3b8;
+  color: var(--k-fg-muted, #94a3b8);
   font-size: 0.75rem;
   min-width: 5.5rem;
   flex-shrink: 0;
@@ -195,19 +195,19 @@ const transitionArgs = computed(() => asRecord(props.args));
 
 /* ── title (plain text alongside chips) ──────────────────────────────────── */
 .hbd__title {
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   word-break: break-word;
 }
 
 /* ── muted value ─────────────────────────────────────────────────────────── */
 .hbd__muted {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.75rem;
 }
 
 /* ── arrow ───────────────────────────────────────────────────────────────── */
 .hbd__arrow {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   font-size: 0.8125rem;
 }
 
@@ -224,14 +224,14 @@ const transitionArgs = computed(() => asRecord(props.args));
 .hbd__chip--mono {
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
-  background: #080f1a;
-  color: #7dd3fc;
-  border-color: #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  color: var(--k-fg-code, #7dd3fc);
+  border-color: var(--k-border, #1e293b);
 }
 
 .hbd__chip--blue {
   background: #1e3a5f;
-  color: #93c5fd;
+  color: var(--k-fg-accent, #93c5fd);
   border-color: #1e40af;
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
@@ -239,7 +239,7 @@ const transitionArgs = computed(() => asRecord(props.args));
 
 .hbd__chip--amber {
   background: #451a03;
-  color: #fbbf24;
+  color: var(--k-warning, #fbbf24);
   border-color: #92400e;
   font-family: ui-monospace, monospace;
   font-size: 0.72rem;
@@ -256,14 +256,14 @@ const transitionArgs = computed(() => asRecord(props.args));
 }
 
 .hbd__badge--ok {
-  background: #14532d;
-  color: #86efac;
+  background: var(--k-success-bg, #14532d);
+  color: var(--k-success, #86efac);
   border-color: #166534;
 }
 
 .hbd__badge--err {
   background: #7f1d1d;
-  color: #f87171;
+  color: var(--k-error, #f87171);
   border-color: #991b1b;
 }
 
@@ -275,13 +275,13 @@ const transitionArgs = computed(() => asRecord(props.args));
 
 /* ── pre ─────────────────────────────────────────────────────────────────── */
 .hbd__pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -289,7 +289,7 @@ const transitionArgs = computed(() => asRecord(props.args));
 
 .hbd__pre--error {
   background: #7f1d1d;
-  color: #f87171;
+  color: var(--k-error, #f87171);
   border-color: #991b1b;
 }
 
@@ -304,7 +304,7 @@ const transitionArgs = computed(() => asRecord(props.args));
   margin-top: 0.3rem;
   background: none;
   border: 1px solid #334155;
-  color: #60a5fa;
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
@@ -312,6 +312,6 @@ const transitionArgs = computed(() => asRecord(props.args));
 }
 
 .hbd__toggle-btn:hover {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
 }
 </style>

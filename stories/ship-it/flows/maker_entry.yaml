@@ -1,0 +1,41 @@
+# maker_entry — proves the configure → ship → maker import seam: the brief and
+# gate_command are projected into the cherny-loop child's world (goal_text /
+# gate_command / gate_mode=script / workspace_*) via the maker import's
+# world_in, and the session lands in the maker's entry room (cherny configuring).
+#
+# This pins the parent→child handoff. The maker's autonomous loop itself
+# (baseline → loop → @exit:achieved) is cherny-loop's own contract, exercised by
+# stories/cherny-loop/flows/achieved_via_loop.yaml; driving it to completion
+# THROUGH the import hits a runtime limitation where the gating room's gate
+# invoke isn't settled across the import wrapper in one turn (flagged in
+# stories/ship-it/README.md → "Maker loop under import"). ship-it therefore mocks
+# the maker handoff (the worktree seam) in its delivery-half flows via
+# `integrate_existing`, exactly as the QA plan prescribes ("the maker mocked via
+# cassette/stub").
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+
+turns:
+  - intent:
+      name: ship
+      slots:
+        brief:        "Fix the rate-limit burst off-by-one"
+        gate_command: "go test ./internal/ratelimit/"
+    expect_state: maker.configuring
+    expect_world:
+      brief:        "Fix the rate-limit burst off-by-one"
+      gate_command: "go test ./internal/ratelimit/"
+      # The world_in projection landed the brief + gate into cherny's world:
+      maker__goal_text:    "Fix the rate-limit burst off-by-one"
+      maker__gate_command: "go test ./internal/ratelimit/"
+      maker__gate_mode:    "script"
+      maker__workspace_id: "burst-fix"
+
+expect_no_errors: true

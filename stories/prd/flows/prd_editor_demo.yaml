@@ -1,0 +1,158 @@
+# prd_editor_demo — the PRD walk used by the VS Code extension demo video.
+#
+# Unlike the other prd flows, this one deliberately leaves host.ide.* AND
+# host.artifacts_dir UNSTUBBED so that, when driven through `kitsoki web` inside
+# the VS Code extension (which connects an IDE link), the brief/PRD are written
+# to REAL files and opened in the real editor, and a refine shows a REAL native
+# diff with an accept/reject verdict. Under `kitsoki test flows` (no IDE) the same
+# verbs return connected:false / write gitignored .artifacts files and the refine
+# falls through to the plain arc — so this stays a valid deterministic flow too.
+#
+# The author stub returns the COMPLETE PRD markdown in summary_markdown (the
+# drafting room mirrors it into the editor), and a distinct v2 on refine so the
+# diff has a real before/after.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir:    "."
+  judge_mode: "human"
+
+host_handlers:
+  # NOTE: host.ide.* and host.artifacts_dir are intentionally NOT stubbed.
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "A notes service so every note ties to the work it belongs to.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+    by_call:
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q1: platform engineers\nQ2: notes-saved-per-session\n"
+            answered_ids_append: "|1||2|"
+            matched_count:       2
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "notes-service", workspace: ".artifacts/prd/notes-service" }
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { prd_file: "docs/prd/notes-service.md" }
+  host.agent.task:
+    by_call:
+      # First draft (drafting on_enter, id: prd_author) — the full PRD body.
+      prd_author:
+        data:
+          ok: true
+          submitted:
+            title: "PRD: Notes Service"
+            summary_markdown: |
+              # PRD: Notes Service
+
+              ## Problem & Context
+              Teams capture notes across scattered tools; nothing ties a note to
+              the work it belongs to, so context is lost between sessions.
+
+              ## Target Users
+              Platform engineers and their teams who already live in the kitsoki
+              workspace.
+
+              ## Goals
+              - A first-class notes surface attached to sessions and tickets.
+              - Fast capture and retrieval with zero context switch.
+
+              ## Requirements
+              - Functional: create, edit, link, and search notes from any room.
+              - Non-functional: notes-saved-per-session is the headline metric.
+
+              ## Open Questions
+              - Should a note be private by default or shared with the room?
+            file_path:           ".artifacts/prd/notes-service/004-prd.md"
+            confidence:          0.84
+            needs_clarification: false
+            follow_up_questions: []
+      # Refine re-draft (drafting refine, id: prd_author_refine) — v2 adds a
+      # Non-Goals section and a tenant-isolation security requirement, so the
+      # diff shows a clear before/after.
+      prd_author_refine:
+        data:
+          ok: true
+          submitted:
+            title: "PRD: Notes Service"
+            summary_markdown: |
+              # PRD: Notes Service
+
+              ## Problem & Context
+              Teams capture notes across scattered tools; nothing ties a note to
+              the work it belongs to, so context is lost between sessions.
+
+              ## Target Users
+              Platform engineers and their teams who already live in the kitsoki
+              workspace.
+
+              ## Goals
+              - A first-class notes surface attached to sessions and tickets.
+              - Fast capture and retrieval with zero context switch.
+
+              ## Non-Goals
+              - Not a general-purpose wiki; notes are scoped to sessions and tickets.
+
+              ## Requirements
+              - Functional: create, edit, link, and search notes from any room.
+              - Non-functional: notes-saved-per-session is the headline metric.
+              - Security: tenant isolation is mandatory; admins see only aggregate metrics.
+
+              ## Open Questions
+              - Should a note be private by default or shared with the room?
+            file_path:           ".artifacts/prd/notes-service/004-prd.next.md"
+            confidence:          0.88
+            needs_clarification: false
+            follow_up_questions: []
+
+turns:
+  # The deterministic (no-IDE) walk used by `kitsoki test flows`. The recording
+  # drives the SAME rooms through the UI; with an IDE connected the refine turn
+  # instead shows a diff and gates on the verdict (the plain arc here).
+  - intent: { name: discuss, slots: { message: "I want a notes service" } }
+    expect_state: idle
+  - intent: { name: start, slots: {} }
+    expect_state: search
+  - intent: { name: confirm, slots: {} }
+    expect_state: clarifying
+  - intent: { name: answer, slots: { text: "platform engineers; metric is notes-saved-per-session" } }
+    expect_state: clarifying
+  - intent: { name: submit_answers, slots: {} }
+    expect_state: brief
+  - intent: { name: confirm, slots: {} }
+    expect_state: references
+  - intent: { name: confirm, slots: {} }
+    expect_state: drafting
+  # Refine (no IDE → plain arc): re-draft, stay in drafting, bump the cycle.
+  - intent: { name: refine, slots: { feedback: "add a non-goals section and require tenant isolation" } }
+    expect_state: drafting
+    expect_world:
+      drafting_cycle: 1
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status:   "done"
+      prd_file: "docs/prd/notes-service.md"
+
+expect_terminal: true
+expect_no_errors: true

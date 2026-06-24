@@ -1,0 +1,87 @@
+app:
+  id: model-harness-eval
+  version: 0.1.0
+  title: "Model harness eval and case-study reporter"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.agent.task
+
+agents:
+  reporter:
+    system_prompt: "You prepare Kitsoki model/harness selection proposals and case-study reports from mined session evidence. Given an operator question, inspect the effective configured harness profiles, collect the requested evidence, aggregate reports with tools/session-mining/eval_pilot_report.py when applicable, recommend the fastest, cheapest, best, and selected configured option, and produce the requested review artifacts. When running from a worktree, treat /Users/brad/code/Kitsoki/.kitsoki.local.yaml as the machine-local override source of truth unless args.override_path says otherwise. Default to no-cost local evidence for automated flows, but if args.live_policy says operator_approved you may run live LLM/provider benchmarks because the operator has explicitly approved that spend. Never write secrets."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Bash, Edit, Write]
+    bash_profile:
+      commands: [bash, go, mkdir, python3, sed, find, rg]
+    external_side_effect: false
+
+world:
+  question:        { type: string, default: "" }
+  workdir:         { type: string, default: "." }
+  apply_mode:      { type: string, default: "report" }
+  override_path:   { type: string, default: "/Users/brad/code/Kitsoki/.kitsoki.local.yaml" }
+  target_story:    { type: string, default: "" }
+  target_call:     { type: string, default: "" }
+  output_root:     { type: string, default: ".artifacts/model-harness-eval" }
+  markdown_path:   { type: string, default: ".context/model-harness-eval.md" }
+  deck_path:       { type: string, default: ".artifacts/model-harness-eval/index.html" }
+  slidey_spec_path: { type: string, default: "docs/decks/model-harness-eval.json" }
+  case_study_path: { type: string, default: "docs/case-studies/model-harness-eval.md" }
+  summary_path:    { type: string, default: ".artifacts/model-harness-eval/summary.json" }
+  live_policy:     { type: string, default: "no_cost" }
+  refine_feedback: { type: string, default: "" }
+  report_artifact: { type: object, default: {} }
+  status:          { type: string, default: "idle" }
+
+intents:
+  start:
+    description: "Ask the reporter to prepare model/harness evaluation artifacts."
+    examples: ["evaluate the harnesses", "compare the models", "build the report", "run the eval pilot"]
+    priority: 90
+    slots:
+      question: { type: string, required: true }
+      apply_mode: { type: string, required: false }
+      override_path: { type: string, required: false }
+      target_story: { type: string, required: false }
+      target_call: { type: string, required: false }
+      output_root: { type: string, required: false }
+      markdown_path: { type: string, required: false }
+      deck_path: { type: string, required: false }
+      slidey_spec_path: { type: string, required: false }
+      case_study_path: { type: string, required: false }
+      summary_path: { type: string, required: false }
+      live_policy: { type: string, required: false }
+  accept:
+    description: "Accept the generated report and move to the done view."
+    examples: ["accept", "looks good", "done", "continue"]
+    priority: 80
+  refine:
+    description: "Regenerate the report with specific feedback."
+    examples: ["refine", "rerun", "try again"]
+    priority: 70
+    slots:
+      feedback: { type: string, required: true }
+  restart:
+    description: "Restart with a new overall question."
+    examples: ["restart", "new question", "start over"]
+    priority: 60
+    slots:
+      question: { type: string, required: false }
+  quit:
+    description: "Abandon the report run."
+    examples: ["quit", "abort", "stop"]
+    priority: 40
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "status", "show me"]
+    priority: 10
+
+exports:
+  intents: [start, accept, refine, restart, quit, look]
+
+root: idle
+
+include:
+  - rooms/*.yaml

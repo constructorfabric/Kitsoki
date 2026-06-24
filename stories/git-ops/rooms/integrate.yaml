@@ -1,0 +1,252 @@
+# integrate — one-shot, lost-work-safe integrate of a feature branch.
+#
+# The lost-work hazard the delivery loop targets: a concurrent session moves
+# main between maker-start and integrate. A naive ff-merge fails and the manual
+# recovery (rebase the stale branch onto the new main, re-run the gate) is where
+# work silently disappears. This room encodes that recovery as a single arc.
+#
+# WHY IT'S LOST-WORK-SAFE: the rebase base is CURRENT main, RE-READ at entry
+# (git rev-parse <integration_branch> in the main worktree), never a stored SHA.
+# A moved-main is absorbed — the rebase replays the branch's commits on top of
+# the new HEAD rather than dropping them.
+#
+# SINGLE-SCRIPT design (mirrors merge_into_main.yaml): one bash script runs the
+# descendant-aware rebase, the build check, and the --no-ff merge, returning a
+# JSON envelope. NO blanket `|| true` on load-bearing git/build commands — the
+# real exit binds to last_op_ok and a non-zero outcome routes to a last_error
+# view, never a swallowed false success.
+#
+# Hardening (mirrors stories/delivery-tail/rooms/integrate.yaml):
+#   #5  worktree-lock — a branch checked out in a linked worktree can't be
+#       rebased in MAIN_WT ("'<branch>' is already used by worktree"). The room
+#       DISCOVERS the worktree that holds the branch (worktree list --porcelain)
+#       and rebases THERE; the merge --no-ff runs in MAIN_WT (merge does not
+#       check out the source branch, so no lock conflict).
+#   #8  gate-string collision — the build check is passed as a POSITIONAL
+#       parameter ($1) to `bash -c`, never interpolated into the script's text.
+#       Quotes and $-vars in the gate survive verbatim; `bash -c "$GATE_CMD"`
+#       runs it EXACTLY as the operator typed it.
+#   #9  blank last_error — defense in depth: (a) an EXIT trap guarantees the bash
+#       always emits JSON even on a `set -e` abort; (b) the room binds the raw
+#       exit_code/stdout and, when no JSON outcome is produced, re-renders with a
+#       synthesized last_error (never a featureless stall).
+#   #checkout — the integration checkout exit is captured (CO_EXIT); a failed
+#       checkout emits a clear error instead of a generic abort.
+#   lost-work — before rebasing, the OWNING worktree's status --porcelain is
+#       checked; uncommitted/untracked work is REFUSED (it would land an empty
+#       or partial shell), not silently merged.
+#
+#   outcome:        "integrated" | "conflict" | "build_fail" | "uncommitted" | "error"
+#   integrated_sha: the merged commit on main (set only on "integrated")
+#   last_op_ok:     true only on "integrated"
+#   last_error:     the real stderr/stdout tail on any failure
+
+states:
+
+  integrate:
+    description: "Rebase a branch onto CURRENT main, build-check, merge — lost-work-safe."
+    relevant_world: [integrate_branch, integration_branch, main_worktree_path,
+                     integrate_outcome, last_error, integrated_sha, build_check_disabled,
+                     run_exit, run_stdout]
+    view:
+      - kv:
+          pairs:
+            "Branch":       '{{ world.integrate_branch|default:"(unknown)" }}'
+            "Integration":  '{{ world.integration_branch }}'
+            "Rebase base":  'CURRENT {{ world.integration_branch }} (re-read at entry)'
+      - heading: "Integrated"
+        when: "world.integrate_outcome == 'integrated'"
+      - prose: "Branch {{ world.integrate_branch }} rebased onto current {{ world.integration_branch }}, build-checked, and merged. Merged commit: {{ world.integrated_sha }}."
+        when: "world.integrate_outcome == 'integrated'"
+      - heading: "Rebase conflict — could not auto-integrate"
+        when: "world.integrate_outcome == 'conflict'"
+      - prose: "Rebasing {{ world.integrate_branch }} onto current {{ world.integration_branch }} hit a conflict the auto-rebase could not resolve. {{ world.last_error }}"
+        when: "world.integrate_outcome == 'conflict'"
+      - heading: "Build check failed on the integrated tree"
+        when: "world.integrate_outcome == 'build_fail'"
+      - prose: "The build check failed after rebasing onto current {{ world.integration_branch }}: {{ world.last_error }}"
+        when: "world.integrate_outcome == 'build_fail'"
+      - heading: "Uncommitted work — refusing to integrate"
+        when: "world.integrate_outcome == 'uncommitted'"
+      - prose: "{{ world.last_error }}"
+        when: "world.integrate_outcome == 'uncommitted'"
+      - prose: "Integrate failed: {{ world.last_error }}"
+        when: "world.integrate_outcome == 'error'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "retry"
+              hint:  "re-run integrate (re-reads current main)"
+              intent: retry
+              when:  "world.integrate_outcome != 'integrated' && world.integrate_outcome != ''"
+            - label: "back"
+              hint:  "return to hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: integrate_exec
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              # The build check arrives as $1 (a positional param to `bash -c`),
+              # NOT interpolated into this script's text — so quotes and $-vars in
+              # the gate survive verbatim (#8). Assigning "$1" to a var is safe:
+              # it is a single already-formed string, never re-parsed.
+              GATE_CMD="$1"
+              EMITTED=0
+              # emit JSON then stop — host.run binds stdout_json.* from this.
+              emit() { jq -n "$@"; EMITTED=1; exit 0; }
+              # Guarantee stdout ALWAYS carries JSON, even on an unexpected
+              # `set -e` abort, so the room never stalls with a blank last_error
+              # (#9a). The trap exits 0 so host.run sees success → binds fire.
+              trap 'rc=$?; if [ "$EMITTED" != "1" ]; then jq -n --arg rc "$rc" "{outcome:\"error\",integrated_sha:\"\",last_op_ok:false,last_error:(\"integrate aborted before completing (exit \"+\$rc+\")\")}"; fi; exit 0' EXIT
+              INTEGRATION="{{ world.integration_branch }}"
+              BRANCH="{{ world.integrate_branch }}"
+              MAIN_WT="{{ world.main_worktree_path }}"
+              BUILD_DISABLED="{{ world.build_check_disabled }}"
+              [ -z "$MAIN_WT" ] && MAIN_WT="."
+
+              if [ -z "$BRANCH" ]; then
+                emit '{outcome:"error",integrated_sha:"",last_op_ok:false,last_error:"no branch named to integrate"}'
+              fi
+
+              # Re-read CURRENT main HEAD at entry — never a stored SHA. This is
+              # what makes a moved-main lost-work-safe.
+              BASE_SHA=$(git -C "$MAIN_WT" rev-parse "$INTEGRATION" 2>/dev/null || echo "")
+              if [ -z "$BASE_SHA" ]; then
+                emit --arg int "$INTEGRATION" '{outcome:"error",integrated_sha:"",last_op_ok:false,last_error:("integration branch "+$int+" not found")}'
+              fi
+
+              # DISCOVER the worktree that HOLDS the branch. A git branch can be
+              # checked out in only one worktree, so rebasing $BRANCH in $MAIN_WT
+              # fails with "already used by worktree" whenever a maker worktree
+              # still holds it (#5). The rebase must run THERE. Empty ⇒ MAIN_WT.
+              WORKTREE=$(git -C "$MAIN_WT" worktree list --porcelain | awk -v b="refs/heads/$BRANCH" '$1=="worktree"{wt=$2} $1=="branch" && $2==b {print wt; exit}')
+              [ -z "$WORKTREE" ] && WORKTREE="$MAIN_WT"
+
+              # LOST-WORK GUARD: refuse to integrate a branch whose work was never
+              # committed. `git rebase` IGNORES untracked files, so an untracked
+              # story dir would rebase + merge an EMPTY shell while the flows —
+              # which read on-disk files — pass. Only meaningful when the branch
+              # lives in its own worktree; when WORKTREE fell back to MAIN_WT we
+              # can't attribute dirtiness to this branch, so we skip.
+              if [ "$WORKTREE" != "$MAIN_WT" ]; then
+                DIRTY=$(git -C "$WORKTREE" status --porcelain 2>/dev/null || echo "")
+                if [ -n "$DIRTY" ]; then
+                  emit --arg wt "$WORKTREE" --arg files "$DIRTY" '{outcome:"uncommitted",integrated_sha:"",last_op_ok:false,last_error:("refusing to integrate: the worktree "+$wt+" has uncommitted work — it was never committed, so integrating would land an empty or partial shell. Commit it on the branch first:\n"+$files)}'
+                fi
+              fi
+
+              # Rebase the feature branch onto current main, IN ITS OWN WORKTREE
+              # (#5). merge-base is computed against the live INTEGRATION ref
+              # (re-read here, so a concurrent moved-main is absorbed).
+              MB=$(git -C "$WORKTREE" merge-base "$BRANCH" "$INTEGRATION" 2>/dev/null || echo "")
+              REBASE_EXIT=0
+              REBASE_OUT=$(git -C "$WORKTREE" rebase --onto "$BASE_SHA" "$MB" "$BRANCH" 2>&1) || REBASE_EXIT=$?
+              if [ "$REBASE_EXIT" -ne 0 ]; then
+                # Abort any partial rebase so the tree is left clean.
+                git -C "$WORKTREE" rebase --abort 2>/dev/null || true
+                emit --arg out "$REBASE_OUT" '{outcome:"conflict",integrated_sha:"",last_op_ok:false,last_error:$out}'
+              fi
+
+              # Merge the rebased branch into INTEGRATION in MAIN_WT (merge does
+              # NOT check out the source branch, so no worktree-lock conflict).
+              PRE_MERGE_SHA=$(git -C "$MAIN_WT" rev-parse "$INTEGRATION" 2>/dev/null || echo "")
+              # Capture the checkout exit (#checkout): a failed checkout emits a
+              # clear error rather than tripping the trap's generic message.
+              CO_EXIT=0
+              CO_OUT=$(git -C "$MAIN_WT" checkout "$INTEGRATION" 2>&1) || CO_EXIT=$?
+              if [ "$CO_EXIT" -ne 0 ]; then
+                emit --arg out "$CO_OUT" --arg int "$INTEGRATION" '{outcome:"error",integrated_sha:"",last_op_ok:false,last_error:("could not checkout "+$int+": "+$out)}'
+              fi
+
+              # Merge the rebased branch into INTEGRATION (now checked out in
+              # MAIN_WT). The merge is the thing we ship, so it must happen BEFORE
+              # the build check — the gate validates the MERGED tree, not bare
+              # INTEGRATION. On a merge conflict, abort so the tree stays clean.
+              MERGE_EXIT=0
+              MERGE_OUT=$(git -C "$MAIN_WT" merge --no-ff "$BRANCH" -m "integrate: $BRANCH" 2>&1) || MERGE_EXIT=$?
+              if [ "$MERGE_EXIT" -ne 0 ]; then
+                git -C "$MAIN_WT" merge --abort 2>/dev/null || true
+                emit --arg out "$MERGE_OUT" '{outcome:"conflict",integrated_sha:"",last_op_ok:false,last_error:$out}'
+              fi
+
+              # Build-check the MERGED result. The gate ($GATE_CMD = $1) runs
+              # VERBATIM via `bash -c` (#8) — no quote-stripping, no $-expansion of
+              # the gate text. On failure, reset INTEGRATION to its pre-merge SHA so
+              # a build_fail leaves no half-integrated commit on the branch.
+              if [ "$BUILD_DISABLED" != "true" ]; then
+                BUILD_EXIT=0
+                BUILD_OUT=$(cd "$MAIN_WT" && bash -c "$GATE_CMD" 2>&1) || BUILD_EXIT=$?
+                if [ "$BUILD_EXIT" -ne 0 ]; then
+                  [ -n "$PRE_MERGE_SHA" ] && git -C "$MAIN_WT" reset --hard "$PRE_MERGE_SHA" 2>/dev/null || true
+                  emit --arg out "$BUILD_OUT" '{outcome:"build_fail",integrated_sha:"",last_op_ok:false,last_error:$out}'
+                fi
+              fi
+              MERGED_SHA=$(git -C "$MAIN_WT" rev-parse HEAD 2>/dev/null || echo "")
+              emit --arg sha "$MERGED_SHA" '{outcome:"integrated",integrated_sha:$sha,last_op_ok:true,last_error:""}'
+            # $0 (script name) then $1 = the build check, passed as a verbatim
+            # argv element. The template substitutes into this already-parsed YAML
+            # scalar at runtime, so the gate is NEVER part of the script's text.
+            - "kitsoki-integrate"
+            - "{{ world.build_check_cmd }}"
+          cwd: "{{ world.working_dir }}"
+        bind:
+          integrate_outcome: "stdout_json.outcome"
+          integrated_sha:    "stdout_json.integrated_sha"
+          last_op_ok:        "stdout_json.last_op_ok"
+          last_error:        "stdout_json.last_error"
+          # Raw result markers — templated STRING binds, empty by default and set
+          # only AFTER the host runs (binds are applied post-dispatch). The
+          # on_enter emit guards are evaluated twice — once pre-bind during the
+          # effect walk and once post-bind — so the no-JSON guard MUST hinge on a
+          # marker that is empty pre-bind, else it fires on the default world
+          # before the host has even run (#9b).
+          run_exit:          "{{ string(result.exit_code) }}"
+          run_stdout:        "stdout"
+        on_error: integrate
+      # Static post-bind emits; guards FALSE under default world.
+      - when: "world.integrate_outcome == 'integrated'"
+        emit_intent: integrated
+      # The host RAN (run_exit is set post-bind) but bound NO JSON outcome ⇒ the
+      # run produced no parseable result (host.run failure, OOM-kill, jq missing).
+      # Re-render with a synthesized last_error — never a featureless stall (#9b).
+      # The `run_exit != ''` clause keeps this from firing on the default
+      # (pre-bind) world during the on_enter effect walk.
+      - when: "world.run_exit != '' && world.integrate_outcome == ''"
+        emit_intent: integrate_aborted
+    on:
+      integrated:
+        - target: main_ops
+          effects:
+            - set:
+                last_op_outcome: "integrated"
+      integrate_aborted:
+        # No JSON outcome — stay in integrate and render the failure view with a
+        # synthesized non-blank last_error (never a blank stall). outcome:"error"
+        # so the existing error view + retry choice render.
+        - target: integrate
+          effects:
+            - set:
+                integrate_outcome: "error"
+                last_op_ok:        false
+                last_error:        "integrate produced no result (exit {{ world.run_exit }}): {{ world.run_stdout }}"
+      retry:
+        - target: integrate
+          effects:
+            - set:
+                integrate_outcome: ""
+                last_error:        ""
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

@@ -1,0 +1,30 @@
+# bootstrap — standalone entry stub for delivery-tail flow tests.
+#
+# When delivery-tail is imported by a parent (ship-it, bugfix), the import
+# enters at `integrate` directly (entry: integrate); this room is never
+# reached in production. For flow tests the machine must TRANSITION into
+# `integrate` (not just start there) to fire its on_enter chain. This stub
+# provides a `begin` intent that performs that cross-state transition.
+#
+# Flow usage: initial_state: bootstrap, first turn: intent begin.
+
+states:
+
+  bootstrap:
+    description: "Flow test stub — fire `begin` to enter the delivery tail at integrate."
+    view:
+      - prose: "Ready to enter the delivery tail."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "begin"
+              hint:  "enter the delivery tail (integrate → verify → cleanup → report)"
+              intent: begin
+    on:
+      begin:
+        - target: integrate
+      # Flow-test entry for the conflict-landing path: transition straight into
+      # `resolve` so its checkpoint + re-rebase on_enter chain fires.
+      begin_resolve:
+        - target: resolve

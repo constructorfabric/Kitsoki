@@ -1,5 +1,4 @@
-# code-review — review a teammate's open PR (Wave 3 / Phase 6 of the
-# dev-story-bugfix-unify proposal §4.3).
+# code-review — review a teammate's open PR. See docs/case-studies/bug-fix.md.
 #
 # This is the **reviewing-a-teammate** flavor — NOT a self-loop on your
 # own PR. The story is triggered from the dev-story inbox when an
@@ -35,8 +34,8 @@ app:
 
 hosts:
   - host.inbox.add
-  - host.oracle.ask
-  - host.oracle.decide
+  - host.agent.ask
+  - host.agent.decide
 
 # Four host_interfaces — code-review only needs ticket (optional, for
 # author lookups), vcs (diff, pr_status, pr_comment), and transport

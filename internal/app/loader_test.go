@@ -10,7 +10,7 @@ import (
 )
 
 // TestLoadCloak_Positive loads the Cloak of Darkness app and asserts
-// structural invariants derived from the §3.1 port.
+// structural invariants of the loaded app.
 func TestLoadCloak_Positive(t *testing.T) {
 	def, err := Load("../../testdata/apps/cloak/app.yaml")
 	require.NoError(t, err, "Cloak app must load cleanly")
@@ -154,7 +154,7 @@ func TestNegative(t *testing.T) {
 }
 
 // TestLoad_Include verifies that the include: directive merges states from
-// separate files (roadmap step 2 / §9).
+// separate files.
 func TestLoad_Include(t *testing.T) {
 	def, err := Load("testdata/include_test/main.yaml")
 	require.NoError(t, err, "include test app must load cleanly")
@@ -168,7 +168,7 @@ func TestLoad_Include(t *testing.T) {
 
 // TestLoad_OffPathPersonaRoundTrip asserts that the optional persona: field
 // under off_path: deserializes onto OffPathDef.Persona. Lets apps style the
-// off-path oracle voice (Zane Grey / Louis L'Amour cadence for Oregon Trail,
+// off-path agent voice (Zane Grey / Louis L'Amour cadence for Oregon Trail,
 // sysadmin tone for a devops app, etc.) without modifying engine code.
 func TestLoad_OffPathPersonaRoundTrip(t *testing.T) {
 	yaml := []byte(`app:
@@ -218,7 +218,7 @@ off_path:
 // deserializes into AppDef.Agents and that each entry's fields land where
 // expected (system_prompt / model). This is the engine-side primitive that
 // generalises OffPathDef.Persona into a per-call resource that any
-// host.oracle.* effect can name via `with: { agent: <name> }`.
+// host.agent.* effect can name via `with: { agent: <name> }`.
 func TestLoad_AgentsRoundTrip(t *testing.T) {
 	yaml := []byte(`app:
   id: agents-test
@@ -255,7 +255,7 @@ func TestLoad_AgentRefResolves(t *testing.T) {
 	yaml := []byte(`app:
   id: agent-ref-ok
   version: 0.1.0
-hosts: [host.oracle.talk]
+hosts: [host.agent.talk]
 root: start
 agents:
   wagon_master:
@@ -263,7 +263,7 @@ agents:
 states:
   start:
     on_enter:
-      - invoke: host.oracle.talk
+      - invoke: host.agent.talk
         with:
           question: "hi"
           agent: wagon_master
@@ -279,7 +279,7 @@ func TestLoad_AgentRefUnknown(t *testing.T) {
 	yaml := []byte(`app:
   id: agent-ref-bad
   version: 0.1.0
-hosts: [host.oracle.talk]
+hosts: [host.agent.talk]
 root: start
 agents:
   known:
@@ -287,7 +287,7 @@ agents:
 states:
   start:
     on_enter:
-      - invoke: host.oracle.talk
+      - invoke: host.agent.talk
         with:
           question: "hi"
           agent: typo

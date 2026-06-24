@@ -7,8 +7,8 @@
 //   - "stopwords"    — builtin list, extras, surface-cased input.
 //
 // Each section is table-driven where the test cases share shape; bespoke
-// tests (the §5.1 worked example, deterministic across calls) sit on their
-// own. Helpers live in helpers_test.go.
+// tests (the "wade across the river" worked example, deterministic across
+// calls) sit on their own. Helpers live in helpers_test.go.
 package lex
 
 import (
@@ -27,10 +27,10 @@ func TestTokenize_EmptyInput(t *testing.T) {
 	}
 }
 
-// TestTokenize_WadeAcrossTheRiver pins the §2.3 / §5.1 worked example:
-// "wade across the river" is the canonical input the proposal cites for
-// the synonym tier, so we keep an explicit assertion separate from the
-// table tests so future contributors see it first.
+// TestTokenize_WadeAcrossTheRiver pins the canonical worked example:
+// "wade across the river" is the input docs/architecture/semantic-routing.md
+// cites for the synonym tier, so we keep an explicit assertion separate
+// from the table tests so future contributors see it first.
 func TestTokenize_WadeAcrossTheRiver(t *testing.T) {
 	t.Parallel()
 	const input = "let's wade across the river"
@@ -136,9 +136,9 @@ func TestTokenize_Deterministic(t *testing.T) {
 
 // ====================== stemming ======================
 
-// TestTokenize_StemmingHits is the §3 stemming calibration. The
-// worked-example table in the proposal assumes "purchasing" -> "purchas",
-// "quickly" -> "quick"; pin those.
+// TestTokenize_StemmingHits is the stemming calibration. The worked
+// examples in docs/architecture/semantic-routing.md assume
+// "purchasing" -> "purchas", "quickly" -> "quick"; pin those.
 func TestTokenize_StemmingHits(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

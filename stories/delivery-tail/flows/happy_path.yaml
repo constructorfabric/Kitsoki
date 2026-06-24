@@ -1,0 +1,62 @@
+# happy_path — the deterministic delivery tail: integrate (clean) → verify
+# (green on the MERGED commit) → cleanup → @exit:shipped.
+#
+# The parent maker is mocked by SEEDING its achieved handoff: the flow
+# starts at `integrate` with worktree_path + workspace_branch + brief +
+# gate_command already in world, exactly as a parent's maker @exit:achieved
+# leaves them.
+#
+# This is the trust-the-gate beat end to end: the SAME gate_command is re-run
+# on the MERGED commit (not the branch), green, then the worktree is removed
+# and the brief ships with shipped_sha set.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "e4f5a6b"
+            last_op_ok:     true
+            last_error:     ""
+      # The IDENTICAL gate_command, re-run GREEN on the merged commit.
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok  internal/ratelimit  0.012s" } }
+      cleanup_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:    cleaned
+            last_op_ok: true
+            last_error: ""
+
+turns:
+  # begin transitions bootstrap → integrate, firing on_enter → the autonomous
+  # chain carries integrate → verify → cleanup → report → @exit:shipped in one turn.
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:            shipped
+      shipped_sha:       "e4f5a6b"
+      integrated_sha:    "e4f5a6b"
+      verify_ok:         true
+      integrate_outcome: integrated
+      cleanup_outcome:   cleaned
+
+expect_terminal: true
+expect_no_errors: true

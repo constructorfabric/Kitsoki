@@ -1,6 +1,3 @@
-// Package harness — RecordingHarness implementation (§10.5, §12.1).
-// Wraps an inner Harness (typically LiveHarness) and appends each call as a
-// JSONL record to an output file. The JSONL is later compiled into a recording YAML.
 package harness
 
 import (

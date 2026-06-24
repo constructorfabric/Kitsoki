@@ -9,7 +9,8 @@ import (
 	"kitsoki/internal/lex"
 )
 
-// ExampleTokenize shows the canonical §5.1 worked example.
+// ExampleTokenize shows the canonical tokenisation trace from the package
+// doc (see docs/architecture/semantic-routing.md for the routing context).
 func ExampleTokenize() {
 	toks := lex.Tokenize("let's wade across the river", nil)
 	for _, t := range toks {
@@ -23,8 +24,10 @@ func ExampleTokenize() {
 	// river stop=false num=false
 }
 
-// ExampleSignature shows the §3 equivalence-group A: two semantically
-// equivalent phrasings that produce the same signature.
+// ExampleSignature shows a signature equivalence group: two semantically
+// equivalent phrasings produce the same signature, a third distinct
+// phrasing does not (the equivalence rules are documented in
+// docs/architecture/semantic-routing.md).
 func ExampleSignature() {
 	a := lex.Signature("buy 6 oxen and 200 lbs of food", nil)
 	b := lex.Signature("let's buy six oxen, 200 lbs food", nil)

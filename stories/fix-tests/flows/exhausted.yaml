@@ -1,0 +1,48 @@
+# exhausted — every run stays red; the fixer never blocks. After
+# max_cycles (3) the pipeline gives up at done_exhausted.
+# run(1) -> fix(c1) -> verify(1) -> fix(c2) -> verify(1) -> fix(c3) -> verify(1) -> done_exhausted
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  test_cmd:   "make test"
+  max_cycles: 3
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 1, ok: false, stdout: "FAIL\n" }
+        delay: "10ms"
+      verify_run:
+        data: { exit_code: 1, ok: false, stdout: "FAIL (still)\n" }
+        delay: "10ms"
+      write_report:
+        data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-exhausted.md" }
+  host.agent.task:
+    by_call:
+      fix:
+        delay: "10ms"
+        data:
+          submitted:
+            summary_title:      "Attempted fix"
+            summary_markdown:   "Adjusted the handler but the failure persists; needs deeper investigation."
+            files_changed:      ["internal/foo/foo.go"]
+            fixed_tests:        []
+            remaining_failures: ["TestFoo"]
+            needs_decision:     false
+            confidence:         0.3
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: start }
+    advance_clock: "5s"
+    expect_state: done_exhausted
+    expect_world:
+      tests_passed: false
+      outcome:      "exhausted"
+      cycle:        3
+      report_path:  ".artifacts/fix-tests/report-exhausted.md"
+
+expect_no_errors: true

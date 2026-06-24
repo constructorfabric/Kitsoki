@@ -1,0 +1,78 @@
+# conflict_auto_resolved — rebase fails → conflict auto-resolves → branch_ops (rebase_done=true).
+# All happens in one turn since agent.task stub is synchronous.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+  rebase_done:        false
+  build_check_cmd:    "echo 'build ok'"
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      2
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+      rebase_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            pre_rebase_tag:  ""
+            last_op_output:  "CONFLICT (content): Merge conflict in internal/foo.go"
+            rebase_base_sha: ""
+            rebase_done:     false
+            conflict_origin: rebase
+      gather_conflict_files:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            conflict_files: "internal/foo.go "
+            gosum_only:     false
+      rebase_continue_cmd:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            output:       "Successfully rebased."
+            ok:           true
+            new_conflict: false
+      build_check_after_rebase:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "build ok"
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        resolved:           true
+        confidence:         0.92
+        unresolvable_files: []
+        resolution_summary: "Took main version and re-applied feature additions."
+        reason:             null
+
+turns:
+  # Rebase → conflict → agent auto-resolves → rebase --continue → branch_ops (one turn)
+  - intent: { name: rebase, slots: {} }
+    expect_state: branch_ops
+    expect_world:
+      rebase_done: true
+
+expect_no_errors: true

@@ -1,17 +1,17 @@
-# dogfood_smoke — boot, land in core.main, verify iface.ticket.list_mine
-# resolves through host.local_files.ticket and returns the seed bug list.
+# dogfood_smoke — boot, land in core.landing, verify iface.ticket.list_mine
+# resolves through host.gh.ticket and returns the seed bug list.
 #
 # Smallest possible flow proving:
 #   - kitsoki-dev's `imports.core` folds dev-story cleanly under the
 #     `core` alias.
-#   - host_bindings rebind iface.ticket → host.local_files.ticket
+#   - host_bindings rebind iface.ticket → host.gh.ticket
 #     across the second-fold boundary (the iface op call inside
-#     core.ticket_search resolves to host.local_files.ticket.search at
+#     core.ticket_search resolves to host.gh.ticket.search at
 #     dispatch time).
 #   - the bare day-level intents (go_main, go_ticket_search) prefixed
 #     to core__ are dispatchable from inside the import compound.
 #
-# A stubbed `host.local_files.ticket` handler returns a canned bug
+# A stubbed `host.gh.ticket` handler returns a canned bug
 # list — the SHAPE matches what the real handler returns (tickets:
 # array of {id, title, status, …}); the flow doesn't run the real
 # provider against the on-disk seed bug because flows use stubs only.
@@ -20,11 +20,11 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world: {}
 
 host_handlers:
-  host.local_files.ticket:
+  host.gh.ticket:
     data:
       ok: true
       tickets:
@@ -32,13 +32,13 @@ host_handlers:
         - { id: "2026-05-14T120000Z-glamour-cap-prose-views",     title: "Prose view: blocks don't expand past hand-wrap on wide terminals", status: "open", priority: "P3", assignee: "", url: "issues/bugs/2026-05-14T120000Z-glamour-cap-prose-views.md" }
 
 turns:
-  # Verify we landed at core.main with the look intent. The lift
+  # Verify we landed at core.landing with the look intent. The lift
   # via imports.core.intents.import would surface this as bare `look`
   # at the parent table, but kitsoki-dev keeps the lift list minimal
   # (proposal §9 strict declared-mode encourages prefixed names for
   # navigation). The operator types core__look from inside the import.
   - intent: { name: core__look, slots: {} }
-    expect_state: core.main
+    expect_state: core.landing
 
   # Enter the ticket-search room (via the lifted go_ticket_search
   # intent — dev-story's hub navigation surfaces this at the core
@@ -47,12 +47,12 @@ turns:
     expect_state: core.ticket_search
 
   # Run a search; ticket_searching's on_enter fires iface.ticket.search
-  # which is bound at the kitsoki-dev instance to host.local_files.ticket.
+  # which is bound at the kitsoki-dev instance to host.gh.ticket.
   - intent: { name: core__search_tickets, slots: { query: "open kitsoki bugs" } }
     expect_state: core.ticket_searching
 
   # Land back at main.
   - intent: { name: core__go_main, slots: {} }
-    expect_state: core.main
+    expect_state: core.landing
 
 expect_no_errors: true

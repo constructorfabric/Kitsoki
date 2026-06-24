@@ -1,0 +1,9 @@
+{"type": "user", "message": {"content": "rebase onto main and resolve the conflicts"}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "tu1", "name": "Bash", "input": {"command": "git rebase main"}}]}}
+{"type": "user", "toolUseResult": {"stdout": "", "stderr": "CONFLICT (content): Merge conflict in internal/auth/session.go\nCONFLICT (content): Merge conflict in internal/auth/token.go", "interrupted": false}, "message": {"content": [{"type": "tool_result", "tool_use_id": "tu1", "is_error": true, "content": "CONFLICT (content): Merge conflict in internal/auth/session.go\nCONFLICT (content): Merge conflict in internal/auth/token.go"}]}}
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "Two source files conflict. Resolving each."}, {"type": "tool_use", "id": "tu2", "name": "Edit", "input": {"file_path": "internal/auth/session.go"}}]}}
+{"type": "user", "toolUseResult": {"stdout": "", "stderr": "", "interrupted": false}, "message": {"content": [{"type": "tool_result", "tool_use_id": "tu2", "is_error": false, "content": "ok"}]}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "tu3", "name": "Edit", "input": {"file_path": "internal/auth/token.go"}}]}}
+{"type": "user", "toolUseResult": {"stdout": "", "stderr": "", "interrupted": false}, "message": {"content": [{"type": "tool_result", "tool_use_id": "tu3", "is_error": false, "content": "ok"}]}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "tu4", "name": "Bash", "input": {"command": "git rebase --continue"}}]}}
+{"type": "user", "toolUseResult": {"stdout": "Successfully rebased and updated refs/heads/feat-auth.", "stderr": "", "interrupted": false}, "message": {"content": [{"type": "tool_result", "tool_use_id": "tu4", "is_error": false, "content": "Successfully rebased and updated refs/heads/feat-auth."}]}}

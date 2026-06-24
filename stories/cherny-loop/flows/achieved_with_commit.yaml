@@ -1,0 +1,47 @@
+# achieved_with_commit — asserts iface.vcs.commit fires before @exit:achieved.
+#
+# The maker's work is ONLY useful if it is committed to workspace_branch.
+# The maker runs with read-only bash, so the commit is a story invoke
+# (iface.vcs.commit → host.git) in gating.on_enter, conditional on gate-pass
+# + worktree_path set. This flow proves the commit fires (host.git.commit once,
+# in the maker's worktree) and commit_sha is bound in world.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:
+    by_call:
+      gate-0: { data: { ok: false, exit_code: 1, stdout: "--- FAIL: TestAllow_Burst" } }
+      gate-1: { data: { ok: true,  exit_code: 0, stdout: "ok  kitsoki/internal/ratelimit  0.012s" } }
+  host.agent.task:
+    by_call:
+      maker-1: { data: { submitted: { summary: "Initialize the bucket with tokens=burst" } } }
+  host.artifacts_dir: { data: { ok: true } }
+  # The commit call — fired by iface.vcs.commit → host.git once the gate passes.
+  host.git: { data: { ok: true, sha: "def5678" } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal:         "Get `go test ./internal/ratelimit` green"
+        gate_command: "go test ./internal/ratelimit/"
+        gate_mode:    "script"
+    expect_state: configuring
+  - intent: { name: launch, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      goal_achieved:   true
+      terminal_reason: "achieved"
+      iteration:       1
+      commit_sha:      "def5678"
+    expect_host_calls:
+      # The commit fired once in the maker's worktree.
+      - handler: host.git.commit
+        args: { workdir: ".worktrees/cherny-loop" }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

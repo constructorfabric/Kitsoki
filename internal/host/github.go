@@ -1,14 +1,13 @@
 // Package host — host.gh.ticket — GitHub Issues-backed ticket provider.
 //
-// Implements the `ticket` host_interface from the dev-story
-// implementation contract against the GitHub `gh` CLI.  Mirrors the
-// localfiles_ticket.go surface so a parent story (kitsoki-dev or a
-// downstream devstory flavour) can rebind
+// Implements the `ticket` host_interface (see docs/architecture/hosts.md) against the
+// GitHub `gh` CLI.  Mirrors the localfiles_ticket.go surface so a parent
+// story (kitsoki-dev, cyber-repo's devstory flavour) can rebind
 // `iface.ticket → host.gh.ticket` without touching room YAML.
 //
-// Why a separate handler?  GitHub Issues is the obvious "next provider
-// after local files" surface for the dogfood loop; we ship a `gh`-CLI
-// shell-out provider in kitsoki rather than reusing the file-backed
+// Why a separate handler?  GitHub Issues is the obvious "next provider after
+// local files" surface for the dogfood loop; we ship a
+// `gh`-CLI shell-out provider in kitsoki rather than reusing the file-backed
 // one when the operator wants live GitHub Issues.
 //
 // The companion `gh pr ...` family already lives in `internal/host/git_vcs.go`
@@ -38,13 +37,13 @@ import (
 // dispatch site — see internal/host/host.go::Get.
 //
 // Required args:
-//   - op (string): one of search, get, comment, transition, list_mine.
+//   - op (string): one of create, search, get, comment, transition, list_mine.
 //
 // Optional args (all ops):
 //   - repo (string): the `owner/repo` slug for the `--repo` flag.  When
 //     omitted, `gh` falls back to the current directory's git remote.
 //
-// Per-op input/output follows the contract §2.1.  See doc comments on each
+// Per-op input/output follows the ticket iface contract.  See doc comments on each
 // dispatch helper below.
 func GitHubTicketHandler(ctx context.Context, args map[string]any) (Result, error) {
 	op, _ := args["op"].(string)
@@ -52,10 +51,12 @@ func GitHubTicketHandler(ctx context.Context, args map[string]any) (Result, erro
 	if op == "" {
 		return Result{Error: "host.gh.ticket: op argument is required"}, nil
 	}
-	if !ghCLIAvailable(ctx) {
+	if !ghAvailable(ctx) {
 		return Result{Error: "host.gh.ticket: gh CLI not available — install github.com/cli/cli and run `gh auth login`"}, nil
 	}
 	switch op {
+	case "create":
+		return ghTicketCreate(ctx, args)
 	case "search":
 		return ghTicketSearch(ctx, args)
 	case "get":
@@ -69,15 +70,6 @@ func GitHubTicketHandler(ctx context.Context, args map[string]any) (Result, erro
 	default:
 		return Result{Error: fmt.Sprintf("host.gh.ticket: unknown op %q", op)}, nil
 	}
-}
-
-// ghCLIAvailable probes `gh --version` through the package cliExec seam.
-// Returns true iff the binary exists, runs, and exits 0.  Matches the
-// availability pattern in git_vcs.go::ghAvailable but in a workdir-agnostic
-// form (ticket ops do not have a natural workdir argument).
-func ghCLIAvailable(ctx context.Context) bool {
-	_, _, code, err := cliExec(ctx, "", "gh", "--version")
-	return err == nil && code == 0
 }
 
 // repoFlag returns `["--repo", v]` when args["repo"] is a non-empty string,
@@ -166,6 +158,21 @@ func ghTicketGet(ctx context.Context, args map[string]any) (Result, error) {
 	data := ghIssueSummary(raw)
 	if body, ok := raw["body"].(string); ok {
 		data["body"] = body
+		// Recover the ```kitsoki body-metadata block create() wrote (trace_ref,
+		// kitsoki_rev, filed_by, legacy_id) so callers see the round-tripped
+		// fields GitHub has no native home for — see github_create.go.
+		if meta := ghParseMetadata(body); meta != nil {
+			data["kitsoki_meta"] = meta
+			// Lift legacy_id to a top-level field so the ticket view can show
+			// the local-bug-file ↔ GitHub-issue identity without reaching into
+			// the nested meta map. A bug filed as issues/bugs/<iso>.md and
+			// re-filed as issue #N only exists in the loop as #N; surfacing the
+			// legacy id makes that mapping visible instead of forcing an
+			// operator to eyeball-match by title (P5).
+			if lid, ok := meta["legacy_id"].(string); ok && strings.TrimSpace(lid) != "" {
+				data["legacy_id"] = lid
+			}
+		}
 	}
 	if comments, ok := raw["comments"].([]any); ok {
 		data["comments"] = comments
@@ -303,10 +310,12 @@ func ghTicketListMine(ctx context.Context, args map[string]any) (Result, error) 
 // ─── Field projections ─────────────────────────────────────────────────────
 
 // ghIssueSummary projects a `gh issue list --json` row into the
-// provider-neutral ticket summary the contract pins (§2.1): id / title /
-// status / priority / assignee / url.  GitHub does not have a native
-// priority field; we leave priority empty (callers that need it can read it
-// off labels via per-team convention — out of scope for v1).
+// provider-neutral ticket summary the contract pins: id / title /
+// status / priority / assignee / url, plus the kitsoki-routing fields
+// type (classified from labels — see ghClassifyType) and source
+// ("github").  GitHub does not have a native priority field; we leave
+// priority empty (callers that need it can read it off labels via
+// per-team convention — out of scope for v1).
 func ghIssueSummary(raw map[string]any) map[string]any {
 	num := ""
 	switch v := raw["number"].(type) {
@@ -335,7 +344,74 @@ func ghIssueSummary(raw map[string]any) map[string]any {
 		"priority": "", // GitHub has no native priority field
 		"assignee": assignee,
 		"url":      url,
+		// type is how dev-story's `drive` arc routes a picked ticket
+		// (bug → bf, feature → impl, epic → cyp). GitHub has no native
+		// ticket-type field, so we classify it from the issue's labels
+		// (with a title-keyword fallback). Without this the field is "",
+		// every type-guarded `drive` transition falls through to the
+		// catch-all self-loop, and the headline drive button no-ops — the
+		// mirror of the local-files provider's source-dir `Kind` tagging.
+		"type": ghClassifyType(raw),
+		// source marks this row as GitHub-issue-backed so the ticket view
+		// can surface the local↔issue identity (see ghTicketGet, which
+		// also lifts the legacy_id out of the ```kitsoki metadata block).
+		"source": "github",
 	}
+}
+
+// ghClassifyType derives a kitsoki ticket type (bug | feature | epic) from a
+// `gh issue` JSON row.  GitHub Issues has no native type field, so we read it
+// off the issue's labels first (a `bug` / `feature` / `epic` label, or the
+// `kind:`-prefixed variants some repos use), falling back to a title-keyword
+// sniff, and finally to "bug" — the historically-correct default for the
+// dogfood loop, whose GitHub provider was wired to file bugs.
+//
+// Returning a concrete default (rather than "") is the load-bearing choice:
+// dev-story's `drive` arc routes on `ticket_type == 'bug'|'feature'|'epic'`,
+// and an empty type silently falls through to the no-op self-loop. A
+// GitHub-sourced ticket must always classify to *some* pipeline.
+func ghClassifyType(raw map[string]any) string {
+	for _, name := range ghLabelNames(raw) {
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "bug", "kind:bug", "type:bug":
+			return "bug"
+		case "feature", "enhancement", "kind:feature", "type:feature":
+			return "feature"
+		case "epic", "kind:epic", "type:epic":
+			return "epic"
+		}
+	}
+	// Title-keyword fallback for repos that don't label by type.
+	title, _ := raw["title"].(string)
+	switch t := strings.ToLower(title); {
+	case strings.HasPrefix(t, "epic:") || strings.Contains(t, "[epic]"):
+		return "epic"
+	case strings.HasPrefix(t, "feature:") || strings.Contains(t, "[feature]"):
+		return "feature"
+	}
+	return "bug"
+}
+
+// ghLabelNames pulls the label name strings off a `gh issue ... --json labels`
+// row.  gh renders labels as `[{"name":"bug",...}]`; we tolerate a bare
+// `["bug"]` string list too (some gh JSON shapes / fixtures).
+func ghLabelNames(raw map[string]any) []string {
+	list, ok := raw["labels"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(list))
+	for _, l := range list {
+		switch v := l.(type) {
+		case map[string]any:
+			if name, ok := v["name"].(string); ok {
+				out = append(out, name)
+			}
+		case string:
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // splitIssueID parses an issue ref.  Accepts "owner/repo#42" → ("owner/repo",

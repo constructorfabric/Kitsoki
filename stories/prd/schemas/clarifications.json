@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "clarifications",
+  "description": "The analyst's clarifying questions for ONE round. An empty list is valid and means nothing material remains to ask.",
+  "type": "object",
+  "required": ["questions"],
+  "properties": {
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question"],
+        "properties": {
+          "id":       { "type": "string", "minLength": 1, "description": "Stable id for this question (e.g. q1)." },
+          "question": { "type": "string", "minLength": 4, "description": "The question, phrased for a non-technical stakeholder." },
+          "why":      { "type": "string", "description": "Why this matters for the PRD." }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,88 @@
+# freeform_agent_gate — an ad hoc goal with no explicit command is planned by an
+# agent during configuration. The planner chooses an agent gate, then launch proves RED
+# and converges. This is the skeptical-lead intro path: "say the work, launch the
+# loop, watch the gate enforce done."
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.agent.decide:
+    by_call:
+      gate-plan:
+        data:
+          submitted:
+            gate_mode: agent
+            gate_command: ""
+            artifact: "docs/stories/story-qa.md"
+            prompt_focus: "Judge whether the guide explains why Kitsoki is better than a plain CLI loop for story QA."
+            reason: "This is a documentation-quality goal, so a focused adversarial review is the right proof."
+      gate-0:
+        data:
+          submitted:
+            pass: false
+            reason: "The guide does not yet explain what makes Kitsoki better than a plain CLI loop."
+            fixes: ["add skeptical-lead framing"]
+      gate-1:
+        data:
+          submitted:
+            pass: true
+            reason: "The guide now explains the state, gate, evidence, and replay advantages over a plain CLI loop."
+            fixes: []
+  host.agent.task:
+    by_call:
+      maker-1:
+        data:
+          submitted:
+            summary: "Added skeptical-lead framing and evidence requirements"
+  host.artifacts_dir: { data: { ok: true } }
+  # iface.vcs.commit → host.git: commit the maker's work before @exit:achieved.
+  host.git: { data: { ok: true, sha: "abc1234" } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal: "Make docs/stories/story-qa.md convincing to a skeptical lead engineer"
+        artifact: "docs/stories/story-qa.md"
+        iteration_budget: 2
+    expect_state: configuring
+    expect_world:
+      goal_text:        "Make docs/stories/story-qa.md convincing to a skeptical lead engineer"
+      goal_artifact:    "docs/stories/story-qa.md"
+      gate_mode:        "agent"
+      gate_command:     ""
+      gate_plan_reason: "This is a documentation-quality goal, so a focused adversarial review is the right proof."
+      iteration_budget: 2
+    expect_view_matches: "agent.*adversarial reviewer"
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: gate-plan }
+        times: 1
+  - intent: { name: launch, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      goal_achieved:   true
+      terminal_reason: "achieved"
+      gate_mode:       "agent"
+      gate_plan_reason: "This is a documentation-quality goal, so a focused adversarial review is the right proof."
+      iteration:       1
+      maker_summary:   "Added skeptical-lead framing and evidence requirements"
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-1 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-1 }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: gate-1 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

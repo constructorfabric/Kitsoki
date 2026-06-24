@@ -1,0 +1,16 @@
+# Lesson 1 & 2 effects: the lamp toggles and the budget slot binds.
+test_kind: flow
+app: ../app.yaml
+initial_state: deterministic
+turns:
+  - intent: { name: lamp_on }
+    expect_state: deterministic
+    expect_world: { lamp: true, last_action: "lamp_on" }
+  - intent: { name: lamp_off }
+    expect_state: deterministic
+    expect_world: { lamp: false, last_action: "lamp_off" }
+  - intent: { name: set_budget, slots: { amount: "200" } }
+    expect_state: deterministic
+    expect_world: { budget: "200", last_action: "set_budget" }
+  - intent: { name: back }
+    expect_state: hub

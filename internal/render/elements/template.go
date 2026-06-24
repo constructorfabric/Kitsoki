@@ -10,9 +10,12 @@ import (
 //
 // This is the kind that preserves today's behaviour for the legacy
 // scalar `view: <markdown>` form (the loader normalises it to a single
-// {Kind: "template", Source: <original>} element). Until Phase E/F
-// migrate apps to typed elements, every view that flows through the
-// dispatcher takes this path.
+// {Kind: "template", Source: <original>} element). A view whose author
+// hasn't migrated to typed elements flows through the dispatcher as a
+// single template element and takes this path unchanged.
+//
+// The zero value (empty Source, nil Glamour) is usable: it renders to ""
+// and a nil Glamour is normalised to IdentityGlamour.
 type Template struct {
 	Source  string
 	Glamour GlamourFunc

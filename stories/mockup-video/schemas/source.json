@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "source",
+  "description": "The authored (or refined) mockup-video source: a tour (HTML pages + manifest) or a slidey deck.",
+  "type":    "object",
+  "required": ["kind", "spec_path"],
+  "properties": {
+    "kind":      { "type": "string", "enum": ["tour", "slidey"] },
+    "paths":     { "type": "array", "items": { "type": "string" }, "description": "Authored source files (HTML pages for tour; the deck JSON for slidey)." },
+    "spec_path": { "type": "string", "description": "The render entrypoint: the tour manifest path (tour) or the deck JSON path (slidey)." },
+    "summary":   { "type": "string", "description": "One-line human summary of what was authored/edited." },
+    "edited":    { "type": "array", "items": { "type": "string" }, "description": "Refine pass only: the source_ref targets edited this pass." }
+  },
+  "additionalProperties": true
+}

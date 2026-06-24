@@ -109,50 +109,70 @@ func TestTimeout_CancelledOnExit(t *testing.T) {
 	require.Equal(t, app.StatePath("traveled"), j.State)
 }
 
-// ── TestTimeout_PersistsAcrossOrchestratorRestart verifies that a pending
-// entry is reloaded from the SQLite-backed store when a new orchestrator
-// opens the same session. ─────────────────────────────────────────────────
-func TestTimeout_PersistsAcrossOrchestratorRestart(t *testing.T) {
+// ── TestTimeout_SurvivesOrchestratorRestart verifies that a pending timeout
+// row written by orch1 is re-armed by orch2 when they share the same SQLite
+// store.  This is the restart-persistence contract: a session waiting in a
+// Timeout: state survives a process restart and eventually fires.
+func TestTimeout_SurvivesOrchestratorRestart(t *testing.T) {
 	t.Parallel()
 	def, err := app.Load("testdata/timeout/app.yaml")
 	require.NoError(t, err)
 	m, err := machine.New(def)
 	require.NoError(t, err)
-	s, err := store.OpenMemory()
+
+	// Use a file-backed SQLite store so the timeouts table persists across
+	// two orchestrator instances.
+	dir := t.TempDir()
+	s, err := store.Open(dir + "/session.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
+	// Start clock at unix epoch so fire_at is deterministic.
 	clk := clock.NewFake(time.Unix(0, 0))
 	h := &timeoutNoopHarness{}
-	orch1 := orchestrator.New(def, m, s, h, orchestrator.WithClock(clk))
 	ctx := context.Background()
 
+	// ── orch1: schedule the timeout ──────────────────────────────────────────
+	orch1 := orchestrator.New(def, m, s, h, orchestrator.WithClock(clk))
 	sid, err := orch1.NewSession(ctx)
 	require.NoError(t, err)
 	_, err = orch1.Teleport(ctx, sid, inbox.TeleportTarget{State: "waiting"})
 	require.NoError(t, err)
-	require.NotEmpty(t, orch1.TimeoutPendingStates(sid))
+	require.NotEmpty(t, orch1.TimeoutPendingStates(sid),
+		"orch1 must have a pending timeout after entering waiting")
 
-	// Drop orch1 on the floor (simulating a crash).  Stopping its in-memory
-	// dispatcher leaves the persisted row intact, mirroring what the OS sees
-	// when the orchestrator process exits.
+	// Simulate a clean process exit: stop in-memory timers without touching
+	// the persisted row.
 	orch1.ShutdownTimeoutsForTest()
 
-	// A fresh orchestrator opens the same SQLite-backed store: it must
-	// rearm the timeout from the persisted row.
+	// ── orch2: reconstruct from the persisted row ────────────────────────────
+	// A fresh orchestrator shares the same store (and therefore the same
+	// timeouts table row).  rearmPersistedTimeouts() should re-arm the timer.
 	orch2 := orchestrator.New(def, m, s, h, orchestrator.WithClock(clk))
 	require.NotEmpty(t, orch2.TimeoutPendingStates(sid),
-		"new orchestrator should have rearmed the persisted timeout")
+		"orch2 must have re-armed the pending timeout from the persisted row")
 
-	// Advance past the deadline.  The rearmed timer must fire.
+	// Advance the clock past the 10-day timeout; the timer must fire and
+	// transition the session into traveled.
 	clk.Advance(11 * 24 * time.Hour)
+
+	// Poll for BOTH effects of the firing: the synthetic transition lands AND
+	// the pending entry clears. They settle at slightly different points, so
+	// asserting the pending-clear once right after a state-only poll races under
+	// heavy parallel load — the state can be visible a beat before the pending
+	// map is cleared. Folding both into the Eventually removes that window.
 	require.Eventually(t, func() bool {
 		j, lerr := orch2.LoadJourney(sid)
 		if lerr != nil {
 			return false
 		}
-		return j.State == app.StatePath("traveled")
-	}, 2*time.Second, 5*time.Millisecond)
+		return j.State == app.StatePath("traveled") &&
+			len(orch2.TimeoutPendingStates(sid)) == 0
+	}, 2*time.Second, 5*time.Millisecond,
+		"session should transition to traveled and clear its pending timeout after clock advance")
+
+	require.Empty(t, orch2.TimeoutPendingStates(sid),
+		"pending entry should be cleared after the timeout fires")
 }
 
 // ── TestTimeout_EmitsTimeoutFiredEvent verifies the synthetic turn carries

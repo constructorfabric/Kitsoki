@@ -1,0 +1,60 @@
+# mining.profile.yaml — scope config for mining demo-video-loop coverage from real
+# Claude Code transcripts. Co-located so the story self-describes its mine.
+#
+# This is SCOPE CONFIGURATION, not an auto-classifier. It tells coverage_prep.py
+# (1) which sessions to distill (the grep prefilter), (2) which mined intents are
+# in-scope (the action tags), and (3) which rooms are CANDIDATE owners of each
+# action tag — a STARTING POINT for the human/LLM map in coverage.md, never an
+# assertion. The verdict (CONFORMS / DIVERGES / FIXTURE-GAP / COVERAGE-GAP /
+# OUT-OF-SCOPE) is assigned by reading the room bash + the recovered outcome, not
+# mechanically. See docs/stories/story-coverage-mining.md.
+#
+# demo-video-loop is the narrow maker→QA loop: a maker PRODUCES a demo/tour video
+# (drive kitsoki web through Playwright, render the MP4/GIF/contact-sheet, capture
+# scene frames) and a QA judge VALIDATES the UI EVIDENCE against the bug/plan being
+# proved (extract frames, vision-judge each scenario, adversarial re-check, emit a
+# gated verdict.json). The HOW-TO of authoring any one demo or QA spec is the
+# kitsoki-ui-demo / kitsoki-ui-qa SKILL's job — this loop only orchestrates the
+# produce→validate→gate handoff, so the generic story-authoring and the per-feature
+# spec authoring are non_goals here (see non_goals).
+
+story: demo-video-loop
+
+scope:
+  # prep.py --grep words. RECALL-ONLY prefilter: a substring scan over the whole
+  # raw jsonl, so it over-matches prose ("record this", "the video"). It widens
+  # the net; the real scoping is the human read in the map. These words target
+  # REAL demo/QA usage we have actually driven.
+  grep: ["qa.sh", "make demo-tour", "playwright .*video", "kitsoki tour --feature", "record demo", "verdict.json", "tour demo video", "contact sheet", "rrweb", "vision QA"]
+  sample: recency          # mine how we produce/validate demos *now*
+  max: 25
+
+  # post-filter to these action tags (vocab/tags.yaml). The maker half is the
+  # visual-verification-loop (drive the UI, capture frames, render the video) plus
+  # verify-by-running (the Playwright/`kitsoki tour` run that produces the
+  # artifact); the QA half is review-feedback (the vision judge's gated verdict on
+  # the evidence) plus write-docs (the qa-report.md / demo narration write-up). It
+  # does NOT model authoring a story's rooms or a feature's spec — that's the skill.
+  action_tags: [visual-verification-loop, verify-by-running, review-feedback, write-docs]
+
+# Candidate rooms per action tag — a starting point for the human map, joined into
+# the coverage.md "candidate room" column by coverage_prep.py. Room ids are the
+# files under stories/demo-video-loop/rooms/ (the generating + qa rooms of the
+# maker→QA loop).
+owns:
+  visual-verification-loop:   [generating, capturing, rendering]
+  verify-by-running:          [generating, rendering]
+  review-feedback:            [qa, qa_judging, qa_verdict]
+  write-docs:                 [qa_report]
+
+# Non-goals: work that belongs to the kitsoki-ui-demo / kitsoki-ui-qa SKILLs and to
+# the generic story-authoring flow, NOT to this loop's produce→validate rooms. A
+# matching intent is OUT-OF-SCOPE, not a gap. Matched against the verbatim
+# user_text, since the coarse action tags above cannot separate the loop's own
+# produce/validate orchestration from the one-off authoring the skill performs.
+non_goals: [author-story-yaml, author-feature-spec, author-tour-manifest, write-flow-fixture, edit-room-or-intent, debug-web-ui-runtime]
+
+# Marker substrings coverage_prep.py scans the verbatim user_text for to HINT that
+# an in-scope-by-tag intent is actually an OUT-OF-SCOPE non_goal. A hint that routes
+# the human's attention — never an automatic verdict.
+non_goal_markers: ["write a story", "author the story", "story.yaml", "add a room", "edit the room", "write the spec", "feature spec", "tour manifest", "features/", "flow fixture", "test flows", "add an intent", "edit the intent", "web-dev", "504", "blank page", "SSE", "fix the web ui"]

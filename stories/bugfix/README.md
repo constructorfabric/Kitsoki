@@ -1,12 +1,12 @@
 # bugfix — general-purpose, provider-neutral bug-fix pipeline
 
-A reusable kitsoki story implementing the Wave 1 / Slice α scope of
-the dev-story / bugfix unify design. The seven visible rooms
-(`idle → reproducing → proposing → implementing → testing →
-reviewing → validating → done`) collapse a 14-phase autonomous
-pipeline into one state machine while keeping every checkpoint
-shape identical across `human` / `llm` / `llm_then_human` judge
-modes.
+A reusable kitsoki story implementing the bug-fix pipeline described in
+the [bug-fix case study](../../docs/case-studies/bug-fix.md). The seven visible
+rooms (`idle → reproducing → proposing → implementing → testing →
+reviewing → validating → done`) collapse the cyber-repo's 14-phase
+autonomous pipeline into one state machine while keeping every
+checkpoint shape identical across `human` / `llm` / `llm_then_human`
+judge modes.
 
 Standalone:
 
@@ -28,12 +28,89 @@ import via `entry: idle`.
 
 | Name | Description | `requires:` keys | Typical world_out |
 |---|---|---|---|
-| `done` | Pipeline succeeded; hand off to pr-refinement. | `done_artifact` | Parent stories project `done_artifact` into their own `pr_id` / `pr_url` after pr-refinement runs. |
+| `done` | open-PR exit: pipeline succeeded; hand off to pr-refinement. | `done_artifact` | Parent stories project `done_artifact` into their own `pr_id` / `pr_url` after pr-refinement runs. |
 | `abandoned` | User or LLM bailed (`quit`). | (none) | Parent stories usually route to a `main` / inbox state. |
+| `shipped` | direct-ship exit: the fix integrated to local main, the regression gate re-verified GREEN on the merged commit, worktree cleaned up. | `shipped_sha` | The self-hosting loop (no PR). |
+| `needs-human` | direct-ship exit: an integrate/verify/cleanup failure, or a regression gate that was never RED pre-fix / isn't GREEN on merged main. | `last_error` | Carries the real error; never a swallowed false success. |
+| `not-reproducible` | the ticket's `repro_command` passed (GREEN) on the unchanged worktree — the bug does not currently reproduce. | `last_error` | Carries the gate output; a human confirms wontfix / cannot-reproduce or supplies a sharper repro. |
 
-Standalone (no parent) load synthesises `__exit__done` and
-`__exit__abandoned` terminals so `kitsoki run` and `kitsoki test flows`
+Standalone (no parent) load synthesises `__exit__done`,
+`__exit__abandoned`, `__exit__shipped`, `__exit__needs-human`, and
+`__exit__not-reproducible` terminals so `kitsoki run` and `kitsoki test flows`
 both terminate cleanly.
+
+## The exit slot — direct-ship vs open-PR (delivery-loop slice 4)
+
+The pipeline ends one of two ways, chosen by the **`bugfix_exit`** world key:
+
+- **`direct-ship`** (default — the self-hosting loop): instead of the weaker
+  `validating → PR-handoff` tail, bugfix **composes the shared
+  [`ship-it`](../ship-it/) tail** — `integrate → verify → cleanup → report` —
+  landing the fix on **local main**. The tail is **imported, not copied**
+  (`imports.tail`, `entry: integrate`): ship-it's lost-work-safe `integrate`
+  (rebase onto CURRENT main + build-check + merge), its independent `verify`
+  (re-run the gate on the MERGED commit), and its no-swallowed `cleanup` are
+  reused verbatim. bugfix's maker rooms (`reproducing → … → testing`) feed the
+  tail at `integrate` exactly as cherny-loop's `@exit:achieved` feeds ship-it —
+  the same `worktree_path` / `workspace_branch` handoff seam. Exits `@exit:shipped`
+  on a green merged-commit re-verify, `@exit:needs-human` (with `last_error`) on
+  any failure.
+- **`open-PR`**: today's behaviour — walk `reviewing → validating → done` and
+  hand the close-out artifact to pr-refinement. Parent stories that want the PR
+  tail (`dev-story`, `gears-bugfix`) pin `bugfix_exit: open-PR` via `world_in`.
+
+### RED→GREEN regression gate
+
+The bugfix-specific discipline ship-it does **not** cover: the regression test
+must **FAIL before the fix and PASS after**. The `testing` room runs the
+configured `gate_command` on the **pre-fix snapshot** (`HEAD~1` of the feature
+branch, materialised in a throwaway detached worktree — never mutating the maker
+worktree) and records `regression_red_pre_fix`. The shared `verify` room re-runs
+the **identical** gate on the **merged commit** and records GREEN. A fix whose
+regression test was **never RED pre-fix** (a *characterization* test, not a
+regression test), or **isn't GREEN on merged main**, routes to
+`@exit:needs-human` — never `@exit:shipped`. Same gate, two evaluation sites:
+RED before the fix, GREEN after.
+
+### The repro RED-gate — prove the bug reproduces before spending maker budget
+
+A ticket can carry a **`repro_command:`** frontmatter field (surfaced by
+`host.local_files.ticket` in both `ticket.search` and `ticket.get` output, and
+declared on the `ticket` host_interface `get` contract). At ticket-load the
+parent projects it into **`world.gate_command`** (`dev-story`'s
+`ticket_search.pick_ticket` binds it from `iface.ticket.get`, then the `bf`
+import's `world_in` carries it across).
+
+The **`reproducing`** room then runs that command **RED-first** on the unchanged
+(pre-fix) worktree *before* the LLM reproducer — structurally the
+[`cherny-loop` baseline](../cherny-loop/rooms/baseline.yaml) applied to the
+ticket-driven pipeline (`reuse`, don't reinvent):
+
+- **RED** (non-zero exit, the bug reproduces) → `regression_red_pre_fix=true`,
+  `repro_checked=true`; the GREEN emit does not fire, the LLM reproducer runs as
+  corroborating evidence, and `accept` advances to `proposing`.
+- **GREEN** (zero exit, the command passes) → the bug does not currently
+  reproduce → a guarded `not_reproducible` emit routes to
+  `@exit:not-reproducible` (needs-human) with the gate output in `last_error`,
+  *before* the LLM reproducer / maker budget is spent.
+
+This makes `reproduction_artifact.bug_verified` an **evidenced** fact rather than
+an LLM assertion. **Backward compatible:** an empty `gate_command` (a legacy
+ticket with no `repro_command`) skips the gate entirely and falls through to the
+current LLM-only reproducing behaviour, unchanged.
+
+| Flow | Proves |
+|---|---|
+| `bugfix_repro_red_then_proceed` | RED gate (non-zero exit) → `reproducing` holds for the LLM reproducer → `accept` → `proposing`. The bug reproduces; maker budget is justified. |
+| `bugfix_repro_green_not_reproducible` | GREEN gate (zero exit) → `not_reproducible` emit → `@exit:not-reproducible`; the LLM reproducer never runs. The don't-spend-on-a-phantom case. |
+
+### Direct-ship flows (no-LLM)
+
+| Flow | Proves |
+|---|---|
+| `bugfix_ships_direct` | maker → testing (regression gate RED pre-fix) → imported ship-it tail (integrate → re-verify GREEN on merged commit → cleanup) → `@exit:shipped`. The tail is reused, not reinvented. |
+| `bugfix_regression_gate_red_then_green` | the characterization-test trap: a gate that PASSES pre-fix was never RED → `@exit:needs-human`, never shipped. |
+| `bugfix_needs_human_on_merged_red` | trust-the-gate: legit RED→fix, clean integrate, but the SAME gate RED on the merged commit → `@exit:needs-human` (`shipped_sha` never set). |
 
 ### Visible rooms
 
@@ -63,6 +140,7 @@ in `app.yaml`'s `world:` block so the child loads standalone for tests.
 | `workdir` | string | Most `iface.{vcs,ci}.*` calls. | `""` |
 | `base_branch` | string | `iface.vcs.open_pr.base`. | `""` |
 | `feature_branch` | string | `iface.vcs.branch.name`. | `""` |
+| `gate_command` | string | The ticket's `repro_command` (repro RED-gate in `reproducing`; re-used as the regression gate in `testing` + the shared `verify`). Empty ⇒ gates skipped. | `""` |
 | `bugfix_mode` | string | `full` (walk every room) \| `quick` (Wave 2 shortcut). | `full` |
 | `judge_mode` | string | `human` \| `llm` \| `llm_then_human` — see Judge polymorphism below. | `human` |
 | `judge_confidence_threshold` | float | Floor for auto-firing the LLM's verdict (Wave 2 — runtime gap). | `0.8` |
@@ -100,7 +178,8 @@ in `app.yaml`'s `world:` block so the child loads standalone for tests.
 ### `host_interfaces:` contract
 
 The story declares six capability surfaces. Operation names and I/O
-shapes are fixed by §2 of the dev-story implementation contract. The
+shapes are fixed by contract §2 of
+`docs/proposals/notes/dev-story-implementation-contract.md`. The
 `default:` value names the standalone binding (provider-neutral local
 files / git); parent stories rebind via `imports.<alias>.host_bindings`.
 
@@ -113,15 +192,15 @@ files / git); parent stories rebind via `imports.<alias>.host_bindings`.
 | `transport` | `post` | `host.append_to_file` (kitsoki-dev appends to the local bug file) |
 | `inbox.add` | — | always-on bare host call, NOT an iface (per contract §2.6) |
 
-Rebinding from an importer is straightforward.  A downstream
-enterprise flavour might rebind to `{ticket: host.jira, vcs:
-host.bitbucket, ci: host.jenkins, workspace: host.workspace_manager,
-transport: host.jira_comment}`.
+Rebinding from an importer is straightforward — see proposal §5.1–5.3
+worked examples. The cyber-repo flavor will rebind to
+`{ticket: host.jira, vcs: host.bitbucket, ci: host.jenkins,
+workspace: host.workspace_manager, transport: host.jira_comment}`.
 
 ### Host requirements
 
 Standalone Wave 1 needs every iface's default handler PLUS
-`host.inbox.add` and the oracle verb handlers below. The flow fixtures
+`host.inbox.add` and the agent verb handlers below. The flow fixtures
 stub them all with canned envelopes; Slice β ships the real handlers
 in `internal/host/`.
 
@@ -133,18 +212,18 @@ in `internal/host/`.
 | `host.git_worktree` | Slice β (in flight) | `internal/host/git_worktree.go` |
 | `host.append_to_file` | Slice β (in flight) | `internal/host/append_file_transport.go` |
 | `host.inbox.add` | Slice β (in flight) | `internal/host/inbox_add.go` |
-| `host.oracle.task` | oracle-split Phase 8 | `internal/host/oracle_task.go` |
-| `host.oracle.ask` | oracle-split Phase 8 | `internal/host/oracle_ask.go` |
-| `host.oracle.decide` | oracle-split Phase 8 | `internal/host/oracle_decide.go` |
+| `host.agent.task` | agent-split Phase 8 | `internal/host/agent_task.go` |
+| `host.agent.ask` | agent-split Phase 8 | `internal/host/agent_ask.go` |
+| `host.agent.decide` | agent-split Phase 8 | `internal/host/agent_decide.go` |
 
 The host registry's prefix-fallback lets each "default" handler back
 every op on the iface; per-op handlers can be added later without
 touching the YAML.
 
-### Oracle-split persona table (Phase 8)
+### Agent-split persona table (Phase 8)
 
-Each oracle call carries an `agent:` key selecting a persona declared
-in `app.yaml agents:`. The verb used per phase follows the oracle-split
+Each agent call carries an `agent:` key selecting a persona declared
+in `app.yaml agents:`. The verb used per phase follows the agent-split
 proposal §3.5 classification rules:
 
 | Persona | Verb | Phases |
@@ -171,10 +250,10 @@ is `world.judge_mode`:
 | Mode | Behaviour at every checkpoint |
 |---|---|
 | `human` | Post + inbox-mirror; wait for an explicit reply intent. (No LLM call.) |
-| `llm` | Post + inbox-mirror + run `host.oracle.decide` with the `judge` persona. The verdict lands in `world.llm_verdict`; when the verdict's `verdict`/`intent` are not "uncertain" AND `confidence >= judge_confidence_threshold` (defaults to 0.8), the `emit_intent:` effect at step 4 auto-fires the verdict's intent in the same turn. An uncertain or low-confidence verdict holds the state for an operator. |
-| `llm_then_human` | Same as `llm` for the auto-fire path; the mode flag exists so downstream parent stories can declare "always also notify a human", which Wave 2 layers above this base contract. |
+| `llm` | Post + inbox-mirror + run `host.agent.decide` with the `judge` persona. The verdict lands in `world.llm_verdict`; when the verdict's `verdict`/`intent` are not "uncertain" AND `confidence >= judge_confidence_threshold` (defaults to 0.8), the `emit_intent:` effect at step 4 auto-fires the verdict's intent in the same turn. An uncertain or low-confidence verdict holds the state for an operator. |
+| `llm_then_human` | Same as `llm` for the auto-fire path; the mode flag exists so cyber-repo-flavour parent stories can declare "always also notify a human", which Wave 2 layers above this base contract. |
 
-The judge polymorphism is a single `host.oracle.decide` call per
+The judge polymorphism is a single `host.agent.decide` call per
 checkpoint, gated by `when:` — **not** a fork in the state graph. The seven
 `_awaiting_reply` states have **identical** `on_enter` shapes
 (contract §6) — only `<phase>` and the next-room target vary.
@@ -190,13 +269,13 @@ The judge auto-fire works whether bugfix runs **standalone** or
 `core.bf` under kitsoki-dev). The runtime resolves the LLM's bare
 intent name (`accept`) through the leaf state's `IntentAliases` map
 to the rewriter-renamed arc (`bf__accept` / `core__bf__accept`) at
-dispatch time — see `docs/imports.md` "emit_intent across the fold
+dispatch time — see `docs/stories/imports.md` "emit_intent across the fold
 boundary" and `resolveEmittedIntentName` for the mechanism.
 
 ## Cycle budgets and shortcuts (Wave 3 / Phase 4)
 
-The L2 cycle-budget pattern (ported from an upstream 14-phase bugfix
-pipeline) is wired into every checkpointed `_awaiting_reply` room. Per-phase counters
+The L2 cycle-budget pattern from cyber-repo's 14-phase bugfix is wired
+into every checkpointed `_awaiting_reply` room. Per-phase counters
 (`<phase>_cycle`) and per-phase budgets (`<phase>_budget`, default 3)
 together gate `refine`: when the counter hits the budget the next
 refine fires an abandon arc instead of looping. `restart_from`
@@ -348,7 +427,11 @@ stories/bugfix/
 
 ## See also
 
-- [`docs/imports.md`](../../docs/imports.md) — the imports authoring
+- [`docs/case-studies/bug-fix.md`](../../docs/case-studies/bug-fix.md)
+  — the full design.
+- [`docs/proposals/notes/dev-story-implementation-contract.md`](../../docs/proposals/notes/dev-story-implementation-contract.md)
+  — Slice α / β / γ contract.
+- [`docs/stories/imports.md`](../../docs/stories/imports.md) — the imports authoring
   reference for parent stories that wrap `bugfix`.
 - [`stories/robbery/`](../robbery/) — the canonical importable
   sub-story (smaller, used by `oregon-trail` as an imports demo).

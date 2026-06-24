@@ -1,0 +1,46 @@
+# Controlled vocabulary — OVERLAY: Go / backend / CLI-TUI.
+#
+# An overlay does NOT add ids. It attaches ecosystem-specific *example signatures*
+# to core ids, so the extractor's prompt can show a Go dev concrete shapes and so
+# reports from this ecosystem carry recognizable examples. Copy this file to
+# overlay-<lang>.yaml for other ecosystems (overlay-js, overlay-python, ...).
+#
+# Signatures are genericized: <pkg>, <Test>, <file>, <cmd> are placeholders, never
+# real names. They are illustrative, not exhaustive.
+
+overlay: go
+extends_vocab_version: "2026-05-31"
+
+example_signatures:
+  explore-codebase:
+    - "grep -rn <term> → Read <file>.go → follow call chain → answer with <file>:<line>"
+  build-compile-fix-loop:
+    - "go build ./... (read errors) → Edit <file>.go → go build ./... (repeat until clean)"
+  fix-failing-tests:
+    - "go test ./<pkg>/... -run <Test> (read failure) → Edit <file>.go → go test (rerun until green)"
+  add-test-coverage:
+    - "Write <file>_test.go → go test ./<pkg>/ -run <Test> -update → verify golden → rerun"
+  debug-from-error-or-trace:
+    - "grep <trace>.jsonl for error/fail → read trace → locate <file>.go → Edit → fresh trace to confirm"
+  refactor-rename-move:
+    - "git mv <a>.go <b>.go → grep callers → Edit references → go build ./..."
+  implement-from-spec:
+    - "Read <proposal>.md → TaskCreate per phase → implement+test each → delete proposal when shipped"
+  review-feedback:
+    - "receive findings (P0/P1/P2) → fix per file → go test ./... → mark resolved"
+  verify-by-running:
+    - "go run ./<cmd> <args> --trace <file> → grep <file> for events → read result"
+  commit-or-pr:
+    - "git status → git add <files> → git commit -m <msg> → git log"
+  rebase-or-resolve-conflicts:
+    - "git rebase <base> → grep '<<<<<<' <file> → Edit resolve → git add → git rebase --continue → go build/test"
+  branch-or-worktree-setup:
+    - "git worktree add <path> -b <branch> <base> → work → git worktree remove <path>"
+  write-docs:
+    - "Read existing docs for style → Write/Edit <doc>.md → wire into README index"
+  update-config-or-deps:
+    - "Edit go.mod / <config>.yaml → go build ./... → run to confirm"
+  fan-out-agents-and-reconcile:
+    - "TaskCreate xN → Agent xN (parallel) → detect stall → TaskStop → assess partial state → finish manually → go test ./..."
+  visual-verification-loop:
+    - "render → ffmpeg extract frame → read image → Edit CSS/template → re-render → compare frames"

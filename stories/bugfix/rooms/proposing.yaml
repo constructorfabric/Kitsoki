@@ -22,9 +22,9 @@ states:
           pairs:
             Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary:    '{{ world.propose_fix_artifact.summary_title|default:"(pending)" }}'
-            Confidence: '{{ world.propose_fix_artifact.confidence|default:"(pending)" }}'
+            Confidence: '{% if world.propose_fix_artifact.confidence %}{{ world.propose_fix_artifact.confidence|floatformat:2 }}{% else %}(pending){% endif %}'
       - heading: "Artifact"
-      - code: '{{ world.propose_fix_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.propose_fix_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -68,10 +68,16 @@ states:
               intent: look
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, propose_fix_artifact, reproduction_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
-      # `working_dir` pins the oracle subprocess to the bugfix worktree
+      # `working_dir` pins the agent subprocess to the bugfix worktree
       # so greps/reads against the live tree land on the feature branch,
       # not on main. See implementing.yaml header for the regression.
-      - invoke: host.oracle.decide
+      # `once: true` for reload-safety: keyed off its own bind
+      # (propose_fix_artifact), so /reload (or self/on_error re-entry)
+      # re-renders the stored proposal without re-running the agent.
+      # The refine + restart_from-to-proposing arms clear
+      # propose_fix_artifact to re-arm a fresh run.
+      - invoke: host.agent.decide
+        once: true
         with:
           agent: proposer
           prompt_path: prompts/proposing_executing.md
@@ -89,7 +95,7 @@ states:
         on_error: idle
 
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_proposing.md
@@ -135,26 +141,32 @@ states:
         - target: proposing
           effects:
             - set:
-                refine_feedback:  "{{ slots.feedback ?? world.llm_verdict.reason }}"
-                proposing_cycle:  "{{ world.proposing_cycle + 1 }}"
-                cycle:            "{{ world.cycle + 1 }}"
+                refine_feedback:      "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                proposing_cycle:      "{{ world.proposing_cycle + 1 }}"
+                cycle:                "{{ world.cycle + 1 }}"
+                # Clear the once: bind so on_enter re-runs the agent.
+                propose_fix_artifact: {}
 
       restart_from:
         - when: "slots.stage == 'reproducing'"
           target: reproducing
           effects:
             - set:
-                restart_from_stage: "reproducing"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "reproducing"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear reproducing's once: bind so it re-runs fresh.
+                reproduction_artifact: {}
         - target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage ?? 'proposing' }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage ?? 'proposing' }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear the once: bind so on_enter re-runs the agent fresh.
+                propose_fix_artifact: {}
 
       jump_to:
         - when: "slots.stage == 'testing' || slots.stage == 'test'"

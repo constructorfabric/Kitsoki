@@ -1,0 +1,98 @@
+# bugfix_regression_gate_red_then_green — the RED→GREEN regression-gate contract.
+#
+# Two assertions in one flow, via world_override on the testing turn:
+#
+#   1. The DEFAULT path (regression gate RED on the pre-fix snapshot) flows into
+#      the ship-it tail and the SAME gate is GREEN on the merged commit → shipped.
+#      (regression_red_pre_fix=true, then tail__verify_ok=true.)
+#   2. The CHARACTERIZATION-TEST trap: a gate that PASSES on the pre-fix snapshot
+#      was never RED — it doesn't prove the bug. The accept arc refuses to ship
+#      it: @exit:needs-human with last_error, NEVER @exit:shipped.
+#
+# This is the discipline ship-it does NOT cover and bugfix adds: the test must
+# FAIL before the fix and PASS after. A characterization test (passes pre-fix)
+# or a fix that leaves the gate RED never reaches shipped.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-RG-1"
+  ticket_title:     "Burst accounting regression"
+  thread:           "TKT-RG-1"
+  workspace_id:     "rg-fix"
+  workdir:          ".worktrees/rg-fix"
+  worktree_path:    ".worktrees/rg-fix"
+  feature_branch:   "rg-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "direct-ship"
+  gate_command:     "go test ./internal/ratelimit/ -run TestAllow_Burst"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/rg-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Regression test + fix"
+        summary_markdown: "TestAllow_Burst."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        files_changed:    ["internal/ratelimit/bucket_test.go"]
+  host.agent.ask:
+    data: { ok: true, submitted: { summary_title: "p", summary_markdown: "p", fix_description: "x", root_cause: "y", affected_files: [] } }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # The CHARACTERIZATION case: the gate PASSES on the pre-fix snapshot — it
+      # was never RED, so it does not prove the bug. red=false.
+      regression_gate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            red:     false
+            checked: true
+            log:     "ok  internal/ratelimit  0.004s   (PASSED on the pre-fix tree — characterization, not regression)"
+      # These would run on the RED path; the characterization case never reaches them.
+      integrate_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "c0ffee1", last_op_ok: true, last_error: "" } }
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok" } }
+      cleanup_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: cleaned, last_op_ok: true, last_error: "" } }
+
+turns:
+  - intent: { name: start,  slots: {} }
+    expect_state: reproducing
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    # The pre-fix gate ran and was GREEN — a characterization test, never RED.
+    expect_world:
+      regression_red_pre_fix:  false
+      regression_gate_checked: true
+  # accept from testing: gate was never RED pre-fix → @exit:needs-human, NEVER
+  # shipped. The fix is not proven by a regression test.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:      needs-human
+      shipped_sha: ""            # NEVER set — the characterization gate cannot ship
+    expect_world_final:
+      status: needs-human
+
+expect_terminal: true
+expect_no_errors: true

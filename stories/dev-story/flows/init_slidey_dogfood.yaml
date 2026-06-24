@@ -1,0 +1,134 @@
+# init_slidey_dogfood -- dogfood project onboarding against the Slidey
+# checkout shape without calling an LLM or touching the real checkout.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/Users/brad/code/slidey"
+  repo_root: "/Users/brad/code/slidey"
+
+host_handlers:
+  host.run:
+    by_call:
+      discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target_path":"/Users/brad/code/slidey","project_id":"slidey","project_title":"Slidey","stack":"node/vue/vite/puppeteer declarative deck engine with web, html, pdf, and mp4 outputs","dev_command":"node src/index.js examples/hello.slidey.json --port 5000 --no-open","test_command":"npm test","build_command":"npm run build","conventions":"hybrid","tracker":"none"}'
+          stdout_json:
+            target_path: "/Users/brad/code/slidey"
+            project_id: "slidey"
+            project_title: "Slidey"
+            stack: "node/vue/vite/puppeteer declarative deck engine with web, html, pdf, and mp4 outputs"
+            dev_command: "node src/index.js examples/hello.slidey.json --port 5000 --no-open"
+            test_command: "npm test"
+            build_command: "npm run build"
+            conventions: "hybrid"
+            tracker: "none"
+      apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"status":"applied","config_path":"/Users/brad/code/slidey/.kitsoki.yaml","profile_path":"/Users/brad/code/slidey/.kitsoki/project-profile.yaml","instance_path":"/Users/brad/code/slidey/stories/slidey-dev/app.yaml","gitignore_path":"/Users/brad/code/slidey/.gitignore","writes":["/Users/brad/code/slidey/.kitsoki.yaml","/Users/brad/code/slidey/.kitsoki/project-profile.yaml","/Users/brad/code/slidey/stories/slidey-dev/app.yaml"]}'
+          stdout_json:
+            status: "applied"
+            config_path: "/Users/brad/code/slidey/.kitsoki.yaml"
+            profile_path: "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
+            instance_path: "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+            gitignore_path: "/Users/brad/code/slidey/.gitignore"
+            writes:
+              - "/Users/brad/code/slidey/.kitsoki.yaml"
+              - "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
+              - "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+
+turns:
+  - intent: { name: go_init, slots: {} }
+    expect_state: init_discover
+    expect_world:
+      init_target_path: "/Users/brad/code/slidey"
+      init_project_id: "slidey"
+      init_project_title: "Slidey"
+      init_dev_command: "node src/index.js examples/hello.slidey.json --port 5000 --no-open"
+      init_test_command: "npm test"
+      init_profile_status: "discovering"
+    expect_view_matches: "continue"
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+    expect_world:
+      init_target_path: "/Users/brad/code/slidey"
+      init_project_id: "slidey"
+      init_project_title: "Slidey"
+      init_dev_command: "node src/index.js examples/hello.slidey.json --port 5000 --no-open"
+      init_test_command: "npm test"
+      init_profile_status: "draft"
+    expect_view_matches: "Slidey"
+
+  - intent: { name: quit, slots: {} }
+    expect_state: landing
+
+  - intent: { name: work, slots: { request: "onboard ~/code/slidey" } }
+    expect_state: init_discover
+    expect_world:
+      init_request: "onboard ~/code/slidey"
+      init_target_path: "/Users/brad/code/slidey"
+      init_project_id: "slidey"
+      init_profile_status: "discovering"
+      last_error: ""
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+    expect_world:
+      init_request: "onboard ~/code/slidey"
+      init_target_path: "/Users/brad/code/slidey"
+      init_profile_status: "draft"
+      last_error: ""
+
+  # In the live surface, init's default_intent routes arbitrary text into this
+  # same revision arc instead of falling back to the landing workbench agent.
+  - intent: { name: revise_init, slots: { feedback: "prefer the slidey CLI smoke path over plain Vite" } }
+    expect_state: init
+    expect_world:
+      init_profile_status: "needs-revision"
+      init_feedback: "prefer the slidey CLI smoke path over plain Vite"
+    expect_view_matches: "CLI smoke path"
+
+  - intent: { name: confirm_init, slots: {} }
+    expect_state: init_apply
+    expect_world:
+      init_profile_status: "applying"
+      init_apply_result:
+        status: "applied"
+        config_path: "/Users/brad/code/slidey/.kitsoki.yaml"
+        profile_path: "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
+        instance_path: "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+        gitignore_path: "/Users/brad/code/slidey/.gitignore"
+        writes:
+          - "/Users/brad/code/slidey/.kitsoki.yaml"
+          - "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
+          - "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+    expect_view_matches: "continue"
+
+  - intent: { name: init_applied, slots: {} }
+    expect_state: init_done
+    expect_world:
+      init_profile_status: "applied"
+      init_apply_result:
+        status: "applied"
+        config_path: "/Users/brad/code/slidey/.kitsoki.yaml"
+        profile_path: "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
+        instance_path: "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+        gitignore_path: "/Users/brad/code/slidey/.gitignore"
+        writes:
+          - "/Users/brad/code/slidey/.kitsoki.yaml"
+          - "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
+          - "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+    expect_view_matches: "project-profile.yaml"
+
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+    expect_world:
+      last_error: "project onboarding complete"
+
+expect_no_errors: true

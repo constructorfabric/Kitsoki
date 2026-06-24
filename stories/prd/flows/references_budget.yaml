@@ -1,0 +1,44 @@
+# references_budget — the references room's re-run cap. `refine` and
+# `regenerate` share the same guard (references_cycle >= references_budget
+# → @exit:abandoned with abandon_reason "references_budget_exhausted").
+# Seeded at the cap so the next refine bails instead of re-searching. The
+# references analogue of budget_exhausted.yaml (drafting refine cap).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: references
+initial_world:
+  idea:              "A CLI for X"
+  workdir:           "."
+  output_path:       ".artifacts/prd.md"
+  judge_mode:        "human"
+  references_cycle:  3
+  references_budget: 3   # at the cap → the next refine/regenerate abandons
+  references:
+    items:
+      - { path: "docs/auth.md", sections: "Tokens", rationale: "token model" }
+
+host_handlers:
+  # Defensive: references on_enter (researcher decide + artifact write) may
+  # fire on initial entry. The abandon arm itself fires no on_enter.
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        items:
+          - { path: "docs/auth.md", sections: "Tokens", rationale: "token model" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd_references.md", message_id: "prd_references#1" }
+
+turns:
+  - intent: { name: refine, slots: { feedback: "one more pass at the docs" } }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "references_budget_exhausted"
+      status:         "abandoned"
+
+expect_terminal: true
+expect_no_errors: true

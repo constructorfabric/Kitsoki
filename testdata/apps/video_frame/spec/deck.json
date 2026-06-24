@@ -1,0 +1,9 @@
+{
+  "_comment": "Tiny slidey deck used by the video_frame flow fixture. The render is STUBBED in the flow (no slidey/ffmpeg in CI); this file only exercises spec_path plumbing and the chapter derivation rules (per-scene duration_ms).",
+  "meta": { "title": "Video frame seam smoke" },
+  "total_ms": 6000,
+  "scenes": [
+    { "id": "intro", "type": "title", "title": "Intro", "duration_ms": 2000, "narration": "Intro." },
+    { "id": "body", "type": "bullets", "title": "Body", "duration_ms": 4000, "narration": "Body." }
+  ]
+}

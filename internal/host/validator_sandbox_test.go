@@ -8,6 +8,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -93,7 +94,7 @@ func TestValidatorSandbox_FallsBackAndWarnsWhenUnshareDenied(t *testing.T) {
 func TestValidatorSandbox_UnsafeNoSandbox_Passes(t *testing.T) {
 	t.Parallel()
 	res, err := host.RunValidatorSandboxed(context.Background(), host.ValidatorSandboxOptions{
-		Cmd:             "/bin/true",
+		Cmd:             trueBin(t),
 		UnsafeNoSandbox: true,
 	})
 	if err != nil {
@@ -102,6 +103,18 @@ func TestValidatorSandbox_UnsafeNoSandbox_Passes(t *testing.T) {
 	if res.ExitCode != 0 {
 		t.Fatalf("expected exit 0; got %d", res.ExitCode)
 	}
+}
+
+// trueBin resolves the platform's `true` binary via PATH. macOS ships it at
+// /usr/bin/true (there is no /bin/true), so a hardcoded /bin/true is not
+// portable; exec.LookPath finds it on every platform the suite runs on.
+func trueBin(t *testing.T) string {
+	t.Helper()
+	p, err := exec.LookPath("true")
+	if err != nil {
+		t.Skipf("no `true` binary on PATH: %v", err)
+	}
+	return p
 }
 
 // warnCapture is a slog.Handler that records Warn-level messages.

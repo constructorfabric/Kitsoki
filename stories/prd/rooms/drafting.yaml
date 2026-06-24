@@ -1,0 +1,408 @@
+# drafting — generate the PRD, then checkpoint.
+#
+# on_enter runs the author (host.agent.task) which writes the PRD to
+# {{ workdir }}/{{ output_path }} and returns prd_artifact. The acceptance
+# schema requires needs_clarification + follow_up_questions so the author
+# can explicitly say "I need more input before this is solid" — surfaced
+# as a banner that points the operator at the clarify action.
+#
+# Checkpoint exits — three deliberately distinct moves:
+#   refine          keep the same inputs, ask the author to revise prose.
+#   clarify         the inputs are incomplete → another clarification
+#                   round that ADDS to the transcript, then re-drafts.
+#   restart_from    redo, not extend: idle wipes the log and re-pitches;
+#                   clarifying discards the record and re-questions.
+#
+# Optional LLM judge (judge_mode != human) runs after the draft and
+# auto-emits its verdict above the confidence floor — straight lift from
+# bugfix. Default human-only.
+
+states:
+
+  drafting:
+    description: "Draft the PRD; review and accept, refine, or clarify."
+    view:
+      - banner:
+          text:     "DRAFTING"
+          subtitle: "Generate the PRD markdown and review"
+          color:    "#8B5CF6"   # violet — synthesis
+      # Error surfacing — the author (on_enter task) failed; on_error stepped
+      # BACK one stage to references (the research is already done, so the
+      # operator reviews the reference list before re-confirming into another
+      # draft) rather than dumping all the way to idle. This template renders
+      # on the rare case last_error survives into drafting; the references
+      # room carries the primary warning. last_error is set by the runtime.
+      - template: "⚠ **PRD draft failed** — {{ world.last_error }}."
+        when: "world.last_error != ''"
+      - prose: "cycle {{ world.cycle }} · draft attempt {{ world.drafting_cycle }} · clarify rounds {{ world.clarifying_cycle }} · judge {{ world.judge_mode }}"
+      # The written PRD is the deliverable — its path leads the kv as a BARE
+      # path value: the web UI linkifies a kv value ending in .md into a
+      # clickable file preview (prose never linkifies — same idiom as the
+      # brief/references rooms and dev-story's design_refine Brief row).
+      # The pending placeholder ends in ")" so it stays plain text.
+      - kv:
+          pairs:
+            PRD:        '{{ world.prd_artifact.file_path|default:"(drafting — writes 004-prd.md into the per-PRD workspace)" }}'
+            Title:      '{{ world.prd_artifact.title|default:"(pending)" }}'
+            Confidence: '{% if world.prd_artifact.confidence %}{{ world.prd_artifact.confidence|floatformat:2 }}{% else %}(pending){% endif %}'
+      # Published durable path — its own guarded kv (kv pairs are a static
+      # map, so a conditional row needs its own element). Bare .md value →
+      # clickable in the web UI.
+      - kv:
+          pairs:
+            Published: '{{ world.prd_file }}'
+        when: "world.prd_file != ''"
+      # Echo the operator's last refine instruction back so a refine turn
+      # visibly acknowledges what was asked (same "You asked: …" line as the
+      # references room + the golden design_refine.yaml).
+      - kv:
+          pairs:
+            You asked: '{{ world.refine_message }}'
+        when: "world.refine_message != ''"
+      - prose: "⚠ The author flagged that more input is needed — see the follow-ups below, then use clarify."
+        when:  "world.prd_artifact.needs_clarification"
+      - code: |
+          {% for q in world.prd_artifact.follow_up_questions %}- {{ q }}
+          {% empty %}(no follow-ups){% endfor %}
+        when: "world.prd_artifact.needs_clarification"
+      - heading: "PRD"
+      - code: '{{ world.prd_artifact.summary_markdown|default:"(pending — agent has not returned yet; the full PRD is written to the output file)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "finish — the PRD is ready"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-draft with feedback (same inputs)"
+              intent: refine
+              param:
+                slot:        feedback
+                type:        string
+                placeholder: "what to change"
+                required:    false
+            - label:  "clarify"
+              hint:   "another Q&A round, then re-draft with more to work from"
+              intent: clarify
+            - label:  "restart from clarifying"
+              hint:   "discard the clarification record and re-question"
+              intent: restart_from
+              slots:  { stage: clarifying }
+            - label:  "restart from idle"
+              hint:   "re-pitch from scratch (wipes the clarification log)"
+              intent: restart_from
+              slots:  { stage: idle }
+            - label:  "quit"
+              hint:   "abandon PRD authoring"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [idea, upstream_paths, workdir, output_path, prd_workspace, prd_slug, prd_file, prd_change_target, publish_durable_path, clarification_log, prd_artifact, refine_feedback, refine_message, cycle, drafting_cycle, drafting_budget, clarifying_cycle, judge_mode, judge_confidence_threshold, llm_verdict, last_error]
+    on_enter:
+      # Write the PRD. working_dir pins the author's Read/Write to the
+      # operator's tree; its tool calls + files_changed land in the trace.
+      # `once: true` for reload-safety: keyed off its own bind (prd_artifact).
+      # /reload re-renders the stored draft; `refine` clears prd_artifact (its
+      # own bind) to force a fresh author run. clarify/restart_from re-enter
+      # via clarifying, so drafting re-runs naturally when reached again.
+      - invoke: host.agent.task
+        id: prd_author
+        once: true
+        with:
+          agent: author
+          working_dir: "{{ world.workdir }}"
+          acceptance:
+            schema: schemas/prd_artifact.json
+          context:
+            prompt: prompts/draft_prd.md
+            args:
+              idea:              "{{ world.idea }}"
+              upstream_paths:    "{{ world.upstream_paths }}"
+              clarification_log: "{{ world.clarification_log }}"
+              # The curated reference list from the references room, spliced
+              # as compact JSON. The author reads each cited path/section
+              # before writing (see prompts/draft_prd.md).
+              references:        "{{ world.references }}"
+              # Write the draft INTO the per-PRD workspace as 004-prd.md (the
+              # numbered spine), not the flat .artifacts/prd.md — accept then
+              # publishes it out to the durable home. Falls back to output_path
+              # if no workspace was minted (e.g. a flow seeding drafting directly).
+              output_path:       "{{ world.prd_workspace }}/004-prd.md"
+              workspace:         "{{ world.prd_workspace }}"
+              workdir:           "{{ world.workdir }}"
+              refine_feedback:   "{{ world.refine_feedback }}"
+              cycle:             "{{ world.cycle }}"
+        bind:
+          prd_artifact: submitted
+        # Step BACK one stage to references on a failed author run (not all
+        # the way to idle): the research is already curated, so the operator
+        # reviews the reference list and re-confirms to retry the draft rather
+        # than re-pitching. The runtime sets last_error; references' view
+        # surfaces it.
+        on_error: references
+
+      # Optional LLM judge (skipped in human mode). The `id:` addresses this
+      # decide call site independently of clarifying's analyst decide, so a
+      # single flow fixture that traverses clarifying → drafting in llm mode
+      # can stub the two with distinct `by_call:` envelopes — no need to give
+      # the judge a different verb just to dodge a stub-name collision.
+      # `once: true` is SAFE here: in prd the judge is single-use (only this
+      # drafting room runs a judge; llm_verdict is not reused across other
+      # checkpoints), so keying off llm_verdict is unambiguous. `refine`
+      # clears llm_verdict ({}) to re-arm it. Reload-safety bonus: the
+      # downstream auto-fire emit_intent won't re-fire on /reload because the
+      # stored verdict short-circuits the re-run.
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        once: true
+        invoke: host.agent.decide
+        id: judge_verdict
+        with:
+          agent: judge
+          prompt: prompts/judge_prd.md
+          schema: schemas/judge_verdict.json
+          working_dir: "{{ world.workdir }}"
+          args:
+            idea:           "{{ world.idea }}"
+            artifact_title: "{{ world.prd_artifact.title }}"
+            artifact_body:  "{{ world.prd_artifact.summary_markdown }}"
+        bind:
+          llm_verdict: submitted
+
+      # Auto-fire the judge's verdict above the confidence floor.
+      # `uncertain` verdicts fall through to the human-mode view.
+      - when: |
+          world.judge_mode != 'human' &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+
+      # Persist the drafted PRD to a real file so the operator's editor can show
+      # it (host.ide.open_file below) and so publish reads it. summary_markdown
+      # IS the PRD body (see prompts/draft_prd.md), so writing it yields a
+      # deterministic file even when the author is stubbed (no-LLM flows). The
+      # write lands at the SAME path the author's output_path points at, so the
+      # publish step is unchanged. artifacts_dir returns an ABSOLUTE path — bound
+      # for open_file/open_diff. once: keyed on prd_draft_doc (refine clears it to
+      # re-arm); /reload or look won't rewrite over the operator's hand-edits.
+      - invoke: host.artifacts_dir
+        once: true
+        with:
+          artifacts_root: "{{ world.workdir }}/{{ world.prd_workspace }}"
+          thread:         "004-prd"
+          mode:           "replace"
+          title:          "{{ world.prd_artifact.title }}"
+          body:           "{{ world.prd_artifact.summary_markdown }}"
+        bind:
+          prd_draft_doc: "path"
+        on_error: .
+      # Open the drafted PRD in the operator's editor. Idempotent (not
+      # once-guarded) so a re-entry re-opens the (possibly applied) file.
+      # on_error: . — no editor connection holds here; the PRD is on disk.
+      - invoke: host.ide.open_file
+        with:
+          path: "{{ world.prd_draft_doc }}"
+        on_error: .
+    on:
+      # accept fires @exit:done. requires: [prd_artifact] is checked
+      # statically against this arc's effects — re-pin prd_artifact (it
+      # was bound on_enter) so the gate sees an explicit set. A bare
+      # `key: "{{ world.obj }}"` short-circuits to the typed map, which
+      # is exactly what we want here (store the object back).
+      accept:
+        - target: "@exit:done"
+          effects:
+            # Publish the accepted PRD out of the gitignored per-PRD workspace
+            # into its durable docs home (prd_publish.py moves 004-prd.md to
+            # <publish_durable_path>/<slug>.md, collision-safe; on the amend
+            # path it reuses prd_change_target in place). Binds prd_file = the
+            # durable path so the run ends with the deliverable OUT of
+            # .artifacts/. NOT once-guarded — a single accept fires it once.
+            # on_error: drafting holds the operator here (with last_error) so a
+            # publish failure is visible rather than silently exiting "done".
+            - invoke: host.run
+              id: publish
+              with:
+                cmd: python3
+                args:
+                  - "stories/prd/scripts/prd_publish.py"
+                  - "{{ world.prd_workspace }}"
+                  - "{{ world.prd_slug }}"
+                  - "{{ world.prd_artifact.file_path }}"
+                  - "{{ world.workdir }}"
+                  - "{{ world.publish_durable_path }}"
+                  - "{{ world.prd_change_target }}"
+                  - "{{ world.prd_doc_filename }}"
+              bind:
+                prd_file: stdout_json.prd_file
+              on_error: drafting
+            - set:
+                status:        "done"
+                prd_artifact:  "{{ world.prd_artifact }}"
+                refine_message: ""
+                last_error:    ""
+
+      # Same inputs, revise the prose. Budget gate → @exit:abandoned.
+      refine:
+        - when: "world.drafting_cycle >= world.drafting_budget"
+          target: "@exit:abandoned"
+          effects:
+            - say: "Drafting budget exhausted — abandoning PRD authoring after {{ world.drafting_cycle }} refine cycle(s)."
+            - set:
+                abandon_reason: "drafting_budget_exhausted"
+                status:         "abandoned"
+        # IDE-connected refine: re-draft into a STAGING file, show it as a native
+        # diff against the live PRD with the operator's feedback as an inline
+        # comment, and gate accept/reject IN the editor (host.ide.open_diff blocks
+        # the turn until the verdict). On accept the editor applies the staged text
+        # to the live PRD and we promote the staged artifact; on reject the PRD is
+        # untouched. Disconnected runs (every flow + the web tour) fall through to
+        # the plain arc below — behaviour unchanged.
+        - when: "world.ide.connected"
+          target: drafting
+          effects:
+            - set:
+                refine_feedback:  "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                refine_message:   "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                drafting_cycle:   "{{ world.drafting_cycle + 1 }}"
+                cycle:            "{{ world.cycle + 1 }}"
+                prd_diff_verdict: ""
+            # Re-draft into 004-prd.next.md — do NOT clobber the live 004-prd.md,
+            # so the diff has a real before/after.
+            - invoke: host.agent.task
+              id: prd_author_refine
+              with:
+                agent: author
+                working_dir: "{{ world.workdir }}"
+                acceptance:
+                  schema: schemas/prd_artifact.json
+                context:
+                  prompt: prompts/draft_prd.md
+                  args:
+                    idea:              "{{ world.idea }}"
+                    upstream_paths:    "{{ world.upstream_paths }}"
+                    clarification_log: "{{ world.clarification_log }}"
+                    references:        "{{ world.references }}"
+                    output_path:       "{{ world.prd_workspace }}/004-prd-next.md"
+                    workspace:         "{{ world.prd_workspace }}"
+                    workdir:           "{{ world.workdir }}"
+                    refine_feedback:   "{{ world.refine_feedback }}"
+                    cycle:             "{{ world.cycle }}"
+              bind:
+                prd_stage_artifact: submitted
+              on_error: drafting
+            # Persist the staged proposal to a real file so the diff has content
+            # even when the author is stubbed (no-LLM recording).
+            - invoke: host.artifacts_dir
+              with:
+                artifacts_root: "{{ world.workdir }}/{{ world.prd_workspace }}"
+                thread:         "004-prd-next"
+                mode:           "replace"
+                title:          "{{ world.prd_stage_artifact.title }}"
+                body:           "{{ world.prd_stage_artifact.summary_markdown }}"
+              bind:
+                prd_stage_doc: "path"
+              on_error: drafting
+            # Tell the operator what to do while the diff blocks the turn — without
+            # this the chat shows an empty pending bubble during the suspension.
+            - say: "Proposed a refinement — review the change in the diff and **Accept** or **Reject** it."
+            # Show the diff (live PRD vs staged proposal); BLOCK until the
+            # operator decides; bind the verdict.
+            - invoke: host.ide.open_diff
+              with:
+                path:          "{{ world.prd_draft_doc }}"
+                new_text_path: "{{ world.prd_stage_doc }}"
+                title:         "PRD refinement"
+              bind:
+                prd_diff_verdict: "verdict"
+              on_error: drafting
+            # Accept → the editor wrote the staged content into the live PRD;
+            # promote the staged artifact so the view + publish track v2. Reject →
+            # leave the PRD as-is (prd_artifact unchanged).
+            - when: "world.prd_diff_verdict == 'accepted'"
+              set:
+                prd_artifact:   "{{ world.prd_stage_artifact }}"
+                refine_message: ""
+        - target: drafting
+          effects:
+            # Capture the refine steer BEFORE clearing llm_verdict (in case it
+            # came from the judge's reason), then clear both once: binds so the
+            # author re-drafts and the judge re-evaluates the new draft.
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                refine_message:  "{{ slots.feedback ?? world.llm_verdict.reason }}"   # echoed back ("You asked: …")
+            - set:
+                prd_artifact:    {}
+                llm_verdict:     {}
+                prd_draft_doc:   ""
+                drafting_cycle:  "{{ world.drafting_cycle + 1 }}"
+                cycle:           "{{ world.cycle + 1 }}"
+
+      # Inputs are incomplete → another clarification round. Preserves
+      # clarification_log; the next round appends to it. refine_feedback
+      # is cleared so clarifying's analyst isn't steered by stale draft
+      # feedback (clarify is "ask more," not "redo the questions").
+      clarify:
+        - target: clarifying
+          effects:
+            # Clear clarifications so clarifying's analyst `once:` re-arms (new
+            # round vs. the preserved log), and clear the drafting once: binds
+            # (prd_artifact / llm_verdict) so the eventual return to drafting
+            # re-drafts + re-judges rather than no-opping on the stale draft.
+            - set:
+                clarifications:        {}
+                prd_artifact:          {}
+                llm_verdict:           {}
+                refine_feedback:       ""
+                refine_message:        ""
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+
+      # Heavier than clarify: redo rather than extend. idle re-pitches
+      # (wipes the log); clarifying re-questions (discards the record).
+      restart_from:
+        - when: "slots.stage == 'idle'"
+          target: idle
+          effects:
+            - set:
+                clarifications:        {}
+                prd_artifact:          {}
+                llm_verdict:           {}
+                clarification_log:     ""
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+                refine_feedback:       ""
+                clarifying_cycle:      0
+                drafting_cycle:        0
+                cycle:                 0
+        - target: clarifying
+          effects:
+            # Clear clarifications (analyst-decide bind) + the drafting once:
+            # binds so re-questioning regenerates and the eventual re-draft
+            # actually runs.
+            - set:
+                clarifications:        {}
+                prd_artifact:          {}
+                llm_verdict:           {}
+                clarification_log:     ""
+                clarification_answers: ""
+                answered_count:        0
+                answered_ids:          ""
+                refine_feedback:       ""
+                clarifying_cycle:      0
+                cycle:                 0
+
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "abandoned_at_drafting"
+                status:         "abandoned"
+      look:
+        - target: .

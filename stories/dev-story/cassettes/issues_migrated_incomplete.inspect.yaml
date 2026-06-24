@@ -1,0 +1,16 @@
+# issues_migrated_incomplete.inspect.yaml — the recorded fs/probe interactions
+# for the verify gate on the apply-RED path (the migration did not fully land).
+#
+# Sibling of issues_migrated.inspect.yaml, but the recorded gh.issue.list probe
+# yields only 1 issue, so the REAL verify script (verify/issues_migrated.star)
+# computes n (1) < expected_min (3) → {ok: false, reason: "Migration incomplete…"}.
+# This is what makes the red path genuinely script-driven (not a stub): the gate
+# is load-bearing — break the verify_ok bind in verifying.yaml and the red flow
+# stops bouncing back to landing. See plan_mutation_gate.yaml for the proof.
+kind: inspect_cassette
+interactions:
+  - op: probe
+    target: gh.issue.list
+    exit: 0
+    out: |
+      [{"number":1,"title":"Top-of-chat message cut off","state":"OPEN"}]

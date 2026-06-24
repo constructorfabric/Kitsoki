@@ -12,7 +12,7 @@
 #   1. Posts the artifact (host.append_to_file → appends a
 #      ## Comment block to the bug file)
 #   2. Mirrors into the local inbox
-#   3. Calls the judge oracle (because judge_mode != "human")
+#   3. Calls the judge agent (because judge_mode != "human")
 #   4. If the verdict is confident (confidence >= threshold) AND
 #      neither verdict nor intent is "uncertain", emits the LLM's
 #      intent automatically — advancing the pipeline without a turn.
@@ -24,7 +24,7 @@
 name:        "kitsoki self-bug — autonomous LLM-then-human walk"
 description: "Same self-bug pickup as pickup_self_bug.yaml, but judge_mode=llm_then_human for unattended runs."
 
-state: core.main
+state: core.landing
 
 world:
   core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"

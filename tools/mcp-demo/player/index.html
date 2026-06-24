@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claude Code · kitsoki mcp</title>
+  <!-- xterm.js served from the harness node_modules (static root = tools/mcp-demo) -->
+  <link rel="stylesheet" href="/node_modules/@xterm/xterm/css/xterm.css" />
+  <script src="/node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <style>
+    /* Brand background — the gradient base is anchored on the web demos' BRAND_BG
+       (#070d1a) so a stitched master tour never letterboxes a terminal section
+       against a different black; the radial lift + watermark + footer make the
+       margins read as a DESIGNED presentation backdrop (not a blank render, which
+       blank-scan / the vision QA would otherwise flag around a bare terminal). */
+    :root { --brand-bg: #070d1a; }
+    html, body {
+      margin: 0; height: 100%; width: 100%;
+      background: radial-gradient(circle at 50% 30%, #14224a 0%, #0a1430 42%, #070d1a 100%);
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+    }
+    /* Centre a single terminal "window" in the 1600×900 camera frame. */
+    #stage {
+      position: relative; height: 100%; width: 100%;
+      display: flex; align-items: center; justify-content: center;
+      box-sizing: border-box; padding: 26px 64px 56px;
+    }
+    /* Faint brand watermark filling the backdrop behind the terminal. */
+    #watermark {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      display: flex; align-items: center; justify-content: center;
+      font: 800 240px ui-sans-serif, system-ui, sans-serif;
+      color: #8fb3ff; opacity: .085; letter-spacing: -.04em; user-select: none;
+    }
+    /* Footer chip naming the surface, anchored bottom-centre — kept clearly
+       legible so the branded-studio framing is real in the pixels (the vision QA
+       checks for it), not a sub-perceptual watermark. */
+    #footer {
+      position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+      z-index: 1; pointer-events: none; display: flex; align-items: center; gap: 11px;
+      color: #aab8cc; font: 700 18px ui-sans-serif, system-ui, sans-serif; letter-spacing: .05em;
+    }
+    #footer .sep { color: #475569; }
+    #footer .accent { color: #fbbf24; }
+    .term-window {
+      position: relative; z-index: 1;
+      border-radius: 12px; overflow: hidden;
+      box-shadow: 0 28px 80px rgba(0,0,0,.66), 0 0 0 1px #1e293b;
+      background: #0b1120;
+    }
+    .term-titlebar {
+      display: flex; align-items: center; gap: 10px;
+      height: 38px; padding: 0 14px;
+      background: linear-gradient(#15203a, #0e1730);
+      border-bottom: 1px solid #1e293b;
+    }
+    .term-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .term-dot.r { background: #ff5f57; } .term-dot.y { background: #febc2e; } .term-dot.g { background: #28c840; }
+    .term-title {
+      margin-left: 8px; color: #94a3b8; font-size: 13px; font-weight: 600;
+      letter-spacing: .01em;
+    }
+    .term-badge {
+      margin-left: auto; color: #fbbf24; font-size: 11px; font-weight: 700;
+      border: 1px solid #3b3320; background: #221c0a; border-radius: 6px;
+      padding: 3px 8px; text-transform: uppercase; letter-spacing: .06em;
+    }
+    .term-body { padding: 10px 12px 12px; }
+    .xterm { padding: 2px; }
+  </style>
+</head>
+<body>
+  <div id="watermark">kitsoki</div>
+  <div id="footer">
+    <span class="accent">kitsoki</span><span class="sep">·</span>mcp studio
+    <span class="sep">·</span> driven by Claude Code over MCP
+  </div>
+  <div id="stage">
+    <div class="term-window" id="win">
+      <div class="term-titlebar">
+        <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+        <span class="term-title" id="winTitle">claude — kitsoki mcp</span>
+        <span class="term-badge">MCP</span>
+      </div>
+      <div class="term-body"><div id="term"></div></div>
+    </div>
+  </div>
+  <script>
+    // A faithful Claude-Code-ish palette so the replayed ANSI reads as the real CLI.
+    const THEME = {
+      background: "#0b1120", foreground: "#e2e8f0", cursor: "#fbbf24",
+      selectionBackground: "#33415588",
+      black: "#0b1120", red: "#f87171", green: "#34d399", yellow: "#fbbf24",
+      blue: "#60a5fa", magenta: "#c084fc", cyan: "#22d3ee", white: "#e2e8f0",
+      brightBlack: "#64748b", brightRed: "#fca5a5", brightGreen: "#6ee7b7",
+      brightYellow: "#fde68a", brightBlue: "#93c5fd", brightMagenta: "#d8b4fe",
+      brightCyan: "#67e8f9", brightWhite: "#f8fafc",
+    };
+    const term = new window.Terminal({
+      cols: 116, rows: 26,
+      fontFamily: 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace',
+      fontSize: 17, lineHeight: 1.3, letterSpacing: 0,
+      cursorBlink: false, cursorStyle: "bar", scrollback: 2000,
+      theme: THEME, convertEol: true,
+    });
+    term.open(document.getElementById("term"));
+
+    // Drive surface for the Playwright spec. Kept intentionally tiny: write bytes,
+    // resize the grid, retitle the window. No fetch, no model, no kitsoki server —
+    // the replay is a pure terminal playback (the no-LLM invariant for this surface).
+    window.__feed = (s) => new Promise((res) => term.write(s, res));
+    window.__resize = (cols, rows) => {
+      term.resize(cols, rows);
+      // Let the window hug the grid so the camera frames a tidy terminal, not slack.
+      return new Promise((r) => requestAnimationFrame(() => r()));
+    };
+    window.__title = (t) => { document.getElementById("winTitle").textContent = t; };
+    window.__clear = () => term.clear();
+    window.__ready = true;
+  </script>
+</body>
+</html>

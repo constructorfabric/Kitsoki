@@ -1,0 +1,31 @@
+# idle — the entry room; `begin` enters `load` (firing its parse on_enter).
+#
+# A thin entry so `load`'s on_enter (the decomposition parse) runs on a real
+# transition INTO load — the kitsoki convention (the initial state's on_enter is
+# not auto-run; the first driven intent enters the on_enter-bearing room, exactly
+# as cherny-loop's configuring → launch does).
+
+states:
+
+  idle:
+    description: "Fleet entry — point at a decomposition and begin."
+    relevant_world: [decomposition_path]
+    view:
+      - prose: "Fan ship-it out over a decomposition's briefs. One brief integrates at a time (merge-lock); failures park and the rest continue."
+      - kv:
+          pairs:
+            Decomposition: '{{ world.decomposition_path|default:"(not set)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "begin"
+              hint:  "load the decomposition and start the board"
+              intent: begin
+            - label: "look"
+              intent: look
+    on:
+      begin:
+        - target: load
+      look:
+        - target: .

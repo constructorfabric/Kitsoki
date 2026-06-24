@@ -1,0 +1,131 @@
+# yaml-language-server: $schema=feature.schema.json
+id: slidey-architect-design
+kind: story-demo
+title: Architect → design on the slidey repo
+tagline: An architect picks up the published slidey speaker-notes PRD and authors the design — epic, slices, ADRs, and a mermaid data-flow — all conversation-driven, no LLM.
+summary: "Phase 2 of the slidey dev-story hybrid: the architect half. Carrying the published speaker-notes-export PRD into design intake, an architect reviews the requirements, refines the brief conversationally (name the notes collector, the CLI seam in src/index.js, the per-scene Markdown shape), and the design author writes a slidey runtime design — an epic, three implementation slices, two ADRs, and a mermaid spec→collectNotes→renderNotesMarkdown→out.md data-flow — published to docs/proposals/speaker-notes-export.md with a feature ticket auto-minted at issues/features/. Every beat is a deterministic state-machine step replayed from slidey-themed stubs — no real LLM, no API cost."
+narrative: "Phase 2 of the slidey dev-story hybrid: architect → design epic/slices/ADRs. The design is grounded in slidey's real shape — a pure spec→notes collector reusing the same scene model the Vue components consume, wired into the existing CLI output branches."
+docs:
+  - stories/slidey-dev/app.yaml
+  - stories/dev-story/README.md
+related:
+  - dev-story-prd-design
+  - slidey-dev-prd-design
+demo:
+  spec: tests/playwright/slidey-architect-design-video.spec.ts
+  artifactDir: slidey-architect-design
+  videoBase: slidey-architect-design
+  posterStep: sad-prd-published
+  story: stories/slidey-dev
+  flow: stories/slidey-dev/flows/architect_design.yaml
+tour:
+  export: SLIDEY_ARCHITECT_DESIGN_TOUR_STEPS
+  steps:
+    - id: sad-intro-home
+      route: home
+      title: An architect picks up a PRD
+      body: "Phase 1 published the speaker-notes-export PRD on the slidey repo. Now an architect carries it into design — talking it into an epic, slices, ADRs, and a mermaid data-flow, no LLM in the loop. This session opens already at the published PRD, ready for the design handoff."
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 5500
+      drive: []
+    - id: sad-story-card
+      route: home
+      target: story-card
+      title: The slidey-dev hub
+      body: "This is slidey-dev: kitsoki's dev-story hub pointed at the real slidey checkout. The published PRD sits at docs/prd/speaker-notes-export.md; the design will land at docs/proposals/speaker-notes-export.md."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: story-card
+      dwellMs: 5000
+      drive: []
+    - id: sad-new-session
+      route: home
+      target: new-session-btn
+      title: Open the seeded session
+      body: "Click New session. The run opens already at the published-PRD handoff — the design phase's starting line — so the architect picks up exactly where phase 1 left off."
+      placement: right
+      kind: action
+      advance: route-match
+      advanceRoute: interactive
+      waitForTarget: new-session-btn
+      dwellMs: 3500
+      drive: []
+    - id: sad-prd-published
+      route: interactive
+      target: chat-transcript
+      title: A PRD is ready for design
+      body: "The architect's session opens on the published speaker-notes-export PRD — phase 1's validated output, sitting at docs/prd/speaker-notes-export.md in the slidey tree. `continue` carries it into the design phase, seeded with a pointer to the PRD so the design author reads it as prior art, not a blank slate."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 6000
+      drive:
+        - { type: wait-state, state: core.prd_published }
+        - { type: reveal-turn }
+    - id: sad-design-intake
+      route: interactive
+      target: chat-transcript
+      title: Carry the PRD into design
+      body: "The architect opens the design conversation grounded in the PRD: realize the speaker-notes-export PRD as a slidey runtime design. The intake scaffolds a brief from the published requirements."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 6000
+      drive:
+        - { type: type-and-send, text: continue }
+        - { type: wait-state, state: core.design }
+        - { type: reveal-turn }
+        - { type: type-and-send, text: realize the speaker-notes-export PRD as a slidey runtime design }
+        - { type: wait-state, state: core.design_search }
+        - { type: reveal-turn }
+    - id: sad-design-refine
+      route: interactive
+      target: chat-transcript
+      title: Refine the design brief
+      body: "Design has its own clarification loop. A refiner flags the gaps — name the notes collector and its seam in src/index.js, specify the per-scene Markdown shape — and the architect reworks the brief in the chat. A quality check then gates the brief before the author drafts, the same iterative shaping the PRD did with questions."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 6500
+      drive:
+        - { type: click-intent, intent: core__confirm }
+        - { type: wait-state, state: core.design_refine }
+        - { type: reveal-turn }
+        - { type: type-and-send, text: "name the notes collector and the CLI seam, and the per-scene Markdown shape" }
+        - { type: wait-state, state: core.design_refine }
+        - { type: reveal-turn }
+    - id: sad-design-draft
+      route: interactive
+      target: chat-transcript
+      title: Author the design — epic, slices, ADRs
+      body: "The brief passes the quality gate and the design author writes the full slidey runtime design: an epic (a spec-derived per-scene handout), three slices (a pure collectNotes(spec), the --notes CLI seam, a Markdown emitter), a mermaid spec→collectNotes→renderNotesMarkdown→out.md data-flow, and two ADRs (reuse the scene model so notes never drift; keep the transform pure and LLM-free)."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7000
+      drive:
+        - { type: click-intent, intent: core__ready }
+        - { type: wait-state, state: core.design_draft }
+        - { type: reveal-turn }
+    - id: sad-design-published
+      route: interactive
+      target: chat-transcript
+      title: Design published + feature ticket
+      body: "Accept publishes the design to the slidey tree at docs/proposals/speaker-notes-export.md and auto-mints a feature ticket at issues/features/F-<timestamp>-speaker-notes-export.md, linking back to the design — the implementation pipeline can pick it up immediately. That's phase 2: a published PRD, talked into a slidey design with an epic, slices, ADRs, and a mermaid diagram, all conversation-driven, no LLM in the loop."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 7000
+      drive:
+        - { type: click-intent, intent: core__accept }
+        - { type: wait-state, state: core.design_done }
+        - { type: reveal-turn }

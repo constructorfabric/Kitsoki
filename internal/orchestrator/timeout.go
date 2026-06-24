@@ -1,4 +1,4 @@
-// Package orchestrator — Timeout: runtime (proposal gap §9.5).
+// Package orchestrator — Timeout: runtime.
 //
 // State declarations of the form
 //
@@ -8,8 +8,7 @@
 //
 // cause the orchestrator to auto-transition out of the declaring state
 // after the declared duration has elapsed on the orchestrator's clock.
-// Cancelled when any normal exit fires before the timer.  Survives
-// orchestrator restarts via a small SQLite table.
+// Cancelled when any normal exit fires before the timer.
 //
 // # Design
 //
@@ -22,17 +21,18 @@
 //
 // # Persistence
 //
-// Pending entries are written to a `timeouts` table (one row per
-// (session_id, state_path)) when armed and deleted when fired or cancelled.
-// On orchestrator start (RearmPersisted), every row is reloaded and a fresh
-// timer is scheduled at (fires_at - now).  Entries whose fires_at is already
-// in the past fire immediately on rearm so a crash during a long timeout
-// still lands the session in the target state.
+// Pending timeout entries are written to the timeouts table in the same
+// SQLite database used by the session store (via host.TimeoutStore).  On
+// orchestrator start, rearmPersistedTimeouts() reads every unfired row and
+// reconstructs in-memory timers so sessions waiting in a Timeout: state
+// survive a process restart.  Timers that fire write Fire() to mark the row
+// as consumed; timers that are cancelled call Cancel() to remove the row.
+// arm() and cancel() also emit journal entries (KindTimeoutArmed /
+// KindTimeoutCancelled) as an audit trail.
 package orchestrator
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -40,22 +40,11 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/clock"
+	"kitsoki/internal/host"
 	"kitsoki/internal/journal"
 	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
 )
-
-// timeoutSchemaDDL creates the single table used by the timeout dispatcher.
-// Idempotent via IF NOT EXISTS.  Unique on (session_id, state_path) so each
-// session has at most one timeout per state.
-const timeoutSchemaDDL = `
-CREATE TABLE IF NOT EXISTS timeouts (
-  session_id  TEXT NOT NULL,
-  state_path  TEXT NOT NULL,
-  target      TEXT NOT NULL,
-  fires_at_ms INTEGER NOT NULL,
-  PRIMARY KEY (session_id, state_path)
-) STRICT;`
 
 // timeoutEntry tracks one pending timeout for one session.
 type timeoutEntry struct {
@@ -71,16 +60,23 @@ type timeoutEntry struct {
 
 // timeoutDispatcher owns all pending timeouts for one orchestrator instance.
 //
+// Persistence: entries are written to the timeouts table via store (a
+// host.TimeoutStore backed by the same SQLite db as the session store).  On
+// orchestrator start, rearmAllFromStore reads pending rows and reconstructs
+// in-memory timers so sessions survive a process restart.
+//
 // Concurrency: pending is guarded by mu.  The per-entry firing goroutine
 // runs the synthetic transition outside the lock so a long-running
 // orchestrator turn does not block Cancel.
 type timeoutDispatcher struct {
 	clk    clock.Clock
-	db     *sql.DB
 	logger *slog.Logger
 	// orch is the owning orchestrator; supplied via setOrchestrator after
 	// New so the wiring in orchestrator.New stays a one-liner.
 	orch *Orchestrator
+
+	// ts is the persistence seam for timeout entries.
+	ts host.TimeoutStore
 
 	mu sync.Mutex
 	// pending: session → state-path → entry.  Per-state to keep the
@@ -89,27 +85,24 @@ type timeoutDispatcher struct {
 	pending map[app.SessionID]map[app.StatePath]*timeoutEntry
 }
 
-// newTimeoutDispatcher returns a dispatcher backed by clk and (optionally) db.
-// When db is non-nil the timeouts schema is applied on construction and every
-// arm/cancel is mirrored to the table.  When db is nil the dispatcher runs
-// in-memory only (the common case in unit tests).
-func newTimeoutDispatcher(clk clock.Clock, db *sql.DB, logger *slog.Logger) (*timeoutDispatcher, error) {
+// newTimeoutDispatcher returns a dispatcher backed by clk and ts.
+// ts must not be nil; pass host.NewNoopTimeoutStore() when SQLite persistence
+// is not required (e.g. in-memory test rigs).
+func newTimeoutDispatcher(clk clock.Clock, ts host.TimeoutStore, logger *slog.Logger) (*timeoutDispatcher, error) {
 	if clk == nil {
 		clk = clock.Real()
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if ts == nil {
+		ts = host.NewNoopTimeoutStore()
+	}
 	d := &timeoutDispatcher{
 		clk:     clk,
-		db:      db,
 		logger:  logger,
+		ts:      ts,
 		pending: make(map[app.SessionID]map[app.StatePath]*timeoutEntry),
-	}
-	if db != nil {
-		if _, err := db.Exec(timeoutSchemaDDL); err != nil {
-			return nil, fmt.Errorf("orchestrator.timeoutDispatcher: schema: %w", err)
-		}
 	}
 	return d, nil
 }
@@ -286,10 +279,14 @@ func (d *timeoutDispatcher) runEntry(sid app.SessionID, entry *timeoutEntry) {
 				slog.String("err", err.Error()),
 			)
 		}
-		// Remove from pending and unpersist AFTER firing has fully landed.
-		// WaitTimeoutsDrained may observe the entry up to this point; once
-		// removed and done is closed, the synthetic turn's events are
-		// guaranteed to be in the event log.
+		// Remove from pending and mark fired AFTER the synthetic turn has
+		// fully landed.  WaitTimeoutsDrained may observe the entry up to this
+		// point; once removed and done is closed, the synthetic turn's events
+		// are guaranteed to be in the event log.
+		//
+		// We call persistFired (not unpersist/Cancel) so the row stays in the
+		// table with fired=1.  A subsequent orchestrator restart will not
+		// re-arm this entry because Pending() filters fired=0 only.
 		d.mu.Lock()
 		// Only remove if still the same entry (defensive against a
 		// concurrent arm() that replaced us — shouldn't happen because we
@@ -298,7 +295,7 @@ func (d *timeoutDispatcher) runEntry(sid app.SessionID, entry *timeoutEntry) {
 			d.removeLocked(sid, entry.statePath)
 		}
 		d.mu.Unlock()
-		d.unpersist(sid, entry.statePath)
+		d.persistFired(sid, entry.statePath)
 	case <-entry.done:
 		// Cancelled before deadline.
 		return
@@ -402,25 +399,22 @@ type timeoutSnapshot struct {
 	FiresAt   time.Time
 }
 
-// persist writes (or replaces) the row for (sid, statePath).
+// persist writes the timeout entry to the store and emits a journal entry.
 func (d *timeoutDispatcher) persist(sid app.SessionID, sp, target app.StatePath, firesAt time.Time) {
-	if d.db == nil {
-		return
-	}
-	_, err := d.db.Exec(
-		`INSERT OR REPLACE INTO timeouts (session_id, state_path, target, fires_at_ms) VALUES (?, ?, ?, ?)`,
-		string(sid), string(sp), string(target), firesAt.UnixMilli(),
-	)
-	if err != nil {
+	if err := d.ts.Schedule(host.TimeoutEntry{
+		SessionID: string(sid),
+		StatePath: string(sp),
+		Target:    string(target),
+		FireAt:    firesAt,
+	}); err != nil {
 		d.logger.WarnContext(context.Background(), trace.EvTimeoutError,
 			slog.String("session_id", string(sid)),
 			slog.String("state", string(sp)),
-			slog.String("phase", "persist"),
+			slog.String("phase", "persist_schedule"),
 			slog.String("err", err.Error()),
 		)
-		return
 	}
-	// Site 15: emit timeout.armed as a post-commit standalone journal write.
+	// Site 15: emit timeout.armed as a standalone journal write.
 	if d.orch != nil {
 		d.orch.appendJournal(journalEntry(sid, 0, 0, time.Now(),
 			journal.KindTimeoutArmed, "",
@@ -432,24 +426,17 @@ func (d *timeoutDispatcher) persist(sid app.SessionID, sp, target app.StatePath,
 	}
 }
 
+// unpersist removes the timeout entry from the store and emits a journal entry.
 func (d *timeoutDispatcher) unpersist(sid app.SessionID, sp app.StatePath) {
-	if d.db == nil {
-		return
-	}
-	_, err := d.db.Exec(
-		`DELETE FROM timeouts WHERE session_id = ? AND state_path = ?`,
-		string(sid), string(sp),
-	)
-	if err != nil {
+	if err := d.ts.Cancel(string(sid), string(sp)); err != nil {
 		d.logger.WarnContext(context.Background(), trace.EvTimeoutError,
 			slog.String("session_id", string(sid)),
 			slog.String("state", string(sp)),
-			slog.String("phase", "unpersist"),
+			slog.String("phase", "unpersist_cancel"),
 			slog.String("err", err.Error()),
 		)
-		return
 	}
-	// Site 16: emit timeout.cancelled as a post-commit standalone journal write.
+	// Site 16: emit timeout.cancelled as a standalone journal write.
 	if d.orch != nil {
 		d.orch.appendJournal(journalEntry(sid, 0, 0, time.Now(),
 			journal.KindTimeoutCancelled, "",
@@ -460,91 +447,51 @@ func (d *timeoutDispatcher) unpersist(sid app.SessionID, sp app.StatePath) {
 	}
 }
 
-// rearmFromStore reloads every persisted entry from the DB and re-arms a
-// timer for each.  Called by Orchestrator.NewSession (after listener start)
-// and by RearmPersisted (for process restarts).
-//
-// Entries whose fires_at is in the past relative to the current clock are
-// armed with after=0 so they fire as soon as the goroutine starts.  This
-// preserves the "timeout still fires after a crash" contract.
-func (d *timeoutDispatcher) rearmFromStore(sid app.SessionID) error {
-	if d == nil || d.db == nil {
-		return nil
+// persistFired marks the entry as fired in the store so a second restart does
+// not replay the same timeout.
+func (d *timeoutDispatcher) persistFired(sid app.SessionID, sp app.StatePath) {
+	if err := d.ts.Fire(string(sid), string(sp)); err != nil {
+		d.logger.WarnContext(context.Background(), trace.EvTimeoutError,
+			slog.String("session_id", string(sid)),
+			slog.String("state", string(sp)),
+			slog.String("phase", "persist_fired"),
+			slog.String("err", err.Error()),
+		)
 	}
-	rows, err := d.db.Query(
-		`SELECT state_path, target, fires_at_ms FROM timeouts WHERE session_id = ?`,
-		string(sid),
-	)
+}
+
+// rearmAllFromStore loads every unfired timeout row from the store and
+// reconstructs in-memory timers.  Called once during orchestrator startup.
+// Each entry whose fire_at is already in the past gets a zero duration so
+// the timer fires on the next clock tick; once the synthetic turn lands,
+// persistFired marks the row consumed.
+func (d *timeoutDispatcher) rearmAllFromStore() error {
+	entries, err := d.ts.Pending()
 	if err != nil {
-		return fmt.Errorf("orchestrator: rearmFromStore: %w", err)
+		return fmt.Errorf("rearmAllFromStore: pending: %w", err)
 	}
-	defer rows.Close()
-
-	type row struct {
-		state, target string
-		firesAtMs     int64
-	}
-	var rs []row
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.state, &r.target, &r.firesAtMs); err != nil {
-			return fmt.Errorf("orchestrator: rearmFromStore: scan: %w", err)
-		}
-		rs = append(rs, r)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("orchestrator: rearmFromStore: rows: %w", err)
-	}
-
 	now := d.clk.Now()
-	for _, r := range rs {
-		firesAt := time.UnixMilli(r.firesAtMs)
-		after := firesAt.Sub(now)
+	for _, e := range entries {
+		after := e.FireAt.Sub(now)
 		if after < 0 {
 			after = 0
 		}
-		d.logger.DebugContext(context.Background(), trace.EvTimeoutRearmed,
-			slog.String("session_id", string(sid)),
-			slog.String("state", r.state),
-			slog.String("target", r.target),
-			slog.Time("fires_at", firesAt),
-			slog.Duration("after", after),
-		)
-		// Use arm so the in-memory entry and (already-present) DB row stay
-		// consistent; arm's INSERT OR REPLACE is a no-op for the unchanged
-		// fires_at value.
-		d.arm(sid, app.StatePath(r.state), app.StatePath(r.target), after)
-	}
-	return nil
-}
+		sid := app.SessionID(e.SessionID)
+		sp := app.StatePath(e.StatePath)
+		target := app.StatePath(e.Target)
 
-// rearmAllFromStore is the bulk variant used at orchestrator startup, when
-// the dispatcher has no idea which sessions are active.  It scans every
-// timeouts row, groups by session, and calls rearmFromStore for each.
-func (d *timeoutDispatcher) rearmAllFromStore() error {
-	if d == nil || d.db == nil {
-		return nil
-	}
-	rows, err := d.db.Query(`SELECT DISTINCT session_id FROM timeouts`)
-	if err != nil {
-		return fmt.Errorf("orchestrator: rearmAllFromStore: %w", err)
-	}
-	defer rows.Close()
-	var sids []app.SessionID
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			return fmt.Errorf("orchestrator: rearmAllFromStore: scan: %w", err)
+		d.mu.Lock()
+		entry := &timeoutEntry{
+			statePath: sp,
+			target:    target,
+			firesAt:   e.FireAt,
+			done:      make(chan struct{}),
 		}
-		sids = append(sids, app.SessionID(s))
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for _, sid := range sids {
-		if err := d.rearmFromStore(sid); err != nil {
-			return err
-		}
+		entry.timer = d.clk.NewTimer(after)
+		d.insertLocked(sid, sp, entry)
+		d.mu.Unlock()
+
+		go d.runEntry(sid, entry)
 	}
 	return nil
 }
@@ -698,10 +645,12 @@ func (o *Orchestrator) fireTimeout(ctx context.Context, sid app.SessionID, fromS
 	for i := range events {
 		events[i].Turn = turnNum
 	}
+	stampStatePathPerEvent(events)
+	stampStatePath(events, fromState, o.InitialState())
 	// Site 14: dual-write journal entries for the timeout-fired synthetic turn.
 	ftJEntries := journalEntriesForEvents(sid, turnNum, time.Now(), events,
 		journey.World, w, "", target, "")
-	if err := o.store.AppendEventsAndJournal(sid, events, ftJEntries); err != nil {
+	if err := o.appendEventsAndJournal(sid, events, ftJEntries); err != nil {
 		return fmt.Errorf("fireTimeout: append events: %w", err)
 	}
 
@@ -723,15 +672,6 @@ func (o *Orchestrator) fireTimeout(ctx context.Context, sid app.SessionID, fromS
 	}
 
 	return nil
-}
-
-// timeoutPending exposes the dispatcher's per-session snapshot for tests.
-// Returns nil when no dispatcher is wired.
-func (o *Orchestrator) timeoutPending(sid app.SessionID) []timeoutSnapshot {
-	if o.timeouts == nil {
-		return nil
-	}
-	return o.timeouts.snapshot(sid)
 }
 
 // TimeoutPendingStates returns the state paths that currently have an armed
@@ -823,4 +763,3 @@ func (o *Orchestrator) rearmPersistedTimeouts() {
 		)
 	}
 }
-

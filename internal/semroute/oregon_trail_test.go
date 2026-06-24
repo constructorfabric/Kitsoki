@@ -39,7 +39,7 @@ type oregonTrailFixture struct {
 }
 
 // oregonTrailFixtures are the 10 calibration utterances. Five-plus
-// is the proposal's floor (§Goal A); we list ten so a regression in
+// is the calibration floor; we list ten so a regression in
 // one row doesn't silently sink the floor. The Allowed lists are
 // hand-curated from stories/oregon-trail/app.yaml's room definitions
 // to model what the orchestrator would compute at the recorded state.
@@ -104,7 +104,7 @@ var oregonTrailFixtures = []oregonTrailFixture{
 }
 
 // TestOregonTrail_SemRouteCalibration loads the real story manifest
-// and asserts the §Goal-A floor: at least 5 of the calibration rows
+// and asserts the calibration floor: at least 5 of the calibration rows
 // resolve without an LLM, and any row that DOES resolve resolves to
 // the intent the recording expected.
 //
@@ -167,7 +167,7 @@ func TestOregonTrail_SemRouteCalibration(t *testing.T) {
 	}
 
 	if resolved < proposalFloor {
-		t.Errorf("oregon-trail calibration: resolved %d/%d, want ≥ %d (proposal §Goal A floor)",
+		t.Errorf("oregon-trail calibration: resolved %d/%d, want ≥ %d (calibration floor)",
 			resolved, len(oregonTrailFixtures), proposalFloor)
 	}
 }
@@ -182,7 +182,7 @@ func candidateNames(cs []Candidate) []string {
 }
 
 // TestOregonTrail_TemplateWorkedExample is the Phase-4 end-to-end
-// pin for the proposal §5.2 example. It loads the real Oregon-Trail
+// pin for the worked example. It loads the real Oregon-Trail
 // app manifest (which now ships the three propose_purchase templates
 // — see stories/oregon-trail/intents.yaml) and asserts the canonical
 // "buy 6 oxen and 200 lbs food for 240" utterance resolves to

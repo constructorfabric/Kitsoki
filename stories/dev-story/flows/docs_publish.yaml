@@ -1,0 +1,74 @@
+# docs_publish — the documentation happy path: target → draft → review →
+# publish (announce out-of-band) → published → landing.
+#
+# The full deterministic walk of the docs loop's publish branch, no LLM. The
+# writer task (host.agent.task) is STUBBED (its close-out note is canned); the
+# announcement (iface.transport.post → host.append_to_file) is stubbed by the
+# resolved host name. Proves: draft_doc captures the target and enters drafting;
+# the writer task binds the close-out note and the post-bind emit advances to
+# review; publish_doc announces the doc out-of-band and the loop lands on the
+# published read-out with docs_status=='published'.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: docs
+initial_world: {}
+
+host_handlers:
+  # The doc writer close-out note.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Documented the inbox host capability — add/list/resolve semantics."
+        file_path: "docs/architecture/inbox-host.md"
+        headings:
+          - "What it is"
+          - "When to use it"
+          - "Example"
+          - "Gotchas"
+  # The out-of-band announcement (iface.transport.post → host.append_to_file
+  # default). Stub by the RESOLVED host name; the dispatched-handler trace
+  # still records the iface call site (iface.transport.post).
+  host.append_to_file:
+    data:
+      ok: true
+      message_id: "docs-announce-001"
+
+turns:
+  # Name the target → captured, enters drafting, the writer task binds the
+  # close-out note, the post-bind emit advances to review.
+  - intent: { name: draft_doc, slots: { target: "the inbox host capability" } }
+    expect_state: docs_review
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: draft }
+        times: 1
+    expect_world:
+      docs_target: "the inbox host capability"
+      docs_status: "drafted"
+      docs_draft:
+        summary: "Documented the inbox host capability — add/list/resolve semantics."
+        file_path: "docs/architecture/inbox-host.md"
+        headings:
+          - "What it is"
+          - "When to use it"
+          - "Example"
+          - "Gotchas"
+
+  # Publish → announce out-of-band → published read-out.
+  - intent: { name: publish_doc, slots: {} }
+    expect_state: docs_published
+    expect_host_calls:
+      - handler: host.append_to_file.post
+        args: { call: announce }
+        times: 1
+    expect_world:
+      docs_status: "published"
+      docs_action: "docs-announce-001"
+
+  # The read-out rests; go_main returns to the workbench.
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

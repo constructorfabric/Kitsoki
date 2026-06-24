@@ -1,0 +1,19 @@
+# recording_script_configures — a natural-language command-backed request routes
+# through recording.yaml to configure without slot syntax. Host-backed ad hoc
+# planning is covered by freeform_agent_gate.yaml / hybrid_gate_achieved.yaml.
+test_kind: flow
+app: ../app.yaml
+recording: ../recording.yaml
+initial_state: configuring
+
+turns:
+  - input: "the rate limiter tests are flaky — get `go test ./internal/ratelimit` green"
+    expect_state: configuring
+    expect_world:
+      goal_text:        "Get `go test ./internal/ratelimit` green"
+      gate_mode:        "script"
+      gate_command:     "go test ./internal/ratelimit"
+      iteration_budget: 3
+    expect_view_matches: "script[\\s\\S]*go test ./internal/ratelimit"
+
+expect_no_errors: true

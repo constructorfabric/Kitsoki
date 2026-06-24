@@ -1,0 +1,59 @@
+# design_search_regenerate — the search room's regenerate loop.
+#
+# `regenerate` discards the scout result and re-runs it from scratch on the
+# next on_enter. In the early-gate design the search room runs ONLY the scout
+# (reference curation moved downstream to design_materialize), so regenerate
+# clears just the scout bind and self-transitions.
+#
+# This flow starts directly in design_search with the scout result already
+# populated, verifies that regenerate clears + refreshes it, and that any
+# pre-existing references are left untouched (they are no longer this room's
+# concern).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design_search
+initial_world:
+  judge_mode:         "human"
+  design_idea:      "Add a per-session working folder primitive."
+  design_workspace: "docs/proposals/.workspace/wf"
+  # Pre-populated scout result (set as if the room ran already).
+  design_existing_state:
+    overlaps: []
+    roadmap_fit: "Original roadmap fit."
+  design_existing_path:   "docs/proposals/.workspace/wf/002-existing-state.md"
+  # References belong to design_materialize now; regenerate must NOT touch them.
+  design_references:
+    items:
+      - { path: "docs/proposals/process-design.md", sections: "§4.3", rationale: "preserved reference" }
+  design_references_path: "docs/proposals/.workspace/wf/003-references.json"
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      existing_scan:
+        data:
+          ok: true
+          submitted:
+            overlaps: []
+            roadmap_fit: "Refreshed roadmap fit."
+
+turns:
+  # Regenerate: clear the scout result and self-transition (on_enter re-fires
+  # the scout). References are left exactly as they were.
+  - intent: { name: regenerate, slots: {} }
+    expect_state: design_search
+    expect_world:
+      design_existing_state:
+        overlaps:    []
+        roadmap_fit: "Refreshed roadmap fit."
+      design_references:
+        items:
+          - { path: "docs/proposals/process-design.md", sections: "§4.3", rationale: "preserved reference" }
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: "existing_scan" }
+    # The researcher is NOT part of this room anymore.
+    expect_no_host_calls: [host.agent.search]
+
+expect_no_errors: true

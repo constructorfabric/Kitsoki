@@ -1,0 +1,40 @@
+# Happy-path flow: a 5-day forecast for Tokyo.
+#
+# Drives the story end-to-end through the orchestrator with the REAL
+# host.starlark.run handler running scripts/weather_report.star + its sidecar —
+# only the script's ctx.http GETs (geocode + forecast) are replayed, from
+# cassettes/forecast.http.yaml via the starlark_http_cassette: seam. No LLM, no
+# network, fully deterministic.
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+starlark_http_cassette: ../cassettes/forecast.http.yaml
+
+turns:
+  # forecast Tokyo: lobby → report. The on_enter host.starlark.run call geocodes
+  # Tokyo (cassette) and GETs the forecast (cassette), binding the report
+  # outputs into world. place/coords are geocode-derived and deterministic.
+  - intent: { name: forecast, slots: { location: "Tokyo" } }
+    expect_state: report
+    expect_world:
+      mode: "forecast"
+      headline: "Now 19.8°C, partly cloudy · humidity 92% · wind 2.7 km/h"
+      place: "Tokyo, Japan"
+      coords: "35.69°N, 139.69°E · tz Asia/Tokyo"
+    expect_host_calls:
+      - handler: host.starlark.run
+    expect_view_matches: "5-day forecast"
+
+  # back: clears outputs (re-arming once:) and returns to the lobby.
+  - intent: { name: back, slots: {} }
+    expect_state: lobby
+    expect_world:
+      place: ""
+      mode: ""
+
+  - intent: { name: quit, slots: {} }
+    expect_state: ended
+
+expect_terminal: true
+expect_no_errors: true

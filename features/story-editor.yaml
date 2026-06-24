@@ -1,0 +1,156 @@
+# yaml-language-server: $schema=feature.schema.json
+id: story-editor
+kind: feature
+title: The story editor
+tagline: Rooms, hooks, domain model, and the Agent Workbench — one inspector.
+summary: "The per-story editor surface: the BFS-ordered room list, room detail with hook and domain model and IDE deep-link, the meta-chat column, and the Agent Workbench's contract cards and cassette browser."
+promo:
+  order: 60
+demo:
+  spec: tests/playwright/story-editor-video.spec.ts
+  artifactDir: story-editor
+  videoBase: story-editor-demo
+  posterStep: se-intro-home
+  story: stories/prd
+  flow: stories/prd/flows/happy_path.yaml
+tour:
+  export: STORY_EDITOR_TOUR_STEPS
+  steps:
+    - id: se-intro-home
+      route: home
+      title: Authoring, without the YAML expedition
+      body: Every kitsoki story is a deterministic graph of rooms authored in YAML. The Story Editor gives that graph a browseable surface — room order, wiring, and agent contracts — without leaving the web UI. We'll walk it on the PRD-authoring story.
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 5000
+    - id: se-intro-card
+      route: home
+      target: edit-story-btn
+      title: Open a story in the editor
+      body: Every story card now carries an 'Edit story' link. It opens that story's room graph in the editor — no session, no LLM, just a static read of the story as authored.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: edit-story-btn
+      dwellMs: 5000
+    - id: se-intro-open
+      route: home
+      target: edit-story-btn
+      title: Into the editor
+      body: Click 'Edit story' to open the PRD story's graph.
+      placement: right
+      kind: action
+      advance: route-match
+      advanceRoute: any
+      waitForTarget: edit-story-btn
+      dwellMs: 3500
+    - id: se-shell
+      route: any
+      target: editor-room-list
+      title: The story map
+      body: The editor is a two-column shell. On the right, every room in the story — on the left, a meta-chat scratchpad. The room list is the map you navigate by.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: editor-room-list
+      dwellMs: 5000
+    - id: se-roomlist
+      route: any
+      target: editor-room-list
+      title: Ordered by reachability
+      body: Rooms are sorted by their average BFS distance from the entry point — idle (0) → clarifying (1) → brief (2) → references (3) → drafting (4). Early rooms first, unreachable rooms last. You think in 'how far from the start', not YAML file order.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: editor-room-item
+      dwellMs: 5500
+    - id: se-meta
+      route: any
+      target: editor-meta-chat
+      title: Meta chat, alongside
+      body: The left column is the same off-path meta agent you have on the run surface — ask 'what does this room's prompt do?' without leaving the page. It needs a live session, so until one is attached it shows this placeholder.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: editor-meta-chat
+      dwellMs: 5000
+    - id: se-detail
+      route: any
+      target: editor-room-detail
+      title: A room, fully unpacked
+      body: "Selecting 'clarifying' pins it in the detail pane: its hook, its domain model, its typed view, and an IDE deep-link — everything you'd otherwise reconstruct by reading YAML across files."
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: editor-room-detail
+      dwellMs: 5000
+    - id: se-ide
+      route: any
+      target: editor-ide-link
+      title: Jump to source
+      body: The header carries a vscode://file deep-link to the exact line of the room's source. Editing stays in your IDE — the editor reads and links, it doesn't write YAML.
+      placement: bottom
+      kind: explain
+      advance: next
+      waitForTarget: editor-ide-link
+      dwellMs: 4500
+    - id: se-hook
+      route: any
+      target: editor-hook
+      title: The hook (on_enter)
+      body: "Each on_enter effect renders as a typed card — the host call, its arguments, and the world bindings it produces. The clarifying room fires a decide agent to surface the gaps in the brief. This is also the security boundary: every host.* call a room makes is checked against the story's allow-list at load time, and each agent runs with an explicit tool allow-list — so the hooks you read here are the complete, auditable list of what the machine can do, no matter what the model asks for."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: editor-hook-effect
+      dwellMs: 5500
+    - id: se-domain
+      route: any
+      target: editor-domain-model
+      title: The domain model
+      body: "Three sections: world keys this room reads and writes (with direction), the intents it defines, and its transitions. Transition targets are links — click one to jump straight to that room."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: editor-domain-model
+      dwellMs: 5500
+    - id: se-view
+      route: any
+      target: editor-story-viewer
+      title: The typed view, rendered
+      body: The room's typed view is rendered read-only by the very same component the run surface uses — no divergence between what you author and what the operator sees.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: editor-story-viewer-view
+      dwellMs: 5000
+    - id: se-workbench
+      route: any
+      target: editor-agent-workbench
+      title: The Agent Workbench
+      body: "For any room that calls an agent, the workbench lists its contracts: the call kind, the prompt template, the declared output schema, and the cassette key that flow-tests match on — the contract an author tunes."
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: editor-agent-card
+      dwellMs: 5500
+    - id: se-cassette
+      route: any
+      target: editor-cassette-list
+      title: Browse the cassettes
+      body: Each contract embeds a cassette browser — pick a recorded episode, preview its output, and replay the call in isolation to see the room render with that response. The PRD story ships no agent cassettes yet, so the browser honestly shows its empty state.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: editor-cassette-list
+      dwellMs: 5000
+    - id: se-done
+      route: any
+      title: The whole story, on one surface
+      body: "That's the Story Editor: a reachability-ordered room map, per-room hook / domain-model / typed-view detail, IDE deep-links, a meta-chat scratchpad, and an agent workbench with a cassette browser — all a static, no-LLM read of the story as authored. Hit '?' anytime to replay this tour."
+      placement: center
+      kind: explain
+      advance: next
+      dwellMs: 5500

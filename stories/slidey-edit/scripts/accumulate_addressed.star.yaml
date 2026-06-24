@@ -1,0 +1,7 @@
+inputs:
+  deck_handle:  { type: string, required: false }
+  anchor_label: { type: string, required: false }
+  instruction:  { type: string, required: false }
+
+outputs:
+  addressed: { type: object }

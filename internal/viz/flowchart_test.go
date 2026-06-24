@@ -20,7 +20,7 @@ func TestParseDetailLevel(t *testing.T) {
 		{"states", viz.DetailStates, false},
 		{"steps", viz.DetailSteps, false},
 		{"full", viz.DetailFull, false},
-		{"ROOMS", viz.DetailRooms, false},  // case-insensitive
+		{"ROOMS", viz.DetailRooms, false}, // case-insensitive
 		{"STATES", viz.DetailStates, false},
 		{"", viz.DetailStates, true},
 		{"invalid", viz.DetailStates, true},
@@ -65,7 +65,7 @@ func minimalApp() *app.AppDef {
 						Bind:   map[string]string{"result": "output"},
 					},
 					{
-						Invoke: "host.oracle.ask",
+						Invoke: "host.agent.ask",
 						With:   map[string]any{"prompt": "prompts/analyze.md"},
 						Bind:   map[string]string{"analysis": "text"},
 					},
@@ -143,7 +143,7 @@ func TestFlowchartMinimalStepsDetail(t *testing.T) {
 
 	// Shell step (host.run) should have shell class.
 	require.Contains(t, s, ":::shell")
-	// Oracle step (host.oracle.ask) should have llm class.
+	// Agent step (host.agent.ask) should have llm class.
 	require.Contains(t, s, ":::llm")
 
 	// Step label must include "step 0 —".
@@ -271,7 +271,7 @@ func TestFlowchartEscaping(t *testing.T) {
 				Description: "handles <input> & \"quotes\"",
 				OnEnter: []app.Effect{
 					{
-						Invoke: "host.oracle.ask",
+						Invoke: "host.agent.ask",
 						With:   map[string]any{"prompt": "prompts/test.md"},
 					},
 				},
@@ -337,7 +337,7 @@ func TestFlowchartBackgroundStep(t *testing.T) {
 			"working": {
 				OnEnter: []app.Effect{
 					{
-						Invoke:     "host.oracle.ask",
+						Invoke:     "host.agent.ask",
 						Background: true,
 						With:       map[string]any{"prompt": "prompts/bg.md"},
 					},
@@ -405,6 +405,33 @@ func TestFlowchartFilterFromToMidSlice(t *testing.T) {
 	require.Contains(t, s, "SG_cloakroom")
 }
 
+// TestFlowchartUnknownTargetNoStubEdge guards against orphaned stub edges
+// for transition targets that don't resolve to any known state/room. Such a
+// target has no entry in rooms.RoomOf, so the filtered branch would otherwise
+// emit an edge to a STUB_ node that is never declared (the stub node itself is
+// suppressed because its room name is empty), leaving a dangling edge in the
+// mermaid output.
+func TestFlowchartUnknownTargetNoStubEdge(t *testing.T) {
+	def := minimalApp()
+	// Add a transition out of `working` that points at a state that does
+	// not exist anywhere in the app.
+	def.States["working"].On["escape_hatch"] = []app.Transition{{Target: "ghost_state"}}
+
+	// Filter to the `working` room so the cross-room stub-edge path is the
+	// one that handles this transition.
+	out, err := viz.FlowchartBytes(def, viz.DetailStates, viz.FlowchartFilter{Room: "working"})
+	require.NoError(t, err)
+	s := string(out)
+
+	// No node or edge should reference the unknown target.
+	require.NotContains(t, s, "ghost_state")
+	// The dangling intent must not produce any edge at all.
+	require.NotContains(t, s, "escape_hatch")
+	// And there must be no edge pointing at a bare/empty STUB_ node.
+	require.NotContains(t, s, "--> STUB_\n")
+	require.NotContains(t, s, `--> STUB_ `)
+}
+
 func TestFlowchartFilterValidate(t *testing.T) {
 	require.NoError(t, viz.FlowchartFilter{}.Validate())
 	require.NoError(t, viz.FlowchartFilter{Room: "foo"}.Validate())
@@ -461,4 +488,41 @@ func TestFlowchartSequenceInRoomsDetail(t *testing.T) {
 	require.NoError(t, err)
 	s := string(out)
 	require.Contains(t, s, "phase 0")
+}
+
+// TestFlowchartBannersOptIn verifies the FlowchartWithMap Banners option:
+// off → byte-identical to FlowchartBytes (no comments); on → one
+// `%% banner <state> <text>` line per leaf state with a STATIC banner view
+// element, and templated banner text is skipped (it's a runtime render, not
+// declared graph metadata).
+func TestFlowchartBannersOptIn(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "ban", Title: "Ban"},
+		Root: "intake",
+		States: map[string]*app.State{
+			"intake": {
+				View: app.View{Elements: []app.ViewElement{{Kind: "banner", Source: "INTAKE"}}},
+				On:   map[string][]app.Transition{"go": {{Target: "done"}}},
+			},
+			"done": {
+				Terminal: true,
+				// Templated banner text must NOT be surfaced statically.
+				View: app.View{Elements: []app.ViewElement{{Kind: "banner", Source: "{{ world.x }}"}}},
+			},
+		},
+	}
+
+	// Banners OFF: byte-identical to FlowchartBytes, no banner comments.
+	res, err := viz.FlowchartWithMap(def, viz.FlowchartOptions{Detail: viz.DetailStates})
+	require.NoError(t, err)
+	require.NotContains(t, res.Source, "%% banner")
+	raw, err := viz.FlowchartBytes(def, viz.DetailStates, viz.FlowchartFilter{})
+	require.NoError(t, err)
+	require.Equal(t, string(raw), res.Source, "Banners:false must be byte-identical to FlowchartBytes")
+
+	// Banners ON: static banner emitted; templated banner skipped.
+	res2, err := viz.FlowchartWithMap(def, viz.FlowchartOptions{Detail: viz.DetailStates, Banners: true})
+	require.NoError(t, err)
+	require.Contains(t, res2.Source, "%% banner intake INTAKE")
+	require.NotContains(t, res2.Source, "%% banner done")
 }

@@ -65,7 +65,10 @@ func TestMemWriter_AppendCheckpoint_Kind(t *testing.T) {
 		t.Fatalf("AppendCheckpoint: %v", err)
 	}
 
-	cp, ok := r.LatestCheckpoint(sid, "world")
+	cp, ok, err := r.LatestCheckpoint(sid, "world")
+	if err != nil {
+		t.Fatalf("LatestCheckpoint: %v", err)
+	}
 	if !ok {
 		t.Fatal("LatestCheckpoint returned false")
 	}
@@ -97,8 +100,12 @@ func TestMemWriter_TypedEntry_NotAssignedVersion(t *testing.T) {
 
 	r := journal.NewMemReader(store)
 	var typed []journal.Entry
-	for te := range r.ReplayTyped(sid) {
+	seq, errFn := r.ReplayTyped(sid)
+	for te := range seq {
 		typed = append(typed, te)
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("ReplayTyped: %v", err)
 	}
 	if len(typed) != 1 {
 		t.Fatalf("ReplayTyped len = %d, want 1", len(typed))

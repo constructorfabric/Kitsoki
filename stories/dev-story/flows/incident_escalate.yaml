@@ -1,0 +1,92 @@
+# incident_escalate — the escalation branch: alert → triage (escalate) →
+# page the owning team (transport post + inbox mirror) → resolved → postmortem.
+#
+# The sev1 / page-now path. The triage decide recommends escalate (no safe
+# mitigation), so the post-bind emit auto-routes there; escalating posts the
+# page out-of-band (iface.transport.post, stubbed) and mirrors it into the
+# inbox (host.inbox.add, stubbed), sets incident_status=='escalated', and
+# advances to the resolved read-out. Proves the escalation arc fires both
+# out-of-band calls and a paged incident still gets a postmortem.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: incident
+initial_world: {}
+
+host_handlers:
+  # Triage verdict — a sev1 with no safe local fix → recommend escalate.
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        severity: "sev1"
+        summary: "Primary database is unreachable — full checkout outage."
+        recommendation: "escalate"
+        suspected_cause: "db-primary host down; needs the data team / on-call DBA."
+        mitigation: ""
+  # The out-of-band page (iface.transport.post → host.append_to_file default).
+  # Stub by the RESOLVED host name; the dispatched-handler trace still records
+  # the iface call site (iface.transport.post), which is what we assert below.
+  host.append_to_file:
+    data:
+      ok: true
+      message_id: "page-001"
+  # The inbox mirror.
+  host.inbox.add:
+    data:
+      ok: true
+      id: "inbox-001"
+  # Postmortem writer close-out note.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Checkout outage from db-primary loss; restored by data-team failover."
+        file_path: "docs/incidents/2026-06-22-db-primary-down.md"
+        follow_ups:
+          - "Add an automated db-primary failover runbook."
+
+turns:
+  # Paste the alert → triage → post-bind emit routes on recommendation=='escalate'.
+  - intent: { name: report_incident, slots: { alert: "db-primary unreachable, checkout down" } }
+    expect_state: incident_triaged
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: triage }
+        times: 1
+    expect_world:
+      incident_triage:
+        severity: "sev1"
+        summary: "Primary database is unreachable — full checkout outage."
+        recommendation: "escalate"
+        suspected_cause: "db-primary host down; needs the data team / on-call DBA."
+        mitigation: ""
+
+  # Escalate → page out-of-band + mirror into inbox → resolved.
+  - intent: { name: escalate, slots: {} }
+    expect_state: incident_resolved
+    expect_host_calls:
+      - handler: host.append_to_file.post
+        args: { call: page }
+        times: 1
+      - handler: host.inbox.add
+        args: { call: page-inbox }
+        times: 1
+    expect_world:
+      incident_status: "escalated"
+      incident_action: "page-001"
+
+  # Close out — write the postmortem → resolved → landing.
+  - intent: { name: write_postmortem, slots: {} }
+    expect_state: incident_postmortem
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: write-postmortem }
+        times: 1
+    expect_world:
+      incident_status: "resolved"
+
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "existing_state",
+  "description": "The scout's report on whether the idea overlaps work already in flight. An empty `overlaps` list is valid and means the idea is genuinely new.",
+  "type": "object",
+  "required": ["overlaps", "roadmap_fit"],
+  "properties": {
+    "overlaps": {
+      "type": "array",
+      "description": "Existing proposals / features the idea duplicates, extends, or conflicts with. Empty ⇒ no overlap found.",
+      "items": {
+        "type": "object",
+        "required": ["path", "kind", "summary", "recommendation"],
+        "properties": {
+          "path":    { "type": "string", "minLength": 1, "description": "Path of the overlapping artifact." },
+          "kind":    { "type": "string", "enum": ["in_progress", "accepted", "feature"], "description": "in_progress ⇒ a draft in docs/proposals/.workspace/; accepted ⇒ a proposal in docs/proposals/; feature ⇒ a feature/bug doc." },
+          "summary": { "type": "string", "minLength": 4, "description": "One line: what the existing artifact covers and how it overlaps." },
+          "recommendation": { "type": "string", "enum": ["amend", "supersede", "new"], "description": "amend ⇒ fold the idea into this; supersede ⇒ replace it; new ⇒ overlap is incidental, proceed new." }
+        },
+        "additionalProperties": true
+      }
+    },
+    "roadmap_fit": { "type": "string", "description": "Where the idea fits relative to the current roadmap / proposal queue." }
+  },
+  "additionalProperties": true
+}

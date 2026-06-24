@@ -1,0 +1,72 @@
+# diagnose_stub — slice-1 verification (item 2): host.ide.* stubbed by
+# per-invoke id (feedback_agent_stub_by_id), exercising BOTH branches.
+#
+# host_handlers: registers one stub for host.ide.get_diagnostics that
+# dispatches on the invoke's id: (editor_diagnostics) via by_call:. Because the
+# testrunner replaces the handler by name, the stub's data: is the already-
+# unwrapped host.ide.* Result.Data shape ({connected, diagnostics}) — NO live
+# link, NO MCP envelope, NO socket. This is exactly how every other host.* verb
+# is stubbed; host.ide.* is not special.
+#
+# Doc 1 (editor attached): connected:true + two diagnostics → reviewed.
+# Doc 2 (no editor):       connected:false + empty list      → offline.
+#
+# To run:
+#   kitsoki test flows testdata/apps/ide_awareness/app.yaml
+
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+host_handlers:
+  host.ide.get_diagnostics:
+    by_call:
+      editor_diagnostics:
+        data:
+          connected: true
+          diagnostics:
+            - { file: "/ws/a.go", message: "undefined: x", severity: "error" }
+            - { file: "/ws/b.go", message: "unused import", severity: "warning" }
+
+turns:
+  - intent:
+      name: diagnose
+      slots: {}
+    # The on_enter invoke binds connected:true; the deferred emit_intent
+    # auto-advances the one-shot gate through diagnosing → reviewed.
+    expect_state: reviewed
+    expect_world:
+      diagnostics:
+        - { file: "/ws/a.go", message: "undefined: x", severity: "error" }
+        - { file: "/ws/b.go", message: "unused import", severity: "warning" }
+    expect_host_calls:
+      - handler: host.ide.get_diagnostics
+
+expect_terminal: true
+expect_no_errors: true
+
+---
+# Doc 2: no editor attached. The stub returns the not-connected typed shape
+# (connected:false, empty diagnostics) — the same Result a real handler returns
+# when no host.IDELink is in ctx — and the story branches to offline.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+host_handlers:
+  host.ide.get_diagnostics:
+    by_call:
+      editor_diagnostics:
+        data:
+          connected: false
+          diagnostics: []
+
+turns:
+  - intent:
+      name: diagnose
+      slots: {}
+    expect_state: offline
+
+expect_terminal: true
+expect_no_errors: true

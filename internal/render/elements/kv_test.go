@@ -1,9 +1,11 @@
 package elements
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	goyaml "github.com/goccy/go-yaml"
 
 	"kitsoki/internal/expr"
@@ -95,6 +97,113 @@ func TestKV_EmptyPairsReturnsEmpty(t *testing.T) {
 	}
 	if out != "" {
 		t.Errorf("empty kv should return empty, got %q", out)
+	}
+}
+
+// osc8 is the OSC 8 introducer; presence in the raw output proves a
+// terminal hyperlink was emitted, absence proves it was not.
+const osc8 = "\x1b]8;;"
+
+// TestKV_OSC8Wrap_MarkdownValue verifies that a .md kv value is wrapped in
+// an OSC 8 hyperlink AND that the VISIBLE text (escapes stripped) is
+// byte-identical to the same row rendered without the change — so the
+// column/width math is untouched. This is the load-bearing guarantee of the
+// lean v1 (linkify-only-when-it-fits) approach.
+//
+// Reverting the linkify block in kv.go makes this test fail at the
+// "expected OSC 8 escape" assertion (the raw output no longer contains the
+// introducer), per the proposal's "assert it fails without the change".
+func TestKV_OSC8Wrap_MarkdownValue(t *testing.T) {
+	path := "docs/proposals/tui-md-links.md"
+	kv := KV{
+		Pairs: goyaml.MapSlice{
+			{Key: "Brief", Value: path},
+		},
+	}
+	out, err := kv.Render(80, expr.Env{}, nil)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	// The raw output must carry the OSC 8 escape...
+	if !strings.Contains(out, osc8) {
+		t.Fatalf("expected OSC 8 escape around %q, got raw:\n%q", path, out)
+	}
+	// ...pointing at the absolute file:// URL for the path...
+	abs, _ := filepath.Abs(path)
+	if !strings.Contains(out, "file://"+abs) {
+		t.Errorf("expected file:// target %q in raw output:\n%q", "file://"+abs, out)
+	}
+
+	// ...and the VISIBLE text (escapes stripped) must equal the plain
+	// render byte-for-byte.
+	visible := ansi.Strip(out)
+	wantVisible := "Brief:  " + path
+	if visible != wantVisible {
+		t.Errorf("visible text mismatch:\n got %q\nwant %q", visible, wantVisible)
+	}
+}
+
+// TestKV_OSC8_NoEscapeForNonMarkdown verifies a non-.md value emits no
+// OSC 8 escape — the linkify is gated strictly on the markdown predicate.
+func TestKV_OSC8_NoEscapeForNonMarkdown(t *testing.T) {
+	kv := KV{
+		Pairs: goyaml.MapSlice{
+			{Key: "Note", Value: "docs/proposals/tui-md-links.txt"},
+			{Key: "Cash", Value: "$42"},
+		},
+	}
+	out, err := kv.Render(80, expr.Env{}, nil)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if strings.Contains(out, osc8) {
+		t.Errorf("non-.md values must not be linkified, got raw:\n%q", out)
+	}
+}
+
+// TestKV_OSC8_WidthUnaffected guards the width trap: a row whose value is a
+// linkified .md path must wrap at the exact same visible columns as the same
+// row rendered plain. We compare the escape-stripped output of a kv block
+// containing a fitting .md path against an identical block whose value is a
+// non-.md string of the same visible length — the visible layout must match.
+func TestKV_OSC8_WidthUnaffected(t *testing.T) {
+	const width = 80
+	mdPath := "docs/x/brief.md"                       // 15 visible cols
+	plain := strings.Repeat("y", len([]rune(mdPath))) // same visible width, no link
+
+	linked, err := KV{Pairs: goyaml.MapSlice{
+		{Key: "Brief", Value: mdPath},
+	}}.Render(width, expr.Env{}, nil)
+	if err != nil {
+		t.Fatalf("Render(linked): %v", err)
+	}
+	bare, err := KV{Pairs: goyaml.MapSlice{
+		{Key: "Brief", Value: plain},
+	}}.Render(width, expr.Env{}, nil)
+	if err != nil {
+		t.Fatalf("Render(bare): %v", err)
+	}
+
+	// The linked render must carry an escape; the bare one must not.
+	if !strings.Contains(linked, osc8) {
+		t.Fatalf("expected linked render to contain OSC 8 escape:\n%q", linked)
+	}
+	if strings.Contains(bare, osc8) {
+		t.Fatalf("expected bare render to contain no OSC 8 escape:\n%q", bare)
+	}
+
+	// Visible layout must be column-identical once the value glyphs are
+	// normalized away: same line count and same column where the value
+	// starts.
+	lv := strings.Split(ansi.Strip(linked), "\n")
+	bv := strings.Split(ansi.Strip(bare), "\n")
+	if len(lv) != len(bv) {
+		t.Fatalf("line count differs: linked=%d bare=%d\nlinked=%q\nbare=%q",
+			len(lv), len(bv), lv, bv)
+	}
+	if got, want := strings.Index(lv[0], mdPath), strings.Index(bv[0], plain); got != want {
+		t.Errorf("value column differs: linked=%d bare=%d", got, want)
 	}
 }
 

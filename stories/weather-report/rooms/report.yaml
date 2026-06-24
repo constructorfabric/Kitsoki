@@ -1,0 +1,174 @@
+states:
+  report:
+    description: "Weather report — derived by the Starlark glue"
+    relevant_world: [place, coords, headline, mode]
+    on_enter:
+      # THE SUBJECT OF THIS STORY. A single deterministic Starlark call that
+      # geocodes the place and fetches the dataset for the chosen mode:
+      #   with.script  — the .star file (resolved against the app root at load
+      #                   time; the sidecar must sit beside it and is validated
+      #                   at load time).
+      #   with.inputs  — the named inputs exposed as ctx.inputs[...]: the
+      #                   free-text location and the mode chosen in the lobby.
+      #   bind         — the script's typed outputs → world keys.
+      #   once: true   — idempotent on re-entry / reload: skipped when the bind
+      #                   targets are already set, re-armed when they are cleared
+      #                   (the lobby/back arcs clear them).
+      #   on_error     — a script fail() (unknown place / non-2xx) sets
+      #                   world.last_error and routes to the failed room.
+      - invoke: host.starlark.run
+        id: weather_report
+        with:
+          script: scripts/weather_report.star
+          inputs:
+            location: "{{ world.location }}"
+            mode: "{{ world.mode }}"
+        bind:
+          place:           place
+          coords:          coords
+          headline:        headline
+          current:         current
+          rows:            rows
+          climate_summary: climate_summary
+        once: true
+        on_error: failed
+    # Array-form view (not extends/blocks): `choice:` elements require it.
+    view:
+      - kv:
+          pairs:
+            Place: "{{ world.place }}"
+            Coordinates: "{{ world.coords }}"
+      - prose: "{{ world.headline }}"
+
+      # ── Forecast mode ────────────────────────────────────────────────
+      - kv:
+          pairs:
+            Now: "{{ world.current.temp }}{{ world.current.temp_unit }} · {{ world.current.desc }}"
+            Humidity: "{{ world.current.humidity }}%"
+            Wind: "{{ world.current.wind }} {{ world.current.wind_unit }}"
+        when: "world.mode == 'forecast'"
+      - heading: "5-day forecast"
+        when: "world.mode == 'forecast'"
+      # A template element (markdown table) loops the per-day rows — renders
+      # cleanly in both the TUI and the web UI.
+      - template: |
+          | Date | Conditions | High | Low | Precip | Wind |
+          |------|------------|------|-----|--------|------|
+          {% for r in world.rows %}| {{ r.date }} | {{ r.desc }} | {{ r.hi }}° | {{ r.lo }}° | {{ r.precip }} mm | {{ r.wind }} km/h |
+          {% endfor %}
+        when: "world.mode == 'forecast'"
+
+      # ── Climate mode ─────────────────────────────────────────────────
+      - heading: "{{ world.climate_summary.year }} climate profile"
+        when: "world.mode == 'climate'"
+      - kv:
+          pairs:
+            Annual mean: "{{ world.climate_summary.annual_mean }}°C"
+            Warmest month: "{{ world.climate_summary.warmest }}"
+            Coldest month: "{{ world.climate_summary.coldest }}"
+            Wettest month: "{{ world.climate_summary.wettest }}"
+            Total precipitation: "{{ world.climate_summary.precip_total }}"
+        when: "world.mode == 'climate'"
+      - template: |
+          | Month | Mean temp | Precip |
+          |-------|-----------|--------|
+          {% for r in world.rows %}| {{ r.month }} | {{ r.mean_temp }}°C | {{ r.precip }} mm |
+          {% endfor %}
+        when: "world.mode == 'climate'"
+
+      # Re-query a new place in either mode without returning to the lobby —
+      # the same free-text param capture as the lobby.
+      - choice:
+          mode: single
+          prompt: "Look up another place"
+          items:
+            - label:  "forecast"
+              intent: forecast
+              hint:   "5-day outlook for another city"
+              param:
+                slot:        location
+                type:        string
+                placeholder: "city for a forecast"
+                required:    true
+            - label:  "climate"
+              intent: climate
+              hint:   "2023 climate profile for another city"
+              param:
+                slot:        location
+                type:        string
+                placeholder: "city for a climate profile"
+                required:    true
+            - { label: "back", intent: back, hint: "back to the lobby" }
+            - { label: "quit", intent: quit, hint: "leave" }
+      - prose: "Bound from the script's return dict; each ctx.http GET rides the trace under __http_exchanges as a {method,url,status} summary (no bodies)."
+    on:
+      # Look up a new place without returning to the lobby: set the new inputs,
+      # clear the outputs so once: re-arms, and re-enter this room.
+      forecast:
+        - target: report
+          effects:
+            - set:
+                location: "{{ slots.location }}"
+                mode: "forecast"
+                place: ""
+                coords: ""
+                headline: ""
+                current: {}
+                rows: []
+                climate_summary: {}
+      climate:
+        - target: report
+          effects:
+            - set:
+                location: "{{ slots.location }}"
+                mode: "climate"
+                place: ""
+                coords: ""
+                headline: ""
+                current: {}
+                rows: []
+                climate_summary: {}
+      back:
+        - target: lobby
+          effects:
+            - set:
+                location: ""
+                mode: ""
+                place: ""
+                coords: ""
+                headline: ""
+                current: {}
+                rows: []
+                climate_summary: {}
+      quit:
+        - target: ended
+
+  failed:
+    description: "Look-up failed"
+    relevant_world: [location, mode, last_error]
+    view:
+      - prose: "The Starlark call returned an error, so the on_error: arc routed here. The engine set world.last_error from the script's fail() (an unknown place or a non-2xx response)."
+      - heading: "Error"
+      - code: "{{ world.last_error|default:'(none)' }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "back", intent: back, hint: "return to the lobby and try another place" }
+            - { label: "quit", intent: quit, hint: "leave" }
+    on:
+      back:
+        - target: lobby
+          effects:
+            - set:
+                location: ""
+                mode: ""
+                last_error: ""
+      quit:
+        - target: ended
+
+  ended:
+    terminal: true
+    description: "Closed"
+    view:
+      - prose: "Done. Re-run to look up another place."

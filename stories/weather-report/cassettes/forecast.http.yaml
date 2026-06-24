@@ -1,0 +1,19 @@
+kind: http_cassette
+record_mode: none
+exchanges:
+- request:
+    method: GET
+    url: https://geocoding-api.open-meteo.com/v1/search?name=Tokyo&count=1&language=en&format=json
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    body: "{\"results\":[{\"id\":1850147,\"name\":\"Tokyo\",\"latitude\":35.6895,\"longitude\":139.69171,\"elevation\":44.0,\"feature_code\":\"PPLC\",\"country_code\":\"JP\",\"admin1_id\":1850144,\"timezone\":\"Asia/Tokyo\",\"population\":9733276,\"country_id\":1861060,\"country\":\"Japan\",\"admin1\":\"Tokyo\"}],\"generationtime_ms\":0.7172823}"
+- request:
+    method: GET
+    url: https://api.open-meteo.com/v1/forecast?latitude=35.6895&longitude=139.6917&timezone=auto&forecast_days=5&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    body: "{\"latitude\":35.7,\"longitude\":139.6875,\"generationtime_ms\":0.2282857894897461,\"utc_offset_seconds\":32400,\"timezone\":\"Asia/Tokyo\",\"timezone_abbreviation\":\"GMT+9\",\"elevation\":40.0,\"current_units\":{\"time\":\"iso8601\",\"interval\":\"seconds\",\"temperature_2m\":\"°C\",\"relative_humidity_2m\":\"%\",\"weather_code\":\"wmo code\",\"wind_speed_10m\":\"km/h\"},\"current\":{\"time\":\"2026-06-09T20:15\",\"interval\":900,\"temperature_2m\":19.8,\"relative_humidity_2m\":92,\"weather_code\":2,\"wind_speed_10m\":2.7},\"daily_units\":{\"time\":\"iso8601\",\"weather_code\":\"wmo code\",\"temperature_2m_max\":\"°C\",\"temperature_2m_min\":\"°C\",\"precipitation_sum\":\"mm\",\"wind_speed_10m_max\":\"km/h\"},\"daily\":{\"time\":[\"2026-06-09\",\"2026-06-10\",\"2026-06-11\",\"2026-06-12\",\"2026-06-13\"],\"weather_code\":[63,51,3,53,3],\"temperature_2m_max\":[21.3,21.7,24.4,26.5,25.8],\"temperature_2m_min\":[18.7,17.1,16.2,17.7,17.4],\"precipitation_sum\":[16.70,0.20,0.00,2.80,0.00],\"wind_speed_10m_max\":[5.5,7.6,8.4,6.8,6.9]}}"

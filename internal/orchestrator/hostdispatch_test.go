@@ -3,6 +3,7 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/chathost"
+	"kitsoki/internal/chats"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
 	"kitsoki/internal/machine"
@@ -52,6 +55,171 @@ func TestOrchestrator_HostDispatchBindsAndRefreshesView(t *testing.T) {
 	require.Equal(t, app.StatePath("probe"), out.NewState)
 	require.True(t, strings.Contains(out.View, "hello world"),
 		"expected refreshed view to include bound value, got: %q", out.View)
+}
+
+func TestOrchestrator_HostChatDriveGetsSessionOrigin(t *testing.T) {
+	const appYAML = `
+app:
+  id: chat-drive-origin-test
+  version: 0.1.0
+  title: "Chat drive origin test"
+
+hosts:
+  - host.chat.create
+  - host.chat.drive
+
+world:
+  chat_id: { type: string, default: "" }
+  drive_id: { type: string, default: "" }
+
+intents:
+  begin: { title: "Begin" }
+
+root: lobby
+
+states:
+  lobby:
+    view: "Lobby"
+    on:
+      begin:
+        - target: queued
+
+  queued:
+    view: "Queued {{ world.drive_id }}"
+    on_enter:
+      - invoke: host.chat.create
+        with:
+          app: "chat-drive-origin-test"
+          room: "agent"
+          scope_key: "smoke"
+          title: "Async agent"
+        bind:
+          chat_id: chat_id
+      - invoke: host.chat.drive
+        with:
+          chat_id: "{{ world.chat_id }}"
+          payload: "review the proposed patch"
+          transport: "state_machine"
+          actor: "story"
+          thread: "issue-7"
+          await: false
+        bind:
+          drive_id: drive_id
+`
+	def, err := app.LoadBytes([]byte(appYAML))
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	chatStore, err := chats.NewStore(s.DB())
+	require.NoError(t, err)
+
+	reg := host.NewRegistry()
+	host.RegisterBuiltins(reg)
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(reg),
+		orchestrator.WithChatStore(chathost.NewAdapter(chatStore)),
+		orchestrator.WithChatsConcrete(chatStore),
+	)
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+	out, err := orch.SubmitDirect(ctx, sid, "begin", map[string]any{})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("queued"), out.NewState)
+	journey, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	chatID, _ := journey.World.Vars["chat_id"].(string)
+	driveID, _ := journey.World.Vars["drive_id"].(string)
+	require.NotEmpty(t, chatID)
+	require.NotEmpty(t, driveID)
+
+	drives, err := chatStore.ListDrivesBySession(ctx, string(sid), []chats.DriveStatus{chats.DriveStatusPending})
+	require.NoError(t, err)
+	require.Len(t, drives, 1)
+	drive := drives[0]
+	require.Equal(t, driveID, drive.DriveID)
+	require.Equal(t, chatID, drive.ChatID)
+	require.Equal(t, string(sid), drive.OriginSessionID)
+	require.Equal(t, "queued", drive.OriginState)
+	require.Equal(t, "review the proposed patch", drive.Payload)
+	require.Equal(t, "story", drive.Actor)
+	require.Equal(t, "issue-7", drive.Thread)
+}
+
+// TestOrchestrator_HostDispatchedFlushedLiveBeforeInvoke pins the observability
+// half of the triage-hang fix: HostDispatched must reach the JSONL sink (which
+// the web SSE stream tails) BEFORE the handler returns, so a slow or wedged
+// host call shows up live instead of the whole turn's event batch landing only
+// at turn-end (a frozen screen with nothing to show). It also guards against a
+// double-write — the live flush must remove HostDispatched from the turn-end
+// batch so it appears exactly once.
+func TestOrchestrator_HostDispatchedFlushedLiveBeforeInvoke(t *testing.T) {
+	def, err := app.Load("testdata/hostbind/app.yaml")
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	sink, err := store.OpenJSONL(filepath.Join(t.TempDir(), "trace.jsonl"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sink.Close() })
+
+	dispatched := make(chan struct{}) // closed when the handler is entered
+	release := make(chan struct{})    // blocks the handler until the test allows
+	reg := host.NewRegistry()
+	reg.Register("host.probe", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		close(dispatched)
+		<-release
+		return host.Result{Data: map[string]any{"message": "hello world"}}, nil
+	})
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(reg),
+		orchestrator.WithEventSink(sink),
+		orchestrator.WithEventSinkAuthority(true),
+	)
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = orch.SubmitDirect(ctx, sid, "ask", map[string]any{})
+		close(done)
+	}()
+
+	// Wait until the handler is blocked mid-Invoke.
+	select {
+	case <-dispatched:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler never entered")
+	}
+
+	// The turn has NOT returned yet (handler is parked), but HostDispatched
+	// must already be in the sink — that is the live flush.
+	countDispatched := func() int {
+		n := 0
+		for _, ev := range sink.History() {
+			if ev.Kind == store.HostDispatched {
+				n++
+			}
+		}
+		return n
+	}
+	require.Eventually(t, func() bool { return countDispatched() >= 1 }, 2*time.Second, 10*time.Millisecond,
+		"HostDispatched should be flushed to the sink live, before the handler returns")
+
+	close(release)
+	<-done
+
+	require.Equal(t, 1, countDispatched(),
+		"HostDispatched must appear exactly once — the live flush must not also leave it in the turn-end batch")
 }
 
 // TestOrchestrator_HostDispatchDisabledWhenNoRegistry verifies the orchestrator
@@ -190,6 +358,63 @@ func TestOrchestrator_RunInitialOnEnter_FiresHostCallAndBinds(t *testing.T) {
 		"RunInitialOnEnter must be a no-op once journey.Turn > 0")
 }
 
+// TestOrchestrator_RunInitialOnEnter_FollowsBootRoute verifies that a
+// button-less router root room auto-routes onward at session boot — the
+// emit_intent on its on_enter is followed even when the emit's value
+// depends on a world key the on_enter's own host call binds (so it can
+// only resolve post-bind).
+//
+// Regression for git-ops: its `idle` router runs detect_context (binds
+// world.route) then `emit_intent: "{{ world.route }}"` to land on the
+// branch/main hub. Before the fix, RunInitialOnEnter ran idle's on_enter
+// host call but never settled the post-bind emit, so a fresh web session
+// sat at the router showing "Detecting…" — despite the room promising
+// "routed to hub automatically" — until a manual kick turn was submitted.
+// The demo papered over this by driving a synthetic `look`; the honest
+// fix routes at boot. After RunInitialOnEnter the session must be on the
+// routed `hub`, at turn 0, with no user turn submitted.
+func TestOrchestrator_RunInitialOnEnter_FollowsBootRoute(t *testing.T) {
+	def, err := app.Load("testdata/initial_onenter_route/app.yaml")
+	require.NoError(t, err)
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	reg := host.NewRegistry()
+	reg.Register("host.detect", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		// Route to the hub via the `to_hub` synthetic intent.
+		return host.Result{Data: map[string]any{"route": "to_hub", "detected": "feat/x"}}, nil
+	})
+
+	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	// Pre-condition: a freshly created session is still at the router.
+	j0, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, "idle", string(j0.State), "session starts at the router root")
+
+	require.NoError(t, orch.RunInitialOnEnter(ctx, sid))
+
+	// The boot emit_intent must have been followed: the session is now on
+	// the routed hub, not the router — with no user turn submitted.
+	j1, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, "hub", string(j1.State),
+		"idle's post-bind emit_intent must route the session to the hub at boot")
+	require.Equal(t, app.TurnNumber(0), j1.Turn,
+		"the boot route is session init, not a user turn — turn stays 0")
+	require.Equal(t, "feat/x", j1.World.Vars["detected"],
+		"the hub's world reflects the value bound during the boot route")
+}
+
 // TestOrchestrator_HostDispatchOnError_SelfRedirectDoesNotLoop guards
 // against an infinite loop when a state's on_enter `invoke:` has
 // `on_error: <self>`. The author's intent for self-targeting on_error
@@ -243,8 +468,9 @@ func TestOrchestrator_HostDispatchOnError_SelfRedirectDoesNotLoop(t *testing.T) 
 		"host.fail must be invoked exactly once; self-redirect must not re-fire on_enter")
 }
 
-// TestOrchestrator_OnErrorRedirect_DepthCapBreaksLoop guards against the
-// regression the dogfood-regression-testing-gap proposal flagged: a
+// TestOrchestrator_OnErrorRedirect_DepthCapBreaksLoop guards against an
+// on-error redirect loop (see docs/stories/state-machine.md
+// "Effects" — the on_error recursion cap): a
 // host call whose on_error target is a SIBLING state (not self) whose
 // own on_enter re-invokes a failing host call with on_error pointing
 // back at the original state. The `target == prior` self-redirect
@@ -417,9 +643,9 @@ func (p *chatStoreProbe) Dequeue(_ context.Context, _ string) (*host.ChatDrive, 
 func (p *chatStoreProbe) ClaimDrive(_ context.Context, _ string) (*host.ChatDrive, error) {
 	return nil, host.ErrDriveNotFound
 }
-func (p *chatStoreProbe) MarkDriveDone(_ context.Context, _ string, _ int) error    { return nil }
-func (p *chatStoreProbe) MarkDriveFailed(_ context.Context, _, _ string) error      { return nil }
-func (p *chatStoreProbe) MarkDriveDismissed(_ context.Context, _ string) error      { return nil }
+func (p *chatStoreProbe) MarkDriveDone(_ context.Context, _ string, _ int) error { return nil }
+func (p *chatStoreProbe) MarkDriveFailed(_ context.Context, _, _ string) error   { return nil }
+func (p *chatStoreProbe) MarkDriveDismissed(_ context.Context, _ string) error   { return nil }
 func (p *chatStoreProbe) GetDrive(_ context.Context, _ string) (*host.ChatDrive, error) {
 	return nil, host.ErrDriveNotFound
 }

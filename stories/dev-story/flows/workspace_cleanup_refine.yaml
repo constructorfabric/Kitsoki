@@ -1,0 +1,51 @@
+# workspace_cleanup_refine — operator can refine the deterministic scan by
+# excluding branch/id/path text, then remains in review with a smaller set.
+test_kind: flow
+app: ../app.yaml
+initial_state: workspace_cleanup_review
+initial_world:
+  cleanup_base: main
+  cleanup_candidates:
+    - { kind: worktree, id: old, path: /repo/.worktrees/old, branch: feature/old, recommended: true }
+  cleanup_recommended: 1
+
+host_handlers:
+  host.git_worktree.cleanup_scan:
+    data:
+      ok: true
+      base: main
+      exclude: feature/old
+      recommended_count: 0
+      candidates:
+        - kind: worktree
+          id: old
+          path: /repo/.worktrees/old
+          branch: feature/old
+          base: main
+          merged: true
+          dirty: false
+          recommended: false
+          reason: excluded by refinement
+          actions: [worktree_remove, branch_delete]
+
+turns:
+  - intent: { name: refine, slots: { feedback: feature/old } }
+    expect_state: workspace_cleanup_review
+    expect_host_calls:
+      - handler: host.git_worktree.cleanup_scan
+    expect_world:
+      cleanup_filter: feature/old
+      cleanup_recommended: 0
+      cleanup_candidates:
+        - kind: worktree
+          id: old
+          path: /repo/.worktrees/old
+          branch: feature/old
+          base: main
+          merged: true
+          dirty: false
+          recommended: false
+          reason: excluded by refinement
+          actions: [worktree_remove, branch_delete]
+
+expect_no_errors: true

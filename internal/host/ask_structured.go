@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"kitsoki/internal/sysprompt"
 )
 
 // ErrNoValidatedPayload signals that `claude -p` exited without the LLM
@@ -41,7 +43,7 @@ func AskStructured(ctx context.Context, opts AskStructuredOptions) (json.RawMess
 
 	bin := opts.ClaudeBin
 	if bin == "" {
-		resolved, err := resolveOracleBin(ctx)
+		resolved, err := resolveAgentBin(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -72,29 +74,16 @@ func AskStructured(ctx context.Context, opts AskStructuredOptions) (json.RawMess
 	_ = os.Remove(outputPath)
 	defer os.Remove(outputPath)
 
-	validatorEntry, err := buildValidatorMCPServer(schemaPath, outputPath, validatorOptions{MaxRetries: opts.MaxRetries})
+	validatorEntry, err := buildValidatorMCPServer(ctx, schemaPath, outputPath, validatorOptions{MaxRetries: opts.MaxRetries})
 	if err != nil {
 		return nil, fmt.Errorf("host.ask_structured: build validator entry: %w", err)
 	}
 
-	mcpConfig := map[string]any{"mcpServers": map[string]any{"validator": validatorEntry}}
-	mcpBytes, err := json.Marshal(mcpConfig)
-	if err != nil {
-		return nil, fmt.Errorf("host.ask_structured: marshal mcp config: %w", err)
+	cfgPath, cfgCleanup, cfgErr := writeMCPConfigTempfile(map[string]any{"validator": validatorEntry}, "kitsoki-ask-mcp")
+	if cfgErr != nil {
+		return nil, fmt.Errorf("host.ask_structured: %w", cfgErr)
 	}
-	cfgFile, err := os.CreateTemp("", "kitsoki-ask-mcp-*.json")
-	if err != nil {
-		return nil, fmt.Errorf("host.ask_structured: create mcp config tempfile: %w", err)
-	}
-	cfgPath := cfgFile.Name()
-	defer os.Remove(cfgPath)
-	if _, err := cfgFile.Write(mcpBytes); err != nil {
-		_ = cfgFile.Close()
-		return nil, fmt.Errorf("host.ask_structured: write mcp config: %w", err)
-	}
-	if err := cfgFile.Close(); err != nil {
-		return nil, fmt.Errorf("host.ask_structured: close mcp config: %w", err)
-	}
+	defer cfgCleanup()
 
 	cliArgs := []string{
 		"-p",
@@ -102,12 +91,13 @@ func AskStructured(ctx context.Context, opts AskStructuredOptions) (json.RawMess
 		"--permission-mode", "bypassPermissions",
 		"--mcp-config", cfgPath,
 	}
+	cliArgs = appendSettingSourcesFlag(cliArgs)
+	cliArgs = appendDisableSlashCommandsFlag(cliArgs)
+	cliArgs = appendStrictMCPConfigFlag(cliArgs)
 	if strings.TrimSpace(opts.Model) != "" {
 		cliArgs = append(cliArgs, "--model", opts.Model)
 	}
-	if strings.TrimSpace(opts.SystemPrompt) != "" {
-		cliArgs = append(cliArgs, "--append-system-prompt", opts.SystemPrompt)
-	}
+	cliArgs, _ = appendComposedSystemPrompt(ctx, cliArgs, sysprompt.AskStructured, opts.SystemPrompt, false)
 
 	cr, runErr := runClaudeOneShot(ctx, bin, cliArgs, opts.Prompt, opts.WorkingDir)
 	if runErr != nil {

@@ -1,0 +1,5 @@
+{"type": "user", "message": {"content": "commit the staged fix"}}
+{"type": "assistant", "message": {"content": [{"type": "text", "text": "Let me check what is staged first."}, {"type": "tool_use", "id": "tu1", "name": "Bash", "input": {"command": "git status --short"}}]}}
+{"type": "user", "toolUseResult": {"stdout": "M  internal/auth/session.go", "stderr": "", "interrupted": false}, "message": {"content": [{"type": "tool_result", "tool_use_id": "tu1", "is_error": false, "content": "M  internal/auth/session.go"}]}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "tu2", "name": "Bash", "input": {"command": "git commit -m \"fix(auth): handle nil session on expiry\""}}]}}
+{"type": "user", "toolUseResult": {"stdout": "[feat-auth 1a2b3c4] fix(auth): handle nil session on expiry\n 1 file changed, 6 insertions(+), 1 deletion(-)", "stderr": "", "interrupted": false}, "message": {"content": [{"type": "tool_result", "tool_use_id": "tu2", "is_error": false, "content": "[feat-auth 1a2b3c4] fix(auth): handle nil session on expiry\n 1 file changed, 6 insertions(+), 1 deletion(-)"}]}}

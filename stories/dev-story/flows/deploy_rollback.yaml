@@ -1,0 +1,80 @@
+# deploy_rollback — the unhealthy branch: target → preflight (go) → ship →
+# verify (UNHEALTHY) → rollback → rolled_back read-out → landing.
+#
+# The red-after-green case: the preflight is clean and the deploy ships, but
+# the post-deploy health probe is red, so the loop rolls back automatically.
+# The two gates (host.agent.decide) are STUBBED; the host.run steps (preflight,
+# ship, verify-probe, rollback) run REAL printf. Proves: the health gate routes
+# on healthy==false; the rollback action records; and the loop lands on the
+# read-out with deploy_status=='rolled_back' — the verify gate is load-bearing,
+# not decorative (a bad release does NOT silently stay shipped).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: deploy
+initial_world: {}
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      gate:
+        data:
+          ok: true
+          submitted:
+            verdict: "go"
+            summary: "Preflight clean for prod-us-east."
+            blocking: []
+      # Health gate — RED probe → unhealthy → roll back.
+      health:
+        data:
+          ok: true
+          submitted:
+            verdict: "unhealthy"
+            summary: "prod-us-east 5xx spiked to 12% after deploy — degraded."
+  host.run:
+    by_call:
+      preflight:
+        data: { ok: true, stdout: "preflight ok for prod-us-east: tests green, tree clean", exit_code: 0 }
+      ship:
+        data: { ok: true, stdout: "deployed to prod-us-east", exit_code: 0 }
+      verify-probe:
+        data: { ok: true, stdout: "probe prod-us-east: 5xx 12%", exit_code: 0 }
+      rollback:
+        data: { ok: true, stdout: "rolled back prod-us-east to last-known-good", exit_code: 0 }
+
+turns:
+  # Name the target → preflight → gate go → gated read-out.
+  - intent: { name: start_deploy, slots: { target: "prod-us-east" } }
+    expect_state: deploy_gated
+    expect_world:
+      deploy_target: "prod-us-east"
+      deploy_gate:
+        verdict: "go"
+        summary: "Preflight clean for prod-us-east."
+        blocking: []
+
+  # Ship → verify probe is RED → health gate unhealthy → rolling back runs the
+  # REAL rollback host.run → rolled_back read-out.
+  - intent: { name: ship, slots: {} }
+    expect_state: deploy_succeeded
+    expect_host_calls:
+      - handler: host.run
+        args: { call: ship }
+        times: 1
+      - handler: host.run
+        args: { call: verify-probe }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: health }
+        times: 1
+      - handler: host.run
+        args: { call: rollback }
+        times: 1
+    expect_world:
+      deploy_status: "rolled_back"
+      deploy_action: "rolled back prod-us-east to last-known-good"
+
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

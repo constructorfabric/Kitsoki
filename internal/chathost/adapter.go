@@ -1,13 +1,3 @@
-// Package chathost provides an adapter that bridges *chats.Store and the
-// host.ChatStore interface. This package is the only place that imports both
-// internal/chats and internal/host; everything else in the codebase uses
-// host.ChatStore directly so there is no import cycle.
-//
-// Usage (in cmd/kitsoki/main.go or similar wiring):
-//
-//	chatStore, err := chats.NewStore(db, chats.WithClock(clk))
-//	adapter := chathost.NewAdapter(chatStore)
-//	orch := orchestrator.New(..., orchestrator.WithChatStore(adapter))
 package chathost
 
 import (
@@ -18,7 +8,13 @@ import (
 	"kitsoki/internal/host"
 )
 
-// NewAdapter wraps s as a host.ChatStore.
+// NewAdapter wraps s as a [host.ChatStore], the only supported way to obtain
+// one — the underlying adapter type is unexported so the seam stays a single
+// typed entry point and the host package never has to import chats. The
+// returned value carries no state beyond s and is safe for concurrent use to
+// exactly the degree s is; it adds no locking, caching, or retry of its own.
+// s must be non-nil: NewAdapter does not check, and a nil store panics on
+// first use rather than here.
 func NewAdapter(s *chats.Store) host.ChatStore {
 	return &adapter{s: s}
 }

@@ -1,0 +1,90 @@
+# once_reload_safe — on_enter is idempotent: a room whose artifact is
+# already bound does NOT re-run its agent call.
+#
+# This is the reload-safety contract for the `once: true` invokes added to
+# the bugfix pipeline. /reload (and any self / on_error re-entry) re-fires
+# on_enter; the `once:` flag makes the expensive agent call a no-op when
+# its bind target is already populated. We prove it here without a real
+# reload: we ENTER proposing (via accept from reproducing) with
+# propose_fix_artifact ALREADY preset to a distinctive marker, while the
+# host.agent.decide stub returns a DIFFERENT value. If `once:` failed and
+# the proposer re-ran, the stub's value would overwrite the preset.
+# Asserting the preset SURVIVES proves the agent was skipped.
+#
+# judge_mode=human so the only on_enter decide is the proposer itself
+# (the judge step is gated off in human mode) — no shared llm_verdict
+# decide to muddy the signal.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reproducing
+initial_world:
+  ticket_id:   "TKT-RELOAD"
+  thread:      "TKT-RELOAD"
+  judge_mode:  "human"
+  # reproducing's own once: bind — preset so its on_enter is also a no-op
+  # on this entry (we're not exercising reproducing here, just passing
+  # through its accept arc).
+  reproduction_artifact:
+    summary_title:    "Reproducer (preset)"
+    summary_markdown: "Preset reproduction artifact."
+    bug_verified:     true
+    involved_components: [{ name: "tui" }]
+  # proposing's once: bind — the preset the guard must preserve. The
+  # distinctive title is what we assert survives.
+  propose_fix_artifact:
+    summary_title:    "PRESET-SURVIVED"
+    summary_markdown: "Preset proposal — must NOT be overwritten by the stub."
+    confidence:       0.99
+    fix_description:  "Preset fix."
+    root_cause:       "Preset root cause."
+    affected_files:   ["internal/preset/foo.go"]
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.git:
+    data: { ok: true, sha: "abc123", diff: "" }
+  host.local:
+    data: { ok: true, log: "PASS", passed: 1, failed: 0 }
+  # If `once:` failed, the proposing on_enter proposer would fire this and
+  # overwrite the preset with SHOULD-NOT-RUN.
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "SHOULD-NOT-RUN"
+        summary_markdown: "Stub re-ran the agent — once: failed."
+        confidence:       0.10
+        fix_description:  "stub"
+        root_cause:       "stub"
+        affected_files:   ["stub.go"]
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "SHOULD-NOT-RUN"
+        summary_markdown: "stub"
+        bug_verified:     true
+
+turns:
+  # accept from reproducing posts the reproduction artifact and transitions
+  # into proposing, whose on_enter fires. propose_fix_artifact is already
+  # set ⇒ the `once:` proposer is SKIPPED, so the preset survives verbatim
+  # (summary_title still PRESET-SURVIVED) — not the stub's SHOULD-NOT-RUN.
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+    expect_world:
+      propose_fix_artifact:
+        summary_title:    "PRESET-SURVIVED"
+        summary_markdown: "Preset proposal — must NOT be overwritten by the stub."
+        confidence:       0.99
+        fix_description:  "Preset fix."
+        root_cause:       "Preset root cause."
+        affected_files:   ["internal/preset/foo.go"]
+
+expect_no_errors: true

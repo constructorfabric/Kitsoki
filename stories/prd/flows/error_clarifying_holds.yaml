@@ -1,0 +1,87 @@
+# error_clarifying_holds — a failed analyst run HOLDS in clarifying
+# (on_error: . self-redirect) rather than bouncing back to idle.
+#
+# Gap #2 (error surfacing). idle.start advances INTO clarifying, whose
+# on_enter analyst decide (id: analyst_questions) returns a domain-level
+# Error, so its on_error arc fires. clarifying's on_error is `.` (self): the
+# runtime stays in place, sets world.last_error to the failure message, and
+# the ⚠ warning template renders — it does NOT bounce back to idle (the old
+# on_error: idle behaviour, the "silent bounce" this gap fixes) and does NOT
+# re-fire on_enter (the self-redirect is "stay put", not "retry forever").
+# The operator then `skip`s past with what they have; the clean exit clears
+# last_error so it doesn't leak into brief.
+#
+# A by_call envelope keys the failure on the invoke id so only the analyst
+# decide errors.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "A CLI for X.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    # The analyst decide fails → clarifying's on_error: . holds in place
+    # with last_error set. by_call keys the failure on the invoke id
+    # (analyst_questions) so only THIS call site errors.
+    by_call:
+      # The prior-art scout (search room) succeeds cleanly — no overlap —
+      # so the gate passes through to clarifying, where the analyst fails.
+      existing_scan:
+        data:
+          ok: true
+          submitted:
+            overlaps: []
+            roadmap_fit: "Greenfield — no existing PRD covers this."
+      analyst_questions:
+        error: "host.agent.decide: analyst session abandoned without successful submit"
+  # search-confirm mints the per-PRD workspace before clarifying's analyst runs.
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "a-cli-for-x", workspace: ".artifacts/prd/a-cli-for-x" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd/a-cli-for-x/001-brief.md", message_id: "001-brief#1" }
+
+turns:
+  # Talk once in discovery so `start` has a chat to distill.
+  - intent: { name: discuss, slots: { message: "I want a CLI for X" } }
+    expect_state: idle
+
+  # start → search (the prior-art gate); the scout succeeds with no overlap.
+  - intent: { name: start, slots: {} }
+    expect_state: search
+
+  # confirm → clarifying; the on_enter analyst decide fails → on_error: .
+  # HOLDS in clarifying (not back to idle), and the runtime sets last_error
+  # so the ⚠ template renders.
+  - intent: { name: confirm, slots: {} }
+    expect_state: clarifying
+    expect_world:
+      last_error: "host.agent.decide: analyst session abandoned without successful submit"
+
+  # The operator skips past to the brief with what they have — the clean
+  # exit clears last_error so it doesn't leak into brief's view.
+  - intent: { name: skip, slots: {} }
+    expect_state: brief
+    expect_world:
+      last_error: ""
+
+expect_terminal: false
+expect_no_errors: true

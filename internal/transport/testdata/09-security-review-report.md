@@ -1,4 +1,4 @@
-# PROJ-89912 — Security Review Report (Phase 09)
+# PLTFRM-89912 — Security Review Report (Phase 09)
 
 ## Verdict: **FINDINGS**
 
@@ -6,10 +6,10 @@
 
 Phase 9 was invoked with **no fix diff** in the prompt
 (`args.context.diff_text` rendered empty), no `bug_description`, and no
-`06.5-impl-summary.json` artifact in `.bug-fix/PROJ-89912/`. The
+`06.5-impl-summary.json` artifact in `.bug-fix/PLTFRM-89912/`. The
 active fix worktree (`fix/pltfrm-89912-011`) is at the same commit as
 `devstory` head — its `presentation-service` submodule HEAD is
-`00f13bc` ("refactor: switch deploy skill to append_file mode"),
+`00f13bc` ("refactor: switch standctl skill to append_file mode"),
 which is unrelated to the SSRF and contains no edits to
 `internal/app/handlers/{displayObjects.go,presentations.go}`. Phase 8
 already returned `BLOCKED` for the same reason
@@ -122,7 +122,7 @@ consequence of that.
   `fix/pltfrm-89912-011` matches `devstory` HEAD with no commits
   touching `presentation-service`. The expected
   `06.5-impl-summary.json` is missing from
-  `.bug-fix/PROJ-89912/`. Approving an empty review here would
+  `.bug-fix/PLTFRM-89912/`. Approving an empty review here would
   silently advance the pipeline past a missing implementation.
 - **Remediation:**
   Route back to phase 6.5 (Fix Implementation). Re-enter phase 9

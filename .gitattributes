@@ -1,0 +1,29 @@
+# .gitattributes — deterministic, no-LLM conflict resolution for hotspot files.
+#
+# Merge drivers here let git resolve the most common parallel-agent conflicts
+# BEFORE they ever reach the git-ops conflict room (and its LLM resolver).
+#
+# NOTE: per-path merge drivers apply to LOCAL merges/rebases only — GitHub's web
+# merge ignores .gitattributes. That is exactly our case: the git-ops story runs
+# every merge/rebase locally. See docs/stories/git-ops.md.
+#
+# Keep this file conservative: `union` is only correct for genuinely additive,
+# order-independent content where concatenating both sides is always valid.
+# Never mark a structured file (lockfiles, YAML/JSON config) `union` — it would
+# interleave both sides into garbage.
+
+# go.sum is an append-only set of module checksums: every line is an independent
+# record and order does not matter. `union` keeps both sides' lines; a follow-up
+# `go mod tidy` prunes any now-unused entries. This mirrors what the conflict
+# room's gosum_fix already does (checkout --theirs + go mod tidy) — having it as a
+# merge driver means the conflict is resolved at rebase time and never reaches the
+# resolver at all. The .star.yaml sidecar checksums behave the same way.
+go.sum                                merge=union
+**/go.sum                             merge=union
+
+# Mark generated/embedded trees as generated so diffs collapse and reviewers
+# (and linguist) treat them as artifacts, not authored code. These are mostly
+# gitignored, but the attribute is harmless and documents intent for any that
+# slip into a tree.
+internal/basestories/stories/**       linguist-generated=true
+internal/runstatus/web/assets/**      linguist-generated=true

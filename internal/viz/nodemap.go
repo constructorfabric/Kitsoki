@@ -1,7 +1,8 @@
-// Package viz — nodemap.go adds FlowchartWithMap, which returns the same
-// Mermaid source that FlowchartBytes already emits plus a sidecar mapping
-// from Mermaid node ID → NodeRef.  FlowchartBytes / Flowchart() stay
-// bit-for-bit identical — the recorder is plumbed as a side-effect only.
+// nodemap.go adds FlowchartWithMap, which returns the same Mermaid source that
+// FlowchartBytes already emits plus a sidecar mapping from Mermaid node ID to
+// [NodeRef]. FlowchartBytes stays bit-for-bit identical — the node recorder is
+// a separate walk over the same graph, so a UI can map a clicked node back to
+// the AppDef element without changing the diagram. See doc.go for the overview.
 package viz
 
 import (
@@ -11,30 +12,52 @@ import (
 	"kitsoki/internal/app"
 )
 
-// NodeRef identifies one semantic element in an AppDef that corresponds to
-// a Mermaid node emitted by FlowchartWithMap.
+// NodeRef identifies the AppDef element behind one Mermaid node, so a UI that
+// renders a [FlowchartResult] can resolve a clicked node back to its source.
+// Kind is one of "state", "effect", or "world" ("transition" is reserved but
+// never emitted — see [FlowchartWithMap]). Ref is the kind-specific locator
+// whose grammar is documented on [FlowchartWithMap]; treat it as opaque except
+// to match it against the AppDef.
 type NodeRef struct {
-	Kind string `json:"kind"` // "state" | "effect" | "transition" | "world"
-	Ref  string `json:"ref"`
+	Kind string `json:"kind"` // "state" | "effect" | "world" (never "transition")
+	Ref  string `json:"ref"`  // kind-specific locator; see FlowchartWithMap
 }
 
-// FlowchartResult is the return value of FlowchartWithMap.
+// FlowchartResult pairs the rendered Mermaid source with its node-ID sidecar.
+// Source is byte-identical to what [FlowchartBytes] would emit for the same
+// options; NodeMap keys are exactly the node IDs present in Source.
 type FlowchartResult struct {
 	Source  string             `json:"source"`
 	NodeMap map[string]NodeRef `json:"node_map"`
 }
 
-// FlowchartOptions bundles the parameters accepted by FlowchartWithMap.
-// It mirrors the parameters of the existing FlowchartBytes helper so
-// callers that already use FlowchartBytes can migrate trivially.
+// FlowchartOptions selects the detail level and room filter for
+// [FlowchartWithMap]. The zero value is the lowest-detail, no-filter view
+// (Detail [DetailRooms], every room); callers wanting the common
+// states-inside-rooms view set Detail to [DetailStates] explicitly. The fields
+// mirror the positional arguments of [FlowchartBytes] so callers migrate
+// trivially.
 type FlowchartOptions struct {
 	Detail DetailLevel
 	Filter FlowchartFilter
+
+	// Banners, when true, appends one `%% banner <state-path> <text>` comment
+	// line per leaf state that declares a static (non-templated) banner view
+	// element. Mermaid renderers ignore `%%` comments, and FlowchartBytes is
+	// not consulted, so the rendered diagram and the CLI `viz` output stay
+	// byte-identical; only consumers that parse the source (the runstatus web
+	// viewer) recover the banner. Used by the web path so the path/horizon
+	// metro stations can show each room's declared phase banner
+	// (INTAKE / SEARCHING / …) without a separate metadata channel.
+	Banners bool
 }
 
-// FlowchartWithMap returns the Mermaid flowchart source (identical to the
-// output of FlowchartBytes) plus a sidecar NodeMap that maps every emitted
-// Mermaid node ID to the AppDef element it represents.
+// FlowchartWithMap is [FlowchartBytes] plus a node-ID sidecar: it runs the
+// emitter unchanged and, in a second walk over the same graph, records what
+// each emitted node ID points to. The two walks use the same ID helpers, so
+// the [FlowchartResult.NodeMap] keys and the [FlowchartResult.Source] IDs
+// always agree. It returns the error from [ResolveFilterRooms] when opts.Filter
+// names an unknown room.
 //
 // Ref encoding (stable contract — do not change without flagging):
 //
@@ -42,17 +65,13 @@ type FlowchartOptions struct {
 //	                        (the internal representation; dots separate levels)
 //	Kind="effect"     Ref = "<state-path>:on_enter:<index>"
 //	                        0-based index into State.OnEnter
-//	Kind="transition" Ref = "<state-path>:on:<intent>:<index>"
-//	                        0-based index into State.On[intent]
 //	Kind="world"      Ref = "world:<varname>"
 //
-// Note on "transition": Mermaid flowchart edges have no clickable node IDs.
-// FlowchartWithMap therefore does NOT emit Kind="transition" entries in the
-// NodeMap because there is no diagram node ID to key them against.  This
-// diverges from the proposal's four-kind vocabulary; see implementation
-// notes in the code review request.
+// Kind="transition" is deliberately never emitted: Mermaid flowchart edges
+// carry no clickable node ID, so there is nothing to key a transition mapping
+// against. The sidecar therefore covers diagram nodes only.
 //
-// Note on DetailRooms: room nodes use Kind="state" with Ref=<room-name>
+// At [DetailRooms], room nodes use Kind="state" with Ref set to the room name
 // (the top-level compound state name).
 func FlowchartWithMap(a *app.AppDef, opts FlowchartOptions) (FlowchartResult, error) {
 	// 1. Generate the Mermaid source via the existing (unchanged) emitter.
@@ -67,10 +86,73 @@ func FlowchartWithMap(a *app.AppDef, opts FlowchartOptions) (FlowchartResult, er
 		return FlowchartResult{}, err
 	}
 
+	out := string(src)
+	if opts.Banners {
+		bc, err := bannerComments(a, opts)
+		if err != nil {
+			return FlowchartResult{}, err
+		}
+		if bc != "" {
+			out += "\n" + bc
+		}
+	}
+
 	return FlowchartResult{
-		Source:  string(src),
+		Source:  out,
 		NodeMap: nm,
 	}, nil
+}
+
+// bannerComments returns `%% banner <state-path> <text>` lines (one per leaf
+// state with a static banner view element) for the rooms selected by opts.Filter.
+// The state path — not the Mermaid node id — is the key, so the consumer matches
+// banners to rooms by the same label it already prefix-matches against. Returns
+// the empty string when no selected state declares a banner.
+func bannerComments(a *app.AppDef, opts FlowchartOptions) (string, error) {
+	selected, err := ResolveFilterRooms(a, opts.Filter)
+	if err != nil {
+		return "", err
+	}
+	selectedSet := map[string]bool{}
+	for _, r := range selected {
+		selectedSet[r] = true
+	}
+	rooms := GroupRooms(a)
+
+	var b strings.Builder
+	walkAllStates(a.States, "", func(path string, s *app.State) {
+		if s == nil || len(s.States) > 0 {
+			return // compound — banners live on leaf states
+		}
+		if !selectedSet[rooms.RoomOf[path]] {
+			return
+		}
+		if txt := staticBannerText(s); txt != "" {
+			fmt.Fprintf(&b, "%%%% banner %s %s\n", path, txt)
+		}
+	})
+	return b.String(), nil
+}
+
+// staticBannerText returns the first banner view element's text for a state,
+// or "" when the state declares none or the text is templated (contains `{{`).
+// Templated banners are skipped deliberately: their value is a runtime render,
+// not declared graph metadata, so surfacing them statically would be a guess.
+func staticBannerText(s *app.State) string {
+	for _, el := range s.View.Elements {
+		if el.Kind != "banner" {
+			continue
+		}
+		t := strings.TrimSpace(el.Source)
+		if t == "" || strings.Contains(t, "{{") {
+			return ""
+		}
+		if i := strings.IndexAny(t, "\r\n"); i >= 0 {
+			t = t[:i]
+		}
+		return t
+	}
+	return ""
 }
 
 // buildNodeMap walks the AppDef with the same logic as FlowchartBytes and

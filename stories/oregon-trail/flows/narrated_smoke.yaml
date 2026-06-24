@@ -2,14 +2,14 @@
 # narrated-mode round-trip.
 #
 # Drives a short trail segment with `narration: true`, stubbing the
-# three oracle hosts so CI runs at zero cost. Every event substate and
+# three agent hosts so CI runs at zero cost. Every event substate and
 # the landmark arrival now have a `when: world.narration` invoke arm
 # in their on_enter that calls a Claude prompt — this fixture proves
 # all of them light up and bind their results into world.
 #
 # Stubs returned
 # --------------
-#   host.oracle.ask            stdout="Heavy rain fell upon the wagon
+#   host.agent.ask            stdout="Heavy rain fell upon the wagon
 #                              till the canvas dripped through..."
 #                              (used for the four non-illness events +
 #                              landmark arrival; the same body is
@@ -17,7 +17,7 @@
 #                              is on presence-in-the-right-world-key,
 #                              not on content.)
 #
-#   host.oracle.decide         submitted: { illness: cholera,
+#   host.agent.decide         submitted: { illness: cholera,
 #                                            severity: 3,
 #                                            treatment: fluids }
 #                              (used for event_disease.on_enter,
@@ -75,8 +75,8 @@
 # Turn checklist
 # --------------
 #   T1: world.illness_kind         set from MCP submitted JSON
-#   T3: world.last_landmark_prose  set from host.oracle.ask stdout
-#   T5: world.last_event_prose     set from host.oracle.ask stdout
+#   T3: world.last_landmark_prose  set from host.agent.ask stdout
+#   T5: world.last_event_prose     set from host.agent.ask stdout
 #
 # Final state: leg_b_executing.event_breakdown.
 
@@ -101,7 +101,7 @@ initial_world:
   party_alive:   5
   health_avg:    90
   # ── Narrated mode: routes every event substate's on_enter (and the
-  # awaiting_reply on_enter) through the oracle handlers instead of
+  # awaiting_reply on_enter) through the agent handlers instead of
   # the deterministic fallbacks.
   narration:     true
   current_landmark: "Independence"
@@ -123,14 +123,14 @@ host_handlers:
       ok:        true
     delay: "0s"
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       stdout:    "Heavy rain fell upon the wagon till the canvas dripped through. The wheel split at the felloe in a slough of mud — we'll be a day in the wet patching it."
       exit_code: 0
       ok:        true
     delay: "0s"
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       stdout:    "diagnosed: cholera (severity 3, treatment fluids)"
       exit_code: 0
@@ -149,7 +149,7 @@ turns:
   # event_disease.on_enter:
   #   1. shared baseline: health -= 10, current_event_attempts := 0
   #   2. when: not narration   SKIPPED (narration is true)
-  #   3. when: narration       invokes host.oracle.decide;
+  #   3. when: narration       invokes host.agent.decide;
   #                             bind populates illness_* from submitted.*.
   - intent: { name: continue, slots: {} }
     expect_state: leg_a_executing.event_disease
@@ -180,7 +180,7 @@ turns:
   # leg_a_awaiting_reply, whose on_enter:
   #   1. clears last_landmark_prose (Phase G post-then-clear)
   #   2. host.transport.post the trail-diary entry
-  #   3. when: narration → invoke host.oracle.ask; bind stdout into
+  #   3. when: narration → invoke host.agent.ask; bind stdout into
   #      world.last_landmark_prose.
   - intent: { name: continue, slots: {} }
     expect_state: leg_a_awaiting_reply
@@ -208,7 +208,7 @@ turns:
   # Roll = (0 + 75) % 100 = 75 → breakdown arm.
   # event_breakdown.on_enter:
   #   1. set baseline: zero attempts, pick part, clear prose
-  #   2. when: narration → invoke host.oracle.ask, bind stdout into
+  #   2. when: narration → invoke host.agent.ask, bind stdout into
   #      world.last_event_prose.
   - intent: { name: continue, slots: {} }
     expect_state: leg_b_executing.event_breakdown

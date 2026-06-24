@@ -1,0 +1,54 @@
+# happy_path_squash_merge — squash → accept → main_ops.
+# Pre-seeds squash_mode, staged_diff_stat, commit_message so on_enter
+# agent.decide is skipped (commit_message already set). Tests the accept
+# transition: git_squash_commit → rebase_done: true → main_ops.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: squash
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  main_worktree_path: "."
+  descendant_ok:      true
+  squash_mode:        true
+  staged_diff_stat:   " 3 files changed, 42 insertions(+), 1 deletion(-)"
+  commit_message:     "feat: add login feature"
+  route:              "look"
+  last_op_outcome:    ""
+
+host_handlers:
+  host.run:
+    by_call:
+      git_squash_commit:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "[feat/x f00baz] feat: add login feature"
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+
+turns:
+  # accept with pre-seeded commit_message → git commit → main_ops
+  - intent: { name: accept, slots: {} }
+    expect_state: main_ops
+    expect_world:
+      squash_mode:    false
+      commit_message: ""
+      rebase_done:    true
+
+expect_no_errors: true

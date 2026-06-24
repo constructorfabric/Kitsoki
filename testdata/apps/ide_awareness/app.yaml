@@ -1,0 +1,100 @@
+# ide_awareness — minimal demo app for host.ide.* editor awareness (slice 1).
+#
+# Demonstrates the runtime substrate proved out in the IDE-integration epic:
+#   - a room that pulls editor diagnostics via host.ide.get_diagnostics,
+#   - bind: capturing the typed Result envelope into an obj world slot
+#     synchronously in the same turn,
+#   - a deterministic branch on the bound result's `connected` field (the
+#     universal signal every host.ide.* verb returns) so the story behaves
+#     identically whether or not an editor is attached.
+#
+# The branch uses the same post-bind emit_intent pattern the bugfix story uses
+# for its LLM judge: the `when:` guards reference world.ide_result.connected,
+# which is nil at machine-time (the bind hasn't landed yet) — so the machine
+# DEFERS the emit and the orchestrator's DispatchPostBindEmits pass re-evaluates
+# the guard against the post-bind world. That is what makes the auto-advance see
+# the freshly-bound result.
+#
+# It is the fixture target for the slice-1 headless verification: a flow that
+# stubs host.ide.* by per-invoke id, and a parallel cassette variant proving
+# replay opens no socket. host.ide.* needs NO live link here — the testrunner
+# stubs/cassettes the verb by name, exactly as it does for any other host.*.
+
+app:
+  id: ide-awareness-demo
+  version: 0.1.0
+  title: "IDE Awareness Demo"
+
+hosts:
+  - host.ide.get_diagnostics
+
+world:
+  # ide_result is an obj that stays nil until the host.ide.get_diagnostics bind
+  # lands. Branching on ide_result.connected (nil-until-bound) is what triggers
+  # the machine's emit_intent deferral so the guard re-evaluates post-bind —
+  # mirroring the bugfix story's world.llm_verdict.confidence pattern.
+  ide_result:  { type: obj }
+  diagnostics: { type: list, default: [] }
+
+intents:
+  diagnose:
+    title: "Pull editor diagnostics"
+    description: "Ask the attached editor for its Problems-panel diagnostics."
+    examples: ["diagnose", "check problems", "lint"]
+
+  # Synthetic gate intents emitted by the diagnosing room's guarded on_enter —
+  # not operator-facing. They route on the bound result's connected field.
+  no_editor:      { title: "(synthetic) no editor attached" }
+  editor_present: { title: "(synthetic) editor attached" }
+
+root: lobby
+
+states:
+  lobby:
+    description: "Lobby — type 'diagnose' to pull editor diagnostics."
+    view: |
+      Lobby. Type 'diagnose' to pull editor diagnostics.
+    on:
+      diagnose:
+        - target: diagnosing
+
+  diagnosing:
+    description: "Pulling diagnostics from the editor."
+    view: |
+      Pulling diagnostics…
+    on_enter:
+      - invoke: host.ide.get_diagnostics
+        # id: addresses this single call so a flow fixture can stub it by
+        # per-invoke id (host_handlers: ... by_call:) — the feedback_agent_
+        # stub_by_id convention, applied to a host.ide.* verb.
+        id: editor_diagnostics
+        bind:
+          # Bind the whole host.ide.* Result.Data envelope into the obj slot,
+          # plus the diagnostics list for the reviewed-state view.
+          ide_result:  "{{ result }}"
+          diagnostics: diagnostics
+      # Deterministic branch on the bound result. ide_result is nil at
+      # machine-time, so these emit_intent guards defer to the post-bind pass
+      # (DispatchPostBindEmits), which re-evaluates them against the freshly-
+      # bound world and auto-advances the gate.
+      - when: "world.ide_result.connected == false"
+        emit_intent: no_editor
+      - when: "world.ide_result.connected == true"
+        emit_intent: editor_present
+    on:
+      no_editor:
+        - target: offline
+      editor_present:
+        - target: reviewed
+
+  offline:
+    terminal: true
+    description: "No editor attached — story branched on connected:false."
+    view: |
+      No editor attached. Diagnostics unavailable.
+
+  reviewed:
+    terminal: true
+    description: "Editor attached — diagnostics captured."
+    view: |
+      Editor attached. {{ world.diagnostics|length }} diagnostic(s) captured.

@@ -1,0 +1,25 @@
+# Menu navigation — proves the declared intents transition normally (the
+# on-menu half of the demo). The off-ramp (off-menu free text) is exercised
+# end-to-end by the deterministic web posture in README.md, not here: a flow
+# fixture submits intents explicitly and never produces a no-match.
+test_kind: flow
+app: ../app.yaml
+initial_state: desk
+turns:
+  - intent: { name: browse }
+    expect_state: catalogue
+    expect_world: { visited: "catalogue" }
+  - intent: { name: back }
+    expect_state: desk
+  - intent: { name: status }
+    expect_state: status_room
+    expect_world: { visited: "status" }
+  - intent: { name: back }
+    expect_state: desk
+  - intent: { name: about }
+    expect_state: about_room
+    expect_world: { visited: "about" }
+  - intent: { name: back }
+    expect_state: desk
+  - intent: { name: quit }
+    expect_state: ended

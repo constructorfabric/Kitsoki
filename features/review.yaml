@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=feature.schema.json
+id: review
+kind: feature
+title: Video review and feedback
+tagline: Chaptered playback with frame-anchored feedback flags.
+summary: "The /review surface for produced videos: a chapter timeline synced to playback, a flag list for frame-anchored feedback, and a detail pane per flag — the feedback half of the produce → review → refine loop."
+promo:
+  order: 70
+related:
+  - mockup-video
+demo:
+  spec: tests/playwright/review-video.spec.ts
+  artifactDir: review-video
+  videoBase: review-video-demo
+  posterStep: review-welcome
+  story: stories/mockup-video
+  flow: stories/mockup-video/flows/demo_review.yaml
+tour:
+  export: REVIEW_TOUR_STEPS
+  steps:
+    - id: review-welcome
+      route: any
+      title: Video review — feedback on a rendered walkthrough
+      body: After the story renders a real walkthrough MP4, the /review surface is where an operator flags moments and dispatches structured refine notes. Every flag carries its still, its source_ref, and its instruction — captured in the browser, refined deterministically in the story.
+      placement: center
+      kind: explain
+      advance: next
+      dwellMs: 5500
+    - id: review-open
+      route: any
+      target: review-page
+      title: The /review feedback surface
+      body: "The /review surface opens on a session that rendered a real walkthrough video. Two columns: the player, chapter timeline and flags on the left; the selected flag's detail on the right."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: review-page
+      dwellMs: 6000
+    - id: review-player
+      route: any
+      target: rp-player
+      title: The rendered walkthrough plays inline
+      body: This is the actual MP4 the deterministic slidey producer rendered for this run, served through the run's ArtifactResolver by its journalled handle — no upload, no copy.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: rp-player
+      dwellMs: 6000
+    - id: review-timeline
+      route: any
+      target: chapter-timeline
+      title: A chapter timeline from the sidecar
+      body: Each marker is one scene from the chapter sidecar the render emitted (source_ref kind=slidey). Click or drag the track to pick a moment; the selection is what you flag.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: chapter-timeline
+      dwellMs: 6500
+    - id: review-flag
+      route: any
+      target: ct-flag-btn
+      title: Flag a moment
+      body: Flagging the selected moment grabs a still at that timestamp — a REAL single-frame ffmpeg extraction (internal/video.Frame), recorded back through the run's substrate as its own artifact handle.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: ct-flag-btn
+      dwellMs: 5500
+    - id: review-still
+      route: any
+      target: fd-still
+      title: The captured still
+      body: "The flag's detail pane shows the grabbed frame — proof the frame seam ran end-to-end: video handle → ffmpeg grab at t → recorded PNG handle → served back into the panel."
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: fd-still
+      dwellMs: 6000
+    - id: review-source
+      route: any
+      target: fd-source
+      title: Resolved source_ref + IDE deep-link
+      body: The dominant chapter resolves the flag to the exact slidey scene that produced it, with a vscode:// deep-link straight to the spec. Feedback lands on the source, not a screenshot.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: fd-source
+      dwellMs: 6500
+    - id: review-instruction
+      route: any
+      target: fd-instruction
+      title: Write the refine instruction
+      body: Type what should change at this moment. This becomes the structured feedback note's instruction — a binding directive the slice-3 refine arc will honour.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: fd-instruction
+      dwellMs: 6000
+    - id: review-send
+      route: any
+      target: fd-send-refine
+      title: Send to refine
+      body: "Dispatch the note via runstatus.feedback.add: it carries the source_ref, the time range, the captured frame handle, and the instruction. The panel captures and dispatches — it never edits a spec itself."
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: fd-send-refine
+      dwellMs: 6500
+    - id: review-flaglist
+      route: any
+      target: flag-list
+      title: Every flag, dispatched together
+      body: Flags accumulate in the left column; a filled dot marks a dispatched note. 'Send all' fires every open note in one batch for the next refine cycle.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: flag-list
+      dwellMs: 6000

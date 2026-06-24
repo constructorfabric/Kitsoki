@@ -1,6 +1,6 @@
-// Package harness — shared prompt-building helpers (§10.5).
-// Both LiveHarness and ClaudeCLIHarness use the same prompt structure so that
-// the two harnesses produce identical system-prompt content given the same app.
+// Shared prompt-building helpers. Both LiveHarness and ClaudeCLIHarness use
+// the same builders so the two harnesses produce identical system-prompt
+// content for a given app — see the package overview in doc.go.
 package harness
 
 import (

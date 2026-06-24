@@ -1,0 +1,9 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+
+turns:
+  - intent: { name: go_model_eval, slots: {} }
+    expect_state: model_eval.idle
+
+expect_no_errors: true

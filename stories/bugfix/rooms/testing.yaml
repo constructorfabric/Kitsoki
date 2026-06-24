@@ -42,7 +42,7 @@ states:
             Summary: '{{ world.implement_review_artifact.summary_title|default:"(pending)" }}'
             Status:  '{{ world.implement_review_artifact.status|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -97,16 +97,90 @@ states:
       - invoke: iface.ci.run_tests
         with:
           workdir: "{{ world.workdir }}"
+          # test_cmd lets a non-Go instance (e.g. gears-rust) override the
+          # host.local default `go test ./...`. Empty ⇒ default (Go). See
+          # bugfix/app.yaml world.test_cmd + internal/host/local_ci.go.
+          test_cmd: "{{ world.test_cmd }}"
         bind:
           ci_log: log
         on_error: idle
 
+      # ── RED→GREEN regression gate, RED half (slice 4) ──────────────────
+      # Run the regression gate on the PRE-FIX snapshot and record whether it
+      # was RED there. The pre-fix snapshot is HEAD~1 on the feature branch —
+      # the implementing room committed the fix as the tip, so HEAD~1 is the
+      # tree before the fix landed. We check it out into a detached scratch
+      # worktree (never mutating the maker worktree), run the IDENTICAL
+      # gate_command, and bind regression_red_pre_fix = (gate FAILED there).
+      #
+      # A gate that PASSES on the pre-fix snapshot is a CHARACTERIZATION test,
+      # not a regression test — it never proves the bug, so the accept arc
+      # routes it to @exit:needs-human (it must never reach @exit:shipped).
+      #
+      # `once: true` keyed off regression_gate_checked so a refine/restart
+      # re-arm re-runs it; guarded on a non-empty gate_command + workdir so
+      # narrative-only dogfood walks (no isolated worktree) degrade gracefully.
+      #
+      # NOTE: guard + WT read world.workdir, NOT world.worktree_path. The maker
+      # worktree lives in world.workdir at on_enter time; worktree_path is only
+      # populated later by the accept → tail arc (worktree_path: world.workdir),
+      # which runs strictly AFTER on_enter. Guarding on worktree_path here meant
+      # the gate was silently SKIPPED on every direct-ship run (regression_red_pre_fix
+      # stayed false), dead-ending the accept arc at @exit:needs-human. Guard +
+      # body now read workdir so the RED gate actually fires. Regression-guarded
+      # by flows/bugfix_regression_gate_fires_on_workdir.yaml.
+      - when: "world.gate_command != '' && world.workdir != '' && !world.regression_gate_checked"
+        invoke: host.run
+        id: regression_gate_exec
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              WT="{{ world.workdir }}"
+              GATE='{{ world.gate_command }}'
+              # The pre-fix snapshot: the commit before the fix tip.
+              PREFIX_SHA=$(git -C "$WT" rev-parse 'HEAD~1' 2>/dev/null || echo "")
+              if [ -z "$PREFIX_SHA" ]; then
+                jq -n '{red:false,checked:false,log:"no pre-fix snapshot (HEAD~1 missing — fix not committed as a discrete tip?)"}'
+                exit 0
+              fi
+              SCRATCH="$WT-prefix-gate"
+              git -C "$WT" worktree add --detach "$SCRATCH" "$PREFIX_SHA" >/dev/null 2>&1 || {
+                jq -n '{red:false,checked:false,log:"could not materialise pre-fix snapshot worktree"}'
+                exit 0
+              }
+              GATE_EXIT=0
+              GATE_OUT=$( (cd "$SCRATCH" && bash -c "$GATE") 2>&1 ) || GATE_EXIT=$?
+              git -C "$WT" worktree remove --force "$SCRATCH" >/dev/null 2>&1 || true
+              if [ "$GATE_EXIT" -ne 0 ]; then
+                jq -n --arg log "$GATE_OUT" '{red:true,checked:true,log:$log}'
+              else
+                jq -n --arg log "$GATE_OUT" '{red:false,checked:true,log:$log}'
+              fi
+          cwd: "{{ world.workdir }}"
+        bind:
+          regression_red_pre_fix:  "stdout_json.red"
+          regression_gate_checked: "stdout_json.checked"
+          regression_pre_fix_log:  "stdout_json.log"
+        on_error: idle
+
       # Produce the structured testing artifact from the run output.
-      # `working_dir` pins the oracle (and its MCP filesystem tools) to
-      # the bugfix worktree — without it, any grep/read the oracle runs
+      # `working_dir` pins the agent (and its MCP filesystem tools) to
+      # the bugfix worktree — without it, any grep/read the agent runs
       # to verify the fix lands on the wrong tree (kitsoki's cwd = main,
       # where the fix never lives).
-      - invoke: host.oracle.task
+      # `once: true` for reload-safety: keyed off its own bind
+      # (implement_review_artifact), so /reload (or self/on_error
+      # re-entry) re-renders the stored review without re-running the
+      # agent. NOTE: iface.ci.run_tests above is intentionally NOT
+      # once: — ci_log is shared scratch, not a phase artifact. The
+      # refine + restart_from arms below clear implement_review_artifact
+      # to re-arm a fresh run.
+      - invoke: host.agent.task
+        once: true
         with:
           agent: test_author
           working_dir: "{{ world.workdir }}"
@@ -126,8 +200,30 @@ states:
           implement_review_artifact: submitted
         on_error: idle
 
+      # ── Commit the test_author's work (lost-work guard) ────────────────
+      # The test_author (above) writes/repairs tests directly in the maker
+      # worktree, but NOTHING downstream commits them — `implementing` only
+      # staged its own named files, and the gates below run against the live
+      # (dirty) worktree, so a test or a fix-repair that lives only in the
+      # working tree passes CI yet never reaches the committed tip. That is
+      # the lost-work split: a broken/partial HEAD shipped while the real fix
+      # sat uncommitted. `stage_all: true` runs `git add -A` so new untracked
+      # test files AND in-place repairs both land. NOT `once:` — a refine pass
+      # re-runs test_author and must re-commit its new edits; an unchanged
+      # tree is a graceful no-op (git_vcs.go treats "nothing to commit" as
+      # success). Guarded on a worktree existing so narrative-only dogfood
+      # walks (no isolated worktree) skip it. The `done` room's clean-tree
+      # guard is the backstop if any future room mutates without committing.
+      - when: "world.workdir != ''"
+        invoke: iface.vcs.commit
+        with:
+          workdir:   "{{ world.workdir }}"
+          message:   "test: {{ world.ticket_id }} — tests + fix repairs from testing phase"
+          stage_all: true
+        on_error: idle
+
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_testing.md
@@ -173,8 +269,45 @@ states:
                 refine_feedback:    "{{ world.implement_review_artifact.summary_markdown }}"
                 implementing_cycle: "{{ world.implementing_cycle + 1 }}"
                 cycle:              "{{ world.cycle + 1 }}"
+                # Re-enter implementing for a fresh re-apply: clear its
+                # once: bind so the implementer agent runs again.
+                implement_artifact: {}
 
-        # passed (or legacy/missing status) — post and advance. The
+        # ── direct-ship (slice 4) — passed AND bugfix_exit=direct-ship ──────
+        # The RED→GREEN regression gate's RED half is enforced HERE: the fix is
+        # only allowed into the ship-it tail if the regression test was RED on
+        # the pre-fix snapshot. A characterization test (passed pre-fix, was
+        # never RED) routes straight to @exit:needs-human — it must NEVER reach
+        # @exit:shipped. The GREEN half (gate green on the MERGED commit) is the
+        # tail's `verify` room. Post the test review, set the worktree handoff
+        # (worktree_path = the maker worktree), then enter the ship-it tail.
+        - when: |
+            world.bugfix_exit == 'direct-ship' &&
+            !world.regression_red_pre_fix
+          target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "regression gate was never RED on the pre-fix snapshot (a characterization test, not a regression test) — refusing to ship. Pre-fix gate output: {{ world.regression_pre_fix_log }}"
+                status:     "needs-human"
+        - when: "world.bugfix_exit == 'direct-ship'"
+          target: tail
+          effects:
+            - invoke: iface.transport.post
+              with:
+                thread:   "{{ world.thread }}"
+                title:    "Test review: {{ world.ticket_id }}"
+                body:     "{{ world.implement_review_artifact.summary_markdown }}"
+                phase_id: "testing_{{ world.ticket_id }}_{{ world.cycle }}"
+            - set:
+                last_reply_author: "{{ slots.author ?? 'human' }}"
+                refine_feedback:   ""
+                cycle:             0
+                # The maker handoff seam: the ship-it tail's integrate room reads
+                # worktree_path + workspace_branch (== feature_branch). workdir IS
+                # the maker worktree.
+                worktree_path:     "{{ world.workdir }}"
+
+        # passed (or legacy/missing status), open-PR exit — post and advance. The
         # bugfix_mode=quick path skips reviewing + validating and lands
         # at done directly.
         - when: "world.bugfix_mode == 'quick'"
@@ -213,27 +346,33 @@ states:
         - target: testing
           effects:
             - set:
-                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
-                testing_cycle:   "{{ world.testing_cycle + 1 }}"
-                cycle:           "{{ world.cycle + 1 }}"
+                refine_feedback:           "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                testing_cycle:             "{{ world.testing_cycle + 1 }}"
+                cycle:                     "{{ world.cycle + 1 }}"
+                # Clear the once: bind so on_enter re-runs the agent.
+                implement_review_artifact: {}
 
       restart_from:
         - when: "slots.stage == 'reproducing'"
           target: reproducing
           effects:
             - set:
-                restart_from_stage: "reproducing"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "reproducing"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear reproducing's once: bind so it re-runs fresh.
+                reproduction_artifact: {}
         - when: "slots.stage == 'proposing' || slots.stage == 'propose_fix'"
           target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
         - when: "slots.stage == 'implementing' || slots.stage == 'implement'"
           target: implementing
           effects:
@@ -242,13 +381,17 @@ states:
                 refine_feedback:     ""
                 implementing_cycle:  0
                 cycle:               0
+                # Clear implementing's once: bind so it re-applies fresh.
+                implement_artifact:  {}
         - target: proposing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage ?? 'proposing' }}"
-                refine_feedback:    ""
-                proposing_cycle:    0
-                cycle:              0
+                restart_from_stage:   "{{ slots.stage ?? 'proposing' }}"
+                refine_feedback:      ""
+                proposing_cycle:      0
+                cycle:                0
+                # Clear proposing's once: bind so it re-runs fresh.
+                propose_fix_artifact: {}
 
       jump_to:
         - when: "slots.stage == 'validating' || slots.stage == 'validate'"

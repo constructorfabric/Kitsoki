@@ -1,0 +1,55 @@
+# error_references_steps_back — a failed researcher run steps BACK one
+# stage to brief (not all the way to idle).
+#
+# Gap #2 (error surfacing). brief.confirm advances INTO references, whose
+# on_enter researcher decide (id: references_research) returns a domain-level
+# Error. references' on_error is `brief`: the runtime steps back one stage —
+# the inputs (idea + clarification log) are still sound, so the operator
+# reviews the brief and re-confirms to retry rather than re-pitching. The
+# runtime sets world.last_error; brief's ⚠ template surfaces it. Re-confirming
+# from brief re-enters references; this flow asserts the step-back + surfaced
+# error, then the operator quits from brief (clean abandon trail).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: brief
+initial_world:
+  idea:        "A CLI for X"
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd_brief.md", message_id: "prd_brief#1" }
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    # The researcher decide fails → references' on_error: brief steps back.
+    # by_call keys the failure on the invoke id (references_research).
+    by_call:
+      references_research:
+        error: "host.agent.decide: researcher session abandoned without successful submit"
+
+turns:
+  # brief.confirm → references; the on_enter researcher decide fails →
+  # on_error: brief steps BACK to brief, and the runtime sets last_error so
+  # brief's ⚠ template renders.
+  - intent: { name: confirm, slots: {} }
+    expect_state: brief
+    expect_world:
+      last_error: "host.agent.decide: researcher session abandoned without successful submit"
+
+  # The operator bails from brief — the abandon trail records WHERE.
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "abandoned_at_brief"
+      status:         "abandoned"
+
+expect_terminal: true
+expect_no_errors: true

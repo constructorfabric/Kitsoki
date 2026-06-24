@@ -1,0 +1,58 @@
+# done — gallery of fixed groups' before/after media + summary of skipped/still-failing.
+#
+# Terminal. Reached when cursor past end, or when idle finds no findings.
+# No intents that advance; operator reads the gallery.
+
+states:
+
+  done:
+    description: "Fix pipeline complete. Gallery of before/after media per fixed group."
+    relevant_world: [fixed, skipped, still_failing, groups]
+    view:
+      - prose: "UI fix pipeline · done"
+      - kv:
+          pairs:
+            Fixed:        '{{ world.fixed.items|length|default:0 }}'
+            Skipped:      '{{ world.skipped.items|length|default:0 }}'
+            Still failing: '{{ world.still_failing.items|length|default:0 }}'
+            Total groups: '{{ world.groups.items|length|default:0 }}'
+      - heading: "Fixed — before/after"
+      - template: |
+          {% if world.fixed.items %}
+          {% for entry in world.fixed.items %}
+          ── {{ entry.group.title }} ({{ entry.group.severity }}) ──
+          {% if entry.media_handle %}
+          media: {{ entry.media_handle }}
+          {% else %}
+          (no media — contact_sheet or slidey unavailable)
+          {% endif %}
+          {% endfor %}
+          {% else %}
+          (no groups fixed)
+          {% endif %}
+      - heading: "Skipped"
+      - template: |
+          {% if world.skipped.items %}
+          {% for entry in world.skipped.items %}
+          · {{ entry.group.title }} — {{ entry.reason }}
+          {% endfor %}
+          {% else %}
+          (none)
+          {% endif %}
+      - heading: "Still failing"
+      - template: |
+          {% if world.still_failing.items %}
+          {% for entry in world.still_failing.items %}
+          · {{ entry.group.title }} — {{ entry.reason }}
+          {% endfor %}
+          {% else %}
+          (none)
+          {% endif %}
+      - prose: "Run the kitsoki-ui-review skill to regenerate verdict.json and re-gate — including the vision pass this pipeline deliberately skips."
+      - list:
+          items:
+            - label: "look"
+              hint:  "re-render"
+    on:
+      look:
+        - target: .

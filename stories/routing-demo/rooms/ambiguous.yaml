@@ -1,0 +1,47 @@
+states:
+  ambiguous:
+    description: "Lesson 3 — ties and disambiguation (the confidence bands)"
+    relevant_world: [last_action]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Two intents here — save_doc and save_game — both accept a 'save {x}' template at equal priority. A generic 'save <something>' matches BOTH equally, so the router can't pick a winner: confidence collapses to a tie (0.50) and you get a disambiguation card instead of a silent wrong guess. An exact example phrase is a stronger (whole-synonym, 0.90) match and resolves to one intent outright."
+          - heading: "Try it"
+          - list:
+              items:
+                - label: "save report"
+                  hint: "fits 'save {document}' AND 'save {game}' equally → tie → disambiguation card"
+                - label: "save the document"
+                  hint: "an exact example (0.90) beats the templates (0.80) → save_doc"
+                - label: "save the game"
+                  hint: "an exact example → save_game"
+          - heading: "The bands (from app.yaml routing:)"
+          - kv:
+              pairs:
+                ">= 0.80": "route directly"
+                ">= 0.65": "ask a clarification first"
+                "== 0.50": "tie across 2+ intents → disambiguation card"
+          - heading: "Result"
+          - kv:
+              pairs:
+                Last routed: "{{ world.last_action }}"
+        choices:
+          - list:
+              items:
+                - label: "back"
+                  hint: "return to the hub"
+                - label: "look"
+    on:
+      save_doc:
+        - target: .
+          effects:
+            - set: { last_action: "save_doc" }
+      save_game:
+        - target: .
+          effects:
+            - set: { last_action: "save_game" }
+      back:
+        - target: hub
+      look:
+        - target: .

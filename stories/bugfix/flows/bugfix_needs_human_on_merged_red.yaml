@@ -1,0 +1,100 @@
+# bugfix_needs_human_on_merged_red — trust-the-gate, not "passed in the branch".
+#
+# A legitimate RED→GREEN regression test (RED on the pre-fix snapshot), the fix
+# applied, integrate is clean — but the IDENTICAL gate re-run on the MERGED
+# commit is RED. The merge broke main. bugfix's direct-ship tail (the imported
+# ship-it verify room) routes to @exit:needs-human with last_error, NEVER
+# @exit:shipped. "passes on main" was not proven, so it does not ship.
+#
+# This is the independent-re-verify discipline bugfix gains by composing the
+# ship-it tail — its old `validating` room ran in the BRANCH worktree, so a
+# branch-green / main-red fix would have been broadcast as done.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-MR-1"
+  ticket_title:     "Burst fix that breaks on merge"
+  thread:           "TKT-MR-1"
+  workspace_id:     "mr-fix"
+  workdir:          ".worktrees/mr-fix"
+  worktree_path:    ".worktrees/mr-fix"
+  feature_branch:   "mr-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "direct-ship"
+  gate_command:     "go test ./internal/ratelimit/"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/mr-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Regression test + fix"
+        summary_markdown: "TestAllow_Burst fails pre-fix, passes in branch."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        files_changed:    ["internal/ratelimit/bucket.go"]
+  host.agent.ask:
+    data: { ok: true, submitted: { summary_title: "p", summary_markdown: "p", fix_description: "x", root_cause: "y", affected_files: [] } }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # PRE-FIX gate — RED (a legitimate regression test; the bug is present).
+      regression_gate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            red:     true
+            checked: true
+            log:     "--- FAIL: TestAllow_Burst (0.00s)  bug present"
+      # integrate is CLEAN (branch gate was green) …
+      integrate_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "badf00d", last_op_ok: true, last_error: "" } }
+      # … but the SAME gate re-run on the MERGED commit is RED — the merge broke main.
+      verify-rerun:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: "--- FAIL: TestAllow_Burst (0.00s)  bucket drained one token early after merge"
+      cleanup_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: cleaned, last_op_ok: true, last_error: "" } }
+
+turns:
+  - intent: { name: start,  slots: {} }
+    expect_state: reproducing
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    expect_world:
+      regression_red_pre_fix:  true     # legit regression test, RED pre-fix
+      regression_gate_checked: true
+  # accept → tail: integrate clean, but verify RED on the merged commit → needs-human.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:                  needs-human
+      regression_red_pre_fix:  true
+      tail__integrate_outcome: integrated
+      tail__verify_ok:         false
+      shipped_sha:             ""        # NEVER set on a red re-verify
+    expect_world_final:
+      status: needs-human
+
+expect_terminal: true
+expect_no_errors: true

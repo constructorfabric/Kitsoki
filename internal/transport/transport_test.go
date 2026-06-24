@@ -84,8 +84,8 @@ func TestRegistry_NilOrEmptyIDPanics(t *testing.T) {
 }
 
 func TestSessionKey_String(t *testing.T) {
-	k := transport.SessionKey{Transport: "jira", Thread: "PROJ-12345"}
-	assert.Equal(t, "jira:PROJ-12345", k.String())
+	k := transport.SessionKey{Transport: "jira", Thread: "PLTFRM-12345"}
+	assert.Equal(t, "jira:PLTFRM-12345", k.String())
 }
 
 func TestRegistry_RetainsCustomBotMarker(t *testing.T) {

@@ -1,5 +1,6 @@
--- Jobs and notifications tables (§4.2).
+-- Jobs and notifications tables.
 -- Introduced via a migration applied on top of the existing store schema.
+-- Persistence model documented in docs/stories/background-jobs/runtime.md.
 
 CREATE TABLE IF NOT EXISTS jobs (
   id                   TEXT PRIMARY KEY,        -- ULID

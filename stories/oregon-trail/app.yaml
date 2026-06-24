@@ -1,4 +1,5 @@
 # Oregon Trail — kitsoki port of the 1985 MECC Apple II classic.
+# Spec: docs/proposals/oregon-trail-proposal.md.
 #
 # PHASE B SCOPE: intro + general_store + trail_leg phase template with
 # 7 leg instances (Independence → Willamette) + fort/river_crossing
@@ -11,21 +12,33 @@ app:
   title: "The Oregon Trail"
   author: "MECC (original 1971/1985); ported to Kitsoki"
   license: "Spec & rules public domain; this port CC0"
+  # Layer-2 project context: prepended (under the kitsoki grounding) to the
+  # system prompt of every agent call and the intent router, so each operator
+  # shares the game's domain and voice. See docs/architecture/system-prompt.md.
+  context: |
+    This is **The Oregon Trail**, a port of the 1985 MECC educational
+    survival game. The player leads a wagon party westward from Independence,
+    Missouri to Oregon's Willamette Valley in 1848, managing oxen, food,
+    ammunition, and the health of named party members across river crossings,
+    forts, weather, and trail hazards. The register is period-accurate and
+    earnest — never anachronistic or winking. Outcomes are often grim
+    (dysentery, drowning, starvation) and are stated plainly, in the
+    matter-of-fact frontier voice of the original.
 
 # Host allow-list. Phase D wires host.run (for the river_strategy
 # proposal's background execute). Phase E adds host.jobs.answer_clarification
 # (built-in; resolves paused background jobs from the inbox).
-# Phase C/§9.6: narrated illness diagnosis uses host.oracle.decide
+# Phase C/§9.6: narrated illness diagnosis uses host.agent.decide
 # (typed JSON via submit tool; schema in mcp/illness.json).
-# Phase H: one-shot prose narration uses host.oracle.ask.
-# Phase F: trail_guide persistent chat uses host.oracle.converse.
+# Phase H: one-shot prose narration uses host.agent.ask.
+# Phase F: trail_guide persistent chat uses host.agent.converse.
 hosts:
   - host.run
   - host.jobs.answer_clarification
-  - host.oracle.decide
-  - host.oracle.ask
+  - host.agent.decide
+  - host.agent.ask
   # Phase F — trail_guide persistent chat room.
-  - host.oracle.converse
+  - host.agent.converse
   - host.chat.resolve
   - host.chat.list
   - host.chat.transcript
@@ -108,7 +121,7 @@ world:
   illness_kind:     { type: string, default: "" }
   # illness_severity / illness_treatment (§9.6) are filled by either
   # the deterministic rng_last % 5 heuristic or, in narrated mode, by
-  # host.oracle.decide's typed-JSON submit payload. Both modes
+  # host.agent.decide's typed-JSON submit payload. Both modes
   # write the same world keys so downstream views / on_complete logic
   # see one consistent shape.
   illness_severity:  { type: int,    default: 0 }
@@ -219,7 +232,7 @@ world:
 
   # ── Narrated-mode prose (phase H) ───────────────────────────────────
   # Set by event_* substates' on_enter when world.narration is true via
-  # host.oracle.ask binding `stdout`. Read by the view template. Cleared
+  # host.agent.ask binding `stdout`. Read by the view template. Cleared
   # by each event substate's continue/resolution arms so a quiet stretch
   # of trail doesn't leave a stale prose line bleeding into the next
   # event view.
@@ -253,7 +266,7 @@ include:
   - proposals.yaml
   - rooms/*.yaml
 
-# ── Story imports (see docs/imports.md) ───────────────────────────────
+# ── Story imports (see docs/stories/imports.md) ───────────────────────────────
 # Three-layer composition demonstrates every section of the proposal:
 #
 #   oregon-trail  ──imports──>  frontier_event  ──imports──>  robbery
@@ -402,7 +415,7 @@ imports:
         # in the child's state tree, swapping matches.
         "prompts/scout_brief.md": "prompts/scout_brief_trail.md"
 
-# Named Claude agents — first-class personas applied to host.oracle.*
+# Named Claude agents — first-class personas applied to host.agent.*
 # invocations via `with: { agent: <name> }`. Generalisation of the
 # back-compat off_path.persona shortcut: the same primitive now powers
 # the trail-guide chat voice, the party-namer voice, and (in a future
@@ -462,15 +475,15 @@ off_path:
   return:  "/onpath"
   # Persona now lives in the agents block (frontier_guide). Engine
   # resolves OffPathDef.Agent at runtime and applies its system_prompt
-  # to every off-path oracle call, identical to the inline `persona:`
+  # to every off-path agent call, identical to the inline `persona:`
   # shortcut but with the prompt text co-located with the other named
   # agents.
   agent: frontier_guide
 
 # Meta-mode side-conversations against named agents. Coexist with
-# off_path (the free-form oracle sidebar) — meta is the long-form
+# off_path (the free-form agent sidebar) — meta is the long-form
 # authoring / advisory conversation surface; off_path stays the
-# one-shot oracle dip.
+# one-shot agent dip.
 #
 #   /meta story   — improve / edit the Oregon Trail story directory
 #                   itself. The story-author builtin agent gets full

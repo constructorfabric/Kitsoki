@@ -16,7 +16,7 @@
 # Per-mode behavior in the merged state:
 #
 #   human mode:
-#     on_enter   → artifact oracle binds reproduction_artifact.
+#     on_enter   → artifact agent binds reproduction_artifact.
 #     view       → renders the artifact for the operator to read.
 #     operator   → types `continue` (or any accept-alias) to advance,
 #                  `refine feedback=…` to re-run with feedback,
@@ -28,7 +28,7 @@
 #                  happens, then advance — all in one keystroke.
 #
 #   llm / llm_then_human:
-#     on_enter   → artifact oracle, THEN judge oracle, THEN emit_intent
+#     on_enter   → artifact agent, THEN judge agent, THEN emit_intent
 #                  the verdict (accept|refine|uncertain). All in the
 #                  same turn. Human sees the room only if the judge's
 #                  verdict was `uncertain` (llm_then_human falls back).
@@ -56,9 +56,9 @@ states:
           pairs:
             Ticket:         "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary:        '{{ world.reproduction_artifact.summary_title|default:"(pending)" }}'
-            "Bug verified": '{{ world.reproduction_artifact.bug_verified|default:"(pending)" }}'
+            "Bug verified": '{{ world.reproduction_artifact.bug_verified|yesno:"yes,no,(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.reproduction_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.reproduction_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -96,15 +96,70 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, reproduction_artifact, llm_verdict, refine_feedback, cycle]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, reproduction_artifact, llm_verdict, refine_feedback, cycle, gate_command, repro_checked, regression_red_pre_fix, regression_pre_fix_log]
     on_enter:
+      # 0. Deterministic RED-gate (bugfix-repro-gate slice). When the ticket
+      #    carried a `repro_command:` (projected into world.gate_command at
+      #    ticket-load), prove the bug actually reproduces on the UNCHANGED
+      #    (pre-fix) worktree BEFORE spending the LLM reproducer / maker budget.
+      #    Structurally the cherny-loop baseline applied to the bugfix pipeline:
+      #    run the command on HEAD and branch on exit code —
+      #      RED  (non-zero exit) → bug reproduces → fall through to the LLM
+      #                             reproducer below → proposing.
+      #      GREEN (zero exit)    → cannot reproduce → @exit:not-reproducible.
+      #    `once`-style latch via repro_checked: the gate runs once per session
+      #    (refine/restart re-runs the LLM reproducer but not the gate — the
+      #    unchanged worktree's repro verdict doesn't change). An empty
+      #    gate_command skips the gate entirely (legacy ticket → LLM-only
+      #    behaviour, unchanged — backward compatible).
+      - when: "world.gate_command != '' && !world.repro_checked"
+        invoke: host.run
+        id: repro_gate_exec
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              GATE='{{ world.gate_command }}'
+              GATE_EXIT=0
+              GATE_OUT=$( bash -c "$GATE" 2>&1 ) || GATE_EXIT=$?
+              if [ "$GATE_EXIT" -ne 0 ]; then
+                # Non-zero exit — the bug reproduces (RED). Proceed.
+                jq -n --arg log "$GATE_OUT" '{red:true,checked:true,log:$log}'
+              else
+                # Zero exit — the command passed (GREEN). Cannot reproduce.
+                jq -n --arg log "$GATE_OUT" '{red:false,checked:true,log:$log}'
+              fi
+          cwd: "{{ world.workdir }}"
+        bind:
+          regression_red_pre_fix:  "stdout_json.red"
+          repro_checked:           "stdout_json.checked"
+          regression_pre_fix_log:  "stdout_json.log"
+        on_error: idle
+
+      # 0b. GREEN branch: the gate ran and the command PASSED on the unchanged
+      #     worktree — the bug does not currently reproduce. Route to the
+      #     needs-human `not-reproducible` exit BEFORE the LLM reproducer runs
+      #     (the emit transitions away, so the agent step below is skipped).
+      #     Guard reads repro_checked so the bind settles before routing.
+      - when: "world.repro_checked && !world.regression_red_pre_fix"
+        emit_intent: not_reproducible
+
       # 1. Always: produce the reproduction artifact. Schema-validated
       #    payload lands at Result.Data.submitted; bind walks
       #    "submitted" → world.reproduction_artifact.
-      #    `working_dir` pins the oracle subprocess to the bugfix
-      #    worktree so any greps/reads the oracle runs read the right
+      #    `working_dir` pins the agent subprocess to the bugfix
+      #    worktree so any greps/reads the agent runs read the right
       #    tree. See implementing.yaml header for the regression context.
-      - invoke: host.oracle.task
+      # `once: true` for reload-safety: keyed off its own bind
+      # (reproduction_artifact), so on /reload (or any self/on_error
+      # re-entry) the stored artifact re-renders without re-running the
+      # agent. The refine + restart_from arms below clear
+      # reproduction_artifact to re-arm a fresh run.
+      - invoke: host.agent.task
+        once: true
         with:
           agent: reproducer
           working_dir: "{{ world.workdir }}"
@@ -125,7 +180,7 @@ states:
       # 2. Conditionally: run the LLM judge against the artifact.
       #    Skipped in human mode (operator IS the judge).
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           agent: judge
           prompt: prompts/judge_reproducing.md
@@ -181,9 +236,11 @@ states:
         - target: reproducing
           effects:
             - set:
-                refine_feedback:    "{{ slots.feedback ?? world.llm_verdict.reason }}"
-                reproducing_cycle:  "{{ world.reproducing_cycle + 1 }}"
-                cycle:              "{{ world.cycle + 1 }}"
+                refine_feedback:        "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                reproducing_cycle:      "{{ world.reproducing_cycle + 1 }}"
+                cycle:                  "{{ world.cycle + 1 }}"
+                # Clear the once: bind so on_enter re-runs the agent.
+                reproduction_artifact:  {}
 
       # restart_from re-enters this phase fresh; nothing earlier to
       # rewind to from reproducing.
@@ -191,10 +248,12 @@ states:
         - target: reproducing
           effects:
             - set:
-                restart_from_stage: "{{ slots.stage ?? 'reproducing' }}"
-                refine_feedback:    ""
-                reproducing_cycle:  0
-                cycle:              0
+                restart_from_stage:    "{{ slots.stage ?? 'reproducing' }}"
+                refine_feedback:       ""
+                reproducing_cycle:     0
+                cycle:                 0
+                # Clear the once: bind so on_enter re-runs the agent fresh.
+                reproduction_artifact: {}
 
       # jump_to skips ahead. Audited via world.unsafe_jumps_made.
       jump_to:
@@ -242,6 +301,17 @@ states:
                 bugfix_mode:        "full"
                 restart_from_stage: "validate"
                 unsafe_jumps_made:  "{{ world.unsafe_jumps_made + 1 }}"
+
+      # repro RED-gate GREEN branch (bugfix-repro-gate slice). The
+      # deterministic repro_command PASSED on the unchanged worktree, so the
+      # bug does not currently reproduce. Hand off to needs-human with the
+      # gate's captured output as the reason; never spend maker budget.
+      not_reproducible:
+        - target: "@exit:not-reproducible"
+          effects:
+            - set:
+                last_error: "repro_command passed (GREEN) on the unchanged worktree — bug does not currently reproduce.\n{{ world.regression_pre_fix_log }}"
+                status:     "not-reproducible"
 
       quit:
         - target: "@exit:abandoned"

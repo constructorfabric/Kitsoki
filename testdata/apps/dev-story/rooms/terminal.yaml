@@ -256,13 +256,13 @@ states:
             - set: { proposal_status: "reviewing" }
 
       # Repair path — send the failed command, error, and stdout to
-      # Claude via a typed-JSON oracle call. The validator pins the
+      # Claude via a typed-JSON agent call. The validator pins the
       # response to {command, why}; binds replace proposal_cmd and
       # proposal_explanation, then the user lands on terminal_reviewing.
       fix:
         - target: terminal_reviewing
           effects:
-            - invoke: host.oracle.decide
+            - invoke: host.agent.decide
               with:
                 prompt: "prompts/shell_repair.md"
                 schema: "mcp/shell_repair.json"

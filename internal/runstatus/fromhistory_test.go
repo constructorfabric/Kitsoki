@@ -1,14 +1,16 @@
 package runstatus_test
 
-// TestFromHistory_WithOracleJournal verifies that WithOracleJournal causes
-// FromHistory to synthesise oracle.<verb>.start and oracle.<verb>.complete
-// TraceEvents from KindOracleCall journal entries and merge them in timestamp
-// order with the store-derived events.
+// TestFromHistory_PassThrough verifies that FromHistory is a pure pass-through:
+// every store.Event in the history maps 1:1 to a TraceEvent in Snapshot.Events,
+// no synthesis, no back-fill, no agent-specific code path.
 //
-// Runtime budget: <20 ms (in-memory SQLite, no real LLM calls).
+// Covers all EventKind values including AgentCalled/AgentReturned/AgentError
+// (the wave 3-agent events) to prove they emerge verbatim and the function
+// does not synthesise extra events that weren't in the input.
+//
+// Runtime budget: <5 ms (no I/O, no LLM calls, in-memory only).
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -17,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/app"
-	"kitsoki/internal/journal"
 	"kitsoki/internal/runstatus"
 	"kitsoki/internal/store"
 )
@@ -33,185 +34,176 @@ func buildMinimalAppDef() *app.AppDef {
 	}
 }
 
-func TestFromHistory_WithOracleJournal(t *testing.T) {
+func TestFromHistory_PassThrough(t *testing.T) {
 	t.Parallel()
-
-	// ── Build an in-memory store with one session ──────────────────────────
-	st, err := store.OpenMemory()
-	require.NoError(t, err, "open memory store")
-	t.Cleanup(func() { _ = st.Close() })
 
 	def := buildMinimalAppDef()
 
-	ctx := context.Background()
-	sid, err := st.CreateSession(ctx, def)
-	require.NoError(t, err, "create session")
+	base := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
 
-	// Append a minimal store history: TurnStarted + StateEntered("start") + TurnEnded.
-	// Ts fields are ignored by AppendEvents (the store assigns wall-clock time at insert).
-	events := []store.Event{
-		{
-			Ts:   time.Now(),
-			Kind: store.TurnStarted,
-			Turn: 1,
-		},
-		{
-			Ts:      time.Now(),
-			Kind:    store.StateEntered,
-			Turn:    1,
-			Payload: json.RawMessage(`{"state":"start"}`),
-		},
-		{
-			Ts:   time.Now(),
-			Kind: store.TurnEnded,
-			Turn: 1,
-		},
+	// Construct a synthetic History that covers:
+	//   - a normal turn (TurnStarted, StateEntered, TurnEnded)
+	//   - an agent exchange (AgentCalled, AgentReturned)
+	//   - an error event (HarnessError — must produce level ERROR)
+	//   - an AgentError event
+	calledPayload, err := json.Marshal(map[string]any{
+		"verb":   "ask",
+		"agent":  "my-agent",
+		"model":  "claude-sonnet",
+		"prompt": "What is the answer?",
+	})
+	require.NoError(t, err)
+
+	returnedPayload, err := json.Marshal(map[string]any{
+		"verb":        "ask",
+		"duration_ms": float64(120),
+		"response":    "42",
+	})
+	require.NoError(t, err)
+
+	errorPayload, err := json.Marshal(map[string]any{"error": "something went wrong"})
+	require.NoError(t, err)
+
+	hist := store.History{
+		{Turn: 1, Ts: base.Add(0), Kind: store.TurnStarted, StatePath: "foyer", Seq: 0},
+		{Turn: 1, Ts: base.Add(1 * time.Millisecond), Kind: store.StateEntered, StatePath: "foyer", Seq: 1,
+			Payload: json.RawMessage(`{"state":"foyer"}`)},
+		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.AgentCalled, StatePath: "foyer", Seq: 2,
+			CallID: "abc123def456abcd", Payload: calledPayload},
+		{Turn: 1, Ts: base.Add(3 * time.Millisecond), Kind: store.AgentReturned, StatePath: "foyer", Seq: 3,
+			CallID: "abc123def456abcd", Payload: returnedPayload},
+		{Turn: 1, Ts: base.Add(4 * time.Millisecond), Kind: store.HarnessError, StatePath: "foyer", Seq: 4,
+			Payload: errorPayload},
+		{Turn: 1, Ts: base.Add(5 * time.Millisecond), Kind: store.AgentError, StatePath: "foyer", Seq: 5,
+			CallID: "abc123def456abcd", Payload: errorPayload},
+		{Turn: 1, Ts: base.Add(6 * time.Millisecond), Kind: store.TurnEnded, StatePath: "foyer", Seq: 6},
 	}
-	require.NoError(t, st.AppendEvents(sid, events), "append store events")
 
-	// ── Load history to get actual stored timestamps ──────────────────────
-	// The store assigns wall-clock timestamps at insert time; the Ts field
-	// on the Event structs passed to AppendEvents is ignored. We read back
-	// the stored events first so we can write the journal entry at a
-	// consistent relative time.
-	hist, err := st.LoadHistory(sid)
-	require.NoError(t, err, "load history (first load)")
-	require.Len(t, hist, 3, "expect 3 stored events")
+	snap, err := runstatus.FromHistory(hist, def, "sess-001")
+	require.NoError(t, err)
 
-	// lastEventTs is the timestamp of the last store event.
-	lastEventTs := hist[len(hist)-1].Ts
+	// Length must match exactly — no synthesised extra events.
+	assert.Equal(t, len(hist), len(snap.Events),
+		"Snapshot.Events length must equal History length (no synthesis, no injection)")
 
-	// ── Write a KindOracleCall journal entry ──────────────────────────────
-	jw, err := journal.NewSQLiteWriter(st.DB())
-	require.NoError(t, err, "create journal writer")
-
-	// The oracle call completes 200ms after the last store event and lasted 150ms.
-	// oracle.start is placed 1µs before oracle.complete in the merged stream so
-	// it sorts just before it regardless of the original call duration.
-	callCompletedAt := lastEventTs.Add(200 * time.Millisecond)
-	callDurationMs := int64(150)
-	expectedStartTs := callCompletedAt.Add(-time.Microsecond)
-
-	oracleBody := map[string]any{
-		"call_id":       "test-call-001",
-		"verb":          "decide",
-		"agent":         "my-agent",
-		"model":         "claude-sonnet-4",
-		"duration_ms":   callDurationMs,
-		"prompt":        "Should I go left or right?",
-		"system_prompt": "You are a decision assistant.",
-		"response":      map[string]any{"decision": "left"},
+	// Verify each event maps 1:1.
+	for i, ev := range snap.Events {
+		orig := hist[i]
+		assert.Equal(t, string(orig.Kind), ev.Msg,
+			"events[%d].Msg must equal Kind string", i)
+		assert.Equal(t, int(orig.Turn), ev.Turn,
+			"events[%d].Turn", i)
+		assert.Equal(t, string(orig.StatePath), ev.StatePath,
+			"events[%d].StatePath", i)
+		assert.Equal(t, int(orig.ParentTurn), ev.ParentTurn,
+			"events[%d].ParentTurn", i)
+		assert.True(t, orig.Ts.Equal(ev.Time),
+			"events[%d].Time: want %v got %v", i, orig.Ts, ev.Time)
 	}
-	bodyJSON, err := json.Marshal(oracleBody)
-	require.NoError(t, err, "marshal oracle body")
 
-	require.NoError(t, jw.Append(journal.Entry{
-		Ts:      callCompletedAt,
-		Session: sid,
-		Turn:    1,
-		Seq:     10,
-		Kind:    journal.KindOracleCall,
-		Body:    bodyJSON,
-	}), "append journal entry")
-
-	snapNoJournal, err := runstatus.FromHistory(hist, def, string(sid))
-	require.NoError(t, err, "FromHistory without journal")
-
-	// Without journal option: no oracle events.
-	oracleCountNoJournal := 0
-	for _, ev := range snapNoJournal.Events {
-		if len(ev.Msg) > 7 && ev.Msg[:7] == "oracle." {
-			oracleCountNoJournal++
+	// Level mapping: HarnessError must be ERROR; all others INFO.
+	for i, ev := range snap.Events {
+		orig := hist[i]
+		switch orig.Kind {
+		case store.HarnessError, store.ValidationFailed, store.GuardRejected:
+			assert.Equal(t, "ERROR", ev.Level, "events[%d] (%s) must be ERROR", i, orig.Kind)
+		default:
+			assert.Equal(t, "INFO", ev.Level, "events[%d] (%s) must be INFO", i, orig.Kind)
 		}
 	}
-	assert.Equal(t, 0, oracleCountNoJournal, "no oracle events without journal option")
 
-	// ── Call FromHistory with WithOracleJournal ───────────────────────────
-	snapWithJournal, err := runstatus.FromHistory(hist, def, string(sid),
-		runstatus.WithOracleJournal(st.DB()))
-	require.NoError(t, err, "FromHistory with journal")
+	// call_id must be surfaced in Attrs for agent events.
+	agentCalledIdx := 2
+	assert.Equal(t, "abc123def456abcd", snap.Events[agentCalledIdx].Attrs["call_id"],
+		"AgentCalled.Attrs[call_id] must carry CallID from store.Event")
+	agentReturnedIdx := 3
+	assert.Equal(t, "abc123def456abcd", snap.Events[agentReturnedIdx].Attrs["call_id"],
+		"AgentReturned.Attrs[call_id] must carry CallID from store.Event")
 
-	// Expect 3 store events + 2 oracle events = 5 total.
-	assert.Equal(t, 5, len(snapWithJournal.Events),
-		"expect 3 store + 2 oracle events; got %d", len(snapWithJournal.Events))
+	// Session header fields.
+	assert.Equal(t, "sess-001", snap.Session.SessionID)
+	assert.Equal(t, "test-app", snap.Session.AppID)
+	assert.Equal(t, "foyer", snap.Session.CurrentState)
+	assert.Equal(t, 1, snap.Session.Turn)
+	assert.True(t, base.Equal(snap.Session.StartedAt),
+		"StartedAt must be the timestamp of the first event")
 
-	// Find the start and complete oracle events.
-	var startEv, completeEv *runstatus.TraceEvent
-	for i := range snapWithJournal.Events {
-		ev := &snapWithJournal.Events[i]
-		if ev.Msg == "oracle.decide.start" {
-			startEv = ev
-		}
-		if ev.Msg == "oracle.decide.complete" {
-			completeEv = ev
-		}
-	}
-	require.NotNil(t, startEv, "oracle.decide.start must be present")
-	require.NotNil(t, completeEv, "oracle.decide.complete must be present")
-
-	// ── Verify oracle.decide.start ────────────────────────────────────────
-	assert.True(t, expectedStartTs.Equal(startEv.Time),
-		"start timestamp: want %v got %v", expectedStartTs, startEv.Time)
-	assert.Equal(t, "INFO", startEv.Level)
-	assert.Equal(t, 1, startEv.Turn)
-	assert.NotNil(t, startEv.Attrs)
-	assert.Equal(t, "decide", startEv.Attrs["verb"])
-	assert.Equal(t, "my-agent", startEv.Attrs["agent"])
-	assert.Equal(t, "claude-sonnet-4", startEv.Attrs["model"])
-	assert.Equal(t, "test-call-001", startEv.Attrs["call_id"])
-	assert.Contains(t, startEv.Attrs["prompt_preview"], "left or right")
-
-	// ── Verify oracle.decide.complete ─────────────────────────────────────
-	assert.True(t, callCompletedAt.Equal(completeEv.Time),
-		"complete timestamp: want %v got %v", callCompletedAt, completeEv.Time)
-	assert.Equal(t, "INFO", completeEv.Level)
-	assert.Equal(t, 1, completeEv.Turn)
-	require.NotNil(t, completeEv.Attrs)
-	assert.Equal(t, "decide", completeEv.Attrs["verb"])
-	assert.Equal(t, "test-call-001", completeEv.Attrs["call_id"])
-	assert.Equal(t, "You are a decision assistant.", completeEv.Attrs["system_prompt"])
-	assert.Equal(t, "Should I go left or right?", completeEv.Attrs["prompt"])
-
-	// ── Verify ordering: all events are sorted by time ────────────────────
-	for i := 1; i < len(snapWithJournal.Events); i++ {
-		prev := snapWithJournal.Events[i-1]
-		curr := snapWithJournal.Events[i]
-		assert.False(t, curr.Time.Before(prev.Time),
-			"events must be sorted by time: events[%d]=%v > events[%d]=%v",
-			i-1, prev.Time, i, curr.Time)
-	}
-
-	// ── Verify state_path propagation ─────────────────────────────────────
-	// The oracle start event is after the StateEntered("start") store event,
-	// so nearestStatePath should propagate "start" to both synthesised events.
-	assert.Equal(t, "start", startEv.StatePath,
-		"start event state_path should inherit nearest-preceding store state")
-	assert.Equal(t, "start", completeEv.StatePath,
-		"complete event state_path should inherit nearest-preceding store state")
+	// Empty history must not panic.
+	snapEmpty, errEmpty := runstatus.FromHistory(store.History{}, def, "sess-empty")
+	require.NoError(t, errEmpty, "empty history must not error")
+	assert.Equal(t, 0, len(snapEmpty.Events))
+	assert.Equal(t, "", snapEmpty.Session.CurrentState)
 }
 
-// TestFromHistory_WithOracleJournal_NilDB confirms that passing a nil DB via
-// WithOracleJournal is a safe no-op.
-func TestFromHistory_WithOracleJournal_NilDB(t *testing.T) {
+// TestFromHistory_CurrentStatePrefersStateEntered locks the current-state
+// derivation: turn.end is stamped with the turn's STARTING state, so after a
+// transition (state_entered carries the NEW state, turn.end the OLD one) the
+// header must report the entered state, not whatever the last event happened to
+// carry. Regression for the live web UI showing the pre-transition state.
+func TestFromHistory_CurrentStatePrefersStateEntered(t *testing.T) {
 	t.Parallel()
 
-	st, err := store.OpenMemory()
+	def := buildMinimalAppDef()
+	base := time.Date(2026, 6, 3, 9, 0, 0, 0, time.UTC)
+
+	// A foyer --go--> bar.dark transition turn, mirroring the real event
+	// stamping: state_entered carries bar/bar.dark, turn.end carries foyer.
+	hist := store.History{
+		{Turn: 1, Ts: base.Add(0), Kind: store.TurnStarted, StatePath: "foyer", Seq: 0},
+		{Turn: 1, Ts: base.Add(1 * time.Millisecond), Kind: store.StateExited, StatePath: "foyer", Seq: 1,
+			Payload: json.RawMessage(`{"state":"foyer"}`)},
+		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.StateEntered, StatePath: "bar", Seq: 2,
+			Payload: json.RawMessage(`{"state":"bar"}`)},
+		{Turn: 1, Ts: base.Add(3 * time.Millisecond), Kind: store.StateEntered, StatePath: "bar.dark", Seq: 3,
+			Payload: json.RawMessage(`{"state":"bar.dark"}`)},
+		{Turn: 1, Ts: base.Add(4 * time.Millisecond), Kind: store.TurnEnded, StatePath: "foyer", Seq: 4},
+	}
+
+	snap, err := runstatus.FromHistory(hist, def, "sess-trans")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = st.Close() })
+	assert.Equal(t, "bar.dark", snap.Session.CurrentState,
+		"the last state_entered must win over turn.end's starting-state stamp")
+}
+
+// TestFromHistory_AgentEventsPassThroughVerbatim confirms that when a History
+// already contains AgentCalled/AgentReturned events, FromHistory does not
+// inject any additional agent events. This is the core wave 4a contract: the
+// JSONL is authoritative; no synthesis path exists.
+func TestFromHistory_AgentEventsPassThroughVerbatim(t *testing.T) {
+	t.Parallel()
 
 	def := buildMinimalAppDef()
-	sid, err := st.CreateSession(context.Background(), def)
+	base := time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC)
+
+	calledPayload, err := json.Marshal(map[string]any{"verb": "decide", "prompt": "left or right?"})
+	require.NoError(t, err)
+	returnedPayload, err := json.Marshal(map[string]any{"verb": "decide", "response": "left"})
 	require.NoError(t, err)
 
-	require.NoError(t, st.AppendEvents(sid, []store.Event{
-		{Kind: store.TurnStarted, Turn: 1},
-	}))
+	hist := store.History{
+		{Turn: 1, Ts: base, Kind: store.TurnStarted, StatePath: "start", Seq: 0},
+		{Turn: 1, Ts: base.Add(1 * time.Millisecond), Kind: store.AgentCalled, StatePath: "start", Seq: 1,
+			CallID: "callid-001", Payload: calledPayload},
+		{Turn: 1, Ts: base.Add(2 * time.Millisecond), Kind: store.AgentReturned, StatePath: "start", Seq: 2,
+			CallID: "callid-001", Payload: returnedPayload},
+		{Turn: 1, Ts: base.Add(3 * time.Millisecond), Kind: store.TurnEnded, StatePath: "start", Seq: 3},
+	}
 
-	hist, err := st.LoadHistory(sid)
+	snap, err := runstatus.FromHistory(hist, def, "sess-agent")
 	require.NoError(t, err)
 
-	// Must not panic or error with a nil DB.
-	snap, err := runstatus.FromHistory(hist, def, string(sid), runstatus.WithOracleJournal(nil))
-	require.NoError(t, err, "nil DB must be a safe no-op")
-	assert.Equal(t, 1, len(snap.Events), "store events only")
+	// Exactly 4 events — no synthesis of extra agent events.
+	assert.Equal(t, 4, len(snap.Events),
+		"must have exactly 4 events (no extra synthesised agent pairs)")
+
+	// Kinds in order.
+	wantMsgs := []string{
+		string(store.TurnStarted),
+		string(store.AgentCalled),
+		string(store.AgentReturned),
+		string(store.TurnEnded),
+	}
+	for i, want := range wantMsgs {
+		assert.Equal(t, want, snap.Events[i].Msg, "events[%d].Msg", i)
+	}
 }

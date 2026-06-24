@@ -1,0 +1,54 @@
+# cleanup_by_slot — `remove_all worktree=.worktrees/foo` removes the NAMED tree
+# in one shot (no picker round-trip), and the host.run fires with the slot's
+# path bound into the script (operand-as-slot, git-ops-smoothing task 1.1/1.3).
+#
+# The smoking gun was the operand being DROPPED (room read ambient
+# world.worktree_path, empty on arrival). This fixture pins that the named
+# operand reaches world.worktree and the remove reports cleaned.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: cleanup
+initial_world:
+  integration_branch: main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+  worktree_path:      ""          # ambient is EMPTY — the slot must supply the target
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+      remove_wt_and_br:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"outcome":"cleaned","last_op_ok":true,"last_op_output":"Removed worktree .worktrees/foo; branch foo deleted"}'
+          stdout_json:
+            outcome:        cleaned
+            last_op_ok:     true
+            last_op_output: "Removed worktree .worktrees/foo; branch foo deleted"
+
+turns:
+  - intent: { name: remove_all, slots: { worktree: ".worktrees/foo" } }
+    expect_state: main_ops
+    expect_world:
+      worktree:        ".worktrees/foo"
+      last_op_outcome: cleaned
+      last_op_ok:      true
+
+expect_no_errors: true

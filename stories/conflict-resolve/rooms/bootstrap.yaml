@@ -1,0 +1,24 @@
+# bootstrap — standalone entry stub for conflict-resolve flow tests.
+#
+# When imported (git-ops, delivery-tail) the parent enters at `conflict`
+# directly; this room is never reached in production. For flow tests the machine
+# must TRANSITION into `conflict` (not start there) so its on_enter chain fires.
+#
+# Flow usage: initial_state: bootstrap, first turn: intent begin.
+
+states:
+
+  bootstrap:
+    description: "Flow-test stub — fire `begin` to enter the resolver at conflict."
+    view:
+      - prose: "Ready to enter the conflict resolver (a rebase is in progress with conflicts)."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "begin"
+              hint:  "enter the resolver at the conflict room"
+              intent: begin
+    on:
+      begin:
+        - target: conflict

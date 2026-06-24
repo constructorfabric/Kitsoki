@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""judge_verdict_before.py — BEFORE oracle-split.
+"""judge_verdict_before.py — BEFORE agent-split.
 
 Invokes the judge by shelling out to `claude -p` directly.
 Problems:

@@ -1,0 +1,61 @@
+# error_drafting_steps_back — a failed author run steps BACK one stage to
+# references (not all the way to idle).
+#
+# Gap #2 (error surfacing). references.confirm advances INTO drafting, whose
+# on_enter author task returns a domain-level Error. drafting's on_error is
+# `references`: the runtime steps back one stage — the research is already
+# curated, so the operator reviews the reference list and re-confirms to
+# retry the draft rather than re-pitching. The runtime sets world.last_error;
+# references' ⚠ template surfaces it. The operator then quits from references
+# (clean abandon trail).
+#
+# The author task is the only host.agent.task call site, so a top-level
+# `error` on the handler targets it (no by_call needed).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: references
+initial_world:
+  idea:        "A CLI for X"
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+  references:
+    items:
+      - { path: "docs/auth.md", sections: "Tokens", rationale: "token model" }
+
+host_handlers:
+  # references on_enter (initial entry) — researcher decide + artifact write.
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        items:
+          - { path: "docs/auth.md", sections: "Tokens", rationale: "token model" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd_references.md", message_id: "prd_references#1" }
+  # The author task fails → drafting's on_error: references steps back.
+  host.agent.task:
+    error: "host.agent.task: author session abandoned without successful submit"
+
+turns:
+  # references.confirm → drafting; the on_enter author task fails →
+  # on_error: references steps BACK to references, and the runtime sets
+  # last_error so references' ⚠ template renders.
+  - intent: { name: confirm, slots: {} }
+    expect_state: references
+    expect_world:
+      last_error: "host.agent.task: author session abandoned without successful submit"
+
+  # The operator bails from references — the abandon trail records WHERE.
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "abandoned_at_references"
+      status:         "abandoned"
+
+expect_terminal: true
+expect_no_errors: true

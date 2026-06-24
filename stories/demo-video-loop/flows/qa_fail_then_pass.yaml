@@ -1,0 +1,73 @@
+# qa_fail_then_pass — the QA gate blocks once, the loop carries the qa-report.md
+# back to the maker as feedback, and the second pass ships. Drives the whole
+# autonomous cascade in ONE turn:
+#   retry → maker-1 → validate-1 (ok) → to_qa → qa-1 (FAIL, budget left) →
+#   read-qa-report → loop_again(feedback=report) → generating →
+#   maker-2 → validate-2 (ok) → to_qa → qa-2 (PASS) → @exit:achieved.
+# Asserts iteration 2 and that the qa-report.md text was fed forward as world.qa_report.
+test_kind: flow
+app: ../app.yaml
+initial_state: generating
+initial_world:
+  worktree_path:    ".worktrees/demo"
+  feature_slug:     "agent-actions"
+  iteration_budget: 5
+
+host_handlers:
+  host.run:
+    by_call:
+      compute-diff:   { data: { ok: true, exit_code: 0, stdout: "+ feature diff" } }
+      stamp-epoch:    { data: { ok: true, exit_code: 0, stdout: "1750000000" } }
+      validate-1:     { data: { ok: true, exit_code: 0, stdout: "" } }
+      validate-2:     { data: { ok: true, exit_code: 0, stdout: "" } }
+      qa-1:           { data: { ok: false, exit_code: 1, stdout: "BLOCK: scenario 2 not shown" } }
+      read-qa-report: { data: { ok: true, exit_code: 0, stdout: "QA FAIL: the agent-actions drawer never opens on screen." } }
+      qa-2:           { data: { ok: true, exit_code: 0, stdout: "PASS" } }
+  host.agent.task:
+    by_call:
+      maker-1: { data: { submitted: { summary: "First cut of the tour.",  video_path: ".artifacts/tour/aa.mp4", frames_dir: ".artifacts/tour/frames", chapters_path: ".artifacts/tour/aa.chapters.json", feature_md_path: ".artifacts/ui-qa/feature.md", scenarios_path: ".artifacts/ui-qa/scenarios.yaml" } } }
+      maker-2: { data: { submitted: { summary: "Re-cut: open the drawer on screen.", video_path: ".artifacts/tour/aa.mp4", frames_dir: ".artifacts/tour/frames", chapters_path: ".artifacts/tour/aa.chapters.json", feature_md_path: ".artifacts/ui-qa/feature.md", scenarios_path: ".artifacts/ui-qa/scenarios.yaml" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  - intent: { name: retry, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      terminal_reason: "achieved"
+      iteration:       2
+      qa_ok:           true
+      video_valid:     true
+      qa_report:       "QA FAIL: the agent-actions drawer never opens on screen."
+      maker_summary:   "Re-cut: open the drawer on screen."
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: maker-1 }
+        times: 1
+      - handler: host.run
+        args: { call: qa-1 }
+        times: 1
+      # read-qa-report is unguarded, so it fires on BOTH qa turns (the fail and
+      # the pass). On the PASS turn its bound qa_report is unused (we exit to
+      # achieved). The stub returns the same text for both calls, so the
+      # carried-forward qa_report below is the iteration-1 failure feedback.
+      - handler: host.run
+        args: { call: read-qa-report }
+        times: 2
+      - handler: host.agent.task
+        args: { call: maker-2 }
+        times: 1
+      - handler: host.run
+        args: { call: validate-2 }
+        times: 1
+      - handler: host.run
+        args: { call: qa-2 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-1 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-2 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

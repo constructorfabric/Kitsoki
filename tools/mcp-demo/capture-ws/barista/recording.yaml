@@ -1,0 +1,24 @@
+# Replay recording for the barista story.
+#
+# THE STORY IS DRIVEN ENTIRELY BY DIRECT INTENTS (session.submit with an intent
+# name) — those need NO recording entry and never consult the harness. But the
+# studio MCP server's replay harness refuses to build from an empty recording
+# (internal/harness/replay.go: "recording has no entries"), so this file carries
+# a single never-consulted placeholder entry to satisfy that load-time check.
+#
+# The entry maps a free-text utterance in the `lobby` room to the real
+# `start_order` intent. It only ever fires if someone routes free text through
+# the harness — the deterministic direct-intent demo never does — so the story
+# stays fully deterministic with NO LLM in the loop.
+kind: recording
+app_id: barista
+app_version: 0.1.0
+generated_at: "2026-06-20T00:00:00Z"
+generator: "hand-authored (barista demo placeholder)"
+min_confidence: 1.00
+
+entries:
+  - state: lobby
+    input: "start order"
+    intent:
+      name: start_order

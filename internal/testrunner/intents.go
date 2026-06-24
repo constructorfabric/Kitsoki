@@ -1,4 +1,4 @@
-// Mode 1 (input→intent pass-rate) runner (§10.2).
+// Mode 1 (input→intent pass-rate) runner.
 package testrunner
 
 import (
@@ -15,6 +15,7 @@ import (
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
 	"kitsoki/internal/intent"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/world"
@@ -22,7 +23,7 @@ import (
 
 // ─── Recording YAML types (local copies matching harness.recordingFile) ─────────────
 
-// recordingFile is the top-level recording YAML document (§10.4).
+// recordingFile is the top-level recording YAML document.
 type recordingFile struct {
 	Kind          string           `yaml:"kind"`
 	AppID         string           `yaml:"app_id"`
@@ -48,7 +49,7 @@ type recordingIntent struct {
 	Slots map[string]any `yaml:"slots,omitempty"`
 }
 
-// ─── Intent fixture YAML format (§10.2.1) ────────────────────────────────────
+// ─── Intent fixture YAML format ──────────────────────────────────────────────
 
 // IntentFixtureFile is the top-level document in an intent fixture file.
 type IntentFixtureFile struct {
@@ -93,11 +94,17 @@ type ExpectFailure struct {
 
 // InputResult holds the result for a single (input, state) pair.
 type InputResult struct {
-	Input    string
-	Runs     int
-	Passed   int
-	PassRate float64
-	BelowMin bool
+	Input             string
+	Runs              int
+	Passed            int
+	PassRate          float64
+	BelowMin          bool
+	DurationMillis    int64
+	CostUSD           float64
+	FirstUsage        map[string]any `json:",omitempty"`
+	FirstError        string         `json:",omitempty"`
+	FirstActualIntent string         `json:",omitempty"`
+	FirstActualSlots  map[string]any `json:",omitempty"`
 }
 
 // FixtureResult holds the aggregate result for one fixture group.
@@ -117,6 +124,14 @@ type IntentReport struct {
 	Fixtures         []FixtureResult
 	TotalPassed      int
 	TotalFailed      int
+	TotalInputs      int
+	TotalRuns        int
+	DurationMillis   int64
+	CostUSD          float64
+	HarnessType      string `json:",omitempty"`
+	HarnessModel     string `json:",omitempty"`
+	AgentBackend     string `json:",omitempty"`
+	ProfileName      string `json:",omitempty"`
 	Regressions      []string
 	RecordingEmitted bool
 }
@@ -147,15 +162,31 @@ type IntentOptions struct {
 	JSONOut string
 	// HarnessType selects the harness: "live", "static".
 	HarnessType string
+	// HarnessModel records the selected model in JSON reports for benchmark provenance.
+	HarnessModel string
+	// AgentBackend records the selected CLI backend for benchmark provenance.
+	AgentBackend string
+	// ProfileName records the harness profile used for benchmark provenance.
+	ProfileName string
+	// LiveHarnessFactory builds a model-backed harness after the story has
+	// loaded. The app definition is required because the routing schema and
+	// prompt are story-specific.
+	LiveHarnessFactory func(*app.AppDef) (harness.Harness, error)
 	// StaticHarnessImpl is used when HarnessType == "static".
 	StaticHarnessImpl harness.Harness
 	// SkipOnRecordingMiss skips inputs that are not in the recording rather than
 	// counting them as failures. Useful when running with the static harness
 	// against a recording that doesn't cover all fixture inputs.
 	SkipOnRecordingMiss bool
+	// ImportResolver is the injected ImportResolver (DI) through which an
+	// `@kitsoki/<name>` import in the app under test resolves against the
+	// `--kitsoki-repo` override or the embedded story library — letting
+	// `kitsoki test intents` run a vendored instance in a foreign repo. nil
+	// keeps the legacy error-on-missing behaviour.
+	ImportResolver app.ImportResolver
 }
 
-// ─── Baseline format (§10.2.4) ───────────────────────────────────────────────
+// ─── Baseline format ─────────────────────────────────────────────────────────
 
 // Baseline is the persisted regression-tracking file.
 type Baseline struct {
@@ -175,7 +206,7 @@ func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*Inten
 	publishAppDirForTestrunner(appPath)
 
 	// Load app.
-	def, err := app.Load(appPath)
+	def, err := app.LoadWithResolver(appPath, nil, opts.ImportResolver)
 	if err != nil {
 		return nil, fmt.Errorf("load app %q: %w", appPath, err)
 	}
@@ -197,6 +228,12 @@ func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*Inten
 
 	// Load harness.
 	h := opts.StaticHarnessImpl
+	if h == nil && opts.LiveHarnessFactory != nil {
+		h, err = opts.LiveHarnessFactory(def)
+		if err != nil {
+			return nil, fmt.Errorf("build %s harness: %w", opts.HarnessType, err)
+		}
+	}
 	if h == nil {
 		return nil, fmt.Errorf("no harness provided (use --harness static or --harness live)")
 	}
@@ -248,7 +285,13 @@ func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*Inten
 	}
 
 	// Run all fixtures.
-	report := &IntentReport{}
+	reportStarted := time.Now()
+	report := &IntentReport{
+		HarnessType:  opts.HarnessType,
+		HarnessModel: opts.HarnessModel,
+		AgentBackend: opts.AgentBackend,
+		ProfileName:  opts.ProfileName,
+	}
 	recordingEntries := []recordingEntry{}
 
 	// Load baseline.
@@ -280,15 +323,32 @@ func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*Inten
 			ir := InputResult{Input: input, Runs: runs}
 			skipped := false
 			for run := 0; run < runs; run++ {
-				passed, err := runOneIntent(ctx, h, m, g.def, g.state, input, g.fixture)
+				started := time.Now()
+				result, err := runOneIntent(ctx, h, m, g.def, g.state, input, g.fixture)
+				ir.DurationMillis += time.Since(started).Milliseconds()
 				if err != nil {
 					if opts.SkipOnRecordingMiss && isRecordingMissError(err) {
 						skipped = true
 						break
 					}
+					if ir.FirstError == "" {
+						ir.FirstError = err.Error()
+					}
 					// Count as fail, don't abort.
-				} else if passed {
-					ir.Passed++
+				} else {
+					if ir.FirstActualIntent == "" {
+						ir.FirstActualIntent = result.Intent
+						ir.FirstActualSlots = result.Slots
+						ir.FirstUsage = result.Usage
+					}
+					ir.CostUSD += result.CostUSD
+					report.CostUSD += result.CostUSD
+					if result.Passed {
+						ir.Passed++
+					}
+				}
+				if !skipped {
+					report.TotalRuns++
 				}
 			}
 			if skipped {
@@ -304,6 +364,7 @@ func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*Inten
 			fr.Inputs = append(fr.Inputs, ir)
 			fr.TotalRuns += runs
 			fr.TotalPassed += ir.Passed
+			report.TotalInputs++
 
 			// Collect majority-vote recording entry.
 			if ir.Passed > runs/2 && g.fixture.Intent != nil {
@@ -390,9 +451,15 @@ func RunIntents(ctx context.Context, appPath string, opts IntentOptions) (*Inten
 		}
 	}
 
+	report.DurationMillis = time.Since(reportStarted).Milliseconds()
 	if opts.JSONOut != "" {
 		b, _ := json.MarshalIndent(report, "", "  ")
-		_ = os.WriteFile(opts.JSONOut, b, 0644)
+		if err := os.MkdirAll(filepath.Dir(opts.JSONOut), 0o755); err != nil {
+			return nil, fmt.Errorf("create json report dir: %w", err)
+		}
+		if err := os.WriteFile(opts.JSONOut, b, 0o644); err != nil {
+			return nil, fmt.Errorf("write json report: %w", err)
+		}
 	}
 
 	return report, nil
@@ -405,30 +472,51 @@ func (ir *InputResult) RunCount(runs int) {
 	}
 }
 
+type intentRunResult struct {
+	Passed  bool
+	Intent  string
+	Slots   map[string]any
+	Usage   map[string]any
+	CostUSD float64
+}
+
 // runOneIntent runs a single intent routing check and returns true if it passed.
-func runOneIntent(ctx context.Context, h harness.Harness, m machine.Machine, def *app.AppDef, state, input string, fix IntentFixture) (bool, error) {
-	params, err := h.RunTurn(ctx, harness.TurnInput{
-		StatePath: app.StatePath(state),
-		UserText:  input,
+func runOneIntent(ctx context.Context, h harness.Harness, m machine.Machine, def *app.AppDef, state, input string, fix IntentFixture) (intentRunResult, error) {
+	initialWorld := machine.WorldFromSchema(def.World)
+	allowed := allowedIntentNames(m, app.StatePath(state), initialWorld)
+	if len(allowed) == 0 {
+		return intentRunResult{}, fmt.Errorf("state %q has no allowed intents; fixture may reference a stale or invalid state", state)
+	}
+	runCtx := host.WithAgentUsageBox(ctx)
+	params, err := h.RunTurn(runCtx, harness.TurnInput{
+		StatePath:      app.StatePath(state),
+		UserText:       input,
+		World:          initialWorld,
+		AllowedIntents: allowed,
 	})
 	if err != nil {
 		// A harness error might itself be an expected failure.
 		if fix.ExpectFailure != nil {
-			return true, nil
+			return intentRunResult{Passed: true}, nil
 		}
-		return false, err
+		return intentRunResult{}, err
 	}
 
 	call, err := paramsToIntentCall(params)
 	if err != nil {
 		if fix.ExpectFailure != nil {
-			return true, nil
+			return intentRunResult{Passed: true}, nil
 		}
-		return false, err
+		return intentRunResult{}, err
+	}
+	result := intentRunResult{
+		Intent:  call.Intent,
+		Slots:   call.Slots,
+		Usage:   host.AgentUsageFrom(runCtx),
+		CostUSD: host.AgentCostFrom(runCtx),
 	}
 
 	// Run validation on the machine.
-	initialWorld := machine.WorldFromSchema(def.World)
 	vr := m.Validate(app.StatePath(state), initialWorld, call)
 
 	if fix.ExpectFailure != nil {
@@ -437,36 +525,48 @@ func runOneIntent(ctx context.Context, h harness.Harness, m machine.Machine, def
 			// Check it's one of the expected codes.
 			for _, code := range fix.ExpectFailure.AnyOf {
 				if code == "clarify" || string(vr.Err.Code) == code {
-					return true, nil
+					result.Passed = true
+					return result, nil
 				}
 			}
-			return false, nil
+			return result, nil
 		}
 		// No error when we expected one.
-		return false, nil
+		return result, nil
 	}
 
 	if fix.ExpectFallthrough {
 		// We expect the intent to fall through to a wildcard.
 		// The intent routes to some intent, and the machine accepts it (wildcard).
-		return vr.OK, nil
+		result.Passed = vr.OK
+		return result, nil
 	}
 
 	// Positive fixture: check intent name and slots.
 	if !vr.OK {
-		return false, nil
+		return result, nil
 	}
 	if fix.Intent != nil {
 		if call.Intent != fix.Intent.Name {
-			return false, nil
+			return result, nil
 		}
 		for k, v := range fix.Intent.Slots {
 			if !deepEqualValues(call.Slots[k], v) {
-				return false, nil
+				return result, nil
 			}
 		}
 	}
-	return true, nil
+	result.Passed = true
+	return result, nil
+}
+
+func allowedIntentNames(m machine.Machine, state app.StatePath, w world.World) []string {
+	allowed := m.AllowedIntents(state, w)
+	names := make([]string, 0, len(allowed))
+	for _, ai := range allowed {
+		names = append(names, ai.Name)
+	}
+	return names
 }
 
 // ─── Loaders ─────────────────────────────────────────────────────────────────

@@ -1,0 +1,45 @@
+# quit_from_references — bailing from a review room records WHERE it was
+# abandoned. Every room's quit arc routes to @exit:abandoned but stamps a
+# room-specific abandon_reason; this pins the references room's
+# ("abandoned_at_references") so the abandon trail stays diagnostic. The
+# quit arc shape is identical across idle/clarifying/brief/references/
+# drafting — this is the representative case for the new review rooms.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: references
+initial_world:
+  idea:        "A CLI for X"
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+  references:
+    items:
+      - { path: "docs/auth.md", sections: "Tokens", rationale: "token model" }
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  # Defensive: references on_enter on initial entry.
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        items:
+          - { path: "docs/auth.md", sections: "Tokens", rationale: "token model" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd_references.md", message_id: "prd_references#1" }
+
+turns:
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "abandoned_at_references"
+      status:         "abandoned"
+
+expect_terminal: true
+expect_no_errors: true

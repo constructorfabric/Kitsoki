@@ -34,7 +34,7 @@ host_handlers:
       body: "Lower the rate-limit window from 60s to 10s."
       title: "Tighten the rate-limit window"
       url:  "issues/tasks/tkt-t-004.md"
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

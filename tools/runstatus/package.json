@@ -9,24 +9,34 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "typecheck": "vue-tsc --build",
     "playwright": "playwright test",
     "playwright:install": "playwright install --with-deps chromium",
-    "artifact": "node scripts/build-artifact.mjs"
+    "features:gen": "tsx scripts/features/generate.ts",
+    "features:check": "tsx scripts/features/generate.ts --check && tsx scripts/features/lint-demos.ts",
+    "features:index": "tsx scripts/features/generate.ts --index",
+    "demos:lint": "tsx scripts/features/lint-demos.ts"
   },
   "dependencies": {
     "pinia": "^2.3.1",
+    "rrweb": "^2.0.1",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@playwright/test": "^1.52.0",
     "@types/node": "^22.15.21",
     "@vitejs/plugin-vue": "^5.2.3",
     "@vue/test-utils": "^2.4.6",
     "happy-dom": "^17.4.4",
+    "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
     "vite-plugin-singlefile": "^2.3.3",
-    "vitest": "^3.1.4"
+    "vitest": "^3.1.4",
+    "vue-tsc": "^2.2.10",
+    "yaml": "^2.8.0",
+    "zod": "^4.0.0"
   }
 }

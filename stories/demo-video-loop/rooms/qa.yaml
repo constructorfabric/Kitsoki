@@ -1,0 +1,126 @@
+states:
+  # qa — the QA half of one autonomous loop step. Entered by generating's
+  # auto-emitted to_qa once the deterministic video gate has passed. on_enter runs
+  # the kitsoki-ui-qa shell gate (qa.sh) — its EXIT CODE is the gate (0=ship /
+  # 1=blocking-scenario fail / 2=pipeline error). On failure it reads the
+  # qa-report.md for the next maker's feedback, then routes on the verdict +
+  # budgets via guarded emit_intents — all with no operator input, so the loop
+  # advances itself. QA pass always wins; otherwise loop_again (carrying the report
+  # as feedback) re-enters generating, or a budget guard ends the run.
+  #
+  # The story SHELLS OUT to qa.sh; it does not re-derive the vision review. qa_ok is
+  # a tri-state ("" / true / false) so its routing emits defer to the post-bind pass
+  # — the cherny-loop decision-emit discipline.
+  qa:
+    description: "Loop step — kitsoki-ui-qa vision gate"
+    relevant_world: [feature_slug, iteration, iteration_budget, qa_ok, qa_exit_code, qa_report, session_cost_usd, cost_budget_usd]
+    on_enter:
+      # 1. The QA gate. fail_on_error:false so a blocking/pipeline exit binds
+      #    qa_ok:false (not an error bounce); qa_exit_code carries 0/1/2.
+      - invoke: host.run
+        id: "qa-{{ world.iteration }}"
+        with:
+          cmd: "bash .agents/skills/kitsoki-ui-qa/scripts/qa.sh \"{{ world.video_path }}\" --frames \"{{ world.frames_dir }}\" --feature \"{{ world.feature_md_path }}\" --scenarios \"{{ world.scenarios_path }}\" --strict"
+          cwd: "{{ world.worktree_path }}"
+          fail_on_error: false
+        bind:
+          qa_ok:        ok
+          qa_exit_code: exit_code
+      # 2. Read the report so a loop-back maker turn gets concrete feedback. This is
+      #    UNGUARDED on purpose: an on_enter invoke's `when:` is evaluated against the
+      #    PRE-bind world (machine-build time), so `when: qa_ok == false` would never
+      #    see qa-N's just-bound result and the report would never load (the same
+      #    pre-bind trap cherny-loop documents on its `committing` room). The routing
+      #    emits below DO see the post-bind qa_ok, so they still gate correctly; on a
+      #    PASS the loaded qa_report is simply unused (the run exits to achieved). The
+      #    cmd is fail-safe (the `|| echo` fallback) so a missing report never bounces.
+      - invoke: host.run
+        id: "read-qa-report"
+        with:
+          cmd: "cat .artifacts/ui-qa/*/qa-report.md 2>/dev/null || echo '(qa-report.md not found)'"
+          cwd: "{{ world.worktree_path }}"
+          fail_on_error: false
+        bind:
+          qa_report: stdout
+      # 3. Breadcrumb. NOTE: this on_enter say is evaluated in the PRE-bind pass
+      #    (the same machine-build-time trap the read-qa-report invoke above
+      #    documents), so it CANNOT read qa-N's just-bound qa_ok/qa_exit_code — it
+      #    would lag a turn and print the WRONG verdict. The verdict breadcrumb is
+      #    therefore emitted from the TRANSITION effects below (mark_achieved /
+      #    loop_again / mark_*_exhausted), which run POST-bind and see the real
+      #    result. Here we only announce that the gate ran.
+      - say: "QA gate ran for iteration {{ world.iteration }} (exit code bound for routing below)…"
+      # 4. Guarded routing — each reads qa_ok, so all are false pre-bind and exactly
+      #    one fires post-bind (the decision-emit discipline).
+      - when: "world.qa_ok == true"
+        emit_intent: mark_achieved
+      - when: "world.qa_ok == false && world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd"
+        emit_intent: mark_cost_exhausted
+      - when: "world.qa_ok == false && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration >= world.iteration_budget"
+        emit_intent: mark_iter_exhausted
+      - when: "world.qa_ok == false && !(world.cost_budget_usd > 0 && world.session_cost_usd >= world.cost_budget_usd) && world.iteration < world.iteration_budget"
+        emit_intent: loop_again
+        slots:
+          feedback: "{{ world.qa_report }}"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - banner:
+              text:     "QA"
+              subtitle: "kitsoki-ui-qa vision review — the exit code is the gate"
+              color:    "#0EA5E9"
+          - kv:
+              pairs:
+                Feature:   "{{ world.feature_slug }}"
+                Iteration: "{{ world.iteration }} of {{ world.iteration_budget }}"
+                Exit:      "{{ world.qa_exit_code }}"
+          - heading: "QA report"
+          - code: '{{ world.qa_report|default:"(pending)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "abort"
+                  hint:  "abandon the loop"
+                - label: "look"
+    on:
+      # The verdict breadcrumbs live on the transitions (post-bind) so they print
+      # the REAL qa_ok/qa_exit_code — see the on_enter say note above.
+      mark_achieved:
+        - target: "@exit:achieved"
+          effects:
+            - say: "QA iteration {{ world.iteration }} → PASS ✓ (exit {{ world.qa_exit_code }})"
+            - set: { terminal_reason: "achieved" }
+      mark_cost_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - say: "QA iteration {{ world.iteration }} → FAIL ✗ (exit {{ world.qa_exit_code }}) — cost budget exhausted"
+            - set: { terminal_reason: "cost_budget" }
+      mark_iter_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - say: "QA iteration {{ world.iteration }} → FAIL ✗ (exit {{ world.qa_exit_code }}) — iteration budget exhausted"
+            - set: { terminal_reason: "iteration_budget" }
+      # Re-enter generating (a real state change) so the next maker step runs,
+      # carrying the QA report forward as feedback. Clear the gate tri-states so
+      # the next turn's routing emits defer to their post-bind pass.
+      loop_again:
+        - target: generating
+          effects:
+            - say: "QA iteration {{ world.iteration }} → FAIL ✗ (exit {{ world.qa_exit_code }}) — looping back to the maker with the report as feedback"
+            - set:
+                qa_report: "{{ slots.feedback }}"
+                video_valid: ""
+                qa_ok: ""
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted", abandon_reason: "operator aborted" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "QA is running — `abort` to stop, or `look`."

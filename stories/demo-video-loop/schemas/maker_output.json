@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "maker_output",
+  "description": "What the demo-video maker reports after one iteration: the canonical demo-video deliverables plus the kitsoki-ui-qa inputs it authored.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One-line summary of what was produced or refreshed this iteration (and what prior feedback it addressed)."
+    },
+    "video_path": {
+      "type": "string",
+      "description": "Path to the CANONICAL watch-speed MP4 (e.g. .artifacts/<slug>/<slug>.mp4). Never a *.fast.mp4 / *.SHORT-*.mp4 / *.webm — those are the down-named under-dwelled artifacts the gate rejects."
+    },
+    "frames_dir": {
+      "type": "string",
+      "description": "Directory holding the per-scene NN-*.png frames (>=1 png)."
+    },
+    "chapters_path": {
+      "type": "string",
+      "description": "Path to the <video>.chapters.json sidecar (monotonic, end>start)."
+    },
+    "feature_md_path": {
+      "type": "string",
+      "description": "Path to the feature.md the maker authored — the change being demoed, as the qa.sh --feature input."
+    },
+    "scenarios_path": {
+      "type": "string",
+      "description": "Path to the scenarios.yaml the maker authored — one observable on-screen claim per step, as the qa.sh --scenarios input."
+    }
+  },
+  "required": ["summary", "video_path", "frames_dir", "chapters_path", "feature_md_path", "scenarios_path"]
+}

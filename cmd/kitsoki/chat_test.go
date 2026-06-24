@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -30,15 +29,15 @@ func openChatStoreForTest(t *testing.T, dbPath string) (*chats.Store, func()) {
 	return cs, func() { _ = s.Close() }
 }
 
-// fakeOracleBinForCmdTest returns the path to internal/host/testdata/fake-oracle.sh
+// fakeAgentBinForCmdTest returns the path to internal/host/testdata/fake-agent.sh
 // so `kitsoki chat continue` can be exercised in-process without a real `claude`.
-func fakeOracleBinForCmdTest(t *testing.T) string {
+func fakeAgentBinForCmdTest(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok, "runtime.Caller failed")
 	// thisFile is .../cmd/kitsoki/chat_test.go ; go up two levels to repo root.
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
-	return filepath.Join(repoRoot, "internal", "host", "testdata", "fake-oracle.sh")
+	return filepath.Join(repoRoot, "internal", "host", "testdata", "fake-agent.sh")
 }
 
 // ─── chat new ────────────────────────────────────────────────────────────────
@@ -49,7 +48,7 @@ func TestChat_New_HappyPath(t *testing.T) {
 	stdout, err := runKitsoki(t, "chat", "new",
 		"--db", dbPath,
 		"--app", "dev-story",
-		"--room", "oracle",
+		"--room", "agent",
 		"--title", "test chat",
 	)
 	require.NoError(t, err)
@@ -59,7 +58,7 @@ func TestChat_New_HappyPath(t *testing.T) {
 	assert.NotEmpty(t, created["id"], "expected non-empty chat id")
 	assert.Equal(t, "test chat", created["title"])
 	assert.Equal(t, "dev-story", created["app_id"])
-	assert.Equal(t, "oracle", created["room"])
+	assert.Equal(t, "agent", created["room"])
 	assert.Equal(t, "active", created["status"])
 
 	// Verify the row exists in the DB.
@@ -76,12 +75,12 @@ func TestChat_New_DefaultTitle(t *testing.T) {
 	stdout, err := runKitsoki(t, "chat", "new",
 		"--db", dbPath,
 		"--app", "dev-story",
-		"--room", "oracle",
+		"--room", "agent",
 	)
 	require.NoError(t, err)
 	var created map[string]any
 	require.NoError(t, json.Unmarshal([]byte(stdout), &created))
-	assert.Equal(t, "dev-story/oracle", created["title"], "default title should be app/room")
+	assert.Equal(t, "dev-story/agent", created["title"], "default title should be app/room")
 }
 
 // ─── chat list ───────────────────────────────────────────────────────────────
@@ -91,9 +90,9 @@ func TestChat_List_HappyPath(t *testing.T) {
 	cs, cleanup := openChatStoreForTest(t, dbPath)
 
 	ctx := context.Background()
-	c1, err := cs.Create(ctx, "dev-story", "oracle", "", "first")
+	c1, err := cs.Create(ctx, "dev-story", "agent", "", "first")
 	require.NoError(t, err)
-	c2, err := cs.Create(ctx, "dev-story", "oracle", "", "second")
+	c2, err := cs.Create(ctx, "dev-story", "agent", "", "second")
 	require.NoError(t, err)
 	// Different room — should not appear in the filter.
 	_, err = cs.Create(ctx, "dev-story", "bugfix", "", "other")
@@ -103,7 +102,7 @@ func TestChat_List_HappyPath(t *testing.T) {
 	stdout, err := runKitsoki(t, "chat", "list",
 		"--db", dbPath,
 		"--app", "dev-story",
-		"--room", "oracle",
+		"--room", "agent",
 	)
 	require.NoError(t, err)
 
@@ -124,16 +123,16 @@ func TestChat_List_ScopeKeyFilter(t *testing.T) {
 	cs, cleanup := openChatStoreForTest(t, dbPath)
 	ctx := context.Background()
 
-	cMatch, err := cs.Create(ctx, "dev-story", "oracle", "scope-X", "match")
+	cMatch, err := cs.Create(ctx, "dev-story", "agent", "scope-X", "match")
 	require.NoError(t, err)
-	_, err = cs.Create(ctx, "dev-story", "oracle", "scope-Y", "miss")
+	_, err = cs.Create(ctx, "dev-story", "agent", "scope-Y", "miss")
 	require.NoError(t, err)
 	cleanup()
 
 	stdout, err := runKitsoki(t, "chat", "list",
 		"--db", dbPath,
 		"--app", "dev-story",
-		"--room", "oracle",
+		"--room", "agent",
 		"--scope", "scope-X",
 	)
 	require.NoError(t, err)
@@ -150,9 +149,9 @@ func TestChat_List_AllStatusFilter(t *testing.T) {
 	cs, cleanup := openChatStoreForTest(t, dbPath)
 	ctx := context.Background()
 
-	active, err := cs.Create(ctx, "dev-story", "oracle", "", "active")
+	active, err := cs.Create(ctx, "dev-story", "agent", "", "active")
 	require.NoError(t, err)
-	archived, err := cs.Create(ctx, "dev-story", "oracle", "", "archived")
+	archived, err := cs.Create(ctx, "dev-story", "agent", "", "archived")
 	require.NoError(t, err)
 	require.NoError(t, cs.Archive(ctx, archived.ID))
 	cleanup()
@@ -161,7 +160,7 @@ func TestChat_List_AllStatusFilter(t *testing.T) {
 	stdout, err := runKitsoki(t, "chat", "list",
 		"--db", dbPath,
 		"--app", "dev-story",
-		"--room", "oracle",
+		"--room", "agent",
 	)
 	require.NoError(t, err)
 	var listed map[string]any
@@ -175,7 +174,7 @@ func TestChat_List_AllStatusFilter(t *testing.T) {
 	stdout, err = runKitsoki(t, "chat", "list",
 		"--db", dbPath,
 		"--app", "dev-story",
-		"--room", "oracle",
+		"--room", "agent",
 		"--all-status",
 	)
 	require.NoError(t, err)
@@ -192,7 +191,7 @@ func TestChat_Show_JSON(t *testing.T) {
 	cs, cleanup := openChatStoreForTest(t, dbPath)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "dev-story", "oracle", "", "show-test")
+	c, err := cs.Create(ctx, "dev-story", "agent", "", "show-test")
 	require.NoError(t, err)
 	for _, body := range []string{"hello", "world", "third"} {
 		_, err := cs.AppendMessage(ctx, c.ID, "user", body, nil)
@@ -229,7 +228,7 @@ func TestChat_Show_Markdown(t *testing.T) {
 	cs, cleanup := openChatStoreForTest(t, dbPath)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "dev-story", "oracle", "", "md-test")
+	c, err := cs.Create(ctx, "dev-story", "agent", "", "md-test")
 	require.NoError(t, err)
 	_, err = cs.AppendMessage(ctx, c.ID, "user", "hello", nil)
 	require.NoError(t, err)
@@ -271,7 +270,7 @@ func TestChat_Fork(t *testing.T) {
 	cs, cleanup := openChatStoreForTest(t, dbPath)
 	ctx := context.Background()
 
-	parent, err := cs.Create(ctx, "dev-story", "oracle", "", "parent")
+	parent, err := cs.Create(ctx, "dev-story", "agent", "", "parent")
 	require.NoError(t, err)
 	_, err = cs.AppendMessage(ctx, parent.ID, "user", "Q", nil)
 	require.NoError(t, err)
@@ -312,7 +311,7 @@ func TestChat_Archive(t *testing.T) {
 	cs, cleanup := openChatStoreForTest(t, dbPath)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "dev-story", "oracle", "", "archiveme")
+	c, err := cs.Create(ctx, "dev-story", "agent", "", "archiveme")
 	require.NoError(t, err)
 	cleanup()
 
@@ -343,7 +342,7 @@ func TestChat_Unlock_Force(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "dev-story", "oracle", "", "u")
+	c, err := cs.Create(ctx, "dev-story", "agent", "", "u")
 	require.NoError(t, err)
 
 	// Insert a stale lock row directly via the underlying sql.DB.  The
@@ -397,9 +396,9 @@ func TestChat_Unlock_NoForce(t *testing.T) {
 // asserts the error chain matches.
 func TestChat_Continue_LockContention(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
+		t.Skip("fake-agent.sh requires bash")
 	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBinForCmdTest(t))
+	t.Setenv(host.AgentBinEnv, fakeAgentBinForCmdTest(t))
 
 	dbPath := filepath.Join(t.TempDir(), "sessions.db")
 	s, err := store.Open(dbPath)
@@ -408,7 +407,7 @@ func TestChat_Continue_LockContention(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "dev-story", "oracle", "", "busy-test")
+	c, err := cs.Create(ctx, "dev-story", "agent", "", "busy-test")
 	require.NoError(t, err)
 
 	// Seed a lock owned by a different host.  Cross-host locks are always
@@ -431,21 +430,21 @@ func TestChat_Continue_LockContention(t *testing.T) {
 }
 
 // TestChat_Continue_HappyPath drives one chat turn end-to-end against the
-// fake-oracle.sh binary. The handler appends a user message, executes the fake
+// fake-agent.sh binary. The handler appends a user message, executes the fake
 // claude, appends an assistant message, and returns the answer.  The test
 // asserts the JSON output contains the answer + chat_id, and that the DB
 // gained the expected two rows.
 func TestChat_Continue_HappyPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("fake-oracle.sh requires bash")
+		t.Skip("fake-agent.sh requires bash")
 	}
-	t.Setenv(host.OracleBinEnv, fakeOracleBinForCmdTest(t))
+	t.Setenv(host.AgentBinEnv, fakeAgentBinForCmdTest(t))
 
 	dbPath := filepath.Join(t.TempDir(), "sessions.db")
 	cs, cleanup := openChatStoreForTest(t, dbPath)
 	ctx := context.Background()
 
-	c, err := cs.Create(ctx, "dev-story", "oracle", "", "happy")
+	c, err := cs.Create(ctx, "dev-story", "agent", "", "happy")
 	require.NoError(t, err)
 	cleanup()
 
@@ -459,7 +458,7 @@ func TestChat_Continue_HappyPath(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &out))
 	assert.Equal(t, c.ID, out["chat_id"])
 	answer, _ := out["answer"].(string)
-	assert.Contains(t, answer, "what is up", "fake-oracle echoes the question into the answer")
+	assert.Contains(t, answer, "what is up", "fake-agent echoes the question into the answer")
 
 	// Verify two messages landed in the DB (user + assistant).
 	cs2, cleanup2 := openChatStoreForTest(t, dbPath)
@@ -522,7 +521,7 @@ func TestChat_Continue_NotFound(t *testing.T) {
 //  2. To reliably exercise the lock-cleanup code, we'd need to spawn the
 //     compiled kitsoki binary directly (not via `go run`) and send SIGINT to
 //     the right process; that adds a build step + binary path discovery.
-//  3. The fake-oracle stub used by the other Continue tests exits ~immediately,
+//  3. The fake-agent stub used by the other Continue tests exits ~immediately,
 //     so there's a small window in which to deliver SIGINT. A reliable test
 //     would need a fake that blocks on a sentinel file the test removes after
 //     verifying the lock row is present.
@@ -537,20 +536,4 @@ func TestChat_Continue_NotFound(t *testing.T) {
 // signal-handler path.
 func TestChat_Continue_SignalCleanup(t *testing.T) {
 	t.Skip("TODO: cross-process SIGINT cleanup test — see comment above for why this is hard")
-}
-
-// ─── runKitsoki helper that returns combined err/stderr ───────────────────────
-
-// runKitsokiCapturingStderr is a variant of runKitsoki for cases that need both
-// stdout and stderr. Currently unused but available for future tests.
-func runKitsokiCapturingStderr(t *testing.T, args ...string) (stdout, stderr string, err error) {
-	t.Helper()
-	cmd := rootForTest()
-	var outBuf, errBuf bytes.Buffer
-	cmd.SetOut(&outBuf)
-	cmd.SetErr(&errBuf)
-	cmd.SetArgs(args)
-	cmd.SetContext(context.Background())
-	err = cmd.Execute()
-	return outBuf.String(), errBuf.String(), err
 }

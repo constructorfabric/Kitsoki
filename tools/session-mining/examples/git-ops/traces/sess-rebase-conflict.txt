@@ -1,0 +1,6 @@
+USER: rebase onto main and resolve the conflicts
+  > Bash: git rebase main
+AI: Two source files conflict. Resolving each.
+  > Edit: internal/auth/session.go
+  > Edit: internal/auth/token.go
+  > Bash: git rebase --continue

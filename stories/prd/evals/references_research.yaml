@@ -1,0 +1,52 @@
+# Traceability:
+# - Source call site: stories/prd/rooms/references.yaml, host.agent.decide id `references_research`.
+# - Prompt: stories/prd/prompts/references.md.
+# - Schema: stories/prd/schemas/references.json.
+# - Purpose: curate docs that constrain a PRD before drafting.
+kind: agent_eval
+app: ../app.yaml
+call: references_research
+agent: researcher
+
+task:
+  goal: "Select relevant existing documents for a PRD idea."
+  boundedness:
+    max_turns: 1
+    tool_policy: read-only
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.90
+    max_p95_latency_ms: 9000
+    max_avg_cost_usd: 0.0025
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low, medium]
+  repeat: 5
+
+comparator:
+  kind: field_subset
+
+examples:
+  - name: model-harness-docs
+    args:
+      idea: "Add a reusable process for model/harness evaluation and default selection."
+      clarification_log: "Must use no-cost tests by default and produce Markdown, deck, and JSON artifacts."
+      upstream_paths: "docs/testing/agent-evals.md, docs/architecture/harness-profiles.md"
+      feedback: ""
+      revise: false
+      current_references: {}
+      search_hits: {}
+    expect:
+      items:
+        - path: "docs/testing/agent-evals.md"
+          sections: "Dataset Shape; Reports"
+          rationale: "Defines story-local agent eval shape and reporting contract."
+        - path: "docs/architecture/harness-profiles.md"
+          sections: "Configuration; Selecting a profile"
+          rationale: "Defines configured profiles, model catalogs, and default_profile behavior."

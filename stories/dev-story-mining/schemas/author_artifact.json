@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "author_artifact",
+  "description": "Result of authoring the selected gate plus its flow fixture, with the flow-test verdict.",
+  "type":    "object",
+  "required": ["files_changed", "flows_green", "summary_markdown"],
+  "properties": {
+    "files_changed": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Room YAML + flow fixture (and any schema/prompt) that were written." },
+    "flows_green":   { "type": "boolean", "description": "True only if `kitsoki test flows` passed for the edited story with the new fixture." },
+    "flow_files":    { "type": "array", "items": { "type": "string" }, "description": "The flow fixtures added/exercised." },
+    "summary_markdown": { "type": "string", "minLength": 40, "description": "Human-readable summary delivered to the transport." }
+  },
+  "additionalProperties": true
+}

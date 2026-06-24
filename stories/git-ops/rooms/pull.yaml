@@ -1,0 +1,108 @@
+# pull — git pull --rebase from upstream.
+#
+# Pre-check: if no upstream tracking ref, show info and return to hub.
+# On conflict: route to conflict room with conflict_origin="pull".
+
+states:
+
+  pull:
+    description: "Pull from upstream with --rebase. Returns to main_ops on success."
+    relevant_world: [current_branch, integration_branch, upstream_tracking]
+    view:
+      - kv:
+          pairs:
+            Branch:               '{{ world.current_branch|default:"(unknown)" }}'
+            "Upstream tracking":  '{% if world.upstream_tracking %}yes{% else %}no{% endif %}'
+      - heading: "No upstream tracking ref"
+        when: "world.last_op_outcome == 'no_tracking'"
+      - prose: "This branch has no upstream tracking ref. Set one with git push -u origin {{ world.current_branch }} first."
+        when: "world.last_op_outcome == 'no_tracking'"
+      - heading: "Pull output"
+        when: "world.last_op_output != ''"
+      - template: '{{ world.last_op_output }}'
+        when: "world.last_op_output != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "back"
+              hint:  "return to hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: check_tracking
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              UPSTREAM=$(git rev-parse --abbrev-ref "@{u}" 2>/dev/null || echo "")
+              if [ -n "$UPSTREAM" ]; then
+                echo '{"has_tracking":true}'
+              else
+                echo '{"has_tracking":false}'
+              fi
+          cwd: "{{ world.working_dir }}"
+        bind:
+          upstream_tracking: "stdout_json.has_tracking"
+        on_error: pull
+      - when: "world.upstream_tracking == false"
+        set:
+          last_op_outcome: "no_tracking"
+      - when: "world.upstream_tracking == true"
+        invoke: host.run
+        id: git_pull
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              # || EXIT=$? OUTSIDE the $(): a `|| true` inside would mask a
+              # conflicting pull --rebase as ok, never routing to pull_conflict.
+              EXIT=0
+              OUTPUT=$(git pull --rebase 2>&1) || EXIT=$?
+              CONFLICT=false
+              if echo "$OUTPUT" | grep -qi "CONFLICT\|conflict markers"; then
+                CONFLICT=true
+              fi
+              jq -n \
+                --arg output "$OUTPUT" \
+                --argjson ok "$([ $EXIT -eq 0 ] && echo true || echo false)" \
+                --argjson conflict "$CONFLICT" \
+                '{output:$output, ok:$ok, conflict:$conflict}'
+          cwd: "{{ world.working_dir }}"
+        bind:
+          last_op_output: "stdout_json.output"
+          last_op_ok:     "stdout_json.ok"
+        on_error: pull
+      - when: "world.upstream_tracking == true && world.last_op_ok == true"
+        set:
+          last_op_outcome: ""
+      - when: "world.upstream_tracking == true && world.last_op_ok == true"
+        emit_intent: pull_done
+      - when: "world.upstream_tracking == true && world.last_op_ok == false"
+        set:
+          conflict_origin:          "pull"
+          conflict_files:           ""
+          conflict_verdict:         {}
+          conflict_intent_guidance: ""
+      - when: "world.upstream_tracking == true && world.last_op_ok == false"
+        emit_intent: pull_conflict
+    on:
+      pull_done:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      pull_conflict:
+        - target: conflict
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

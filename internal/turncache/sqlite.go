@@ -20,11 +20,11 @@ var sqliteSchemaDDL string
 // idempotently on every subsequent open (every statement in schema.sql
 // is guarded with IF NOT EXISTS).
 //
-// On Open the backend leaves rows in place — InvalidateOtherHashes is
-// the caller's responsibility once the live AppDef hash for each app is
-// known. The cache predates the AppDef hash (it stores rows for many
-// apps in the same file), so the SQLite layer cannot run §7.1 purges
-// for itself. The orchestrator wires this in Phase 7.
+// On Open the backend leaves rows in place — [Cache.InvalidateOtherHashes]
+// is the caller's responsibility once the live AppDef hash for each app is
+// known. A single file stores rows for many apps, so the SQLite layer has
+// no way to know which hashes are stale on its own; the orchestrator runs
+// the app-hash purge at start.
 //
 // The returned Cache is safe for concurrent use from many goroutines.
 // modernc.org/sqlite serialises writes at the driver level; we add an

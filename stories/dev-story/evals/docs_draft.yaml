@@ -1,0 +1,43 @@
+# Traceability:
+# - Source call site: stories/dev-story/rooms/docs.yaml, host.agent.task id `draft`.
+# - Prompt: stories/dev-story/prompts/docs_draft.md.
+# - Schema: stories/dev-story/schemas/docs-draft.json via acceptance loop.
+# - Purpose: draft a concise documentation update for a requested target.
+kind: agent_eval
+app: ../app.yaml
+call: draft
+agent: landing_agent
+
+task:
+  goal: "Draft a documentation note for a target docs path."
+  boundedness:
+    max_turns: 1
+    tool_policy: write-artifact
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.90
+    max_p95_latency_ms: 10000
+    max_avg_cost_usd: 0.003
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [sonnet, opus]
+    synthetic-claude: [syn:large:text]
+    synthetic-codex: [syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [medium]
+  repeat: 3
+
+comparator:
+  kind: field_subset
+
+examples:
+  - name: harness-profile-doc-note
+    args:
+      target: "document how model harness profile selection works"
+      doc_path: "docs/architecture/harness-profiles.md"
+    expect:
+      summary: "Documents how Kitsoki harness profiles select provider, model, and default profile."
+      file_path: "docs/architecture/harness-profiles.md"
+      headings: ["Harness Profiles", "Configuration", "Selecting a profile"]

@@ -1,0 +1,72 @@
+# verify — the independent re-verify (trust the gate, not the maker's "done").
+#
+# Re-runs the IDENTICAL gate_command, but on the MERGED commit from the MAIN
+# worktree (post-merge), not the maker's branch worktree. The maker can converge
+# a gate in its branch and still break main (a stale rebase, a merge artifact);
+# re-running the SAME gate on the MERGED commit is what makes "passes on main"
+# true, not just "passed in the branch."
+#
+# Binds tri-state verify_ok (the cherny gate-bind discipline so the post-bind
+# guarded emits route correctly). Pinned `decider: llm` so the DETERMINISTIC
+# verdict auto-fires in STAGED mode (the verifying.yaml precedent) instead of
+# stalling for a human.
+#
+#   green → cleanup        (shipped_sha = the merged sha)
+#   red   → @exit:needs-human (last_error = the gate's stdout/stderr tail)
+
+states:
+
+  verify:
+    description: "Re-run the gate on the MERGED commit from the main worktree."
+    relevant_world: [gate_command, integrated_sha, main_worktree_path, verify_ok, verify_output, last_error]
+    decider: llm
+    view:
+      - prose: "Re-running the SAME gate on the merged commit {{ world.integrated_sha }}, from the MAIN worktree — proving 'passes on main', not 'passed in branch'."
+      - heading: "gate (re-run, post-merge)"
+      - code: '{{ world.gate_command }}'
+      - prose: "verify_ok: GREEN on main"
+        when: "world.verify_ok == true"
+      - heading: "Gate RED on the merged commit — needs a human"
+        when: "world.verify_ok == false"
+      - prose: "The merge broke main. {{ world.last_error }}"
+        when: "world.verify_ok == false"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # Re-run the IDENTICAL gate_command on the merged commit, cwd = MAIN
+      # worktree (post-merge). fail_on_error:false so a RED gate binds ok=false
+      # rather than tripping on_error.
+      - invoke: host.run
+        id: verify-rerun
+        with:
+          cmd: "{{ world.gate_command }}"
+          cwd: "{{ world.main_worktree_path }}"
+          fail_on_error: false
+        bind:
+          verify_ok:     ok
+          verify_output: stdout
+        on_error: verify
+      - say: "Re-verify on merged {{ world.integrated_sha }} → {% if world.verify_ok == true %}PASS ✓{% else %}FAIL ✗{% endif %}"
+      # Post-bind guarded emits (verify_ok is "" pre-bind).
+      - when: "world.verify_ok == true"
+        emit_intent: verify_green
+      - when: "world.verify_ok == false"
+        emit_intent: verify_red
+    on:
+      verify_green:
+        - target: cleanup
+          effects:
+            - set:
+                shipped_sha: "{{ world.integrated_sha }}"
+      verify_red:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                last_error: "verify: gate RED on merged commit {{ world.integrated_sha }}\n{{ world.verify_output }}"
+                status:     "needs-human"
+      look:
+        - target: .

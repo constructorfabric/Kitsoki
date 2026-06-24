@@ -8,7 +8,7 @@ import (
 )
 
 // FuzzMatch seeds the matcher with a representative slice of
-// proposal §5 traces (synonyms, examples, multi-token utterances) and
+// traces (synonyms, examples, multi-token utterances) and
 // asserts the invariants the orchestrator relies on:
 //
 //   - Match never panics on arbitrary input.
@@ -38,7 +38,7 @@ func FuzzMatch(f *testing.F) {
 		f.Fatalf("Compile: %v", err)
 	}
 
-	// Seeds — proposal §5 traces plus adversarial nonsense.
+	// Seeds — representative traces plus adversarial nonsense.
 	seeds := []string{
 		"wade across the river",
 		"let's pay the ferryman",

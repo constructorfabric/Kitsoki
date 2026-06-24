@@ -1,27 +1,378 @@
-# observability — STUB. Wave 3 / Phase 6 wires log + metric queries
-# against a real observability provider.
+# observability — query a signal, triage it, alert | annotate | clear.
+#
+# Wave 3 fills the former STUB with a real pick signal → query → triage →
+# alert | annotate | clear loop. This is dev-story's monitoring surface: the
+# engineer names a signal / dashboard, the loop queries it (host.run), an
+# on-call agent triages the reading (host.agent.decide), and the loop routes
+# deterministically on the disposition:
+#
+#   observability (intake) ── query_signal ──▶ observability_querying
+#                                                │ on_enter: host.run query
+#                                                │ + host.agent.decide triage
+#                                                ▼
+#                                            observability_triaged  (the verdict)
+#                                                ├─ raise_alert ▶ observability_alerting   ─▶ observability_done
+#                                                ├─ annotate    ▶ observability_annotating ─▶ observability_done
+#                                                └─ clear        ▶ observability (parked)
+#
+# Every host this loop touches is ALREADY in dev-story's allow-list
+# (host.run, host.agent.decide, host.inbox.add) or is an iface default
+# (iface.transport.post → host.append_to_file). So the loop is fully
+# no-LLM-gateable: flow fixtures stub the decide + the host.run steps and
+# assert the DETERMINISTIC routing — the query, the triage disposition, the
+# out-of-band alert + inbox mirror, the recorded annotation — with no real LLM.
+# See flows/observability_*.yaml.
+#
+# Decision-emit discipline (the cherny pattern): obs_triage.disposition is
+# unset until the decide binds, so the post-bind guarded emits in
+# observability_querying defer to the post-bind pass — exactly one fires once
+# the verdict settles. The room is `decider: llm`-pinned so STAGED mode
+# (kitsoki web) auto-fires the deterministic route instead of stalling for a
+# human (the operator already decided by picking the signal). Mirrors
+# incident_triaging.
 
 states:
 
+  # ── Intake ────────────────────────────────────────────────────────
+  # The resting floor of the observability loop. The operator names a signal
+  # / dashboard; query_signal queries it and enters triage. Reachable from
+  # landing via go_observability; re-entered (parked) when triage clears the
+  # signal.
   observability:
-    description: "Observability — logs / metrics (Wave 3 stub)."
-    # Flattened view (no extends/blocks) — `choice:` cannot live inside a
-    # `blocks:` map (typed metadata is lost through the inheritance
-    # pipeline; see docs/choice-widget.md §3.1).
+    description: "Observability — name a signal or dashboard to query."
+    relevant_world: [obs_signal, obs_status, last_error]
+
     view:
-      - prose: "Observability (Wave 3 stub)."
+      - banner:
+          text:     "OBSERVABILITY"
+          subtitle: "name a signal or dashboard to query and triage"
+          color:    "#6366F1"   # indigo — the monitoring surface
+      - prose: "Parked — last signal was nominal. Re-query if it changes, or pick a different one."
+        when: "world.obs_status == 'clear'"
+      - prose: "Name a signal or dashboard (e.g. `checkout 5xx rate`, `queue depth`). The loop queries it, triages the reading, and routes — page the owning team, record a dashboard note, or clear it."
+        when: "world.obs_status != 'clear'"
+      - kv:
+          pairs:
+            "Last signal":  '{{ world.obs_signal|default:"(none)" }}'
+            "Disposition":  '{{ world.obs_status|default:"(none)" }}'
+        when: "world.obs_signal != ''"
+      - prose: "⚠ {{ world.last_error }}"
+        when: "world.last_error != ''"
       - choice:
           mode: single
           prompt: "Actions"
           items:
+            - label:  "query_signal"
+              intent: query_signal
+              hint:   "query + triage a signal"
+              param:
+                slot:        signal
+                type:        string
+                placeholder: "signal / dashboard (e.g. checkout 5xx rate)…"
+                required:    true
             - { label: "go_back", intent: go_back, hint: "return to the previous room" }
             - { label: "go_main", intent: go_main, hint: "back to the engineer's day landing" }
             - { label: "look",    intent: look,    hint: "re-render" }
-    relevant_world: []
+
     on:
+      query_signal:
+        - target: observability_querying
+          effects:
+            # Capture the signal; clear the prior triage so the once: guard on
+            # observability_querying re-arms (a fresh signal gets a fresh
+            # verdict), and reset the disposition + error.
+            - set:
+                obs_signal:  "{{ slots.signal }}"
+                obs_triage:  {}
+                obs_status:  ""
+                last_error:  ""
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
-        - target: main
+        - target: landing
       look:
         - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Name a signal with `query_signal` to query and triage it."
+
+  # ── Querying ──────────────────────────────────────────────────────
+  # Runs the recorded query (host.run) then the triage agent
+  # (host.agent.decide) against the query result, binds the structured
+  # verdict, and AUTO-ROUTES on the disposition via post-bind guarded emits.
+  observability_querying:
+    description: "Querying — pulling the signal + triaging the reading."
+    relevant_world: [obs_signal, obs_query, obs_triage]
+    # decider: llm — the route is DETERMINISTIC once the verdict binds (the
+    # post-bind emits read obs_triage.disposition directly). Mirrors
+    # incident_triaging.
+    decider: llm
+
+    view:
+      - banner:
+          text:     "QUERYING"
+          subtitle: "pulling {{ world.obs_signal }}"
+          color:    "#F59E0B"
+      - prose: "Querying {{ world.obs_signal }}…"
+
+    on_enter:
+      # Recorded query. host.run in argv mode so the signal (from world) is
+      # passed as data, never interpolated into a shell string. once: keyed
+      # off the bind. An instance rebinds this to a real metrics / log query.
+      - invoke: host.run
+        id: query
+        once: true
+        with:
+          cmd: "printf"
+          args: ["%s: value 4.2%%, threshold 2.0%%, trend up", "{{ world.obs_signal }}"]
+        bind:
+          obs_query: stdout
+        on_error: observability
+
+      # The triage. once: re-render the cached verdict on /reload instead of
+      # re-spending the LLM; query_signal clears obs_triage to re-arm.
+      - invoke: host.agent.decide
+        id: triage
+        once: true
+        with:
+          prompt: prompts/obs_triage.md
+          schema: schemas/obs-triage.json
+          agent: gate_reviewer
+          args:
+            signal: "{{ world.obs_signal }}"
+            query:  "{{ world.obs_query }}"
+        bind:
+          obs_triage: submitted
+        on_error: observability
+
+      - say: "Triage → {{ world.obs_triage.disposition }} · {{ world.obs_triage.summary }}"
+
+      # Post-bind guarded emits (the cherny decision-emit discipline). Each
+      # reads obs_triage.disposition, which is unset pre-bind — so none fires
+      # until the verdict settles, then exactly one does.
+      - when: "world.obs_triage.disposition == 'alert'"
+        emit_intent: obs_alert
+      - when: "world.obs_triage.disposition == 'annotate'"
+        emit_intent: obs_annotate
+      - when: "world.obs_triage.disposition == 'clear'"
+        emit_intent: obs_clear
+
+    on:
+      obs_alert:
+        - target: observability_triaged
+      obs_annotate:
+        - target: observability_triaged
+      obs_clear:
+        - target: observability_triaged
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Querying…"
+
+  # ── Triaged — the verdict + disposition choice ────────────────────
+  # The verdict read-out. The disposition is carried from the triage emit but
+  # the operator can override — pick any disposition. alert / annotate run a
+  # real action; clear parks the signal back at intake.
+  observability_triaged:
+    description: "Triage verdict — pick a disposition."
+    relevant_world: [obs_signal, obs_triage]
+
+    view:
+      - banner:
+          text:     "TRIAGED — {{ world.obs_triage.disposition|upper }}"
+          subtitle: "{{ world.obs_triage.summary }}"
+          color:    "#F59E0B"
+      - kv:
+          pairs:
+            Signal:      "{{ world.obs_signal }}"
+            Disposition: "{{ world.obs_triage.disposition }}"
+            Detail:      '{{ world.obs_triage.detail|default:"(nominal)" }}'
+      - heading: "Disposition"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "raise_alert"
+              intent: raise_alert
+              hint:   "page the owning team"
+            - label:  "annotate"
+              intent: annotate_signal
+              hint:   "record a dashboard annotation"
+            - label:  "clear"
+              intent: clear_signal
+              hint:   "park the signal — nominal"
+            - label:  "go_main"
+              intent: go_main
+              hint:   "back to the workbench"
+            - label:  "look"
+              intent: look
+              hint:   "re-render"
+
+    on:
+      raise_alert:
+        - target: observability_alerting
+      annotate_signal:
+        - target: observability_annotating
+      clear_signal:
+        - target: observability
+          effects:
+            - set: { obs_status: "clear" }
+            - say: "Parked — signal is nominal."
+      go_main:
+        - target: landing
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Pick a disposition: alert, annotate, or clear."
+
+  # ── Alerting — page the owning team ───────────────────────────────
+  # Posts the signal + triage detail out-of-band (iface.transport.post — the
+  # provider-neutral channel; default host.append_to_file, an instance rebinds
+  # to PagerDuty / Slack) and mirrors it into the operator's inbox. Then
+  # advances to the read-out.
+  observability_alerting:
+    description: "Alerting — paging the owning team."
+    relevant_world: [obs_signal, obs_triage, obs_action, obs_status]
+
+    view:
+      - banner:
+          text:     "ALERTING"
+          subtitle: "paging the owning team"
+          color:    "#DC2626"
+      - kv:
+          pairs:
+            Signal:  "{{ world.obs_signal }}"
+            Summary: "{{ world.obs_triage.summary }}"
+      - prose: "Paging…"
+
+    on_enter:
+      # Post the alert out-of-band. once: keyed off obs_action so a /reload
+      # doesn't double-page.
+      - invoke: iface.transport.post
+        id: alert
+        once: true
+        with:
+          thread: "observability"
+          body: "ALERT [{{ world.obs_signal }}] {{ world.obs_triage.summary }} — {{ world.obs_triage.detail ?? 'threshold crossed' }}"
+        bind:
+          obs_action: message_id
+
+      # Mirror the alert into the operator's inbox so it surfaces on the hub.
+      - invoke: host.inbox.add
+        id: alert-inbox
+        with:
+          kind: "observability"
+          title: "[{{ world.obs_signal }}] {{ world.obs_triage.summary }}"
+          body: "{{ world.obs_triage.detail }}"
+
+      - set: { obs_status: "alerted" }
+      - emit_intent: obs_action_done
+
+    on:
+      obs_action_done:
+        - target: observability_done
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Paging the owning team…"
+
+  # ── Annotating — record a dashboard note ──────────────────────────
+  # Runs the recorded annotation action (host.run — a recordable, deterministic
+  # shell step; an instance rebinds this to a real dashboard-annotation API).
+  # Binds obs_action, sets the disposition, and advances to the read-out.
+  observability_annotating:
+    description: "Annotating — recording a dashboard note."
+    relevant_world: [obs_signal, obs_triage, obs_action, obs_status]
+
+    view:
+      - banner:
+          text:     "ANNOTATING"
+          subtitle: "recording a dashboard note"
+          color:    "#0EA5E9"
+      - kv:
+          pairs:
+            Signal: "{{ world.obs_signal }}"
+            Note:   "{{ world.obs_triage.summary }}"
+      - prose: "Annotating…"
+
+    on_enter:
+      # Recorded annotation. host.run argv mode; once: keyed off the bind.
+      - invoke: host.run
+        id: annotate
+        once: true
+        with:
+          cmd: "printf"
+          args: ["annotated %s: %s", "{{ world.obs_signal }}", "{{ world.obs_triage.summary }}"]
+        bind:
+          obs_action: stdout
+        on_error: observability_triaged
+
+      - set: { obs_status: "annotated" }
+      - emit_intent: obs_action_done
+
+    on:
+      obs_action_done:
+        - target: observability_done
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Annotating…"
+
+  # ── Done — the read-out ───────────────────────────────────────────
+  # Terminal read-out for the alerted / annotated dispositions. Offers a fresh
+  # query or a return to the workbench.
+  observability_done:
+    description: "Signal handled — alerted or annotated."
+    relevant_world: [obs_signal, obs_action, obs_status]
+
+    view:
+      - banner:
+          text:     "{{ world.obs_status|upper }} ✓"
+          subtitle: "{{ world.obs_signal }}"
+          color:    "#10B981"
+      - kv:
+          pairs:
+            Signal:      "{{ world.obs_signal }}"
+            Disposition: "{{ world.obs_status }}"
+            Action:      '{{ world.obs_action|default:"(none)" }}'
+      - heading: "Next"
+      - choice:
+          mode: single
+          prompt: ""
+          items:
+            - label:  "go_observability"
+              intent: go_observability
+              hint:   "query another signal"
+            - label:  "go_main"
+              intent: go_main
+              hint:   "back to the workbench"
+            - label:  "look"
+              intent: look
+              hint:   "re-render"
+
+    on:
+      go_observability:
+        - target: observability
+          effects:
+            - set: { obs_status: "", obs_signal: "", last_error: "" }
+      go_main:
+        - target: landing
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: landing

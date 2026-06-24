@@ -1,0 +1,68 @@
+# design_overlap_proposes_change — the search room's overlap handling.
+#
+# When the scout finds an overlapping proposal, `confirm` is GUARDED on an
+# empty overlap list — a free-typed "confirm" bounces back (default arm).
+# The operator is steered to `change_existing` (amend) or `override_new`.
+# Here we test that the guard fires and that `change_existing` advances to
+# design_refine with the correct design_change_target set.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design_search
+initial_world:
+  judge_mode:         "human"
+  design_idea:      "Add a local model agent sidecar."
+  design_slug:      "lmo"
+  design_workspace: "docs/proposals/.workspace/lmo"
+  # Pre-populate the scout and researcher results so the confirm guard sees them.
+  # Seeding bypasses on_enter, so we inline the agent results here.
+  design_existing_state:
+    overlaps:
+      - { path: "docs/proposals/local-model-agent.md", kind: "accepted", summary: "Already proposes a llama.cpp sidecar for routing/small-decide.", recommendation: "amend" }
+    roadmap_fit: "Duplicates the accepted local-model-agent proposal."
+  design_existing_path:   "docs/proposals/.workspace/lmo/002-existing-state.md"
+  design_references:
+    items: []
+  design_references_path: "docs/proposals/.workspace/lmo/003-references.json"
+
+host_handlers:
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/lmo/out.md", message_id: "out#1" }
+  host.run:
+    by_call:
+      amend_workspace:
+        data: { ok: true, stdout_json: { slug: "lmo", workspace: "docs/proposals/.workspace/lmo" } }
+  # Stubs for design_refine on_enter (advanced to by change_existing)
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.agent.task:
+    by_call:
+      refine_brief:
+        data:
+          ok: true
+          submitted: { summary: "Brief started.", gaps: [] }
+
+turns:
+  # confirm is guarded on an empty overlap list — with an overlap present
+  # it bounces back (default arm) rather than skipping the overlap.
+  - intent: { name: confirm, slots: {} }
+    expect_state: design_search
+    expect_world:
+      design_overlap_decision: ""
+    # The overlap is surfaced as a discrete "Overlap 1" kv (the golden-example
+    # view change) so the operator can see the matching draft's path at a glance.
+    expect_view_matches: "Overlap 1.*local-model-agent\\.md"
+
+  # Amend the existing proposal instead — records the decision + target,
+  # advances to design_refine.
+  - intent: { name: change_existing, slots: { target: "docs/proposals/local-model-agent.md" } }
+    expect_state: design_refine
+    expect_world:
+      design_overlap_decision: "change_existing"
+      design_change_target:    "docs/proposals/local-model-agent.md"
+      design_workspace:        "docs/proposals/.workspace/lmo"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "amend_workspace" }
+
+expect_no_errors: true

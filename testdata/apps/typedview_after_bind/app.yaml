@@ -1,0 +1,61 @@
+# typedview_after_bind — regression fixture for the "typed view dropped when
+# entering a room whose on_enter binds" bug.
+#
+# Entering `room` runs a binding on_enter host call (host.test.scan binds
+# world.scan_result). machine.Turn skips its typed render when on_enter host
+# calls will bind (the pre-bind world would error bound-field templates), and
+# the post-bind re-render in dispatchHostCalls only produces the TEXT view.
+# Without orchestrator.refreshTypedViewAfterBind the turn's TurnOutcome ships
+# TypedView=nil and the web surface falls back to the 80-col plain-text blob
+# (collapsing the typed banner/prose/choice→buttons). This fixture lets a Go
+# test drive `enter` and assert the resulting TypedView is populated.
+app:
+  id: typedview-after-bind
+  version: 0.1.0
+  title: "Typed view after bind"
+
+root: init
+
+hosts:
+  - host.test.scan
+
+world:
+  scan_result: { type: string, default: "" }
+
+intents:
+  enter: { title: "Enter" }
+  pick:  { title: "Pick" }
+
+states:
+  init:
+    view: "init"
+    on:
+      enter:
+        - target: room
+
+  room:
+    # Element-array (typed) view — the shape that must survive the binding
+    # on_enter. Mirrors design_search: a heading, prose that reads the
+    # bound world value, and a single-mode choice (the "Actions" menu that
+    # was rendering as garbled plain text in the web before the fix).
+    view:
+      - heading: "Results"
+      - prose: "Scan said: {{ world.scan_result }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "pick"
+              hint:   "choose this"
+              intent: pick
+    on_enter:
+      - invoke: host.test.scan
+        bind:
+          scan_result: summary
+    on:
+      pick:
+        - target: end
+
+  end:
+    terminal: true
+    view: "done"

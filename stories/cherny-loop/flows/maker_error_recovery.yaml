@@ -1,0 +1,65 @@
+# maker_error_recovery — a failed maker call lands in the explicit error room
+# instead of silently bouncing or continuing the loop. `retry` re-enters the
+# maker room and succeeds against the next gate.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:
+    by_call:
+      gate-0: { data: { ok: false, exit_code: 1, stdout: "FAIL: initial red" } }
+      gate-2: { data: { ok: true,  exit_code: 0, stdout: "ok  kitsoki/internal/ratelimit  0.012s" } }
+  host.agent.task:
+    by_call:
+      maker-1:
+        error: "host.agent.task: maker session abandoned without successful submit"
+      maker-2:
+        data: { submitted: { summary: "Retry with the missing guard condition" } }
+  host.artifacts_dir: { data: { ok: true } }
+  # iface.vcs.commit → host.git: commit the maker's work before @exit:achieved.
+  host.git: { data: { ok: true, sha: "abc1234" } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal:         "Get `go test ./internal/ratelimit` green"
+        gate_command: "go test ./internal/ratelimit/"
+        gate_mode:    "script"
+    expect_state: configuring
+  - intent: { name: launch, slots: {} }
+    expect_state: iterating_error
+    expect_world:
+      iteration: 1
+      last_error: "host.agent.task: maker session abandoned without successful submit"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-1 }
+        times: 1
+    expect_no_host_calls: [host.artifacts_dir]
+  - intent: { name: retry, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      goal_achieved:   true
+      terminal_reason: "achieved"
+      iteration:       2
+      maker_summary:   "Retry with the missing guard condition"
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: maker-2 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-2 }
+        times: 1
+      - handler: host.run
+        args: { call: gate-2 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

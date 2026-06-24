@@ -21,7 +21,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   ticket_id:      "E-2026-05-18-notes-platform"
   ticket_title:   "Notes-as-a-Platform: tags, sharing, search"
@@ -72,7 +72,7 @@ host_handlers:
   host.local_files.ticket:
     data: { ok: true, tickets: [] }
 
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -81,7 +81,7 @@ host_handlers:
         reason:     "n/a (judge_mode=human)"
         confidence: 0.0
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -90,7 +90,7 @@ host_handlers:
         reason:     "n/a (judge_mode=human)"
         confidence: 0.0
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -162,7 +162,7 @@ turns:
   - intent: { name: cyp__proceed, slots: {} }
     expect_state: cyp.code_awaiting_reply
   - intent: { name: cyp__accept, slots: {} }
-    expect_state: main
+    expect_state: landing
     expect_world:
       status: "code_ready"
 

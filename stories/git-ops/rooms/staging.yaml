@@ -1,0 +1,156 @@
+# staging — classify working-tree changes, then interactive git add.
+#
+# add_all is opt-in, not default. Suspicious files are flagged and
+# require an explicit confirmation interstitial.
+
+states:
+
+  staging:
+    description: "Classify and stage changes. add_all is explicit opt-in; suspicious files require confirmation."
+    relevant_world: [git_status, has_uncommitted, working_dir]
+    view:
+      - kv:
+          pairs:
+            Staged:     '{{ world.git_status.staged|default:"(none)" }}'
+            Modified:   '{{ world.git_status.modified|default:"(none)" }}'
+            Untracked:  '{{ world.git_status.untracked|default:"(none)" }}'
+            Suspicious: '{{ world.git_status.suspicious|default:"(none)" }}'
+      - heading: "Suspicious file warning"
+        when: "world.git_status.suspicious != nil && world.git_status.suspicious != ''"
+      - prose: "These files look like credentials or binary artifacts: {{ world.git_status.suspicious }}. They will be included in add_all unless you exclude them manually."
+        when: "world.git_status.suspicious != nil && world.git_status.suspicious != ''"
+      - heading: "Confirm add_all"
+        when: "world.last_op_outcome == 'confirm_suspicious'"
+      - prose: "Suspicious files will be staged. Type confirm_add_all to proceed or back to cancel."
+        when: "world.last_op_outcome == 'confirm_suspicious'"
+      - heading: "Last operation"
+        when: "world.last_op_output != ''"
+      - template: '{{ world.last_op_output }}'
+        when: "world.last_op_output != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "add_file path=<path>"
+              hint:  "stage a specific file"
+              intent: add_file
+              param:
+                slot:        path
+                type:        string
+                placeholder: "path/to/file.go"
+                required:    false
+            - label: "add_all"
+              hint:  "git add -A (stages everything, including suspicious files)"
+              intent: add_all
+            - label: "confirm_add_all"
+              hint:  "confirm staging suspicious files"
+              intent: confirm_add_all
+              when:  "world.last_op_outcome == 'confirm_suspicious'"
+            - label: "reset"
+              hint:  "git reset HEAD (unstage all)"
+              intent: reset
+            - label: "back"
+              hint:  "return to hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: classify_staging
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              git update-index -q --refresh 2>/dev/null || true
+              STAGED=$(git diff --cached --name-only 2>/dev/null | head -20 | tr '\n' ' ')
+              MODIFIED=$(git diff --name-only 2>/dev/null | head -20 | tr '\n' ' ')
+              UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null | head -20 | tr '\n' ' ')
+              SUSPICIOUS=$(echo "$MODIFIED $UNTRACKED" | tr ' ' '\n' | grep -E '\.npmrc$|\.env$|credentials|\.netrc$|reconstructed_.*\.yaml$|\.pyc$' | tr '\n' ' ' || true)
+              jq -n \
+                --arg staged "$STAGED" \
+                --arg modified "$MODIFIED" \
+                --arg untracked "$UNTRACKED" \
+                --arg suspicious "$SUSPICIOUS" \
+                '{staged:$staged, modified:$modified, untracked:$untracked, suspicious:$suspicious}'
+          cwd: "{{ world.working_dir }}"
+        bind:
+          git_status: "stdout_json"
+        on_error: staging
+    on:
+      add_file:
+        - target: staging
+          effects:
+            - invoke: host.run
+              id: git_add_file
+              with:
+                cmd: git
+                args: ["add", "{{ slots.path ?? world.add_path }}"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: staging
+            - set:
+                last_op_outcome: ""
+                add_path: "{{ slots.path ?? world.add_path }}"
+      add_all:
+        - when: "world.git_status.suspicious != '' && world.git_status.suspicious != nil && world.suspicious_confirmed == false"
+          target: staging
+          effects:
+            - set:
+                last_op_outcome: "confirm_suspicious"
+        - target: staging
+          effects:
+            - invoke: host.run
+              id: git_add_all
+              with:
+                cmd: git
+                args: ["add", "-A"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: staging
+            - set:
+                last_op_outcome:      ""
+                suspicious_confirmed: false
+      confirm_add_all:
+        - target: staging
+          effects:
+            - set:
+                suspicious_confirmed: true
+                last_op_outcome:      ""
+            - invoke: host.run
+              id: git_add_all_confirmed
+              with:
+                cmd: git
+                args: ["add", "-A"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: staging
+      reset:
+        - target: staging
+          effects:
+            - invoke: host.run
+              id: git_reset
+              with:
+                cmd: git
+                args: ["reset", "HEAD"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: staging
+            - set:
+                last_op_outcome: ""
+      back:
+        - when: "world.on_integration == true"
+          target: main_ops
+        - target: branch_ops
+      look:
+        - target: .

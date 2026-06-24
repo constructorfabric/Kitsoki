@@ -1,0 +1,38 @@
+# design_budget_exhausted — the draft refine loop bails when capped.
+#
+# dev-story is a hub with no @exit, so an exhausted cycle budget routes back
+# to `main` with a last_error (the prd story would fire @exit:abandoned).
+# Here design_draft_cycle is already at the budget, so `refine` takes the
+# guard arm straight to main.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design_draft
+initial_world:
+  judge_mode:           "human"
+  design_idea:        "Add a per-session working folder primitive."
+  design_workspace:   "docs/proposals/.workspace/wf"
+  design_draft_cycle:  5
+  design_draft_budget: 5
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        title:               "Runtime: first-class per-session working folder"
+        kind:                "runtime"
+        summary_markdown:    "## Runtime: first-class per-session working folder\n\nThe engine establishes a gitignored, session-keyed working folder at session start and exposes it as a reserved world.workdir."
+        file_path:           "docs/proposals/.workspace/wf/005-proposal.md"
+        confidence:          0.4
+        needs_clarification: true
+        follow_up_questions: ["What is the cleanup policy on exit?"]
+
+turns:
+  # At budget — refine bails to the hub landing with a last_error.
+  - intent: { name: refine, slots: { feedback: "tighten the impact section" } }
+    expect_state: landing
+    expect_world:
+      last_error: "design abandoned — draft budget exhausted"
+
+expect_no_errors: true

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DecompositionManifest",
+  "description": "Ordered list of independently-shippable briefs produced by the decomposer agent.",
+  "type": "object",
+  "required": ["briefs"],
+  "additionalProperties": false,
+  "properties": {
+    "briefs": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered briefs — deps must reference earlier IDs only.",
+      "items": {
+        "type": "object",
+        "required": ["id", "brief", "gate_command"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Unique lowercase hyphenated identifier."
+          },
+          "brief": {
+            "type": "string",
+            "minLength": 10,
+            "description": "Scoped task description for the maker agent — self-contained."
+          },
+          "gate_command": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Deterministic shell command that exits 0 on success."
+          },
+          "deps": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "description": "IDs of briefs that must ship before this one (acyclic)."
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,139 @@
+# Builds and deploys the kitsoki promo site + help docs to GitHub Pages.
+#
+# Demo videos are NEVER committed — this workflow records them with Playwright
+# against the freshly-built binary, in the deterministic no-LLM posture
+# (--flow / --host-cassette). Two-level incrementality keeps that cheap:
+#   1. actions/cache over .artifacts, keyed on every demo-affecting input —
+#      an exact hit means nothing can be stale.
+#   2. per-demo content stamps inside record-demos.sh (feature YAML + spec +
+#      story inputs + binary) — on a partial restore, only changed demos
+#      re-record.
+# A docs-only push therefore deploys in minutes with 0 recordings; a cold run
+# records all ~14 demos (sequentially, watch-speed) and can take 30-50 min.
+#
+# One-time repo setup: Settings → Pages → Source: "GitHub Actions".
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - features/**
+      - docs/**
+      - tools/site/**
+      - tools/runstatus/**
+      - stories/**
+      - internal/**
+      - cmd/**
+      - go.mod
+      - go.sum
+      - Makefile
+      - scripts/record-demos.sh
+      - .github/workflows/site.yml
+  workflow_dispatch:
+    inputs:
+      rerecord:
+        description: "Force re-record every demo (ignore stamps)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            tools/runstatus/pnpm-lock.yaml
+            tools/site/pnpm-lock.yaml
+
+      - name: Install recording deps (ffmpeg, jq)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg jq
+
+      # make build runs features-check (stale generated manifests fail here),
+      # embeds the SPA, and produces the binary the specs drive.
+      - name: Build kitsoki
+        run: |
+          make build
+          mkdir -p bin && cp ./kitsoki bin/kitsoki
+
+      - name: Install Playwright
+        working-directory: tools/runstatus
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Emit feature catalog contract
+        run: make features-index && make site-data
+
+      # Restore previous recordings; the per-demo stamps decide what is stale.
+      - uses: actions/cache@v4
+        with:
+          path: .artifacts
+          key: demos-v1-${{ hashFiles('features/**', 'tools/runstatus/tests/playwright/**', 'tools/runstatus/src/**', 'stories/**', 'internal/**/*.go', 'cmd/**/*.go', 'go.sum') }}
+          restore-keys: |
+            demos-v1-
+
+      - name: Record demos
+        id: record-demos
+        continue-on-error: true
+        run: ./scripts/record-demos.sh ${{ inputs.rerecord && '--force' || '' }}
+
+      # Stitch the per-section recordings into the complete-product-tour master
+      # (pure no-LLM post-processing). Runs after recording so every section
+      # source exists; before the site build so the master + its 8-group rail
+      # deploy instead of degrading to a poster.
+      - name: Stitch master product tour
+        id: stitch-tour
+        continue-on-error: true
+        run: cd tools/runstatus && pnpm exec tsx scripts/features/stitch-tour.mjs complete-product-tour
+
+      - name: Upload recording diagnostics
+        if: ${{ steps.record-demos.outcome == 'failure' || steps.stitch-tour.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: recording-diagnostics
+          path: |
+            .artifacts/**/diagnostic.log
+            tools/runstatus/test-results/**
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Build site
+        run: make site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: tools/site/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

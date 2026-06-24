@@ -1,0 +1,37 @@
+# Climate-mode flow: a 2023 monthly climate profile for Tokyo.
+#
+# Same seam as forecast.yaml, but the script takes the climate branch: geocode
+# (cassette) + a full-year 2023 archive GET (cassette), then aggregates the 365
+# daily values into 12 monthly rows + annual summary. The 2023 dataset is fixed,
+# so every climate output is fully deterministic — asserted exactly below.
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+starlark_http_cassette: ../cassettes/climate.http.yaml
+
+turns:
+  # climate Tokyo: lobby → report (climate branch). place/coords are
+  # geocode-derived; headline is computed from the fixed 2023 archive data.
+  - intent: { name: climate, slots: { location: "Tokyo" } }
+    expect_state: report
+    expect_world:
+      mode: "climate"
+      headline: "2023 annual mean 16.7°C · warmest Aug · wettest Jun · 1369.4 mm total"
+      place: "Tokyo, Japan"
+      coords: "35.69°N, 139.69°E · tz Asia/Tokyo"
+    expect_host_calls:
+      - handler: host.starlark.run
+    expect_view_matches: "climate profile"
+
+  - intent: { name: back, slots: {} }
+    expect_state: lobby
+    expect_world:
+      place: ""
+      mode: ""
+
+  - intent: { name: quit, slots: {} }
+    expect_state: ended
+
+expect_terminal: true
+expect_no_errors: true

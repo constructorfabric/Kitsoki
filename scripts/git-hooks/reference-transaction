@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# reference-transaction hook: pin the PRIMARY checkout to its default branch.
+#
+# Companion to the Claude Code PreToolUse guard (.claude/hooks/block-bare-checkout.sh).
+# That guard only governs the agent's Bash tool calls; this one is enforced by git
+# itself, so it also catches a human typing `git checkout <branch>` in a terminal —
+# the gap that let this folder drift off main once before.
+#
+# git has no `pre-checkout` hook. `reference-transaction` is the only pre-emptive
+# lever: in the `prepared` state, exiting non-zero aborts the whole transaction. On a
+# branch switch git reports `HEAD  old=<oid>  new=ref:refs/heads/<branch>`, so we abort
+# when the primary worktree's HEAD is being retargeted to a non-default branch.
+#
+# The primary checkout must always be the default branch AT ITS TIP. Anything else —
+# a feature branch, an old commit, a tag, a detached HEAD — belongs in a worktree.
+# So we abort any HEAD retarget except:
+#   - HEAD → refs/heads/<default branch>  (a symref to main; always its tip)         → allowed
+#   - HEAD detached exactly at the current tip of the default branch                 → allowed
+#     (this is the only detach git's own machinery needs here — e.g. checkout --detach
+#      on main, or a no-op rebase replaying onto the current tip)
+# Everything that isn't a HEAD retarget passes untouched:
+#   - commits / resets / fetches / fast-forward `git pull` update refs/heads/*, not HEAD
+#   - linked worktrees under .worktrees/ (git-dir != git-common-dir) — branch work there
+#     is the whole point
+# Known cost: `git pull --rebase` with new upstream commits detaches HEAD onto the new
+# upstream tip (≠ current main tip) and is therefore blocked. Use a plain `git pull`
+# (fast-forward / merge keeps HEAD on the main symref), or rebase in a worktree.
+#
+# Installed into .git/hooks/ by `make setup` (scripts/setup.sh). .git/hooks is shared
+# with linked worktrees, which is why the git-dir==git-common-dir check matters.
+
+set -euo pipefail
+
+# Only the prepared phase can abort; ignore committed/aborted.
+[ "${1:-}" = "prepared" ] || exit 0
+
+# Only pin the PRIMARY worktree. Linked worktrees have a distinct per-worktree git-dir.
+gitdir="$(git rev-parse --git-dir 2>/dev/null || true)"
+commondir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+[ -n "$gitdir" ] && [ "$gitdir" = "$commondir" ] || exit 0
+
+# `git worktree add/move` points the NEW worktree's HEAD at a non-default branch, and
+# that ref update runs in the primary's git-dir context — so it looks exactly like a
+# primary branch switch (git-dir==common-dir, old=0…0, new=ref:refs/heads/<branch>).
+# The only reliable tell is the invoking command. The immediate parent of this hook is
+# always the git process itself (never the wrapping shell), so matching it is safe.
+parent_cmd="$(ps -o command= -p "$PPID" 2>/dev/null || true)"
+case "$parent_cmd" in
+  *git*worktree*) exit 0 ;;   # creating/moving a worktree — allowed
+esac
+
+# Resolve the branch this checkout is allowed to sit on (origin/HEAD, else main/master).
+default_branch="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@' || true)"
+if [ -z "$default_branch" ]; then
+  if git show-ref --verify --quiet refs/heads/main 2>/dev/null; then
+    default_branch="main"
+  elif git show-ref --verify --quiet refs/heads/master 2>/dev/null; then
+    default_branch="master"
+  else
+    default_branch="main"
+  fi
+fi
+
+zero="0000000000000000000000000000000000000000"
+main_tip="$(git rev-parse --verify --quiet "refs/heads/$default_branch" 2>/dev/null || true)"
+
+# Scan the transaction for any HEAD retarget that would leave it off the tip of main.
+while read -r _old new ref; do
+  [ "$ref" = "HEAD" ] || continue
+  case "$new" in
+    "$zero") continue ;;                                        # ref deletion — not a checkout
+    ref:refs/heads/"$default_branch") continue ;;              # HEAD → main symref (its tip)
+    ref:refs/heads/*) what="switch to branch '${new#ref:refs/heads/}'" ;;
+    ref:*)            what="point HEAD at '${new#ref:}'" ;;     # symref to a tag/remote/etc.
+    *)
+      # Detached HEAD at an object id. Allowed only at the current tip of main.
+      [ -n "$main_tip" ] && [ "$new" = "$main_tip" ] && continue
+      what="detach HEAD at '$new' (not the tip of '$default_branch')" ;;
+  esac
+  cat >&2 <<EOF
+✗ Blocked: the primary checkout may only be '$default_branch' at its tip (tried to $what).
+  Do that work in a worktree instead:
+      git worktree add .worktrees/<name> <branch-or-commit>
+  Linked worktrees under .worktrees/ are exempt. (reference-transaction guard)
+EOF
+  exit 1
+done
+exit 0

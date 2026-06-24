@@ -1,0 +1,98 @@
+# once_emit_staged — minimal repro for:
+#   "once: on_enter host.run drops its bind + post-bind emit_intent on room re-entry"
+#
+# The bug: in staged mode (ExecStaged / kitsoki web) the isStagedGate check at
+# the TOP of dispatchEmittedIntents fires for the STARTING state (idle) because
+# idle is a decision gate (has user-accessible intents look and quit that are not
+# emit targets). The staged-gate stop runs before any emit fires, so the
+# post-bind emit_intent that should route to branch_ops or main_ops is silently
+# dropped and the session stays at idle.
+#
+# Two variants that trigger the bug:
+#
+#   1. Initial boot (RunInitialOnEnter, staged=true):
+#      detect_context binds route="on_branch"; settlePostBindEmits calls
+#      DispatchPostBindEmits(idle, staged=true); dispatchEmittedIntents fires
+#      isStagedGate(idle)=true → emit dropped → session stays at idle.
+#
+#   2. Re-entry (on_enter re-fires, once: skips invoke, staged=true):
+#      once: guard sees all bind targets set → skips invoke; emit_intent renders
+#      "on_branch" from cached world; same isStagedGate drop.
+#
+# Structural mirror of git-ops/rooms/idle.yaml:
+#   - idle has once: invoke + emit_intent: "{{ world.route }}"
+#   - idle also has operator-accessible intents (look, quit) which make it a
+#     decision gate even though the routing intents (on_branch, on_main) are
+#     supposed to be auto-advances
+#   - route default is "look" (non-empty string, same as git-ops)
+
+app:
+  id: once-emit-staged
+  version: 0.1.0
+  title: "once+emit+staged repro"
+
+hosts:
+  - host.detect
+
+world:
+  route:    { type: string, default: "look" }
+  detected: { type: string, default: "" }
+
+root: idle
+
+intents:
+  on_branch:
+    description: "Internal: route to branch_ops (emitted by idle on_enter)."
+    examples: []
+    priority: 95
+    hidden: true
+  on_main:
+    description: "Internal: route to main_ops (emitted by idle on_enter)."
+    examples: []
+    priority: 95
+    hidden: true
+  look:
+    description: "Refresh / stay here."
+    examples: ["look", "refresh"]
+    priority: 10
+  quit:
+    description: "Exit."
+    examples: ["quit", "exit"]
+    priority: 50
+
+states:
+  idle:
+    description: "Detector router. Auto-routes to branch_ops or main_ops."
+    view: "Detecting… route={{ world.route }}"
+    on_enter:
+      - invoke: host.detect
+        once: true
+        id: detect_context
+        with: {}
+        bind:
+          route:    "route"
+          detected: "detected"
+      - emit_intent: "{{ world.route }}"
+    on:
+      on_branch: [{ target: branch_ops }]
+      on_main:   [{ target: main_ops }]
+      look:      [{ target: . }]
+      quit:      [{ target: done }]
+
+  branch_ops:
+    description: "Branch hub."
+    view: "Branch ops. detected={{ world.detected }}"
+    on:
+      look: [{ target: . }]
+      quit: [{ target: done }]
+
+  main_ops:
+    description: "Main hub."
+    view: "Main ops. detected={{ world.detected }}"
+    on:
+      look: [{ target: . }]
+      quit: [{ target: done }]
+
+  done:
+    description: "Done."
+    view: "Done."

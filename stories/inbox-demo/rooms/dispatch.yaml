@@ -1,0 +1,80 @@
+states:
+
+  dispatch:
+    description: "Ready to launch a background task."
+    relevant_world: [last_job_id, result]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "This room launches a long-running task in the background. When it finishes, a notification lands in your global inbox — watch the badge."
+          - kv:
+              pairs:
+                Status: "idle"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "start"
+                  hint:  "kick off the background task"
+                - label: "check"
+    on:
+      start:
+        - target: working
+      check:
+        - target: .
+
+  working:
+    description: "Background task running."
+    relevant_world: [last_job_id, result]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The task is running in the background. You can keep working — the inbox will notify you when it completes."
+          - kv:
+              pairs:
+                Job:    '{{ world.last_job_id|default:"(pending)" }}'
+                Status: "running"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "check"
+    on_enter:
+      # Decorative short sleep — completes in real time under the web
+      # scheduler (real clock). The flow fixture stubs host.run with a
+      # short delay. On terminal the engine auto-posts a success
+      # notification whose TeleportState == this state (working).
+      - invoke: host.run
+        with:
+          cmd: "sleep 0.5"
+        background: true
+        bind: { last_job_id: job_id }
+        on_complete:
+          - set:
+              result: "task complete"
+          - say: "Background task finished."
+    on:
+      check:
+        - target: .
+
+  done:
+    description: "Task complete."
+    relevant_world: [result]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The background task has completed."
+          - kv:
+              pairs:
+                Result: '{{ world.result|default:"(none)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "check"
+    on:
+      check:
+        - target: .

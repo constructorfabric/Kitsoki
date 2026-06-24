@@ -1,0 +1,36 @@
+# ticket_search_freeform_work — imported dev-story ticket_search forwards prose
+# to the core landing workbench agent.
+#
+# Regression shape: in live kitsoki-dev, free text from core.ticket_search was
+# routed by the LLM to core__go_main, producing only the landing/opening view.
+# The imported room now has default_intent: work, folded to core__work here, so
+# the request becomes a landing_agent task.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.ticket_search
+initial_world:
+  core__ticket_results:
+    - { id: "1", title: "Seed ticket", status: "open", type: "bug" }
+
+host_handlers:
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Planned the local issue to GitHub migration."
+        details: "Would inspect issues/, map frontmatter to GitHub issue fields, and prepare a dry run."
+
+turns:
+  - intent:
+      name: core__work
+      slots:
+        request: "we have a bunch of tickets saved in the repo itself we need to migrate to github"
+    expect_state: core.landing
+    expect_world:
+      core__landing_request: "we have a bunch of tickets saved in the repo itself we need to migrate to github"
+      core__landing_note:
+        summary: "Planned the local issue to GitHub migration."
+        details: "Would inspect issues/, map frontmatter to GitHub issue fields, and prepare a dry run."
+
+expect_no_errors: true

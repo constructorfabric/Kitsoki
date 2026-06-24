@@ -1,0 +1,162 @@
+states:
+  # THE OFF-RAMP ROOM. A normal, non-conversational discovery menu that opts in
+  # to the agent off-ramp. The off-ramp is REJECTED at load on a terminal: true
+  # or mode: conversational state, so it belongs on exactly this kind of resting
+  # menu room. The struct form below styles the off-ramp voice independently of
+  # any app-level off_path: block: a friendly-guide persona and a banner that
+  # makes clear the reply is "off the menu — just answering," not a transition.
+  #
+  # VIEW SHAPE — flattened (no extends/blocks). A `choice: mode: single` element
+  # CANNOT live inside an `extends`+`blocks` view: the typed choice metadata is
+  # lost through the inheritance pipeline (docs/stories/choice-widget.md §3.1),
+  # so the web client receives a null typed_view and InputBar can't render the
+  # free-text floor the off-ramp needs. A flat view preserves the choice items,
+  # which makes the menu render as buttons AND makes the free-text floor appear
+  # beneath them (InputBar showTextFloor) — the very text box a visitor types an
+  # off-menu question into. This is the only web path to the no-match the
+  # off-ramp answers, so the demo room MUST use the flat shape.
+  desk:
+    description: "Welcome Desk — pick a menu item OR just ask a question"
+    relevant_world: [visited]
+    agent_off_ramp:
+      persona: >
+        You are a warm, concise guide at the kitsoki Welcome Desk. The visitor
+        asked something the menu can't answer. Give a genuinely helpful, honest,
+        2-4 sentence reply in plain language. Never pretend to take an action or
+        change anything — you are only answering.
+      banner: "(off the menu — just answering)"
+    view:
+      - prose: "Welcome to the kitsoki Welcome Desk. Pick a menu item below — or just type a question in your own words. If it's something the menu can't answer, I'll do my best to answer it directly, right here, without losing your place."
+      - heading: "On the menu"
+      - list:
+          items:
+            - label: "browse"
+              hint: "see what stories ship with kitsoki"
+            - label: "status"
+              hint: "is everything running?"
+            - label: "about"
+              hint: "what is this desk?"
+      - heading: "Off the menu"
+      - prose: "Ask anything else in plain words — e.g. \"why should I trust an AI with my project?\" — and I'll answer it here instead of bouncing you back to the menu."
+      - heading: "Last visited"
+      - kv:
+          pairs:
+            Where: "{{ world.visited }}"
+      - choice:
+          mode: single
+          prompt: "On the menu"
+          items:
+            - label: "browse"
+              hint: "browse the catalogue"
+              intent: browse
+            - label: "status"
+              hint: "check system status"
+              intent: status
+            - label: "about"
+              hint: "about this desk"
+              intent: about
+            - label: "quit"
+              hint: "leave the desk"
+              intent: quit
+            - label: "look"
+              hint: "redescribe the desk"
+              intent: look
+    on:
+      browse:
+        - target: catalogue
+          effects:
+            - set: { visited: "catalogue" }
+      status:
+        - target: status_room
+          effects:
+            - set: { visited: "status" }
+      about:
+        - target: about_room
+          effects:
+            - set: { visited: "about" }
+      quit:
+        - target: ended
+      look:
+        - target: .
+
+  catalogue:
+    description: "Catalogue — the stories that ship with kitsoki"
+    relevant_world: [visited]
+    view:
+      - prose: "A sample of the stories that ship with kitsoki. Each is a small YAML state machine you can run with `kitsoki run stories/<name>/app.yaml`."
+      - list:
+          items:
+            - label: "oregon-trail"
+              hint: "the canonical typed-elements adventure"
+            - label: "weather-report"
+              hint: "deterministic Starlark glue over a real HTTP API"
+            - label: "routing-demo"
+              hint: "hands-on tour of the four-tier command router"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "back"
+              hint: "return to the desk"
+              intent: back
+            - label: "look"
+              hint: "redescribe the catalogue"
+              intent: look
+    on:
+      back:
+        - target: desk
+      look:
+        - target: .
+
+  status_room:
+    description: "Status — everything is running"
+    relevant_world: [visited]
+    view:
+      - heading: "System status"
+      - kv:
+          pairs:
+            Engine:   "ok"
+            Sessions: "ok"
+            Agent:   "ok (stubbed in this demo)"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "back"
+              hint: "return to the desk"
+              intent: back
+            - label: "look"
+              hint: "redescribe the status"
+              intent: look
+    on:
+      back:
+        - target: desk
+      look:
+        - target: .
+
+  about_room:
+    description: "About — what the Welcome Desk is"
+    relevant_world: [visited]
+    view:
+      - prose: "The Welcome Desk is a one-room demo of the agent off-ramp: a discovery menu that answers off-menu questions in place via a voiced converse turn, without advancing the state machine or mutating world."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "back"
+              hint: "return to the desk"
+              intent: back
+            - label: "look"
+              hint: "redescribe the about page"
+              intent: look
+    on:
+      back:
+        - target: desk
+      look:
+        - target: .
+
+  ended:
+    terminal: true
+    description: "Desk closed"
+    view:
+      - prose: "The Welcome Desk is closed. Re-run to start over."

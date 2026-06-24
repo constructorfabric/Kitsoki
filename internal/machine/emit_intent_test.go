@@ -468,6 +468,39 @@ func TestEmitIntent_StandaloneNoAliasMap(t *testing.T) {
 	require.Equal(t, app.StatePath("end"), newState, "bare `accept` dispatches verbatim at a standalone state")
 }
 
+// TestIsDecisionGate_ImportEmitTargetIsNotAGate — a gating-style state under
+// an import alias whose on_enter emits a BARE child intent name
+// (`mark_achieved`) which maps, via IntentAliases, to its own aliased arc
+// (`maker__mark_achieved`) is an auto-advancing OUTCOME, not an operator
+// decision gate. Before the fix, isDecisionGate built its emit-target set from
+// the bare emit name while allowedIntentNames returned the aliased arc keys; the
+// mismatch made every emit look operator-only, so in staged mode the import
+// compound was wrongly classified a decision gate and the chain stalled. The
+// fix alias-resolves the emit targets so they match the arc keys.
+func TestIsDecisionGate_ImportEmitTargetIsNotAGate(t *testing.T) {
+	gating := &app.State{
+		OnEnter: []app.Effect{{EmitIntent: "mark_achieved"}}, // bare child name
+		On: map[string][]app.Transition{
+			"maker__mark_achieved": {{Target: "../../done"}},
+		},
+		IntentAliases: map[string]string{"mark_achieved": "maker__mark_achieved"},
+	}
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "gate-import"},
+		Root: "maker",
+		Intents: map[string]app.Intent{
+			"maker__mark_achieved": {},
+		},
+		States: map[string]*app.State{
+			"maker": {Type: "compound", Initial: "gating", States: map[string]*app.State{"gating": gating}},
+			"done":  {Terminal: true},
+		},
+	}
+	m := mustNew(t, def)
+	require.False(t, m.IsDecisionGate("maker.gating", world.New()),
+		"an aliased on_enter emit target must not be misclassified as an operator decision gate under an import")
+}
+
 // TestEmitIntent_NonexistentNameInsideAliasMapIsNoArm — when the LLM
 // emits a name that exists nowhere (no alias entry, no bare arc), the
 // dispatcher surfaces the "no transition arm matched" error — same

@@ -16,9 +16,12 @@ import (
 // terminal handles the overflow (wrap, scroll, or truncate per its own
 // settings) — better than the renderer chopping a hand-tuned indent.
 //
-// Bordered is an opt-in (default off). Per the proposal §8 open
-// question, bare-monospace indent is the default Terminal-Room style;
-// authors who want Glamour-style fenced framing can opt in.
+// Bordered is an opt-in (default off): bare-monospace indent is the
+// default Terminal-Room style; authors who want Glamour-style fenced
+// framing can opt in.
+//
+// The zero value (empty Source, Bordered false) is usable and renders to
+// "" so the dispatcher drops it.
 type Code struct {
 	Source   string
 	Bordered bool

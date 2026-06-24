@@ -1,5 +1,5 @@
 // Integration tests for the semantic-routing orchestrator wiring
-// (semantic-routing proposal §1, Phase 2). The unit tests for the
+// (see docs/architecture/semantic-routing.md). The unit tests for the
 // matcher itself live in internal/semroute/*_test.go; these tests
 // exercise the orchestrator-side glue:
 //
@@ -17,6 +17,7 @@ package orchestrator_test
 
 import (
 	"context"
+	"encoding/json"
 	"sync/atomic"
 	"testing"
 
@@ -152,6 +153,75 @@ func TestSemantic_SynonymResolvesWithoutHarness(t *testing.T) {
 		"harness must NOT be called when semantic routing resolves the turn")
 }
 
+// TestSemantic_RouteProvenanceRecordedInTrace pins the trace-detail fix:
+// a semantic-routed turn must stamp WHY the intent fired onto the
+// persisted TurnStarted event (routed_by + match_type + confidence), not
+// just a bare `direct: true`. This is the gap that made a dogfood
+// game-over inscrutable — a paste routed to `quit` via the semantic tier
+// with no recorded provenance. Without RouteProvenance.stampOn the
+// TurnStarted payload carries no routed_by key and this fails.
+func TestSemantic_RouteProvenanceRecordedInTrace(t *testing.T) {
+	t.Parallel()
+	const appYAML = `
+app:
+  id: semroute-prov
+  version: 0.1.0
+world: {}
+routing:
+  enabled: true
+intents:
+  go_north:
+    title: "Go north"
+    synonyms: ["head north"]
+root: start
+states:
+  start:
+    view: "compass"
+    on:
+      go_north:
+        - target: ended
+  ended:
+    terminal: true
+    view: "done"
+`
+	def, err := app.LoadBytes([]byte(appYAML))
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+	h := &countingHarness{fall: staticHarness{intentName: "go_north"}}
+	orch := orchestrator.New(def, m, s, h)
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	_, err = orch.Turn(ctx, sid, "let's head north now")
+	require.NoError(t, err)
+	require.EqualValues(t, 0, h.calls.Load(), "semantic tier must resolve without the harness")
+
+	history, err := s.LoadHistory(sid)
+	require.NoError(t, err)
+
+	var found bool
+	for _, ev := range history {
+		if ev.Kind != store.TurnStarted {
+			continue
+		}
+		var p map[string]any
+		require.NoError(t, json.Unmarshal(ev.Payload, &p))
+		if p["routed_by"] == nil {
+			continue
+		}
+		found = true
+		require.Equal(t, "semantic", p["routed_by"], "TurnStarted must record the resolving tier")
+		require.Equal(t, "synonym:head north", p["match_type"], "TurnStarted must record the match reason")
+		require.InDelta(t, 0.90, p["confidence"], 0.0001, "TurnStarted must record the routing confidence")
+	}
+	require.True(t, found, "a TurnStarted event carrying routing provenance must appear in the trace")
+}
+
 // TestSemantic_DisabledFallsThroughToHarness — same input, but with
 // routing.enabled=false in the AppDef, the matcher is skipped and
 // the harness fires.
@@ -216,7 +286,7 @@ func TestSemantic_RefineIntents_FeedbackRequired(t *testing.T) {
 // `core__bf__refine` with EMPTY slots. The downstream refine arc
 // then set `world.refine_feedback` to "" via
 // `{{ slots.feedback ?? world.llm_verdict.reason }}`, the next
-// oracle's prompt's `{% if args.refine_feedback %}` rendered false,
+// agent's prompt's `{% if args.refine_feedback %}` rendered false,
 // and the operator's directive never reached the LLM.
 //
 // The fix is encoded in stories/{bugfix,cypilot,pr-refinement}/app.yaml:
@@ -301,6 +371,90 @@ states:
 		"the transition must reach ended (via the harness's filled slots)")
 	require.EqualValues(t, 1, h.calls.Load(),
 		"harness MUST be called: a semantic match on an intent with a required unfilled slot must abdicate to the LLM, not auto-dispatch with empty slots — this is the 2026-05-20 dogfood regression")
+}
+
+// TestSemantic_DroppedContentDefersOptionalSlot pins the trace-accuracy guard:
+// a slot-incapable semantic match (bare-string synonym/example) that routes to
+// an intent declaring an OPTIONAL slot must STILL abdicate to the interpreter
+// when the utterance carried content beyond the matched verb — otherwise the
+// matcher fires the intent with empty slots and silently DROPS the value the
+// user supplied (e.g. "get `go test …` green" → configure with no goal). The
+// recorded route would then misrepresent what the user said. A bare invocation
+// (input == the matched example, no extra content) is not lossy and still fires
+// without the harness.
+func TestSemantic_DroppedContentDefersOptionalSlot(t *testing.T) {
+	t.Parallel()
+
+	const appYAML = `
+app:
+  id: semroute-optional-slot
+  version: 0.1.0
+
+world:
+  goal: { type: string, default: "" }
+
+routing:
+  enabled: true
+
+intents:
+  configure:
+    title: "Configure"
+    # An NL example AND a bare command. The optional goal slot means
+    # RequiresUnfilledSlot is false, so only the dropped-content guard keeps a
+    # content-bearing utterance from firing configure with no goal.
+    examples: ["get the tests green", "configure"]
+    slots:
+      goal: { type: string, required: false }
+
+root: start
+
+states:
+  start:
+    view: "setup"
+    on:
+      configure:
+        - target: ended
+          effects:
+            - set: { goal: "{{ slots.goal ?? world.goal }}" }
+
+  ended:
+    terminal: true
+    view: "done"
+`
+	def, err := app.LoadBytes([]byte(appYAML))
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	h := &countingHarness{fall: staticHarness{
+		intentName: "configure",
+		slots:      map[string]any{"goal": "make the parser tests green"},
+	}}
+	orch := orchestrator.New(def, m, s, h)
+	ctx := context.Background()
+
+	// 1. Content-bearing utterance matching the NL example: the goal value lives
+	//    in the words the bare-string matcher cannot extract → MUST defer to the
+	//    harness rather than fire configure with an empty goal.
+	sid1, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+	_, err = orch.Turn(ctx, sid1, "please get the parser tests green for the cache module")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, h.calls.Load(),
+		"harness MUST be called: a content-bearing utterance must not fire a slot-bearing intent with dropped slot content")
+
+	// 2. Bare command equal to the example: nothing to extract → fires fast via
+	//    semroute, no harness call.
+	sid2, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+	out, err := orch.Turn(ctx, sid2, "configure")
+	require.NoError(t, err)
+	require.Equal(t, orchestrator.ModeCompleted, out.Mode)
+	require.EqualValues(t, 1, h.calls.Load(),
+		"harness MUST NOT be called again: a bare invocation (no dropped content) still routes via semroute")
 }
 
 // TestSemantic_MissFallsThroughToHarness — routing is enabled but

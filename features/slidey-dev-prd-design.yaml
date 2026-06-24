@@ -1,0 +1,139 @@
+# yaml-language-server: $schema=feature.schema.json
+id: slidey-dev-prd-design
+kind: story-demo
+title: PM idea → PRD on the slidey repo
+tagline: A product manager talks a real slidey feature — a `--notes` speaker-notes export — from a one-line idea into a published PRD, no LLM in the loop.
+summary: "The dev-story PRD discovery pipeline pointed at the real slidey repo (a Node/Vue narrated-deck renderer), via the slidey-dev instance (imports @kitsoki/dev-story as core). A product manager starts with one idea — a `slidey deck.json --notes out.md` flag that exports a printable per-scene speaker-notes handout from the same deck spec the video/PDF/web outputs share — and the pipeline shapes it through discovery, a prior-art scan, structured clarification (actor + success metric), and a drafted PRD, published to docs/prd/speaker-notes-export.md. Every beat is a deterministic state-machine step replayed from slidey-themed stubs — no real LLM, no API cost."
+narrative: "Phase 1 of the slidey dev-story hybrid: idea → PRD + mockup. The slidey feature is real and small — a spec-derived speaker-notes export alongside slidey's existing video/PDF/web outputs — so the PRD content is grounded in what slidey actually does."
+docs:
+  - stories/slidey-dev/app.yaml
+  - stories/dev-story/README.md
+related:
+  - dev-story-prd-design
+  - slidey-architect-design
+demo:
+  spec: tests/playwright/slidey-pm-idea-video.spec.ts
+  artifactDir: slidey-pm-idea
+  videoBase: slidey-pm-idea
+  posterStep: spm-intro-home
+  story: stories/slidey-dev
+  flow: stories/slidey-dev/flows/pm_idea.yaml
+tour:
+  export: SLIDEY_PM_IDEA_TOUR_STEPS
+  steps:
+    - id: spm-intro-home
+      route: home
+      title: PM starts with an idea
+      body: "A product manager has an idea for the slidey deck renderer: export a printable per-scene speaker-notes handout straight from the deck spec — a `slidey deck.json --notes out.md` flag, alongside the video, PDF, and web outputs. This tour walks that idea into a published PRD on the real slidey repo, no LLM in the loop."
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 5500
+      drive: []
+    - id: spm-story-card
+      route: home
+      target: story-card
+      title: The slidey-dev hub
+      body: "This is slidey-dev: kitsoki's dev-story hub pointed at the real slidey checkout. PRDs land in the slidey tree at docs/prd/<slug>.md. We'll author the speaker-notes-export PRD here."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: story-card
+      dwellMs: 5000
+      drive: []
+    - id: spm-new-session
+      route: home
+      target: new-session-btn
+      title: Spin up a run
+      body: Click New session to start a fresh run of the hub against slidey. It opens in the chat, on the engineer's-day landing.
+      placement: right
+      kind: action
+      advance: route-match
+      advanceRoute: interactive
+      waitForTarget: new-session-btn
+      dwellMs: 3500
+      drive: []
+    - id: spm-prd-discovery
+      route: interactive
+      target: chat-transcript
+      title: Talk through the PRD
+      body: "`prd` opens a discovery conversation, not a form. The PM pitches the feature in their own words — a per-scene notes handout exported from the deck spec — and the interviewer sharpens it into a crisp problem statement before any questions or drafting begin."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 6000
+      drive:
+        - { type: wait-state, state: core.landing }
+        - { type: click-intent, intent: core__go_prd }
+        - { type: wait-state, state: core.prd.idle }
+        - { type: reveal-turn }
+        - { type: type-and-send, text: "I would love a way for slidey to give presenters a printable per-scene speaker-notes handout so they can rehearse a talk without rendering the whole video first" }
+        - { type: wait-state, state: core.prd.idle }
+        - { type: reveal-turn }
+    - id: spm-prd-search
+      route: interactive
+      target: chat-transcript
+      title: Scan for prior art first
+      body: "Before a single question, kitsoki scouts slidey's existing outputs and proposals for overlap. The scan comes back clean — a net-new spec-derived output alongside video, PDF, and web. `confirm` carries it into the clarification round."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 6000
+      drive:
+        - { type: type-and-send, text: ready }
+        - { type: wait-state, state: core.prd.search }
+        - { type: reveal-turn }
+    - id: spm-prd-clarify
+      route: interactive
+      target: chat-transcript
+      title: Clarify the actor and the metric
+      body: "Discovery isn't one-shot. A structured clarification round asks the questions that most change the PRD — who's the actor (presenters rehearsing a talk), and the success metric (decks exported to notes without rendering a full video). The PM answers in the chat, and the accumulated Q&A becomes the PRD's grounding."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 6500
+      drive:
+        - { type: type-and-send, text: confirm }
+        - { type: wait-state, state: core.prd.clarifying }
+        - { type: reveal-turn }
+        - { type: type-and-send, text: presenters rehearsing a talk; the metric is decks-exported-to-notes-without-rendering-video }
+        - { type: wait-state, state: core.prd.clarifying }
+        - { type: reveal-turn }
+        - { type: type-and-send, text: submit }
+        - { type: wait-state, state: core.prd.brief }
+        - { type: reveal-turn }
+    - id: spm-prd-draft
+      route: interactive
+      target: chat-transcript
+      title: Review the drafted PRD
+      body: "With clarification settled and the prior-art scan done, the author writes the speaker-notes-export PRD into a per-session workspace and surfaces it right here — problem, target users, goals, requirements, and the open question. Accept publishes it."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 6500
+      drive:
+        - { type: click-intent, intent: core__prd__confirm }
+        - { type: wait-state, state: core.prd.references }
+        - { type: reveal-turn }
+        - { type: click-intent, intent: core__prd__confirm }
+        - { type: wait-state, state: core.prd.drafting }
+        - { type: reveal-turn }
+    - id: spm-prd-published
+      route: interactive
+      target: chat-transcript
+      title: Published to slidey's docs/prd/
+      body: "The PRD is published to the real slidey tree at docs/prd/speaker-notes-export.md — a validated output the architect can pick up next. That's phase 1: a PM's one-line idea, talked into a grounded PRD on the slidey repo, with no LLM in the render loop."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-transcript
+      dwellMs: 6500
+      drive:
+        - { type: click-intent, intent: core__prd__accept }
+        - { type: wait-state, state: core.prd_published }
+        - { type: reveal-turn }

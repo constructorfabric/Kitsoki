@@ -18,7 +18,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world:
   core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
   core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
@@ -56,12 +56,12 @@ host_handlers:
     data: { ok: true, sha: "abc123", diff: "", url: "https://example/pr/103205", pr_id: "103205", state: "success", checks: "", comments: "" }
   host.local:
     data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0, state: "success" }
-  host.local_files.ticket:
+  host.gh.ticket:
     data: { ok: true, tickets: "" }
   # Confident verdict — every checkpoint where judge_mode is non-human
   # will auto-fire `accept` until we flip the mode.
-  host.oracle.decide:
-    data:
+  host.agent.decide:
+    data: &agent_stub
       ok: true
       submitted:
         summary_title:    "TUI view render before bind — autonomous walk"
@@ -96,9 +96,16 @@ host_handlers:
         reason:     "Confident; advance autonomously."
         confidence_pct: 90
 
+  # host.agent.task — bf reproducing/implementing/testing/validating
+  # rooms generate their artifact via the `task` verb (judge steps use
+  # `decide`). Same stub payload as decide (shared anchor); the artifact
+  # schema's additionalProperties tolerates the judge fields.
+  host.agent.task:
+    data: *agent_stub
+
 turns:
   # ── Phase A — autonomous walk (llm_then_human + confident) ──────────
-  # core.main → core.bf.idle. bf.idle's auto-start on_enter fires on
+  # core.landing → core.bf.idle. bf.idle's auto-start on_enter fires on
   # this transition (ticket is loaded, no reproduction artifact yet),
   # emit_intents `start`, and reproducing.on_enter cascades the
   # autonomous-emit chain through every room with a judge until it

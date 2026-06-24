@@ -3,8 +3,8 @@
 #
 # Search dispatches via iface.ticket.search; in standalone runs the
 # default binding (host.local_files.ticket) scans the configured
-# ticket globs. A downstream Jira-backed flavour rebinds iface.ticket
-# to host.jira via the parent instance's host_bindings.
+# ticket globs. The cyber-repo flavour rebinds iface.ticket to
+# host.jira via the parent instance's host_bindings.
 #
 # After picking a ticket, the operator transitions into the bf import
 # (`go_bugfix`) which projects the picked ticket's keys into bf's
@@ -29,11 +29,14 @@ states:
         with:
           query: "{{ world.ticket_query }}"
           limit: 25
+          # repo is honoured by host.gh.ticket (the kitsoki-dev GitHub binding)
+          # and ignored by host.local_files.ticket; "" ⇒ gh's local-remote default.
+          repo: "{{ world.ticket_repo }}"
         bind:
           ticket_results: tickets
         on_error: ticket_search
     # Flattened view (no extends/blocks) — `choice:` cannot live
-    # inside a `blocks:` map (see docs/choice-widget.md §3.1).
+    # inside a `blocks:` map (see docs/stories/choice-widget.md §3.1).
     #
     # The ticket list is dynamic (world.ticket_results), so the
     # picker uses `param:` to capture the id rather than a literal
@@ -78,7 +81,7 @@ states:
       # `when:` guards. The ready case is a `heading:` (style-guide §1
       # emerald "go"); the not-ready case is plain prose (no false green).
       # The glyph carries the state across mono-colour renders.
-      - heading: "✓ Ready — pick `go_bugfix` to hand off to the bugfix pipeline"
+      - heading: "✓ Ready — `drive` to hand off to the {% if world.ticket_type == 'feature' %}implementation{% elif world.ticket_type == 'epic' %}cypilot{% else %}bugfix{% endif %} pipeline"
         when:  "world.ticket_id != ''"
       - prose: "✗ Pick a ticket from the list above to continue."
         when:  "world.ticket_id == ''"
@@ -87,6 +90,13 @@ states:
             # Title-first to match the row format above; ID trails in
             # parentheses so a quick glance lands on the human label.
             Picked: '{% if world.ticket_id %}{{ world.ticket_title|default:"(no title)" }}  ({{ world.ticket_id }}){% else %}(none — pick one below){% endif %}'
+      # Source / identity line (P5) — only rendered for a GitHub-Issue-backed
+      # ticket (ticket_source=github), surfacing the original local-bug-file
+      # id so the local↔issue mapping is visible instead of eyeball-matched.
+      - kv:
+          pairs:
+            Source: 'GitHub issue #{{ world.ticket_id }}{% if world.ticket_legacy_id %}  (filed locally as {{ world.ticket_legacy_id }}){% endif %}'
+        when: "world.ticket_source == 'github'"
       - choice:
           mode: single
           prompt: "Actions"
@@ -121,13 +131,17 @@ states:
                 type:        string
                 placeholder: "text to filter on"
                 required:    true
+            - label:  "drive"
+              intent: drive
+              hint:   "hand the picked ticket to its pipeline (bug→bugfix, feature→implementation, epic→cypilot)"
+              when:   "world.ticket_id != ''"
+            - label:  "✗ drive — pick a ticket first"
+              intent: drive
+              when:   "world.ticket_id == ''"
             - label:  "go_bugfix"
               intent: go_bugfix
-              hint:   "hand the picked ticket to the bugfix pipeline"
-              when:   "world.ticket_id != ''"
-            - label:  "✗ go_bugfix — pick a ticket first"
-              intent: go_bugfix
-              when:   "world.ticket_id == ''"
+              hint:   "force the bugfix pipeline regardless of ticket type"
+              when:   "world.ticket_id != '' && world.ticket_type != 'bug'"
             - { label: "go_back", intent: go_back, hint: "return to the previous room" }
             - { label: "go_main", intent: go_main, hint: "back to the engineer's day landing" }
             - { label: "look",    intent: look,    hint: "re-render" }
@@ -177,7 +191,16 @@ states:
             # non-empty.
             - set:
                 ticket_id:     "{{ slots.id ?? world.ticket_results[int(slots.n) - 1].id }}"
-                ticket_type:   "{{ slots.type ?? world.ticket_type }}"
+                # Populate ticket_type from the picked ROW so `drive`
+                # routes by kind (bug → bf, feature → impl, epic → cyp).
+                # Direct index access off world.ticket_results works in
+                # set: templates — it's the same shape `.id` uses above.
+                # (The earlier "loop-var member access is forbidden" note
+                # referred to `{% for %}` iteration in VIEWS, not index
+                # access here.) slots.type wins for fixtures that pin it;
+                # the n-based pick falls through to the row's own kind tag
+                # (emitted by the local-files provider's bugSummary).
+                ticket_type:   "{{ slots.type ?? (slots.n != nil ? world.ticket_results[int(slots.n) - 1].type : nil) ?? world.ticket_type }}"
                 thread:        "{{ slots.id ?? world.ticket_results[int(slots.n) - 1].id }}"
             # iface.ticket.get returns the real human-readable
             # title from the ticket's frontmatter; bind it as
@@ -187,8 +210,21 @@ states:
             - invoke: iface.ticket.get
               with:
                 id: "{{ slots.id ?? world.ticket_results[int(slots.n) - 1].id }}"
+                repo: "{{ world.ticket_repo }}"
               bind:
                 ticket_title: title
+                # The bug's optional `repro_command:` frontmatter. Projected
+                # into the bf import's world.gate_command (bugfix-repro-gate
+                # slice) so the `reproducing` room runs it RED-first. Absent ⇒
+                # "" ⇒ bf falls through to the LLM-only reproducer.
+                gate_command: repro_command
+                # Source / identity (P5). host.gh.ticket emits source=github
+                # and lifts legacy_id (the original issues/bugs/<iso>.md id)
+                # out of the ```kitsoki metadata block; the local-files
+                # provider leaves both unset. Bound here so the view can show
+                # the local↔issue mapping instead of a title eyeball-match.
+                ticket_source:    source
+                ticket_legacy_id: legacy_id
               on_error: idle
       # Hand off to the bugfix sub-story for the picked ticket.
       # bf.idle's on_enter auto-emits `start` when entered with a
@@ -201,11 +237,39 @@ states:
       # and fixtures (dev-story/flows/*, scenarios/pickup_*.yaml, the
       # dogfood smoke test) keep working unchanged.
       continue:
+        - when: "world.ticket_id != '' && world.ticket_type == 'feature'"
+          target: impl
+        - when: "world.ticket_id != '' && world.ticket_type == 'epic'"
+          target: cyp
         - when: "world.ticket_id != ''"
           target: bf
         - default: true
           target: ticket_search
           guard_hint: "Pick a ticket from the list before continuing."
+      # Type-aware handoff — the canonical way to launch a picked
+      # ticket's pipeline from the queue. Mirrors main.yaml's `drive`
+      # arc: bug → bf, feature → impl, epic → cyp. pick_ticket now
+      # populates ticket_type from the picked row, so a feature filed
+      # from a proposal (issues/features/*) drives straight into the
+      # implementation story instead of bouncing into bugfix. Tickets
+      # with an unknown/blank type fall through to bf (the historical
+      # default) so existing fixtures keep working.
+      drive:
+        - when: "world.ticket_id != '' && world.ticket_type == 'feature'"
+          target: impl
+        - when: "world.ticket_id != '' && world.ticket_type == 'epic'"
+          target: cyp
+        - when: "world.ticket_id != ''"
+          target: bf
+        - default: true
+          target: ticket_search
+          guard_hint: "Pick a ticket from the list before driving."
+      go_implementation:
+        - when: "world.ticket_id != ''"
+          target: impl
+        - default: true
+          target: ticket_search
+          guard_hint: "Pick a ticket first."
       go_bugfix:
         - when: "world.ticket_id != ''"
           target: bf
@@ -215,7 +279,7 @@ states:
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
-        - target: main
+        - target: landing
       go_inbox:
         - target: inbox
           push_history: false
@@ -261,6 +325,9 @@ states:
         with:
           query: "{{ world.ticket_query }}"
           limit: 25
+          # repo is honoured by host.gh.ticket (the kitsoki-dev GitHub binding)
+          # and ignored by host.local_files.ticket; "" ⇒ gh's local-remote default.
+          repo: "{{ world.ticket_repo }}"
         bind:
           ticket_results: tickets
         on_error: ticket_search
@@ -291,7 +358,7 @@ states:
       go_back:
         - target: ticket_search
       go_main:
-        - target: main
+        - target: landing
       go_inbox:
         - target: inbox
           push_history: false

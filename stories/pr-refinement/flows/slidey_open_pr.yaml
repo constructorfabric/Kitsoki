@@ -1,0 +1,97 @@
+# slidey_open_pr — judge_mode=human, CI passes, no review comments.
+# Slidey-themed posture of happy_human: open a PR for the real slidey
+# grid-cards narration-drift fix, monitor CI green, merge, close out.
+#
+# idle → (open) → open_pr → (proceed) → ci_monitoring (success)
+#   → (proceed) → merge_executing → (proceed) → merge_awaiting_reply
+#   → (accept) → @exit:merged.
+#
+# No-LLM (judge_mode=human). Used by features/slidey-open-pr.yaml as the
+# self-driving open-PR walk for the slidey hybrid deck phase 6.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:      "slidey-128"
+  ticket_title:   "Grid-cards decks drift narration past 6 cards"
+  thread:         "slidey-128"
+  workdir:        ".worktrees/fix-grid-cards-narration"
+  base_branch:    "main"
+  feature_branch: "fix/grid-cards-narration"
+  pr_title:       "fix(timing): align grid-cards narration past 6 cards (slidey-128)"
+  pr_body:        "Fixes slidey-128. Grid `cards` scenes with more than six items drifted narration because the frame estimator's per-card fallback (?? 30) disagreed with the renderer's hold (?? 20) for cards beyond cards_item_5. One-line fallback fix in src/timing.js plus a self-deriving regression test. node --test green (19/19 module, 94/94 whole-repo)."
+  judge_mode:     "human"
+  judge_confidence_threshold: 0.8
+  merge_strategy: "squash"
+  pending_comments: 0
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  # iface.vcs.* → host.git.<op>. prefix-fallback lets one stub cover
+  # open_pr (returns url+pr_id), pr_status (returns state+checks+comments),
+  # commit (returns ok+sha), push, merge (returns sha).
+  host.git:
+    data:
+      ok:    true
+      url:   "https://github.com/kitsoki/slidey/pull/128"
+      pr_id: "128"
+      state: "success"
+      checks: ""
+      comments: ""
+      sha:   "c0ffee19"
+  # iface.ci.* → host.local.<op>. Default `state: success` so the
+  # ci_monitoring poll doesn't loop.
+  host.local:
+    data: { ok: true, state: "success", checks: "" }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "Stub artifact body."
+        root_cause:       "stub"
+        fix_description:  "stub"
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "stub"
+        confidence:       0.9
+
+turns:
+  # idle → open_pr. open_pr.on_enter runs iface.vcs.open_pr and binds
+  # pr_id + pr_url from the host.git stub.
+  - intent: { name: open, slots: {} }
+    expect_state: open_pr
+    expect_world:
+      pr_id:  "128"
+      pr_url: "https://github.com/kitsoki/slidey/pull/128"
+
+  - intent: { name: proceed, slots: {} }
+    expect_state: ci_monitoring
+
+  # ci_monitoring's on_enter polled and bound ci_state=success.
+  # proceed branches: success + 0 comments → merge_executing.
+  - intent: { name: proceed, slots: {} }
+    expect_state: merge_executing
+    expect_world:
+      ci_state: "success"
+
+  # merge_executing.on_enter ran iface.vcs.merge and bound merge_sha.
+  - intent: { name: proceed, slots: {} }
+    expect_state: merge_awaiting_reply
+    expect_world:
+      merge_sha: "c0ffee19"
+      status:    "merged"
+
+  # accept → @exit:merged.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__merged
+    expect_world:
+      status: "merged"
+      pr_url: "https://github.com/kitsoki/slidey/pull/128"
+
+expect_terminal: true
+expect_no_errors: true

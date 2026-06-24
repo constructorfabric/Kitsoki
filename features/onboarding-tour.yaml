@@ -1,0 +1,187 @@
+# yaml-language-server: $schema=feature.schema.json
+id: onboarding-tour
+kind: product-tour
+title: The kitsoki web UI, in five minutes
+tagline: A story-agnostic guided walkthrough of every core surface.
+summary: "The in-app onboarding tour: from the story library through a live run — chat, intent buttons, the live trace diagram and timeline, meta mode, and the read-only observer. It anchors only to elements every story ships, so it works for any first-time user on any story, and replays anytime from the “?” button."
+promo:
+  order: 0
+  highlight: true
+docs:
+  - docs/web/README.md
+demo:
+  spec: tests/playwright/tour-video.spec.ts
+  artifactDir: tour-video
+  videoBase: tour-video-demo
+  posterStep: home-welcome
+  story: stories/bugfix
+  flow: stories/bugfix/flows/happy_llm.yaml
+  hostCassette: stories/bugfix/flows/demo.cassette.yaml
+tour:
+  export: TOUR_STEPS
+  steps:
+    - id: home-welcome
+      route: home
+      title: Welcome to kitsoki
+      body: kitsoki runs LLM workflows as deterministic, auditable state machines. This quick tour shows you around the UI. Use Back / Next, or Skip anytime — and replay it later from the “?” button.
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 4000
+    - id: home-story-cards
+      route: home
+      target: story-card
+      title: Your stories
+      body: Each card is a story — a deterministic graph of rooms you can run. Pick any one to start a session.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: story-card
+      dwellMs: 3500
+    - id: home-rescan
+      route: home
+      target: rescan-btn
+      title: Rescan the library
+      body: Authored a new story on disk? Rescan re-reads the stories directory without restarting the server.
+      placement: bottom
+      kind: explain
+      advance: next
+      dwellMs: 3000
+    - id: home-start
+      route: home
+      target: new-session-btn
+      title: Start a session
+      body: Click the highlighted New session to spin up a fresh run. Each session gets its own trace.
+      placement: right
+      kind: action
+      advance: route-match
+      advanceRoute: interactive
+      dwellMs: 2500
+    - id: iv-current-state
+      route: interactive
+      target: current-state
+      title: Where the run is
+      body: The current room (state) of the run shows here, and updates after every turn.
+      placement: bottom
+      kind: explain
+      advance: next
+      waitForTarget: current-state
+      dwellMs: 3500
+    - id: iv-chat
+      route: interactive
+      target: chat-section
+      title: The conversation
+      body: On the left, the story narrates and you respond — the same loop whether a human or an LLM is driving.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: chat-section
+      dwellMs: 3500
+    - id: iv-input
+      route: interactive
+      target: input-bar
+      title: Drive the story
+      body: Respond here — the room offers exactly the moves it allows as buttons, plus free-text where appropriate. Nothing invalid is possible. Try clicking an option, then carry on with the tour.
+      placement: top
+      kind: explain
+      advance: next
+      waitForTarget: input-bar
+      dwellMs: 4000
+    - id: iv-trace-diagram
+      route: interactive
+      target: trace-diagram
+      title: The live trace — diagram
+      body: On the right, the state diagram lights up the room you're in. Click any room to filter the timeline below.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: trace-diagram
+      dwellMs: 4000
+    - id: iv-trace-timeline
+      route: interactive
+      target: trace-timeline
+      title: The live trace — timeline
+      body: Every transition, decision, and host call lands here as a structured, replayable event. This is the audit record.
+      placement: left
+      kind: explain
+      advance: next
+      dwellMs: 4000
+    - id: iv-state-badge
+      route: interactive
+      target: state-badge
+      title: Live or done
+      body: This badge flips from “live” to “done” when the run reaches a terminal room.
+      placement: bottom
+      kind: explain
+      advance: next
+      dwellMs: 3000
+    - id: iv-meta
+      route: interactive
+      target: meta-button
+      title: Meta mode
+      body: From here you can edit this story's YAML live, ask questions about it, or ask about kitsoki itself — without leaving the run.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: meta-button
+      dwellMs: 3500
+    - id: iv-observe
+      route: interactive
+      target: observe-link
+      title: Observe mode
+      body: Switch to a read-only observer view — handy for watching an LLM-driven run, or reviewing a finished one.
+      placement: bottom
+      kind: action
+      advance: route-match
+      advanceRoute: any
+    - id: tour-done
+      route: any
+      title: You're all set
+      body: "You know the layout: drive the story from the left, watch the trace on the right, switch to observer mode for a focused read-only view, and hit the meta button to inspect or edit the story YAML live. Hit '?' anytime to replay this tour."
+      placement: center
+      kind: explain
+      advance: next
+      dwellMs: 4000
+qa:
+  scenarios:
+    - id: tour-starts
+      title: Tour overlay appears and opens on the home screen
+      required: true
+      steps:
+        - A spotlight overlay is visible with a darkened backdrop
+        - A popover with a title and description is shown
+        - A Next or action button is present in the popover
+    - id: home-landmarks
+      title: Home screen landmarks are spotlighted
+      required: true
+      steps:
+        - A story card or card list is highlighted with a cutout in the backdrop
+        - The popover describes the story catalogue
+        - The New Session button is spotlighted in at least one step
+    - id: navigate-to-interactive
+      title: Clicking New Session navigates to the interactive view
+      required: true
+      steps:
+        - The URL or view changes away from the home screen
+        - The interactive (chat) view is visible with a chat section and input area
+    - id: interactive-landmarks
+      title: Interactive view landmarks are spotlighted in sequence
+      required: true
+      steps:
+        - The current-state panel is spotlighted with a popover
+        - The chat section is spotlighted with a popover
+        - The input bar is spotlighted with a popover
+        - The state badge is spotlighted with a popover
+    - id: trace-panels
+      title: Trace diagram and timeline are spotlighted
+      required: true
+      steps:
+        - A trace diagram panel is spotlighted with a popover
+        - A trace timeline panel is spotlighted with a popover
+    - id: tour-ends
+      title: Tour concludes and overlay dismisses
+      required: true
+      steps:
+        - A closing / done message is shown in a centered popover
+        - After the final step the overlay is no longer visible

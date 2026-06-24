@@ -1,5 +1,4 @@
-# implementation — small-task pipeline (Wave 3 / Phase 6 of the
-# dev-story-bugfix-unify proposal §4.3).
+# implementation — small-task pipeline. See docs/case-studies/bug-fix.md.
 #
 # Triggered when a ticket's type is `task` (a small, well-scoped piece of
 # work; not a bug, not a feature_prd). The pipeline is **lighter than
@@ -10,9 +9,10 @@
 #
 # `handoff` imports `pr-refinement` as the shared tail and consumes the
 # `merged` / `abandoned` exits. Each `_awaiting_reply` follows the
-# canonical checkpoint shape from the dev-story implementation
-# contract — same post + inbox + LLM-judge + emit_intent rhythm as
-# bugfix; only the artifact key + judge prompt vary.
+# canonical §6 checkpoint shape from
+# `docs/proposals/notes/dev-story-implementation-contract.md` — same
+# post + inbox + LLM-judge + emit_intent rhythm as bugfix; only the
+# artifact key + judge prompt vary.
 #
 # # Why no reproduction phase?
 #
@@ -44,11 +44,14 @@ app:
   license: "CC0"
 
 # Host allow-list. iface defaults register implicitly via
-# resolveAllInterfaces; bare host.inbox.add and host.oracle.decide
+# resolveAllInterfaces; bare host.inbox.add and host.agent.decide
 # are listed explicitly because they are not wrapped by an iface.
 hosts:
   - host.inbox.add
-  - host.oracle.decide
+  - host.agent.decide
+  # host.run — the handoff room's lost-work clean-tree check shells out to
+  # `git status --porcelain` before the pr-refinement handoff.
+  - host.run
 
 # Five host_interfaces — same provider-neutral surfaces as bugfix; one
 # fewer (no separate workspace because implementation doesn't create
@@ -86,7 +89,12 @@ host_interfaces:
         input:  { workdir: string }
         output: { diff: string, files: list }
       commit:
-        input:  { workdir: string, message: string, files: list }
+        # stage_all: when true the handler runs `git add -A` first, so NEW
+        # untracked files (e.g. a test the agent wrote) AND deletions are
+        # captured — `files:` and the `-a` fallback both miss untracked.
+        # The write_code + test rooms set this so a mutation can never be
+        # stranded uncommitted (the lost-work split). See git_vcs.go.
+        input:  { workdir: string, message: string, files: list, stage_all: bool }
         output: { ok: bool, sha: string }
       push:
         input:  { workdir: string, remote: string }
@@ -129,7 +137,13 @@ host_interfaces:
         input:  { id: string }
         output: { id: string, path: string, branch: string, dirty: bool }
       create:
-        input:  { name: string, ticket_id: string, base: string }
+        # `id` is the workspace identity (pins the on-disk .worktrees/<id>
+        # dir basename); `name` is the branch; `base` is the branch to
+        # root from. Matches host.git_worktree's worktreeCreate, which
+        # reads id/name/base — every caller (bf.idle, impl.idle) passes
+        # `id:` from world.workspace_id. The earlier `ticket_id` label
+        # was stale: no caller passed it and the handler never read it.
+        input:  { id: string, name: string, base: string }
         output: { ok: bool, path: string }
       sync:
         input:  { id: string }
@@ -161,6 +175,13 @@ world:
   workdir:          { type: string, default: "" }
   base_branch:      { type: string, default: "main" }
   feature_branch:   { type: string, default: "" }
+  # Gates idle.on_enter's worktree-provisioning chain so it fires
+  # exactly once per session per ticket — mirrors bugfix's
+  # bf_autostart_attempted. Without provisioning, an entry path that
+  # does NOT pre-seed workdir (dev-story's `drive` / `go_implementation`
+  # / design_done `implement`) ran the pipeline against an empty
+  # workdir; only the flow fixtures papered over it via initial_world.
+  impl_provision_attempted: { type: bool, default: false }
 
   # ── Pipeline control ──────────────────────────────────────────────
   judge_mode:                  { type: string, default: "human" }
@@ -197,6 +218,21 @@ world:
 
   # ── Story-level "done" sink for standalone runs ──────────────────
   status:           { type: string, default: "open" }   # open | done | merged | abandoned
+
+  # ── Lost-work guard (clean-tree invariant) ───────────────────────
+  # The maker rooms mutate the worktree (write_code applies the change,
+  # test may repair files in place). Every such edit MUST land in a
+  # commit before the handoff — `git rebase`/`merge` move only committed
+  # content, so an uncommitted/untracked file would ship an empty or
+  # partial shell while the working tree (which the gates read) looks
+  # green. The `handoff` room re-reads `git status --porcelain` and
+  # routes a dirty tree away from the pr-refinement merge — the
+  # pr-refinement analogue of the direct-ship integrate room's guard
+  # (delivery-tail/rooms/integrate.yaml). implementation has no
+  # @exit:needs-human, so the dirty arc routes to @exit:abandoned with
+  # last_error set (the safest existing escape).
+  worktree_dirty:        { type: bool,   default: false }  # handoff's git-status check found uncommitted/untracked work
+  worktree_dirty_files:  { type: string, default: "" }     # the porcelain listing (carried into last_error)
 
 # Intent vocabulary.
 intents:

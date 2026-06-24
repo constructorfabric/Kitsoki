@@ -1,0 +1,58 @@
+# cleanup_noop_is_not_cleaned — THE smoking-gun regression.
+#
+# A failing remove (empty/invalid path → `git worktree remove` non-zero → set -e
+# trips → script exits non-zero with NO stdout_json envelope) must:
+#   - bind last_op_ok = false (the real exit, not a swallowed `|| true`),
+#   - render last_error / the failure prose,
+#   - and NOT set last_op_outcome = "cleaned".
+#
+# Before the smoothing, the `|| true` masked the non-zero exit and the
+# unconditional `set: last_op_outcome: cleaned` reported a confident false
+# success for a no-op. This pins that it cannot happen again.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: cleanup
+initial_world:
+  integration_branch: main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+  worktree_path:      ""
+  last_op_outcome:    ""          # must stay non-"cleaned" through a failure
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+      remove_wt_and_br:
+        data:
+          ok:        false        # real non-zero exit — set -e tripped, no swallow
+          exit_code: 1
+          stdout:    ""           # no JSON envelope — the script died before emitting one
+          stderr:    "fatal: '.worktrees/ghost' is not a working tree"
+
+turns:
+  - intent: { name: remove_all, slots: { worktree: ".worktrees/ghost" } }
+    # A failed remove STAYS in cleanup (the error view renders last_error);
+    # it never silently transitions to the hub reporting success.
+    expect_state: cleanup
+    expect_world:
+      last_op_ok:      false
+      # The load-bearing assertion: a failed remove is NEVER "cleaned".
+      last_op_outcome: ""
+
+expect_no_errors: true

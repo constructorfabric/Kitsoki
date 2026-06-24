@@ -231,8 +231,8 @@ func (c *fakeChat) AppendMessage(role, text string) error {
 	return nil
 }
 
-// fakeOracle records the AskInput it received and returns a scripted reply.
-type fakeOracle struct {
+// fakeAgent records the AskInput it received and returns a scripted reply.
+type fakeAgent struct {
 	mu       sync.Mutex
 	gotInput AskInput
 	out      AskOutput
@@ -240,7 +240,7 @@ type fakeOracle struct {
 	calls    int
 }
 
-func (o *fakeOracle) Ask(_ context.Context, in AskInput) (AskOutput, error) {
+func (o *fakeAgent) Ask(_ context.Context, in AskInput) (AskOutput, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.calls++
@@ -280,16 +280,16 @@ func (r *fakeRegistry) Register(a agents.Agent) { r.agents[a.Name] = a }
 // newTestController wires a Controller against the supplied fakes and a
 // minimal AppDef that declares one meta mode + matching agent unless
 // overridden by the test.
-func newTestController(t *testing.T, opts ...func(*Controller)) (*Controller, *fakeChatStore, *fakeOracle) {
+func newTestController(t *testing.T, opts ...func(*Controller)) (*Controller, *fakeChatStore, *fakeAgent) {
 	t.Helper()
 	store := &fakeChatStore{}
-	oracle := &fakeOracle{
+	agent := &fakeAgent{
 		out: AskOutput{Reply: "ok", NewClaudeSessionID: ""},
 	}
 	reg := newFakeRegistry(agents.Agent{
 		Name:         "story-author",
 		SystemPrompt: "you are the story author.",
-		Tools:        []string{"host.oracle.converse", "host.oracle.ask"},
+		Tools:        []string{"host.agent.converse", "host.agent.ask"},
 		DefaultCwd:   "/tmp/agent-default-cwd",
 	})
 	def := &app.AppDef{
@@ -299,7 +299,7 @@ func newTestController(t *testing.T, opts ...func(*Controller)) (*Controller, *f
 				Trigger: "meta",
 				Label:   "improve the story",
 				Agent:   "story-author",
-				Tools:   []string{"host.oracle.converse"},
+				Tools:   []string{"host.agent.converse"},
 			},
 		},
 	}
@@ -307,13 +307,13 @@ func newTestController(t *testing.T, opts ...func(*Controller)) (*Controller, *f
 		Chats:  store,
 		Agents: reg,
 		AppDef: def,
-		Oracle: oracle,
+		Agent:  agent,
 		Clock:  func() time.Time { return time.Unix(1_700_000_000, 0).UTC() },
 	}
 	for _, opt := range opts {
 		opt(c)
 	}
-	return c, store, oracle
+	return c, store, agent
 }
 
 func makeSnapshot(state string) Snapshot {
@@ -385,8 +385,8 @@ func TestController_Enter_UnknownAgent(t *testing.T) {
 // ─── Controller.Send tests ───────────────────────────────────────────────────
 
 func TestController_Send_PersistsTurns(t *testing.T) {
-	c, _, oracle := newTestController(t)
-	oracle.out = AskOutput{Reply: "hi back"}
+	c, _, agent := newTestController(t)
+	agent.out = AskOutput{Reply: "hi back"}
 
 	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
 	if err != nil {
@@ -418,7 +418,7 @@ func TestController_Send_PersistsTurns(t *testing.T) {
 }
 
 func TestController_Send_ResumesClaudeSession(t *testing.T) {
-	c, store, oracle := newTestController(t)
+	c, store, agent := newTestController(t)
 	// Pre-seed: existing claude session id on the chat row before Send.
 	store.chat = &fakeChat{
 		id:              "chat-1",
@@ -427,7 +427,7 @@ func TestController_Send_ResumesClaudeSession(t *testing.T) {
 		scopeKey:        "main",
 		claudeSessionID: "prev-session-xyz",
 	}
-	oracle.out = AskOutput{Reply: "resumed.", NewClaudeSessionID: "new-session-abc"}
+	agent.out = AskOutput{Reply: "resumed.", NewClaudeSessionID: "new-session-abc"}
 
 	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
 	if err != nil {
@@ -437,8 +437,8 @@ func TestController_Send_ResumesClaudeSession(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	// Oracle should have received the prior session id.
-	if got := oracle.gotInput.ClaudeSessionID; got != "prev-session-xyz" {
+	// Agent should have received the prior session id.
+	if got := agent.gotInput.ClaudeSessionID; got != "prev-session-xyz" {
 		t.Errorf("Ask saw ClaudeSessionID = %q, want %q", got, "prev-session-xyz")
 	}
 	// The new id should be persisted.
@@ -451,11 +451,11 @@ func TestController_Send_ResumesClaudeSession(t *testing.T) {
 	}
 }
 
-// Send must NOT call SetClaudeSessionID when the oracle echoes back the
+// Send must NOT call SetClaudeSessionID when the agent echoes back the
 // same id (typical of the WS-A3 adapter, which has no session-resume
 // hook on the public handler yet). This guards against churn writes.
 func TestController_Send_NoSessionWriteWhenUnchanged(t *testing.T) {
-	c, store, oracle := newTestController(t)
+	c, store, agent := newTestController(t)
 	store.chat = &fakeChat{
 		id:              "chat-1",
 		appID:           "test-app",
@@ -463,7 +463,7 @@ func TestController_Send_NoSessionWriteWhenUnchanged(t *testing.T) {
 		scopeKey:        "main",
 		claudeSessionID: "same-id",
 	}
-	oracle.out = AskOutput{Reply: "ok", NewClaudeSessionID: "same-id"}
+	agent.out = AskOutput{Reply: "ok", NewClaudeSessionID: "same-id"}
 
 	s, _ := c.Enter(context.Background(), makeSnapshot("main"), "story")
 	if _, err := c.Send(context.Background(), s, "ping", TurnContext{}); err != nil {
@@ -476,9 +476,9 @@ func TestController_Send_NoSessionWriteWhenUnchanged(t *testing.T) {
 }
 
 func TestController_Send_ToolAllowlistPassed(t *testing.T) {
-	c, _, oracle := newTestController(t)
+	c, _, agent := newTestController(t)
 	// Override the mode's tool list to a known value.
-	c.AppDef.MetaModes["story"].Tools = []string{"host.oracle.converse"}
+	c.AppDef.MetaModes["story"].Tools = []string{"host.agent.converse"}
 
 	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
 	if err != nil {
@@ -488,16 +488,91 @@ func TestController_Send_ToolAllowlistPassed(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	got := oracle.gotInput.ToolAllowlist
-	want := []string{"host.oracle.converse"}
+	got := agent.gotInput.ToolAllowlist
+	want := []string{"host.agent.converse"}
 	if !equalStrings(got, want) {
 		t.Errorf("ToolAllowlist = %v, want %v", got, want)
 	}
 }
 
-func TestController_Send_OracleError(t *testing.T) {
-	c, _, oracle := newTestController(t)
-	oracle.err = errors.New("boom")
+// studioArgs digs the studio server's args out of a captured MCPServers map,
+// or nil if no studio server was attached.
+func studioArgs(servers map[string]any) []any {
+	entry, ok := servers[studioMCPName].(map[string]any)
+	if !ok {
+		return nil
+	}
+	args, _ := entry["args"].([]any)
+	return args
+}
+
+func argsContain(args []any, want string) bool {
+	for _, a := range args {
+		if s, ok := a.(string); ok && s == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestController_Send_AttachesStudioMCP(t *testing.T) {
+	appFile := filepath.Join(t.TempDir(), "app.yaml")
+
+	t.Run("edit mode is read-write", func(t *testing.T) {
+		c, _, agent := newTestController(t)
+		c.AppDef.MetaModes["story"].Tools = nil // edit-capable
+
+		s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
+		if err != nil {
+			t.Fatalf("Enter: %v", err)
+		}
+		if _, err := c.Send(context.Background(), s, "x", TurnContext{AppFile: appFile}); err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+		args := studioArgs(agent.gotInput.MCPServers)
+		if args == nil {
+			t.Fatal("no studio MCP server attached for edit mode")
+		}
+		if argsContain(args, "--read-only") {
+			t.Errorf("edit mode must not pass --read-only; args = %v", args)
+		}
+	})
+
+	t.Run("ask mode is read-only", func(t *testing.T) {
+		c, _, agent := newTestController(t)
+		c.AppDef.MetaModes["story"].Tools = []string{"Read", "Glob", "Grep"}
+
+		s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
+		if err != nil {
+			t.Fatalf("Enter: %v", err)
+		}
+		if _, err := c.Send(context.Background(), s, "x", TurnContext{AppFile: appFile}); err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+		args := studioArgs(agent.gotInput.MCPServers)
+		if args == nil {
+			t.Fatal("no studio MCP server attached for ask mode")
+		}
+		if !argsContain(args, "--read-only") {
+			t.Errorf("ask mode must pass --read-only; args = %v", args)
+		}
+	})
+
+	t.Run("no app file → no studio MCP", func(t *testing.T) {
+		c, _, agent := newTestController(t)
+		s, _ := c.Enter(context.Background(), makeSnapshot("main"), "story")
+		if _, err := c.Send(context.Background(), s, "x", TurnContext{}); err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+		if agent.gotInput.MCPServers != nil {
+			t.Errorf("MCPServers should be nil with no AppFile; got %v", agent.gotInput.MCPServers)
+		}
+	})
+}
+
+func TestController_Send_AgentError(t *testing.T) {
+	c, _, agent := newTestController(t)
+	agent.err = errors.New("boom")
 
 	s, _ := c.Enter(context.Background(), makeSnapshot("main"), "story")
 	res, err := c.Send(context.Background(), s, "x", TurnContext{})
@@ -505,10 +580,10 @@ func TestController_Send_OracleError(t *testing.T) {
 		t.Fatal("Send: want error, got nil")
 	}
 	if res.Err == nil {
-		t.Error("res.Err is nil; want oracle error")
+		t.Error("res.Err is nil; want agent error")
 	}
 	fc := s.Chat.(*fakeChat)
-	// user was appended before the oracle ran; assistant must not have been.
+	// user was appended before the agent ran; assistant must not have been.
 	if len(fc.appends) != 1 {
 		t.Errorf("appends = %d, want 1 (only user)", len(fc.appends))
 	}
@@ -516,11 +591,11 @@ func TestController_Send_OracleError(t *testing.T) {
 
 // TestController_Send_ChatBusySurfaces verifies that when the chat
 // lock is held by another driver, Send returns metamode.ErrChatBusy
-// without calling the oracle and without writing to the transcript.
+// without calling the agent and without writing to the transcript.
 // This is the contract the TUI's metaSendCmd hook relies on to
 // render the busy-chat warning.
 func TestController_Send_ChatBusySurfaces(t *testing.T) {
-	c, store, oracle := newTestController(t)
+	c, store, agent := newTestController(t)
 	store.withLockErr = fmt.Errorf("%w: simulated", ErrChatBusy)
 
 	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
@@ -538,9 +613,9 @@ func TestController_Send_ChatBusySurfaces(t *testing.T) {
 	if !errors.Is(res.Err, ErrChatBusy) {
 		t.Errorf("res.Err should also wrap ErrChatBusy: %v", res.Err)
 	}
-	// Oracle was never called.
-	if oracle.calls != 0 {
-		t.Errorf("oracle was invoked %d times despite busy lock", oracle.calls)
+	// Agent was never called.
+	if agent.calls != 0 {
+		t.Errorf("agent was invoked %d times despite busy lock", agent.calls)
 	}
 	// Transcript was not mutated.
 	fc := s.Chat.(*fakeChat)
@@ -682,7 +757,7 @@ func equalStrings(a, b []string) bool {
 // Compile-time interface assertion so the fake list keeps drifting in sync.
 var _ ChatStore = (*fakeChatStore)(nil)
 var _ ChatHandle = (*fakeChat)(nil)
-var _ OracleCaller = (*fakeOracle)(nil)
+var _ AgentCaller = (*fakeAgent)(nil)
 var _ agents.Registry = (*fakeRegistry)(nil)
 
 // guard against accidentally importing a sleep / external clock for
@@ -691,18 +766,18 @@ var _ = fmt.Sprintf
 
 // ─── tool-name normalisation + direct-edit reload tests ─────────────────────
 
-// oracleFunc is a func-shaped OracleCaller so individual tests can
+// agentFunc is a func-shaped AgentCaller so individual tests can
 // inject custom Ask behaviour without writing a new struct each time.
-type oracleFunc func(ctx context.Context, in AskInput) (AskOutput, error)
+type agentFunc func(ctx context.Context, in AskInput) (AskOutput, error)
 
-func (f oracleFunc) Ask(ctx context.Context, in AskInput) (AskOutput, error) {
+func (f agentFunc) Ask(ctx context.Context, in AskInput) (AskOutput, error) {
 	return f(ctx, in)
 }
 
 // TestController_Send_DirectEdit_TriggersReload covers the modern
 // flow: the agent edits app.yaml directly via Read/Write/Edit, with
 // no propose/apply tokens. Send must detect the mtime+size change and
-// set ReloadRequested. Uses a fake oracle that "edits" the file by
+// set ReloadRequested. Uses a fake agent that "edits" the file by
 // rewriting it during the Ask call.
 func TestController_Send_DirectEdit_TriggersReload(t *testing.T) {
 	dir := t.TempDir()
@@ -719,7 +794,7 @@ func TestController_Send_DirectEdit_TriggersReload(t *testing.T) {
 	}
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		// Simulate claude editing the file in-place during the call.
 		if err := os.WriteFile(appFile, []byte("after, materially different content\n"), 0o644); err != nil {
 			return AskOutput{}, err
@@ -772,7 +847,7 @@ func TestController_Send_DirectEdit_IncludeFileTriggersReload(t *testing.T) {
 	}
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		// Simulate claude editing the INCLUDED yaml, not the manifest.
 		return AskOutput{Reply: "edited the include"},
 			os.WriteFile(includeFile, []byte("main: revised\n"), 0o644)
@@ -803,7 +878,7 @@ func TestController_Send_DirectEdit_IncludeFileTriggersReload(t *testing.T) {
 }
 
 // TestController_Send_NoEdit_NoReload is the negative regression:
-// when the oracle replies without touching the app file, mtime is
+// when the agent replies without touching the app file, mtime is
 // unchanged and ReloadRequested stays false even though TurnContext
 // carries a real AppFile path.
 func TestController_Send_NoEdit_NoReload(t *testing.T) {
@@ -813,7 +888,7 @@ func TestController_Send_NoEdit_NoReload(t *testing.T) {
 		t.Fatalf("seed app file: %v", err)
 	}
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		return AskOutput{Reply: "just talking, no edits"}, nil
 	})
 	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
@@ -859,7 +934,7 @@ func TestController_Send_DirectEdit_DeleteTriggersReload(t *testing.T) {
 	}
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		// Simulate claude deleting the include file mid-turn.
 		if err := os.Remove(includeFile); err != nil {
 			return AskOutput{}, err
@@ -910,7 +985,7 @@ func TestController_Send_DirectEdit_CreateTriggersReload(t *testing.T) {
 	newPrompt := filepath.Join(promptDir, "new.md")
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		// Simulate claude creating a brand-new prompt directory + file.
 		if err := os.MkdirAll(promptDir, 0o755); err != nil {
 			return AskOutput{}, err
@@ -944,12 +1019,12 @@ func TestController_Send_DirectEdit_CreateTriggersReload(t *testing.T) {
 }
 
 // TestController_Send_ImportedManifestEditTriggersReload covers the
-// story-imports proposal §16.4 auto-watch surface: an edit to a file
+// story-imports auto-watch surface: an edit to a file
 // in an IMPORTED sibling story's directory must trigger a reload,
 // even though that directory sits outside `filepath.Dir(turn.AppFile)`.
 // The TurnContext's ImportedManifestPaths threads the loader's list
 // through; the controller folds each parent dir into the snapshot tree
-// before/after the Oracle call.
+// before/after the Agent call.
 func TestController_Send_ImportedManifestEditTriggersReload(t *testing.T) {
 	dir := t.TempDir()
 
@@ -990,7 +1065,7 @@ func TestController_Send_ImportedManifestEditTriggersReload(t *testing.T) {
 	}
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		// Simulate the agent editing the imported sibling's prompt.
 		if err := os.WriteFile(importedPrompt, []byte("# edited by agent\n"), 0o644); err != nil {
 			return AskOutput{}, err
@@ -1018,18 +1093,18 @@ func TestController_Send_ImportedManifestEditTriggersReload(t *testing.T) {
 
 // TestController_Send_NormalisesToolNames verifies that short-form
 // tool names from YAML ("authoring.propose") are normalised to the
-// fully-qualified form before being passed to the OracleCaller.
+// fully-qualified form before being passed to the AgentCaller.
 func TestController_Send_NormalisesToolNames(t *testing.T) {
 	c, _, _ := newTestController(t)
 	// Mix of short and qualified names — both should pass through
-	// to the oracle as host.*.
+	// to the agent as host.*.
 	c.AppDef.MetaModes["story"].Tools = []string{
-		"oracle.converse",
-		"host.oracle.ask",
+		"agent.converse",
+		"host.agent.ask",
 		"git.diff",
 	}
 	var seenAllowlist []string
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		seenAllowlist = append([]string(nil), in.ToolAllowlist...)
 		return AskOutput{Reply: "ok"}, nil
 	})
@@ -1040,7 +1115,7 @@ func TestController_Send_NormalisesToolNames(t *testing.T) {
 	if _, err := c.Send(context.Background(), s, "hi", TurnContext{}); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	want := []string{"host.oracle.converse", "host.oracle.ask", "host.git.diff"}
+	want := []string{"host.agent.converse", "host.agent.ask", "host.git.diff"}
 	if !equalStrings(seenAllowlist, want) {
 		t.Errorf("ToolAllowlist = %v, want %v", seenAllowlist, want)
 	}
@@ -1088,6 +1163,13 @@ func TestResolveCwd_AbsolutisesRelative(t *testing.T) {
 	// Use a real on-disk tempdir so filepath.Abs against the appFile
 	// produces a stable, prefix-matchable expected value.
 	tmp := t.TempDir()
+	// Canonicalise: on macOS t.TempDir() returns a /var/folders/... path that is
+	// a symlink to /private/var/folders/..., and os.Chdir + os.Getwd below
+	// resolves it. Without this, wantDir (built from the raw tmp) would never
+	// match resolveCwd's output (built from the resolved getwd).
+	if resolved, err := filepath.EvalSymlinks(tmp); err == nil {
+		tmp = resolved
+	}
 	appAbs := filepath.Join(tmp, "stories", "bugfix", "app.yaml")
 	if err := os.MkdirAll(filepath.Dir(appAbs), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
@@ -1137,12 +1219,49 @@ func TestResolveCwd_AbsolutisesRelative(t *testing.T) {
 	}
 }
 
+// TestResolveCwd_EnvVarCwd_NotDoubled is the regression test for the
+// web-UI "kitsoki.* meta chat does nothing" bug. The builtin kitsoki.*
+// meta modes (kitsoki.ask / kitsoki.edit / kitsoki.bug) carry
+// Cwd: "${KITSOKI_REPO}" in *raw, unexpanded* form. The effective
+// working dir the adapter hands the claude subprocess is the
+// composition expandCwd(resolveCwd(mode, agent, appFile)).
+//
+// The bug: resolveCwd ran filepath.Abs on the RAW "${KITSOKI_REPO}"
+// literal (prepending the process cwd to the un-expanded token), and
+// expandCwd then expanded the env var to its OWN absolute path —
+// yielding "<process-cwd>/<abs-KITSOKI_REPO>", a doubled path that does
+// not exist. claude then failed to chdir into it before it could even
+// run, so the meta turn produced no reply (story.* modes were fine
+// because they carry no Cwd). Env expansion must happen BEFORE
+// absolutising.
+func TestResolveCwd_EnvVarCwd_NotDoubled(t *testing.T) {
+	// A real absolute dir so the result is a stable, comparable path.
+	repo := t.TempDir()
+	t.Setenv("KITSOKI_REPO", repo)
+
+	// The home-screen ("self") driver passes appFile="" — exactly the
+	// scope where the bug bit hardest (no app dir to fall back to).
+	mode := &app.MetaModeDef{Cwd: "${KITSOKI_REPO}"}
+
+	// Reproduce the production seam: controller.Send computes
+	// resolveCwd(...) into AskInput.Cwd, then adapter applies expandCwd
+	// on the way to the handler's working_dir.
+	effective := expandCwd(resolveCwd(mode, agents.Agent{}, ""))
+
+	if effective != repo {
+		t.Errorf("effective working dir = %q, want %q (the env var's value, not a doubled path)", effective, repo)
+	}
+	if strings.Count(effective, repo) > 1 {
+		t.Errorf("effective working dir %q contains the repo path twice — env expansion ran AFTER absolutising", effective)
+	}
+}
+
 func TestNormaliseToolName(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"oracle.converse", "host.oracle.converse"},
-		{"host.oracle.ask", "host.oracle.ask"},
+		{"agent.converse", "host.agent.converse"},
+		{"host.agent.ask", "host.agent.ask"},
 		{"git.diff", "host.git.diff"},
 		{"", ""},
 		// Tokens with multiple dots still get a single host. prefix.
@@ -1159,11 +1278,11 @@ func TestNormaliseToolName(t *testing.T) {
 // ─── Phase A.6: per-turn context injection ───────────────────────────────────
 
 // TestController_Send_PrependsTurnContext drives Send with a populated
-// TurnContext and asserts the AskInput.UserMessage seen by the oracle
+// TurnContext and asserts the AskInput.UserMessage seen by the agent
 // carries the [context] preamble (state, app_file, view, world) AND
 // the original text inside a [user] block.
 func TestController_Send_PrependsTurnContext(t *testing.T) {
-	c, _, oracle := newTestController(t)
+	c, _, agent := newTestController(t)
 
 	turn := TurnContext{
 		StatePath:    "main.foyer",
@@ -1185,7 +1304,7 @@ func TestController_Send_PrependsTurnContext(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	got := oracle.gotInput.UserMessage
+	got := agent.gotInput.UserMessage
 
 	mustContain := []string{
 		"[context]\n",
@@ -1213,7 +1332,7 @@ func TestController_Send_PrependsTurnContext(t *testing.T) {
 // TestController_Send_OmitsEmptyContextFields populates only StatePath
 // and asserts the preamble has no app_file / view / world lines.
 func TestController_Send_OmitsEmptyContextFields(t *testing.T) {
-	c, _, oracle := newTestController(t)
+	c, _, agent := newTestController(t)
 
 	turn := TurnContext{StatePath: "foyer"}
 
@@ -1225,7 +1344,7 @@ func TestController_Send_OmitsEmptyContextFields(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	got := oracle.gotInput.UserMessage
+	got := agent.gotInput.UserMessage
 	if !strings.Contains(got, "state: foyer\n") {
 		t.Errorf("UserMessage missing state line:\n%s", got)
 	}
@@ -1241,7 +1360,7 @@ func TestController_Send_OmitsEmptyContextFields(t *testing.T) {
 // TurnContext produces no preamble — every pre-existing test passes
 // TurnContext{} and relies on that property.
 func TestController_Send_ZeroTurnContextNoPreamble(t *testing.T) {
-	c, _, oracle := newTestController(t)
+	c, _, agent := newTestController(t)
 
 	s, err := c.Enter(context.Background(), makeSnapshot("main"), "story")
 	if err != nil {
@@ -1251,7 +1370,7 @@ func TestController_Send_ZeroTurnContextNoPreamble(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	got := oracle.gotInput.UserMessage
+	got := agent.gotInput.UserMessage
 	if strings.Contains(got, "[context]") {
 		t.Errorf("zero-value TurnContext leaked a [context] block:\n%s", got)
 	}

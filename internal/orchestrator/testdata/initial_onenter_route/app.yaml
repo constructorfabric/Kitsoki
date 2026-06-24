@@ -1,0 +1,56 @@
+# Tiny app exercising Orchestrator.RunInitialOnEnter's boot auto-route.
+#
+# The root state `idle` is a button-less router: its on_enter invokes
+# host.detect (binding world.route), then emit_intent: "{{ world.route }}"
+# routes onward. Because the emit's value depends on a key the host call
+# binds, it can only resolve AFTER the host call returns — so RunInitialOnEnter
+# must run the post-bind emit settle to follow it. The test asserts a freshly
+# created session lands on `hub` (the routed target), not `idle`, with no user
+# turn — mirroring git-ops' idle → branch_ops boot route.
+app:
+  id: initial-onenter-route
+  version: 0.1.0
+  title: "initial on_enter boot-route test app"
+
+hosts:
+  - host.detect
+
+world:
+  route:    { type: string, default: "" }
+  detected: { type: string, default: "" }
+
+root: idle
+
+intents:
+  to_hub:
+    title: "Route to hub"
+    description: "Synthetic router intent emitted by idle's on_enter."
+  leave:
+    title: "Leave the hub"
+    description: "A real user transition out of the hub."
+
+states:
+  idle:
+    description: "Router (initial state). Auto-routes to the hub."
+    view: "Detecting… route={{ world.route }}"
+    on_enter:
+      - invoke: host.detect
+        with: {}
+        bind:
+          route:    "route"
+          detected: "detected"
+      - emit_intent: "{{ world.route }}"
+    on:
+      to_hub:
+        - target: hub
+
+  hub:
+    description: "The routed hub."
+    view: "Hub. detected={{ world.detected }}"
+    on:
+      leave:
+        - target: done
+
+  done:
+    description: "Done."
+    view: "Done."

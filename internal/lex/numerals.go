@@ -33,8 +33,10 @@ var numScales = map[string]int{
 //     "three thousand", "one million two hundred thousand")
 //   - the filler word "and" is permitted ("two hundred and fifty")
 //
-// Returns (0, false) when the input doesn't parse cleanly. Empty input
-// is a no-match.
+// Returns (0, false) when the input doesn't parse cleanly, and (0, false)
+// — not (0, true) — for empty or whitespace-only input; the boolean, not
+// the int, is the only valid "did it parse" signal. Safe for concurrent
+// use: holds no state and does not mutate words.
 //
 // The implementation is intentionally small: it walks tokens left to
 // right, accumulating a "current" group that is flushed to "total"

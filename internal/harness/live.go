@@ -1,7 +1,3 @@
-// Package harness — LiveHarness implementation (§10.5, §12.1).
-// Calls the Anthropic Messages API to route a user utterance to an IntentCall.
-// No MCP dependency: the LLM is forced to call a local "transition" tool and
-// the result is parsed into a mcp.CallToolParams.
 package harness
 
 import (
@@ -22,7 +18,7 @@ import (
 
 // LiveConfig holds optional knobs for the LiveHarness.
 type LiveConfig struct {
-	// MaxTokens caps the response size. Default 512.
+	// MaxTokens caps the response size. Default 2048.
 	MaxTokens int64
 	// Temperature controls LLM randomness. Default 0 (deterministic envelope).
 	Temperature float64
@@ -30,9 +26,11 @@ type LiveConfig struct {
 	MaxRetries int
 }
 
-// LiveHarness calls the real Anthropic API to route user text → IntentCall.
-// It declares a single local "transition" tool and forces the LLM to call it
-// with tool_choice = {type: "tool", name: "transition"}.
+// LiveHarness calls the Anthropic Messages API to route user text → IntentCall.
+// It is the default LLM tier when an ANTHROPIC_API_KEY is available. It takes no
+// MCP dependency: it declares a single local "transition" tool, forces
+// tool_choice = {type: "tool", name: "transition"}, and parses the tool_use
+// block straight into a mcp.CallToolParams.
 //
 // System prompt structure (for prompt caching):
 //
@@ -73,7 +71,7 @@ func NewLive(client *anthropic.Client, model string, appDef *app.AppDef) (*LiveH
 		model = string(anthropic.ModelClaudeSonnet4_5)
 	}
 	cfg := LiveConfig{
-		MaxTokens:   512,
+		MaxTokens:   2048,
 		Temperature: 0,
 		MaxRetries:  3,
 	}
@@ -277,15 +275,3 @@ func isRetryable(err error) bool {
 
 // Close is a no-op for LiveHarness (the anthropic client is shared/managed externally).
 func (h *LiveHarness) Close() error { return nil }
-
-// extractUsage returns the UsageInfo from a Message (for RecordingHarness).
-func extractUsage(resp *anthropic.Message) UsageInfo {
-	u := resp.Usage
-	return UsageInfo{
-		InputTokens:       u.InputTokens,
-		OutputTokens:      u.OutputTokens,
-		CacheReadTokens:   u.CacheReadInputTokens,
-		CacheCreateTokens: u.CacheCreationInputTokens,
-		CacheHit:          u.CacheReadInputTokens > 0,
-	}
-}

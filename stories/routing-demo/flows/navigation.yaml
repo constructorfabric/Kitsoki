@@ -1,0 +1,22 @@
+# Transition coverage for hub <-> lesson navigation. Flow fixtures invoke
+# intents by NAME (no router, no model), so they lock the state machine, not
+# the routing tiers — routing resolution is exercised by the turn --input
+# probes in README.md and by internal/orchestrator/semantic_llm_routing_test.go.
+test_kind: flow
+app: ../app.yaml
+initial_state: hub
+turns:
+  - intent: { name: goto_deterministic }
+    expect_state: deterministic
+  - intent: { name: back }
+    expect_state: hub
+  - intent: { name: goto_local }
+    expect_state: local_model
+  - intent: { name: back }
+    expect_state: hub
+  - intent: { name: goto_ambiguous }
+    expect_state: ambiguous
+  - intent: { name: back }
+    expect_state: hub
+  - intent: { name: quit }
+    expect_state: ended

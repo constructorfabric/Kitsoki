@@ -1,0 +1,186 @@
+# merge_branch — merge a named branch into integration (from main_ops).
+# Two rooms: merge_branch_pick (name input) + merge_exec (execution).
+
+states:
+
+  merge_branch_pick:
+    description: "Collect the branch name to merge into the integration branch."
+    relevant_world: [integration_branch, merge_branch_name]
+    view:
+      - prose: "Which branch should be merged into {{ world.integration_branch }}?"
+      - kv:
+          pairs:
+            Integration:      '{{ world.integration_branch }}'
+            "Branch to merge": '{{ world.merge_branch_name|default:"(not yet set)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "merge_branch branch=<name>"
+              hint:  "set the branch name and proceed to merge"
+              intent: merge_branch
+              param:
+                slot:        branch
+                type:        string
+                placeholder: "feature/my-branch"
+                required:    false
+            - label: "back"
+              hint:  "return to main_ops"
+              intent: back
+            - label: "look"
+              intent: look
+    on:
+      merge_branch:
+        - when: "slots.branch != '' && slots.branch != nil"
+          target: merge_exec
+          effects:
+            - set:
+                merge_branch_name: "{{ slots.branch }}"
+        - target: merge_branch_pick
+          effects:
+            - say: "Provide a branch name: merge_branch branch=<name>."
+      back:
+        - target: main_ops
+      look:
+        - target: .
+
+  merge_exec:
+    description: "Execute merge of merge_branch_name into integration branch."
+    relevant_world: [integration_branch, merge_branch_name, main_worktree_path, build_check_disabled]
+    view:
+      - kv:
+          pairs:
+            "Branch to merge": '{{ world.merge_branch_name|default:"(not set)" }}'
+            Integration:       '{{ world.integration_branch }}'
+            "Target worktree": '{{ world.main_worktree_path|default:"(same)" }}'
+      - heading: "Merge in progress"
+        when: "world.last_op_outcome == 'merge_in_progress'"
+      - prose: "MERGE_HEAD or rebase-in-progress on target worktree. Resolve first."
+        when: "world.last_op_outcome == 'merge_in_progress'"
+      - heading: "Post-merge build failed"
+        when: "world.last_op_outcome == 'post_merge_test_fail'"
+      - prose: "Build failed after merge: {{ world.last_op_output }}"
+        when: "world.last_op_outcome == 'post_merge_test_fail'"
+      - heading: "Merge successful"
+        when: "world.last_op_outcome == 'merged'"
+      - prose: "Merge failed: {{ world.last_op_output }}"
+        when: "world.last_op_ok == false && world.last_op_outcome != 'merge_in_progress' && world.last_op_outcome != 'post_merge_test_fail'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "retry"
+              hint:  "retry build check"
+              intent: retry
+              when:  "world.last_op_outcome == 'post_merge_test_fail'"
+            - label: "rollback"
+              hint:  "abort merge after build failure"
+              intent: rollback
+              when:  "world.last_op_outcome == 'post_merge_test_fail'"
+            - label: "back"
+              hint:  "return to main_ops"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: target_check
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              DIRTY=$(git status --porcelain 2>/dev/null | grep -c . || true)
+              GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || echo ".git")
+              MERGE_IP=false
+              if [ -f "$GIT_DIR/MERGE_HEAD" ] || [ -d "$GIT_DIR/rebase-apply" ] || [ -d "$GIT_DIR/rebase-merge" ]; then
+                MERGE_IP=true
+              fi
+              if [ "$DIRTY" -gt 0 ]; then
+                REF=$(git stash push -u -m 'git-ops-wip' 2>&1 && git stash list | head -1 | cut -d: -f1 || echo "")
+              else
+                REF=""
+              fi
+              jq -n \
+                --argjson dirty "$DIRTY" \
+                --argjson merge_ip "$MERGE_IP" \
+                --arg stash_ref "$REF" \
+                '{target_dirty:($dirty>0), merge_in_progress:$merge_ip, stash_ref:$stash_ref}'
+          cwd: "{{ world.main_worktree_path }}"
+        bind:
+          stash_ref:         "stdout_json.stash_ref"
+          merge_in_progress: "stdout_json.merge_in_progress"
+        on_error: merge_exec
+      - when: "world.merge_in_progress == true"
+        set:
+          last_op_outcome: "merge_in_progress"
+      - when: "world.merge_in_progress == false"
+        invoke: host.run
+        id: exec_merge
+        with:
+          cmd: git
+          args:
+            - "merge"
+            - "--no-ff"
+            - "{{ world.merge_branch_name }}"
+          cwd: "{{ world.main_worktree_path }}"
+        bind:
+          last_op_output: stdout
+          last_op_ok:     ok
+        on_error: merge_exec
+      - when: "world.stash_ref != ''"
+        invoke: host.run
+        id: stash_pop_exec
+        with:
+          cmd: git
+          args: ["stash", "pop"]
+          cwd: "{{ world.main_worktree_path }}"
+        bind:
+          last_op_output: stdout
+        on_error: merge_exec
+      - when: "world.last_op_ok == true && !world.build_check_disabled"
+        invoke: host.run
+        id: build_check
+        with:
+          cmd: bash
+          args: ["-c", "{{ world.build_check_cmd }}"]
+          cwd: "{{ world.main_worktree_path }}"
+        bind:
+          last_op_output: stdout
+          last_op_ok:     ok
+        on_error: merge_exec
+      - when: "world.last_op_ok == true"
+        set:
+          last_op_outcome: "merged"
+      - when: "world.last_op_ok == false && world.last_op_outcome == ''"
+        set:
+          last_op_outcome: "post_merge_test_fail"
+    on:
+      retry:
+        - when: "world.last_op_outcome == 'post_merge_test_fail'"
+          target: merge_exec
+          effects:
+            - set:
+                last_op_outcome: ""
+      rollback:
+        - when: "world.last_op_outcome == 'post_merge_test_fail'"
+          target: main_ops
+          effects:
+            - invoke: host.run
+              id: merge_abort_exec
+              with:
+                cmd: git
+                args: ["merge", "--abort"]
+                cwd: "{{ world.main_worktree_path }}"
+              bind:
+                last_op_ok: ok
+              on_error: merge_exec
+      back:
+        - target: main_ops
+          effects:
+            - set:
+                last_op_outcome: ""
+      look:
+        - target: .

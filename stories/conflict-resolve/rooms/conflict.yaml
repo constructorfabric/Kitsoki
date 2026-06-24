@@ -1,0 +1,246 @@
+# conflict — agent + rerere conflict resolution, with operator OR auto escalation.
+#
+# Imported by git-ops (operator present: auto_escalate=false, holds for guide/abort)
+# and by delivery-tail (headless: auto_escalate=true, exits @exit:escalated).
+#
+# DESIGN: once: on each invoke so re-entry (guide, second round) is safe;
+# emit_intent templates re-evaluate POST-bind so they route on bound values.
+#
+# on_enter:
+#   1. gather_conflict_files (once: keyed conflict_files)
+#        → emit gosum_fix if only go.sum, else fall through (stay for the agent)
+#   2. resolve_conflicts agent (once: keyed conflict_verdict)
+#        → resolved=true  → emit rebase_continue
+#        → resolved=false → escalation (auto_escalate ? emit escalate : hold)
+#
+# The machine pre-bind emits nothing (guards false on the default world); post-bind
+# re-evaluation fires the correct intent against the bound verdict.
+
+states:
+
+  conflict:
+    description: "Resolve the in-progress rebase's conflicts (agent), then continue + build-check."
+    # Multi-turn sub-flow: a pre-LLM intercept must DRIVE this to rest, not snapshot
+    # after one stateless shot. A rest AT conflict is the resolver's escalation.
+    intercept_drive: rest
+    relevant_world: [conflict_files, conflict_verdict, conflict_intent_guidance,
+                     conflict_origin, current_branch, integration_branch,
+                     build_check_disabled, auto_escalate, last_op_outcome, last_error]
+    view:
+      - kv:
+          pairs:
+            Branch:      '{{ world.current_branch|default:"(unknown)" }} → {{ world.integration_branch }}'
+            Files:       '{{ world.conflict_files|default:"(detecting…)" }}'
+      - heading: "Resolved"
+        when: "world.conflict_verdict.resolved == true"
+      - prose: "{{ world.conflict_verdict.resolution_summary|default:'(pending)' }}"
+        when: "world.conflict_verdict.resolved == true"
+      - heading: "Escalation — agent could not resolve"
+        when: "world.conflict_verdict.resolved == false"
+      - prose: "Unresolvable: {{ world.conflict_verdict.unresolvable_files|default:'(unknown)' }} · {{ world.conflict_verdict.reason|default:'(no reason)' }}"
+        when: "world.conflict_verdict.resolved == false"
+      - prose: "Post-resolution build failed: {{ world.last_op_output }}"
+        when: "world.last_op_outcome == 'build_failed'"
+      - prose: "go.sum conflict resolved via go mod tidy — continuing."
+        when: "world.last_op_outcome == 'go_sum_fixed'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "guide intent=…"
+              hint:  "give high-level guidance and retry the agent"
+              intent: guide
+              when:  "world.conflict_verdict.resolved == false || world.last_op_outcome == 'build_failed'"
+            - label: "abort"
+              hint:  "git rebase --abort and exit"
+              intent: abort
+            - label: "look"
+              intent: look
+    on_enter:
+      # Step 1: gather conflicted files. once: skips when already set (pre-seeded
+      # in tests or from a prior entry).
+      - invoke: host.run
+        once: true
+        id: gather_conflict_files
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              FILES=$(git diff --diff-filter=U --name-only --no-color 2>/dev/null | tr '\n' ' ')
+              GOSUM_ONLY=false
+              if echo "$FILES" | grep -q "go.sum" && [ "$(echo "$FILES" | wc -w)" -eq 1 ]; then
+                GOSUM_ONLY=true
+              fi
+              jq -n --arg files "$FILES" --argjson gosum_only "$GOSUM_ONLY" \
+                '{conflict_files:$files, gosum_only:$gosum_only}'
+          cwd: "{{ world.working_dir }}"
+        bind:
+          conflict_files: "stdout_json.conflict_files"
+        on_error: conflict
+      # go.sum-only special case (post-bind: default conflict_files="" → no premature fire).
+      - when: "world.conflict_files == 'go.sum '"
+        emit_intent: gosum_fix
+      # Step 2: agent resolves. once: skips when conflict_verdict already set.
+      # args re-rendered post-bind so conflict_files is correct.
+      - invoke: host.agent.task
+        once: true
+        id: resolve_conflicts
+        with:
+          prompt: prompts/conflict_resolve.md
+          schema: schemas/conflict_verdict.json
+          agent:  conflict_resolver
+          working_dir: "{{ world.working_dir }}"
+          acceptance:
+            post_cmd: "git diff --check"
+            schema: schemas/conflict_verdict.json
+          args:
+            conflict_files:           "{{ world.conflict_files }}"
+            conflict_intent_guidance: "{{ world.conflict_intent_guidance }}"
+            current_branch:           "{{ world.current_branch }}"
+            integration_branch:       "{{ world.integration_branch }}"
+        bind:
+          conflict_verdict: submitted
+        on_error: conflict
+      # Route on the bound verdict (post-bind). Default resolved=nil → neither fires.
+      - when: "world.conflict_verdict.resolved == true"
+        emit_intent: rebase_continue
+      - when: "world.conflict_verdict.resolved == false"
+        set:
+          last_op_outcome: "escalation"
+      # Headless caller (the tail): an unresolved conflict exits rather than waiting
+      # for an operator. The git-ops hub leaves auto_escalate=false and holds here.
+      - when: "world.conflict_verdict.resolved == false && world.auto_escalate"
+        emit_intent: escalate
+    on:
+      gosum_fix:
+        - target: conflict
+          effects:
+            - invoke: host.run
+              id: gosum_fix
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    set -e
+                    export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+                    git checkout --theirs go.sum
+                    go mod tidy 2>&1 || true
+                    git add go.sum 2>&1
+                    echo "go.sum resolved via go mod tidy"
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+              on_error: conflict
+            - set:
+                conflict_files:  ""
+                last_op_outcome: "go_sum_fixed"
+            - emit_intent: rebase_continue
+      rebase_continue:
+        - target: .
+          effects:
+            - invoke: host.run
+              id: rebase_continue_cmd
+              with:
+                cmd: bash
+                args:
+                  - "-c"
+                  - |
+                    set -e
+                    export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+                    # Stage the agent's resolution (it is fenced to [Read,Edit], no
+                    # git) — `rebase --continue` with unmerged paths in the index
+                    # fails. The continue RECORDS the resolution into rerere (config
+                    # rerere.enabled, seeded by `make setup`), so the NEXT branch to
+                    # hit this exact hunk auto-resolves with no agent.
+                    git add -A 2>&1
+                    # GIT_EDITOR=true: non-interactive continue with no message editor.
+                    # || EXIT=$? OUTSIDE the $() — a `|| true` inside would mask a
+                    # failed continue as ok, falsely reporting resolution.
+                    EXIT=0
+                    OUTPUT=$(GIT_EDITOR=true git rebase --continue 2>&1) || EXIT=$?
+                    NEW_CONFLICT=false
+                    if echo "$OUTPUT" | grep -qi "CONFLICT\|conflict markers"; then
+                      NEW_CONFLICT=true
+                    fi
+                    jq -n \
+                      --arg output "$OUTPUT" \
+                      --argjson ok "$([ $EXIT -eq 0 ] && echo true || echo false)" \
+                      --argjson new_conflict "$NEW_CONFLICT" \
+                      '{output:$output, ok:$ok, new_conflict:$new_conflict}'
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: "stdout_json.output"
+                last_op_ok:     "stdout_json.ok"
+              on_error: conflict
+            - when: "world.last_op_ok == true && !world.build_check_disabled"
+              invoke: host.run
+              id: build_check_after_rebase
+              with:
+                cmd: bash
+                args: ["-c", "{{ world.build_check_cmd }}"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: conflict
+            - when: "world.last_op_ok == true"
+              set:
+                rebase_done:              true
+                conflict_files:           ""
+                conflict_verdict:         {}
+                conflict_intent_guidance: ""
+                last_op_outcome:          ""
+            - when: "world.last_op_ok == true"
+              emit_intent: conflict_resolved
+            - when: "world.last_op_ok == false"
+              set:
+                last_op_outcome: "build_failed"
+            # Headless: a build-breaking resolution escalates too (no operator).
+            - when: "world.last_op_ok == false && world.auto_escalate"
+              emit_intent: escalate
+      conflict_resolved:
+        - target: "@exit:resolved"
+          effects:
+            - set:
+                rebase_done: true
+      escalate:
+        - target: "@exit:escalated"
+          effects:
+            # Non-blank diagnostic (the @exit:escalated requires:[last_error] gate
+            # and the operator both need the real reason — never a blank dead-end).
+            - set:
+                status:     "needs-human"
+                last_error: "conflict resolution could not complete (outcome={{ world.last_op_outcome ?? 'escalation' }}). reason: {{ world.conflict_verdict.reason ?? '(agent reported unresolved)' }} · unresolvable: {{ world.conflict_verdict.unresolvable_files ?? '(n/a)' }} · output: {{ world.last_op_output ?? '(none)' }}"
+      guide:
+        - target: conflict
+          effects:
+            - set:
+                conflict_intent_guidance: "{{ slots.intent }}"
+                conflict_verdict:         {}
+                conflict_files:           ""
+                last_op_outcome:          ""
+      abort:
+        - target: "@exit:aborted"
+          effects:
+            - invoke: host.run
+              id: rebase_abort
+              with:
+                cmd: git
+                args: ["rebase", "--abort"]
+                cwd: "{{ world.working_dir }}"
+              bind:
+                last_op_output: stdout
+                last_op_ok:     ok
+              on_error: conflict
+            - set:
+                rebase_done:              false
+                conflict_files:           ""
+                conflict_verdict:         {}
+                conflict_intent_guidance: ""
+                last_op_outcome:          ""
+      look:
+        - target: .

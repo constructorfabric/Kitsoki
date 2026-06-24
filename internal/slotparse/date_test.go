@@ -137,7 +137,7 @@ func TestParseDate_MonthDay(t *testing.T) {
 	}
 }
 
-// TestParseDate_YearRollover pins the §B promise: with now=2026-04-01
+// TestParseDate_YearRollover pins the month-day rollover promise: with now=2026-04-01
 // and input "march 3", value=2027-03-03 (because march 2026 already
 // passed).
 func TestParseDate_YearRollover(t *testing.T) {

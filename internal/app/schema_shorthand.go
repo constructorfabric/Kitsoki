@@ -4,7 +4,7 @@
 // stories/oregon-trail/proposals.yaml). Internally the same shorthand can be
 // rendered as a draft 2020-12 JSON Schema so the MCP validator pipeline can
 // reject malformed drafts structurally. See internal/mcp/validator.go and
-// internal/host/oracle_ask_with_mcp.go for the live LLM-validated-draft path.
+// internal/host/agent_ask_with_mcp.go for the live LLM-validated-draft path.
 package app
 
 import (

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "obs_triage",
+  "description": "The observability triage verdict for a queried signal: a disposition the observability loop routes on, a one-line summary, and supporting detail.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "disposition": {
+      "type": "string",
+      "enum": ["alert", "annotate", "clear"],
+      "description": "alert = the signal crossed a page-worthy threshold, notify the owning team; annotate = notable but not page-worthy, record a dashboard note; clear = nominal, no action."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One crisp line stating what the signal shows and the recommended disposition."
+    },
+    "detail": {
+      "type": "string",
+      "description": "The supporting reading grounded in the query result (e.g. the value, the threshold, the trend). Empty when nominal."
+    }
+  },
+  "required": ["disposition", "summary"]
+}

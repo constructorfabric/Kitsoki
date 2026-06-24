@@ -1,6 +1,6 @@
 package semroute
 
-// Confidence bands mirroring §2.1 of the proposal. Five constants live
+// Confidence bands for the semantic-routing tier. Five constants live
 // in this file so they're discoverable in one place; Phase 2 only ever
 // emits ConfidenceWholeSynonym, ConfidenceTie, and the zero value.
 const (
@@ -18,15 +18,20 @@ const (
 	// (synonym template with ≥1 named slot unparseable). Unreachable
 	// from Phase 2.
 	ConfidenceTemplateMissingSlot = 0.65
+	// ConfidenceEmbedding (0.82) is the band emitted by the embedding
+	// routing tier when the top-1 cosine score clears the confident_bar
+	// and the margin over top-2 clears the margin threshold. Must exceed
+	// SemanticHighBar (default 0.80) so confident embed hits are direct-routed.
+	ConfidenceEmbedding = 0.82
 	// ConfidenceTie (0.50) is the band for "two or more allowed
 	// intents matched the same input." The caller surfaces a
 	// disambiguation card; the verdict carries Candidates.
 	ConfidenceTie = 0.50
 )
 
-// Verdict is the result of a semantic-routing attempt. Field semantics
-// match §2.1 of the proposal so the same struct can carry Phase 2,
-// Phase 3, and Phase 4 outputs without a shape change.
+// Verdict is the result of a semantic-routing attempt. The field set is
+// shaped so the same struct can carry Phase 2, Phase 3, and Phase 4
+// outputs without a shape change.
 type Verdict struct {
 	// Intent is the resolved intent id, or empty when Confidence is 0
 	// (no match) or 0.50 (multi-intent tie — see Candidates).
@@ -37,7 +42,7 @@ type Verdict struct {
 	// MissingSlots lists slots the user named but the typed parser
 	// could not extract. Always empty in Phase 2.
 	MissingSlots []string
-	// Confidence is the §2.1 band: 0.90 (synonym hit), 0.50 (tie),
+	// Confidence is the routing band: 0.90 (synonym hit), 0.50 (tie),
 	// or 0 (miss). Phase 4 also emits 0.80 and 0.65.
 	Confidence float64
 	// MatchReason is a short, machine-readable explanation suitable
@@ -51,8 +56,8 @@ type Verdict struct {
 	// "wade", "go south", "buy {items} for {total_cost}"). Empty when
 	// no match (Confidence == 0) or on a tie (the disambiguation card
 	// reads Candidates instead). Consumed by the orchestrator's
-	// `RecordSynonymHit` call so the §7.6 hit-tracking table is
-	// keyed by the author's exact string.
+	// `RecordSynonymHit` call so the hit-tracking table is keyed by
+	// the author's exact string.
 	MatchPattern string
 	// MatchKind discriminates the source category for hit-tracking
 	// and inspect surfaces: "bare" for an authored synonym entry,
@@ -69,7 +74,7 @@ type Verdict struct {
 
 // Candidate is one entry of a tie verdict. The disambiguation card
 // uses Intent to enumerate options and MatchReason to explain *why*
-// each candidate was a match in the route-trace overlay (§8).
+// each candidate was a match in the route-trace overlay.
 type Candidate struct {
 	Intent      string
 	MatchReason string

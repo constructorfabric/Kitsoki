@@ -120,9 +120,47 @@ func (rw *childRewriter) rewriteState(s *State) {
 		s.On = newOn
 	}
 
+	// DefaultIntent is an intent ref (the state's free-text sink); prefix it
+	// like any other so the folded state names the renamed arc directly. The
+	// orchestrator also resolves it through IntentAliases at runtime, so a bare
+	// name still works, but rewriting here keeps the folded def self-consistent.
+	if s.DefaultIntent != "" {
+		s.DefaultIntent = rw.rewriteIntentRef(s.DefaultIntent)
+	}
+
+	// ContextualRouting intent refs (room_chat, plan_accept_intent,
+	// plan_refine_intent) are intent references exactly like DefaultIntent:
+	// authored bare, must be prefixed on import so they match the renamed On:
+	// arcs in the folded state. Without this, loader cross-reference validation
+	// fails on imported stories because the bare name no longer appears in On:
+	// or inScopeIntents after folding.
+	if cr := s.ContextualRouting; cr != nil {
+		if cr.RoomChat != "" {
+			cr.RoomChat = rw.rewriteIntentRef(cr.RoomChat)
+		}
+		if cr.PlanAcceptIntent != "" {
+			cr.PlanAcceptIntent = rw.rewriteIntentRef(cr.PlanAcceptIntent)
+		}
+		if cr.PlanRefineIntent != "" {
+			cr.PlanRefineIntent = rw.rewriteIntentRef(cr.PlanRefineIntent)
+		}
+	}
+
 	// OnEnter.
 	for i := range s.OnEnter {
 		rw.rewriteEffect(&s.OnEnter[i])
+	}
+
+	// AgentOffRamp.Agent: the off-ramp voice may name a child agent.
+	// Prefix it like meta_mode.agent and with:{agent} so the folded
+	// agents: map (parent.Agents[<alias>__<agent>]) resolves at load
+	// time. Without this an imported room that opts into the off-ramp
+	// with `agent_off_ramp.agent: <child-agent>` carries a dangling
+	// reference to the child's pre-fold agent name.
+	if s.AgentOffRamp != nil && s.AgentOffRamp.Agent != "" {
+		if _, isChild := rw.childAgent[s.AgentOffRamp.Agent]; isChild {
+			s.AgentOffRamp.Agent = rw.alias + "__" + s.AgentOffRamp.Agent
+		}
 	}
 
 	// Local intents.
@@ -178,6 +216,18 @@ func (rw *childRewriter) rewriteEffect(eff *Effect) {
 	}
 	eff.When = rw.rewriteExpr(eff.When)
 	eff.Say = rw.rewriteExpr(eff.Say)
+
+	// id: the author-assigned call-site id is threaded into host args under
+	// the reserved `call` key (machine.applyEffectsTraced) and re-rendered at
+	// dispatch time, so it may carry world.X templates — e.g. cherny-loop's
+	// gating gate `id: "gate-{{ world.iteration }}"`, which addresses the
+	// cassette's by_call: gate-1 stub. Under an import the world key is folded
+	// to world.maker__iteration, so an UN-rewritten id renders against the
+	// (absent) bare key and yields an unmatched call id — the host result
+	// never binds, gate_ok stays unset, and the gating emit chain stalls. This
+	// is the import-compound "maker stalls at gating" bug. Rewrite it like any
+	// other world.X-bearing template.
+	eff.Id = rw.rewriteExpr(eff.Id)
 
 	// emit_intent: the value is a template (e.g.
 	// "{{ world.llm_verdict.intent }}") whose evaluation result names
@@ -258,7 +308,17 @@ func (rw *childRewriter) rewriteEffect(eff *Effect) {
 		eff.With = newWith
 	}
 
-	// Bind: keys are world keys, values are result keys (no rewrite).
+	// Bind: keys are world keys (LHS, namespaced like Set keys). Values
+	// are EITHER a bare result-field path (e.g. "submitted",
+	// "stdout_json.prd_file") OR a full template that merges the host
+	// result with the running world (e.g.
+	// "{{ world.answered_count + result.submitted.matched_count }}", the
+	// accumulator idiom in stories/prd/rooms/clarifying.yaml). The bare
+	// form has no `world.` ref so rewriteExpr is a no-op; the template
+	// form MUST have its `world.<childKey>` refs namespaced like every
+	// other expression, else the child reads the un-prefixed (nil) key at
+	// runtime. (Before this, bind values were passed through verbatim —
+	// the bug the first import of a bind-template story exposed.)
 	if len(eff.Bind) > 0 {
 		newBind := make(map[string]string, len(eff.Bind))
 		for k, v := range eff.Bind {
@@ -266,7 +326,7 @@ func (rw *childRewriter) rewriteEffect(eff *Effect) {
 			if _, ok := rw.childWorldKey[k]; ok {
 				newKey = rw.alias + "__" + k
 			}
-			newBind[newKey] = v
+			newBind[newKey] = rw.rewriteExpr(v)
 		}
 		eff.Bind = newBind
 	}
@@ -349,26 +409,43 @@ func (rw *childRewriter) rewriteAny(v any) any {
 // world_in projections at parent scope) are left alone.
 var worldIdentRE = regexp.MustCompile(`\bworld\.([A-Za-z_][A-Za-z0-9_]*)`)
 
+// helperIntentArgRE matches view-helper calls whose sole argument is a
+// quoted intent name, e.g. available('foo') or blocked_reason("bar").
+// Capture groups: 1=helper name, 2=quote char, 3=intent name.
+var helperIntentArgRE = regexp.MustCompile(
+	`\b(available|blocked|blocked_reason|intent_status)\((['"])([A-Za-z_][A-Za-z0-9_]*)['"]\)`)
+
 // rewriteExpr returns s with every `world.<X>` occurrence rewritten to
-// `world.<alias>__<X>` when X is a child world key. Non-string-bearing
-// inputs (empty) pass through. Works on bare expressions and on
-// template-bearing strings ({{ … }}) alike — the regex doesn't care
-// about delimiters.
+// `world.<alias>__<X>` when X is a child world key, and with every
+// view-helper intent-name argument (available/blocked/blocked_reason/intent_status)
+// rewritten via rewriteIntentRef. Non-string-bearing inputs (empty) pass
+// through. Works on bare expressions and on template-bearing strings
+// ({{ … }}) alike — the regexes don't care about delimiters.
 func (rw *childRewriter) rewriteExpr(s string) string {
 	if rw == nil || s == "" {
 		return s
 	}
-	if len(rw.childWorldKey) == 0 {
-		return s
+	if len(rw.childWorldKey) > 0 {
+		s = worldIdentRE.ReplaceAllStringFunc(s, func(match string) string {
+			// match looks like "world.X" — split at the dot.
+			key := strings.TrimPrefix(match, "world.")
+			if _, ok := rw.childWorldKey[key]; ok {
+				return "world." + rw.alias + "__" + key
+			}
+			return match
+		})
 	}
-	return worldIdentRE.ReplaceAllStringFunc(s, func(match string) string {
-		// match looks like "world.X" — split at the dot.
-		key := strings.TrimPrefix(match, "world.")
-		if _, ok := rw.childWorldKey[key]; ok {
-			return "world." + rw.alias + "__" + key
-		}
-		return match
-	})
+	if len(rw.childIntent) > 0 || len(rw.parentExportedIntents) > 0 {
+		s = helperIntentArgRE.ReplaceAllStringFunc(s, func(match string) string {
+			sub := helperIntentArgRE.FindStringSubmatch(match)
+			rewritten := rw.rewriteIntentRef(sub[3])
+			if rewritten == sub[3] {
+				return match
+			}
+			return sub[1] + "(" + sub[2] + rewritten + sub[2] + ")"
+		})
+	}
+	return s
 }
 
 // rewriteView applies rewriteExpr to every author-supplied template
@@ -520,6 +597,12 @@ func (rw *childRewriter) rewriteViewElement(el ViewElement) ViewElement {
 			copy(raw, el.ChoiceRaw)
 			out.ChoiceRaw = raw
 		}
+	}
+	if el.Kind == "media" {
+		out.MediaHandle = el.MediaHandle
+		out.MediaCaption = rw.rewriteExpr(el.MediaCaption)
+		out.MediaKind = el.MediaKind
+		out.MediaPath = rw.rewriteExpr(el.MediaPath)
 	}
 	return out
 }

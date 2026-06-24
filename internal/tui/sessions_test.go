@@ -96,6 +96,32 @@ func TestSessions_ListThenAttachIndexInvalid(t *testing.T) {
 		"out-of-range attach should print invalid-index error; got:\n%s", tx)
 }
 
+func TestSessions_AttachDryRunResolvesCachedTarget(t *testing.T) {
+	cs, cleanup := openSessionsTestStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	chat, err := cs.Create(ctx, "bugfix", "live", "PROJ-1", "live work")
+	require.NoError(t, err)
+	_, err = cs.AttachPTY(ctx, chats.AttachPTYOptions{
+		ChatID:      chat.ID,
+		TmuxSession: "kitsoki-chat-" + chat.ID,
+	})
+	require.NoError(t, err)
+
+	m := buildSessionsTestModel(t, cs)
+	m = runTurnBlocking(t, m, "/sessions list")
+	m = runTurnBlocking(t, m, "/sessions attach 1 --dry-run")
+
+	tx := extractTranscript(t, m)
+	assert.Contains(t, tx, "would attach 1",
+		"dry-run attach should resolve the cached index; got:\n%s", tx)
+	assert.Contains(t, tx, "live work",
+		"dry-run attach should name the resolved chat; got:\n%s", tx)
+	assert.Contains(t, tx, "kitsoki-chat-"+chat.ID,
+		"dry-run attach should name the resolved tmux session; got:\n%s", tx)
+}
+
 // TestSessions_AttachWithoutListFirst: /sessions attach with no
 // prior /sessions list call refuses with a friendly hint instead of
 // firing a tea.Exec.

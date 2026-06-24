@@ -1,8 +1,8 @@
 // Package host — host.git — git/gh-backed VCS provider.
 //
-// Implements the `vcs` host_interface from the dev-story
-// implementation contract.  One prefix-fallback handler dispatches
-// the seven vcs ops via the `op` arg.  Local git ops shell out to the `git` CLI; PR ops shell out to
+// Implements the `vcs` host_interface (see docs/architecture/hosts.md).  One
+// prefix-fallback handler dispatches the seven vcs ops via the `op`
+// arg.  Local git ops shell out to the `git` CLI; PR ops shell out to
 // `gh`, which is optional — if missing or unauthenticated the handler
 // returns a clean Result.Error rather than crashing.
 //
@@ -47,7 +47,7 @@ func runRealCommand(ctx context.Context, dir, name string, args ...string) (stri
 // Common optional args:
 //   - workdir (string): working directory for the git command; defaults to cwd.
 //
-// Per-op input/output follows the contract §2.2.
+// Per-op input/output follows the vcs iface contract.
 func GitVCSHandler(ctx context.Context, args map[string]any) (Result, error) {
 	op, _ := args["op"].(string)
 	op = strings.TrimSpace(op)
@@ -106,12 +106,16 @@ func gitDiff(ctx context.Context, workdir string, _ map[string]any) (Result, err
 	if code != 0 {
 		return Result{Error: fmt.Sprintf("git.diff: %s", strings.TrimSpace(stderr))}, nil
 	}
-	// Also surface the list of changed files for `bind:` ergonomics.
-	filesOut, _, _, _ := cliExec(ctx, workdir, "git", "diff", "--name-only")
+	// Also surface the list of changed files for `bind:` ergonomics. This is
+	// a best-effort convenience: if `--name-only` fails (exec error or
+	// non-zero exit) we degrade to an empty file list rather than failing the
+	// whole call, since the patch content above is the authoritative result.
 	var files []any
-	for _, ln := range strings.Split(strings.TrimSpace(filesOut), "\n") {
-		if ln != "" {
-			files = append(files, ln)
+	if filesOut, _, fcode, ferr := cliExec(ctx, workdir, "git", "diff", "--name-only"); ferr == nil && fcode == 0 {
+		for _, ln := range strings.Split(strings.TrimSpace(filesOut), "\n") {
+			if ln != "" {
+				files = append(files, ln)
+			}
 		}
 	}
 	return Result{Data: map[string]any{"diff": stdout, "files": files}}, nil
@@ -121,6 +125,15 @@ func gitCommit(ctx context.Context, workdir string, args map[string]any) (Result
 	message, _ := args["message"].(string)
 	if strings.TrimSpace(message) == "" {
 		return Result{Error: "git.commit: message argument is required"}, nil
+	}
+	// stage_all: when true, run `git add -A` first so new untracked files are
+	// included in the commit (analogous to `git commit -A` but also covers
+	// deletions). Takes precedence over the files list and the -a fallback.
+	stageAll, _ := args["stage_all"].(bool)
+	if stageAll {
+		if _, addStderr, addCode, addErr := cliExec(ctx, workdir, "git", "add", "-A"); addErr != nil || addCode != 0 {
+			return Result{Error: fmt.Sprintf("git.commit: stage_all: %s", strings.TrimSpace(addStderr))}, nil
+		}
 	}
 	// Optional files list; when empty, fall back to `git commit -a`.
 	// Tolerate two states that aren't really failures from the
@@ -176,8 +189,8 @@ func gitCommit(ctx context.Context, workdir string, args map[string]any) (Result
 		}
 	}
 	commitArgs := []string{"commit", "-m", message}
-	if len(filesAny) == 0 {
-		// No explicit files → assume -a so authors can use the
+	if len(filesAny) == 0 && !stageAll {
+		// No explicit files and no stage_all → assume -a so authors can use the
 		// fast-path on a dirty tree.
 		commitArgs = []string{"commit", "-a", "-m", message}
 	}
@@ -251,14 +264,16 @@ func gitPush(ctx context.Context, workdir string, args map[string]any) (Result, 
 
 // ghAvailable reports whether the `gh` binary is on PATH.  A negative
 // answer turns the four PR ops into a clean domain error so the YAML
-// `on_error:` arc fires instead of crashing.
-func ghAvailable(ctx context.Context, workdir string) bool {
-	_, _, code, err := cliExec(ctx, workdir, "gh", "--version")
+// `on_error:` arc fires instead of crashing.  The `gh --version` probe is
+// workdir-agnostic, so no workdir argument is taken; this is the single
+// availability probe shared by both the git_vcs PR ops and the gh.ticket ops.
+func ghAvailable(ctx context.Context) bool {
+	_, _, code, err := cliExec(ctx, "", "gh", "--version")
 	return err == nil && code == 0
 }
 
 func ghOpenPR(ctx context.Context, workdir string, args map[string]any) (Result, error) {
-	if !ghAvailable(ctx, workdir) {
+	if !ghAvailable(ctx) {
 		return Result{Error: "git.open_pr: gh CLI not available — install github.com/cli/cli"}, nil
 	}
 	title, _ := args["title"].(string)
@@ -289,7 +304,7 @@ func ghOpenPR(ctx context.Context, workdir string, args map[string]any) (Result,
 }
 
 func ghPRStatus(ctx context.Context, workdir string, args map[string]any) (Result, error) {
-	if !ghAvailable(ctx, workdir) {
+	if !ghAvailable(ctx) {
 		return Result{Error: "git.pr_status: gh CLI not available"}, nil
 	}
 	prID, _ := args["pr_id"].(string)
@@ -314,7 +329,7 @@ func ghPRStatus(ctx context.Context, workdir string, args map[string]any) (Resul
 }
 
 func ghPRComment(ctx context.Context, workdir string, args map[string]any) (Result, error) {
-	if !ghAvailable(ctx, workdir) {
+	if !ghAvailable(ctx) {
 		return Result{Error: "git.pr_comment: gh CLI not available"}, nil
 	}
 	prID, _ := args["pr_id"].(string)

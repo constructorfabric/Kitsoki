@@ -25,7 +25,7 @@ func TestRenderAll_EmptyViewReturnsEmpty(t *testing.T) {
 }
 
 // TestRenderAll_MixedComposition exercises the full element-kind menu
-// in a single view and asserts the join policy from proposal §5.3 —
+// in a single view and asserts the inter-element join policy —
 // one blank line between unlike kinds, and the expected content
 // substrings in the expected order.
 func TestRenderAll_MixedComposition(t *testing.T) {
@@ -35,7 +35,7 @@ func TestRenderAll_MixedComposition(t *testing.T) {
 			{Kind: "prose", Source: "Welcome to dev-story. What would you like to do today?"},
 			{Kind: "list", Items: []app.ListItem{
 				{Label: "Start a new task", Hint: "jira search"},
-				{Label: "Consult the Oracle", Hint: "general Q&A"},
+				{Label: "Consult the Agent", Hint: "general Q&A"},
 			}},
 			{Kind: "kv", Pairs: goyaml.MapSlice{
 				{Key: "Inbox", Value: "3 unread"},
@@ -52,7 +52,7 @@ func TestRenderAll_MixedComposition(t *testing.T) {
 		"Welcome to dev-story",
 		"Start a new task",
 		"jira search",
-		"Consult the Oracle",
+		"Consult the Agent",
 		"general Q&A",
 		"Inbox:",
 		"3 unread",
@@ -94,7 +94,7 @@ func TestRenderAll_BlankLineBetweenUnlikeKinds(t *testing.T) {
 	}
 }
 
-// TestRenderAll_AdjacentKVCoalesces asserts the §5.3 coalescing hint:
+// TestRenderAll_AdjacentKVCoalesces asserts the kv coalescing hint:
 // two `kv` elements in a row read as one block (no blank line
 // between).
 func TestRenderAll_AdjacentKVCoalesces(t *testing.T) {
@@ -205,16 +205,16 @@ func (fakeExtendsRenderer) RenderExtended(_ string, blocks map[string]string, _ 
 // the 2026-05-20 narrow-hint-column bug. The narrow case has TWO
 // failure modes the list renderer must defend against:
 //
-//   1. Extends-form views falling back to the orchestrator's fixed
-//      blockRenderWidth=80 — fixed by RenderAll's extends branch
-//      pre-rendering at the dispatcher's actual viewport width.
+//  1. Extends-form views falling back to the orchestrator's fixed
+//     blockRenderWidth=80 — fixed by RenderAll's extends branch
+//     pre-rendering at the dispatcher's actual viewport width.
 //
-//   2. A single outlier label setting maxLabel for the whole list
-//      and squeezing every other row's hint column. The list
-//      renderer's max_label cap (minHintWidth floor) now keeps a
-//      49-char mega-label from forcing every other row's hint
-//      column below 40 chars; the outlier row overflows alone
-//      instead.
+//  2. A single outlier label setting maxLabel for the whole list
+//     and squeezing every other row's hint column. The list
+//     renderer's max_label cap (minHintWidth floor) now keeps a
+//     49-char mega-label from forcing every other row's hint
+//     column below 40 chars; the outlier row overflows alone
+//     instead.
 //
 // Post-fix the short-label row's hint must land on one line at any
 // reasonable viewport width — narrow OR wide — because the cap
@@ -353,6 +353,66 @@ func TestRenderAll_ChoiceElementDispatch(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestEvalElements_ChoiceItemsExpandedForBrowser asserts that EvalElements
+// pongo-expands choice item labels, hints, and slot values so the browser
+// receives concrete strings (not raw {{ ... }} expressions). This is the
+// web-parity counterpart of the TUI widget's Open() expansion.
+func TestEvalElements_ChoiceItemsExpandedForBrowser(t *testing.T) {
+	view := app.View{
+		Elements: []app.ViewElement{
+			{
+				Kind:       "choice",
+				ChoiceMode: "single",
+				ChoiceItems: []app.ChoiceItem{
+					{
+						Label:  "{{ world.opts.0.path }}",
+						Hint:   "{{ world.opts.0.rec|upper }} — amend",
+						Intent: "pick",
+						When:   "len(world.opts ?? []) >= 1",
+						Slots:  map[string]any{"target": "{{ world.opts.0.path }}"},
+					},
+					// Filtered out by when guard.
+					{
+						Label:  "{{ world.opts.1.path }}",
+						Hint:   "{{ world.opts.1.rec|upper }} — amend",
+						Intent: "pick",
+						When:   "len(world.opts ?? []) >= 2",
+						Slots:  map[string]any{"target": "{{ world.opts.1.path }}"},
+					},
+				},
+			},
+		},
+	}
+	env := expr.Env{World: map[string]any{
+		"opts": []any{
+			map[string]any{"path": "docs/proposals/foo.md", "rec": "amend"},
+		},
+	}}
+
+	ev, err := EvalElements(view, env, nil)
+	if err != nil {
+		t.Fatalf("EvalElements: %v", err)
+	}
+	if len(ev.Elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(ev.Elements))
+	}
+	items := ev.Elements[0].ChoiceItems
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item (second filtered by when), got %d", len(items))
+	}
+	it := items[0]
+	if it.Label != "docs/proposals/foo.md" {
+		t.Errorf("label not expanded: got %q", it.Label)
+	}
+	if it.Hint != "AMEND — amend" {
+		t.Errorf("hint not expanded: got %q", it.Hint)
+	}
+	sv, _ := it.Slots["target"].(string)
+	if sv != "docs/proposals/foo.md" {
+		t.Errorf("slot.target not expanded: got %q", sv)
 	}
 }
 

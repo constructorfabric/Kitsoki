@@ -1,0 +1,119 @@
+# author — phase 4/5. Author the selected gate + a flow fixture; prove green.
+#
+# The `author` persona edits the named room YAML, writes a cassette-free
+# flow fixture, and runs `kitsoki test flows` — binding `author_artifact`
+# with `flows_green`. The accept arc REFUSES to advance while the flow is
+# red (guard on world.author_artifact.flows_green): a gate without a green
+# fixture is unverified, so the operator is bounced back to refine.
+
+states:
+
+  author:
+    description: "Author the selected gate and its flow fixture; verify flows green."
+    view:
+      - banner:
+          text:     "AUTHOR"
+          subtitle: "Phase 4 / 5  ·  gate + flow fixture, must be green"
+          color:    "#F59E0B"
+      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }} · gate {{ world.selected_theme }}"
+      - kv:
+          pairs:
+            "Flows green": '{{ world.author_artifact.flows_green|default:"(pending)" }}'
+            Files:         '{{ world.author_artifact.files_changed|default:"(pending)" }}'
+      - heading: "Author summary"
+      - code: '{{ world.author_artifact.summary_markdown|default:"(pending — author has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "accept the gate (only if flows are green) and review the ladder"
+              intent: accept
+            - label:  "refine"
+              hint:   "re-author with feedback (required if flows are red)"
+              intent: refine
+              param: { slot: feedback, type: string, placeholder: "what to fix", required: false }
+            - label:  "restart"
+              hint:   "go back and re-decide"
+              intent: restart_from
+              slots:  { stage: decide }
+            - label:  "quit"
+              hint:   "abandon the loop"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [job, stories_dir, selected_theme, judge_mode, judge_confidence_threshold, decide_artifact, author_artifact, llm_verdict, refine_feedback, cycle]
+    on_enter:
+      - invoke: host.agent.task
+        once: true
+        with:
+          agent: author
+          acceptance:
+            schema: schemas/author_artifact.json
+          context:
+            prompt: prompts/author_executing.md
+            args:
+              selected:        "{{ world.decide_artifact.selected }}"
+              stories_dir:     "{{ world.stories_dir }}"
+              refine_feedback: "{{ world.refine_feedback }}"
+        bind:
+          author_artifact: submitted
+        on_error: idle
+      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+        invoke: host.agent.decide
+        with:
+          agent: judge
+          prompt: prompts/judge_generic.md
+          schema: schemas/judge_verdict.json
+          args:
+            phase:          "author"
+            artifact_title: "gate: {{ world.selected_theme }}"
+            artifact_body:  "{{ world.author_artifact.summary_markdown }}"
+            criterion:      "The gate is wired with the brief's validator as a deterministic re-check, a flow fixture covers each branch, and `kitsoki test flows` is green (flows_green=true)."
+            threshold:      "{{ world.judge_confidence_threshold }}"
+        bind:
+          llm_verdict: submitted
+      - when: |
+          world.judge_mode != 'human' &&
+          world.author_artifact.flows_green &&
+          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          world.llm_verdict.verdict != 'uncertain' &&
+          world.llm_verdict.intent != 'uncertain'
+        emit_intent: "{{ world.llm_verdict.intent }}"
+        slots:
+          feedback: "{{ world.llm_verdict.reason }}"
+    on:
+      accept:
+        # Refuse to advance while the flow is red — a gate without a green
+        # fixture is unverified. Bounce back to author with a forced refine.
+        - when: "!world.author_artifact.flows_green"
+          target: author
+          effects:
+            - say: "Flows are not green yet — refine the gate/fixture before accepting."
+        - target: record
+          effects:
+            - say: "Gate authored and flows green — reviewing the determinism ladder."
+            - set: { refine_feedback: "", status: "authored" }
+      refine:
+        - when: "world.author_cycle >= world.author_budget"
+          target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "author_cycle_budget_exhausted", status: "abandoned" }
+        - target: author
+          effects:
+            - set:
+                refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
+                author_cycle:    "{{ world.author_cycle + 1 }}"
+                cycle:           "{{ world.cycle + 1 }}"
+                author_artifact: {}
+      restart_from:
+        - target: decide
+          effects:
+            - set: { refine_feedback: "", author_cycle: 0, decide_artifact: {}, author_artifact: {}, selected_theme: "" }
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_at_author", status: "abandoned" }
+      look:
+        - target: .

@@ -1,10 +1,11 @@
 ---
+# triage-marathon: ALREADY-FIXED in main — 224cea6e/8133a50d — {% verbatim %} wrap in metamode adapter
 id: 2026-05-18T045825Z-metamode-prompt-pongo2-unescaped-template-tags-in-transcript
 title: "metamode: prompt render fails with pongo2 EOF when transcript/view contains '{{' or '{%' (story-author edit turn dies)"
 target: kitsoki
 filed_at: 2026-05-18T04:58:25Z
 filed_by: cloud-user
-status: open
+status: fixed
 severity: P1
 component: metamode
 kitsoki_rev: 3ff850e
@@ -32,10 +33,10 @@ From `/tmp/kitsoki-dogfood-trace.jsonl`:
 
 ```
 {"time":"2026-05-18T04:58:25.622983616Z","level":"ERROR",
- "msg":"metamode.oracle.error",
+ "msg":"metamode.agent.error",
  "chat_id":"01KRWQ2R9JFV169A1EFTB4NTDT",
  "mode":"edit",
- "err":"metamode.OracleAdapter: host.oracle.ask_with_mcp:
+ "err":"metamode.AgentAdapter: host.agent.ask_with_mcp:
    render prompt \"/tmp/kitsoki-prompt-2658909342.txt\":
    render: pongo2 template \"You are the `story-author` agent for
    kitsoki. A \\\"story\\\" is a directory…\":
@@ -80,7 +81,7 @@ Two amplifying factors:
    and `{% if world.… %}` etc.
 4. On the next turn (any further user message in the same chat),
    the adapter re-renders the prompt with that transcript content.
-   `metamode.oracle.error` fires; the turn dies.
+   `metamode.agent.error` fires; the turn dies.
 
 Hit reliably in the trace at `04:58:25` after a turn that quoted
 `stories/dev-story/rooms/ticket_search.yaml`.
@@ -101,7 +102,7 @@ content being re-parsed as pongo2. Either:
 ### Suggested fix sketch
 
 - **Find the prompt builder** — likely `internal/metamode/adapter.go`
-  or `internal/host/oracle_ask_with_mcp.go`. Locate where it calls
+  or `internal/host/agent_ask_with_mcp.go`. Locate where it calls
   `pongo2.FromString(...).Execute(ctx)` with a context that includes
   things like `transcript`, `view`, `world`, `user_message`,
   `assistant_message`.

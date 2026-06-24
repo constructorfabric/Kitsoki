@@ -1,0 +1,29 @@
+# conflict_build_reject — verifies that build failure outcome blocks merge.
+# Uses world_override to simulate post-rebase-continue state where build failed.
+# The key invariant: rebase_done stays false when build rejects the resolution.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: conflict
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  conflict_origin:    rebase
+  conflict_files:     ""
+  conflict_verdict:   {}
+  rebase_done:        false
+
+turns:
+  - intent: { name: look, slots: {} }
+    world_override:
+      last_op_outcome: build_failed
+      rebase_done:     false
+      last_op_output:  "build failed: undefined: SomeType"
+    expect_state: conflict
+    expect_world:
+      rebase_done:     false
+      last_op_outcome: build_failed
+
+expect_no_errors: true

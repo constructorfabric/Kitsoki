@@ -1,0 +1,271 @@
+# cherny-loop — facilitate a "Cherny loop" (loop engineering): a goal-gated
+# agent loop that iterates maker → checker → budget-guard until the goal is
+# *actually met* (a deterministic gate passes) or a budget ceiling is hit.
+#
+# The loop RUNS ITSELF: the operator kicks it off once (`launch`) and watches it
+# converge. Each step's on_enter makes a change (maker), gates it (checker), and
+# routes on the verdict; a failed gate with budget left re-enters `iterating`
+# with no operator input (the autonomous self-loop). Every iteration streams a
+# breadcrumb and is persisted as a numbered artifact, so the run is watchable,
+# trackable, restartable, and shareable.
+#
+# Autonomy is in-story: iterating (maker) auto-emits `check` → gating (checker),
+# which emits `loop_again` back into iterating. Each iteration is two emit hops,
+# and the engine caps emit_intent chains at EmitIntentMaxDepth (8) per turn — so
+# an autonomous-from-launch run completes in one turn for budgets up to ~3.
+# Larger budgets want the background-job runner (see README → autonomy). This cap
+# is a real engine constraint the story exposes, not papered over.
+#
+# Red-before-green: `launch` does NOT run the maker. It first enters `baseline`,
+# which runs the gate ONCE on the unchanged artifact to prove it can fail. A RED
+# baseline (gate fails) auto-proceeds into the loop; a GREEN baseline means the
+# gate proves nothing (goal already met, or gate too weak), so the loop refuses
+# to spend and rests for the operator. This is why the gate command is rendered
+# verbatim (a `code` block) in `configuring` and `baseline`: the script is the
+# contract.
+#
+# Three gate modes (world.gate_mode), with "" meaning "planner decides during configure":
+#   script  — host.run a command; gate passes iff exit_code == 0 (the strongest
+#             maker/checker split: the checker is code, it cannot be talked into
+#             passing, and it costs nothing).  DEFAULT.
+#   agent  — host.agent.decide adversarially reviews the goal artifact; gate
+#             passes iff the verdict's `pass` is true.  For goals no test can
+#             encode (prose quality, design soundness).
+#   hybrid — run the script first AND the agent reviewer; pass only when both
+#             pass. For work where most evidence is deterministic but a small
+#             judgment tail remains.
+#
+# Termination — the loop ALWAYS ends on goal-met OR a budget guard, evaluated
+# every turn after a failed gate:
+#   1. goal met        → @exit:achieved        (always wins)
+#   2. cost ceiling     → @exit:exhausted       world.session_cost_usd is the
+#                         reserved, engine-maintained $ spend (foldAgentCost);
+#                         active only when cost_budget_usd > 0
+#   3. iteration ceiling → @exit:exhausted
+#
+# Feedback into the loop: a failed gate's reason (script stderr/stdout tail, or
+# the agent's rationale) is captured into world.last_gate_failure and handed to
+# the NEXT maker turn, so the loop converges instead of blindly retrying.
+
+app:
+  id: cherny-loop
+  version: 0.1.0
+  title: "Cherny loop"
+  author: "Kitsoki"
+  license: "CC0"
+
+# Bare host calls (no iface wrapping):
+#   host.agent.task     — the maker: edits toward the goal each iteration
+#   host.run             — the script gate (deterministic checker)
+#   host.agent.decide   — the gate planner + agent gate (adversarial checker)
+#   host.artifacts_dir   — persist each iteration's record (the run trail)
+hosts:
+  - host.agent.task
+  - host.agent.decide
+  - host.run
+  - host.artifacts_dir
+  - host.git
+
+# Worktree confinement — the maker is an autonomous agent that EDITS the repo,
+# so it must never write the operator's checkout directly. `launch` mints a
+# dedicated git worktree under .worktrees/<workspace_id> on a throwaway branch,
+# and every maker turn + every gate runs with `working_dir`/`cwd` pinned to it.
+# The maker can READ the rest of the repo (cwd doesn't wall off reads); its
+# WRITES land in the isolated branch. This reuses the same provider-neutral
+# `workspace` host_interface dev-story declares (default-bound to
+# host.git_worktree), so a parent INSTANCE can rebind the backend in one place
+# and the two stories share one workspace vocabulary.
+#
+# NB: like dev-story, `working_dir` is the cwd, not an OS write-jail — it
+# confines writes by convention. A hard OS-level write guarantee (deny writes
+# outside the worktree even for absolute / ../ paths) is an engine-layer change
+# tracked separately; see README → "Worktree confinement".
+host_interfaces:
+  # vcs — version control. The commit op stages and commits the maker's
+  # changes to workspace_branch before exiting @exit:achieved. Mirrors the
+  # same iface.vcs.commit surface as stories/bugfix. Default: host.git.
+  vcs:
+    description: "Version-control abstraction (git / GitHub / Bitbucket)."
+    operations:
+      commit:
+        input:  { workdir: string, message: string, files: list, stage_all: bool }
+        output: { ok: bool, sha: string }
+    default: host.git
+
+  workspace:
+    description: "Working-copy manager. Local: git worktree."
+    operations:
+      list:
+        input:  {}
+        output: { workspaces: list }
+      get:
+        input:  { id: string }
+        output: { id: string, path: string, branch: string, dirty: bool }
+      create:
+        # `id` pins the .worktrees/<id> dir basename; `name` is the branch;
+        # `base` is the branch to root from ("" = current HEAD). Matches
+        # host.git_worktree's worktreeCreate signature.
+        input:  { id: string, name: string, base: string }
+        output: { ok: bool, path: string }
+      sync:
+        input:  { id: string }
+        output: { ok: bool, log: string }
+    default: host.git_worktree
+
+agents:
+  maker:
+    system_prompt: "You are an engineer iterating toward a stated goal. Read the goal and the previous attempt's gate-failure feedback, make the smallest correct change that moves toward passing the gate, and report a one-line summary of what you changed."
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile: read-only
+    external_side_effect: false
+
+  gate_reviewer:
+    system_prompt: "You are an adversarial quality gate. Judge the goal artifact against the stated goal. Default to pass=false unless the goal is clearly, fully met. When you fail it, give a specific, actionable reason the next iteration can act on."
+    tools: [Read, Grep, Glob]
+
+  gate_planner:
+    system_prompt: "You choose the cheapest reliable gate for an ad hoc engineering goal. Prefer script gates when the goal names an existing command or an objective command can be written; use agent gates for subjective review; use hybrid when deterministic evidence covers most of the goal but a focused review remains."
+    tools: [Read, Grep, Glob]
+
+world:
+  # Configuration (set in `configuring`, or seeded via a warp/flow).
+  goal_text:         { type: string, default: "" }    # the purpose, in words
+  goal_artifact:     { type: string, default: "" }    # path the maker produces/edits
+  gate_mode:         { type: string, default: "" }    # "" = planner decides during configure; script | agent | hybrid
+  gate_command:      { type: string, default: "" }    # script-mode shell command
+  gate_plan_reason:  { type: string, default: "" }    # why the planner chose this gate
+  gate_prompt_focus: { type: string, default: "" }    # extra reviewer rubric for agent/hybrid gates
+  anchor_files:      { type: string, default: "" }    # fixed context handed to the maker each turn (ralph reset)
+  iteration_budget:  { type: int,    default: 8 }
+  cost_budget_usd:   { type: number, default: 0 }     # 0 = disabled
+
+  # Worktree confinement (see hosts comment). The maker + gate run with cwd
+  # pinned to worktree_path so every iteration's writes land in an isolated
+  # branch, never the operator's checkout.
+  workspace_id:      { type: string, default: "cherny-loop" }      # .worktrees/<id> basename
+  workspace_branch:  { type: string, default: "cherny-loop/run" }  # branch the worktree holds
+  workspace_base:    { type: string, default: "" }                 # "" = root at current HEAD
+  worktree_path:     { type: string, default: "" }                 # bound from create; cwd for maker + gate
+
+  # Loop state.
+  iteration:         { type: int,    default: 0 }
+  goal_achieved:     { type: bool,   default: false }
+  baseline_checked:  { type: bool,   default: false }   # the gate has been proven RED before any spend
+  last_gate_failure: { type: string, default: "" }    # fed to the next maker turn
+  maker_summary:     { type: string, default: "" }    # the maker's one-line report
+  terminal_reason:   { type: string, default: "" }    # achieved | iteration_budget | cost_budget | aborted
+
+  # Commit result (bound after the maker's work is committed on @exit:achieved).
+  commit_sha:        { type: string, default: "" }
+
+  # Gate result (bound from the checker each turn). gate_ok is intentionally a
+  # tri-state: "" = not yet evaluated this turn, true/false once the checker
+  # binds. The empty default keeps the routing emits (which compare == true /
+  # == false) from firing in the pre-bind pass, so they defer to the post-bind
+  # pass once the gate has actually run — the bugfix decision-emit discipline.
+  gate_ok:           { type: string, default: "" }
+  script_gate_ok:    { type: string, default: "" }
+  agent_gate_ok:     { type: string, default: "" }
+  gate_exit_code:    { type: int,    default: 0 }
+  gate_stdout:       { type: string, default: "" }    # script gate output
+  gate_reason:       { type: string, default: "" }    # agent gate rationale
+
+  # Cost: session_cost_usd is the reserved engine-maintained spend var (also
+  # declared here so it has a default and is seedable in flow fixtures); the
+  # runtime overwrites it from real agent spend each turn (foldAgentCost,
+  # docs/stories/state-machine.md §6). turn_cost_usd is shown for display.
+  session_cost_usd:  { type: number, default: 0 }
+  turn_cost_usd:     { type: number, default: 0 }
+
+intents:
+  configure:
+    description: "Set the goal, gate, and budgets for the loop."
+    # NL goal phrasings here are SAFE: a content-bearing utterance that matches
+    # one of these would drop its goal/gate value through the slot-incapable
+    # semantic router, so the engine defers it to the interpreter for slot
+    # extraction (orchestrator droppedSlotContent — the trace-accuracy guard).
+    # Bare commands ("configure") still route fast.
+    examples: ["make the tests pass", "get go test ./... green", "configure", "set the gate", "set the iteration budget"]
+    priority: 75
+    slots:
+      goal:             { type: string, required: false }
+      artifact:         { type: string, required: false }
+      gate_mode:        { type: string, required: false }
+      gate_command:     { type: string, required: false }
+      iteration_budget: { type: int,    required: false }
+      cost_budget:      { type: number, required: false }
+      # Override the worktree branch/id for parallel loops (defaults give one
+      # reusable .worktrees/cherny-loop on branch cherny-loop/run).
+      workspace_branch: { type: string, required: false }
+      workspace_id:     { type: string, required: false }
+  launch:
+    description: "Verify the gate fails first, then start the loop."
+    examples: ["launch", "go", "run the loop", "verify the gate"]
+    priority: 85
+  proceed:
+    description: "Baseline is RED — start the maker loop."
+    examples: ["proceed", "iterate", "start the loop"]
+    priority: 80
+  reconfigure:
+    description: "Step back to configuration."
+    examples: ["reconfigure", "back", "edit the gate"]
+    priority: 60
+  accept:
+    description: "Accept that the goal is already met."
+    examples: ["accept", "already done", "mark met"]
+    priority: 60
+  retry:
+    description: "Re-run the loop step after a maker failure."
+    examples: ["retry", "again"]
+    priority: 60
+  # Internal routing intents, emitted from iterating.on_enter once the gate
+  # result is bound (and from baseline once the baseline gate runs). Guarded
+  # emits (each reads world.gate_ok) force the engine to settle the gate's binds
+  # before routing — the bugfix judge→emit pattern. loop_again re-enters
+  # `iterating`, which is what makes the loop run itself with no operator prod.
+  check:
+    description: "(internal) maker done — run the checker."
+    examples: ["check"]
+    priority: 1
+  mark_achieved:
+    description: "(internal) goal met."
+    examples: ["mark_achieved"]
+    priority: 1
+  mark_committed:
+    description: "(internal) commit done → @exit:achieved."
+    examples: []
+    priority: 1
+  mark_cost_exhausted:
+    description: "(internal) cost ceiling hit."
+    examples: ["mark_cost_exhausted"]
+    priority: 1
+  mark_iter_exhausted:
+    description: "(internal) iteration ceiling hit."
+    examples: ["mark_iter_exhausted"]
+    priority: 1
+  loop_again:
+    description: "(internal) gate failed, budget remains — loop with feedback."
+    examples: ["loop_again"]
+    priority: 1
+    slots:
+      feedback: { type: string, required: false }
+  abort:
+    description: "Abandon the loop."
+    examples: ["abort", "stop", "give up"]
+    priority: 60
+  look:
+    description: "Re-render the current room."
+    examples: ["look", "status"]
+    priority: 5
+
+exits:
+  achieved:  { requires: [terminal_reason] }
+  exhausted: { requires: [terminal_reason] }
+  abandoned: { requires: [terminal_reason] }
+
+# The first real room IS the root — no `idle`/`begin` ceremony. Landing the
+# operator straight in `configuring` (where they act) avoids a pass-through turn.
+root: configuring
+
+include:
+  - rooms/*.yaml

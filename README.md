@@ -1,4 +1,4 @@
-# kitsoki
+<img src="docs/branding/assets/mesa-sun-wordmark.svg" width="200" alt="kitsoki — the Mesa Sun wordmark">
 
 A conversational workflow engine built on one commitment: **make workflows as
 deterministic as possible, and confine the LLM to narrow, identified,
@@ -22,7 +22,9 @@ auditable.
 
 For the full thesis — control inversion, narrow LLM domains,
 progressive determinism, the spectrum from CLI wizards to free agent
-workflows — see [`docs/concept.md`](docs/concept.md).
+workflows — see [`docs/architecture/concept.md`](docs/architecture/concept.md).
+For a reader-specific path through the docs, start at
+[`docs/start-here.md`](docs/start-here.md).
 
 **Free-text in, deterministic transitions out.**
 
@@ -47,7 +49,7 @@ go build -o kitsoki ./cmd/kitsoki
   most user input in microseconds without calling the LLM. On the
   Oregon Trail story ~78% of recorded turns route deterministically
   or via author-declared synonyms — the LLM only fires on the genuinely
-  open-ended ones. See [`docs/semantic-routing.md`](docs/semantic-routing.md).
+  open-ended ones. See [`docs/architecture/semantic-routing.md`](docs/architecture/semantic-routing.md).
 
 It is **not** a chat agent. The LLM has no latitude to invent actions
 outside the intent alphabet you declare.
@@ -60,7 +62,7 @@ outside the intent alphabet you declare.
 go build -o kitsoki ./cmd/kitsoki
 ```
 
-Single static binary; no CGO, no system libraries.
+Requires Go 1.25+. Single static binary; no CGO, no system libraries.
 
 ### 2. Pick a harness
 
@@ -94,10 +96,16 @@ Type free text or pick an action. Sessions persist in
 ### 4. Test
 
 ```sh
+make test                                                  # full suite — what CI runs
+
 ./kitsoki test flows testdata/apps/cloak/app.yaml          # deterministic, no LLM
 ./kitsoki test intents testdata/apps/cloak/app.yaml \      # intent pass-rate (free w/ Claude Code)
     --harness static
 ```
+
+`make test` runs `go test ./...` plus every story's deterministic flow fixtures —
+it's the suite CI runs and the [pre-PR gate](CONTRIBUTING.md) runs. Open PRs with
+`make pr` (local gate) or `make pr-ci` (gate on real CI).
 
 ### 5. Visualise
 
@@ -118,10 +126,12 @@ the bug file as both ticket and conversation log.
 
 Lands at the engineer's-day landing room. From there: `tickets` to
 search `issues/bugs/`, `pick <id>` to pick a bug, `bugfix` to walk
-the supervised 8-room pipeline (reproduce → propose → implement →
-test → review → validate → done → PR refinement → merge). Every
-checkpoint appends a `## Comment <iso> by <author>` block to the bug
-file, so the file itself is the conversation log + audit trail.
+the supervised 8-room pipeline (idle → reproducing → proposing →
+implementing → testing → reviewing → validating → done). PR
+refinement is a separate story under `stories/pr-refinement/`.
+Every checkpoint appends a `## Comment <iso> by <author>` block to
+the bug file, so the file itself is the conversation log + audit
+trail.
 
 Autonomous variant (LLM-judge auto-fires confident verdicts, bails
 to human only on uncertainty):
@@ -132,113 +142,106 @@ to human only on uncertainty):
 ```
 
 See **[`stories/kitsoki-dev/README.md`](stories/kitsoki-dev/README.md)**
-for the full operator walkthrough and
+for the full operator walkthrough, the
+**[`docs/case-studies/bug-fix.md`](docs/case-studies/bug-fix.md)**
+case study for the architecture, and
 **[`issues/README.md`](issues/README.md)** for the on-disk bug
 schema. The dogfood multi-glob covers both kitsoki-self bugs
 (`issues/bugs/*.md`) and per-story bugs
 (`stories/*/issues/bugs/*.md`) in one pipeline.
 
-## Documentation
+## Where to go next
 
-| Doc | What |
+**Site:** [bsacrobatix.github.io/Kitsoki](https://bsacrobatix.github.io/Kitsoki/) —
+promo landing + help docs with recorded feature demos, generated from the
+[feature catalog](features/CLAUDE.md) (also served offline at `/help/` by
+`kitsoki web` after `make site-embed`; pipeline: [`docs/site/README.md`](docs/site/README.md)).
+
+| You want to… | Start here |
 |---|---|
-| **[`docs/concept.md`](docs/concept.md)** | The thesis: control inversion, narrow LLM domains, progressive determinism, the spectrum of stories. **Start here.** |
-| **[`docs/architecture.md`](docs/architecture.md)** | Layers, packages, data flow, persistence model, conversation surfaces. |
-| **[`docs/state-machine.md`](docs/state-machine.md)** | Rooms, phases, states, intents, slots, world, guards, the turn loop. The directed cyclic graph in detail. |
-| **[`docs/authoring.md`](docs/authoring.md)** | How to write an `app.yaml`. Patterns, scaling-up, pitfalls. |
-| **[`docs/choice-widget.md`](docs/choice-widget.md)** | Author cookbook for `choice:` view elements (single / multi / form picker). |
-| **[`docs/story-style.md`](docs/story-style.md)** | Story style guide — typed view elements, narration voice, choice-widget conventions. |
-| **[`docs/developer-guide.md`](docs/developer-guide.md)** | For contributors: build, test, debug, add features. |
-| **[`docs/testing.md`](docs/testing.md)** | Mode 1 (intent pass-rate) and Mode 2 (deterministic flow) tests. |
-| **[`docs/hosts.md`](docs/hosts.md)** | Every built-in `host.*` handler with input/output contracts. |
-| **[`docs/transports.md`](docs/transports.md)** | TUI / Jira / Bitbucket transports; sessions keyed by external thread. |
-| **[`docs/background-jobs/`](docs/background-jobs/README.md)** | Long-running handlers, notifications, clarifications. |
-| **[`docs/embedded/llm-guide.md`](docs/embedded/llm-guide.md)** | Operator manual aimed at an LLM driving kitsoki. Also `kitsoki docs llm-guide`. |
-| **[`docs/embedded/app-schema.md`](docs/embedded/app-schema.md)** | Authoritative `app.yaml` schema reference. Also `kitsoki docs app-schema`. |
-| **[`docs/embedded/apply-proposal.md`](docs/embedded/apply-proposal.md)** | LLM guide for implementing a prose proposal against `app.yaml`. |
-| **[`docs/embedded/render-format.md`](docs/embedded/render-format.md)** | Shape of the Markdown produced by `kitsoki render`. |
-| **[`docs/semantic-routing.md`](docs/semantic-routing.md)** | The four-tier routing stack: synonyms, slot templates, turncache, LLM. How most turns resolve without an LLM call. |
-| **[`docs/imports.md`](docs/imports.md)** | Composing apps across files and repos with `imports:`. State path aliasing, source resolution, worked examples. |
-| **[`docs/cassettes.md`](docs/cassettes.md)** | Host cassettes: recording and replaying ordered host-call sequences for deterministic testing and demos. |
-| **[`docs/meta-mode.md`](docs/meta-mode.md)** | Persistent sidebar conversations with named agents. Off-path meta interaction model. |
-| **[`docs/oracle-cli.md`](docs/oracle-cli.md)** | `kitsoki oracle` CLI and JSON-RPC daemon reference. Plugin transports and invocation model. |
-| **[`docs/prior-art.md`](docs/prior-art.md)** | Comparative grounding: what kitsoki borrows from interactive fiction, statecharts, dialogue managers, and LLM orchestration. |
+| Pick the right docs path | [`docs/start-here.md`](docs/start-here.md) |
+| Understand the architecture | [`docs/architecture/concept.md`](docs/architecture/concept.md), then [`docs/architecture/overview.md`](docs/architecture/overview.md) |
+| Write a story | [`docs/stories/architecture.md`](docs/stories/architecture.md), then [`docs/recipes/`](docs/recipes/README.md) |
+| Look up story fields | `kitsoki docs app-schema` or [`docs/embedded/app-schema.md`](docs/embedded/app-schema.md) |
+| Debug or test a story | [`docs/tracing/README.md`](docs/tracing/README.md) and [`docs/tracing/testing.md`](docs/tracing/testing.md) |
+| Look up host handlers | [`docs/architecture/hosts/`](docs/architecture/hosts/README.md) and [`docs/architecture/hosts.md`](docs/architecture/hosts.md) |
+| Contribute code | [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/architecture/developer-guide.md`](docs/architecture/developer-guide.md) |
 
 ## Project layout
 
 ```
 kitsoki/
-├── cmd/kitsoki/           CLI: run, serve, viz, trace, replay, test,
-│                          record, session, chat, inspect, turn, render,
-│                          oracle, oracle-serve, cassette, bug, ui,
-│                          export-status, mcp-validator, mcp-bash,
-│                          extract, docs, version
-├── internal/              platform packages — see docs/architecture.md
+├── cmd/kitsoki/           CLI: run, serve, viz, trace, replay,
+│                          replay-routing, test, record, session, chat,
+│                          inspect, turn, render, docs, bug, cassette,
+│                          extract, journal, agent, agent-serve,
+│                          migrate-agent, mcp-bash, mcp-validator,
+│                          export-status, ui, version
+├── internal/              platform packages — see docs/architecture/overview.md
 ├── docs/                  narrative documentation
 ├── docs/embedded/         CLI-embedded reference docs (//go:embed)
-├── docs/skills/           Claude Code skill definitions
-├── testdata/apps/         example apps: cloak, dev-story, background_jobs,
-│                          choice_smoke, imports_smoke, parallel_smoke,
-│                          proposal_smoke, timeout
-├── stories/               built-in stories: kitsoki-dev (dogfood),
-│                          oregon-trail, dev-story, frontier_event,
-│                          bugfix, code-review, robbery, cypilot
-├── demo/                  recorded GIFs and pitch video assets
+├── stories/               first-party story state machines (kitsoki-dev,
+│                          bugfix, pr-refinement, docs-review, code-review,
+│                          dev-story, oregon-trail, …)
+├── tools/                 first-party companion tooling (runstatus SPA,
+│                          pellicule video pipeline, loopy, …)
+├── testdata/apps/         example apps: background_jobs, choice_smoke,
+│                          cloak, dev-story, imports_prompt_rebase,
+│                          imports_smoke, parallel_smoke, proposal_smoke,
+│                          timeout
+├── demo/                  VHS tapes and recorded GIFs
 ├── ideas.md               working notes / backlog
+├── .context/              scratch: transient proposals, summaries, plans
+│                          (gitignored)
+├── .artifacts/            generated review output: renders, test reports,
+│                          videos (gitignored)
 └── README.md              you are here
 ```
 
-## About the name
+`.context/` and `.artifacts/` are gitignored scratch spaces — put
+transient markdown (proposals, summaries) in `.context/` and any
+generated artifact for review in `.artifacts/`, so neither clutters the
+tracked tree. See the
+[developer guide](docs/architecture/developer-guide.md#7-coding-conventions).
+
+## Name and mark
 
 **Kitsoki** (*kit-soh-kee*) is a Hopi word for a contemporary
-settlement — a collection of houses, ceremonial chambers, and public
-plazas arranged into one living whole. The metaphor fits a
-conversational workflow engine that hosts many surfaces (TUI, daemon, Jira,
-Bitbucket) as connected rooms under one architecture.
-
-Greek mythology is exhausted as a source of software names. Every
-other tool is *Hermes*, *Hydra*, *Apollo*, *Athena*, *Pythia*, or some
-flavor of *Oracle*. The Hopi word is a small reminder that other
-civilizations were doing serious intellectual work too — and that the
-Western canon is not the only well to draw from.
-
-The Chacoan ancestors of today's Pueblo peoples were practicing
-astronomy at a level modern archaeologists still find striking:
-
-- Great houses at Chaco Canyon are oriented to the cardinal directions
-  and to the 18.6-year lunar standstill cycle — an astronomical
-  pattern subtle enough that detecting it requires sustained
-  observation across more than a human generation.
-- The Sun Dagger on Fajada Butte uses three rock slabs to cast
-  light-and-shadow markers onto a spiral petroglyph at the solstices
-  and equinoxes.
-- The Great North Road runs almost exactly due north from Chaco
-  for about sixty kilometers across broken terrain — a deliberate
-  engineering project that required sustained surveying.
-
-This is pre-Columbian scientific work, encoded into the built
-landscape. The name is a small acknowledgment.
-
-Sources for the term and the architectural vocabulary it sits in:
-
-- Whiteley, Peter. *[Chacoan Kinship](https://www.amnh.org/content/download/67776/1174292/file/chacoan-kinship.pdf)*. American Museum of Natural History.
-- Kuwanwisiwma, Leigh J., T. J. Ferguson, and Chip Colwell, eds. (2018). *[Footprints of Hopi History: Hopihiniwtiput Kukveni'at](https://uapress.arizona.edu/book/footprints-of-hopi-history)*. University of Arizona Press.
+settlement. The metaphor fits a conversational workflow engine that hosts many
+surfaces as connected rooms under one architecture. The **Mesa Sun** mark carries
+the same architecture-and-light theme in geometry. See
+[`docs/branding/logo.md`](docs/branding/logo.md) for the full naming note,
+sources, logo, palette, and usage.
 
 ## Status
 
 PoC. The core platform is stable: orchestrator, state machine, harness
 abstraction, persistent SQLite store, MCP server, multi-transport
 output, background jobs with mid-flight clarifications, persistent
-chat threads, virtual clock, host cassettes, story imports, meta-mode
-sidebar agents, deterministic flow tests, intent pass-rate tests,
-hot-reload edit mode in the TUI. Example apps under `testdata/apps/`
-have green flow tests; `go test ./...` finishes in under 10 seconds.
+chat threads, virtual clock, deterministic flow tests, intent
+pass-rate tests, hot-reload edit mode in the TUI. Example apps under
+`testdata/apps/` have green flow tests; `go test ./...` finishes in
+under 10 seconds.
 
-The current frontier is external orchestration: a JSONL event bus
-shared across all entry points (TUI, `kitsoki turn`, `kitsoki serve`)
-and a pluggable Oracle daemon with in-process, subprocess JSON-RPC,
-and MCP-over-HTTP transport options.
+Recent frontier work:
+
+- **Agent plugin system** (`docs/architecture/agent-plugin.md`,
+  `docs/architecture/agent-cli.md`) — pluggable agent transports declared under
+  `agent_plugins:`, dispatched through `host.agent.<verb>` effects
+  with schema validation, subprocess / MCP-over-HTTP transports, and
+  a registry/dispatch seam audited end-to-end.
+- **JSONL trace as authoritative state**
+  (`docs/tracing/trace-format.md`) — the unified event log (`agent.call.start`
+  / `.complete` / `.error`, `EventSink`, deterministic `call_id`) is
+  now the session's source of truth, with replay guarantees layered
+  on top.
+- **`runstatus` inspection UI** (`tools/runstatus/`) — Vue 3 SPA +
+  Playwright fixtures for inspecting live and recorded sessions
+  against the JSONL trace.
+- **`docs-review` story** (`stories/docs-review/`) — meta-story that
+  audits the docs against the code at HEAD and writes back surgical
+  fixes.
 
 ## License
 
-Apache 2.0 — see [`LICENSE`](LICENSE).
+See [`LICENSE`](LICENSE).

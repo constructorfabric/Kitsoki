@@ -1,0 +1,43 @@
+# integrate_conflict — integrate hits a conflict with NO landing budget
+# (resolve_budget: 0) → @exit:needs-human with the REAL last_error (no swallowed
+# success). Leans on the no-swallowed-failure discipline: a non-zero integrate
+# binds the conflict outcome and routes out, never reporting integrated. With
+# resolve_budget>0 the conflict instead routes to the `resolve` landing path
+# (see resolve_rerere_lands / resolve_agent_lands).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+  resolve_budget:     0   # no landing budget → conflict bails straight to needs-human
+
+host_handlers:
+  host.run:
+    by_call:
+      integrate_exec:
+        data:
+          ok: false
+          exit_code: 0
+          stdout_json:
+            outcome:        conflict
+            integrated_sha: ""
+            last_op_ok:     false
+            last_error:     "CONFLICT (content): Merge conflict in internal/ratelimit/bucket.go\nerror: could not apply a1b2c3d"
+
+turns:
+  - intent: { name: begin, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:            needs-human
+      integrate_outcome: conflict
+      last_error:        "CONFLICT (content): Merge conflict in internal/ratelimit/bucket.go\nerror: could not apply a1b2c3d"
+
+expect_terminal: true
+expect_no_errors: true

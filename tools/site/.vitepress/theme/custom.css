@@ -1,0 +1,233 @@
+/* kitsoki site — custom component styles (feature grid, demo player, step cards) */
+
+/* ── ChapteredVideo ─────────────────────────────────────────────────────── */
+.kv {
+  margin: 1.5rem 0;
+}
+.kv__video,
+.kv__poster {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--vp-c-divider);
+  display: block;
+}
+.kv__poster--empty {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  color: var(--vp-c-text-3);
+  background: var(--vp-c-bg-soft);
+}
+.kv__placeholder {
+  position: relative;
+}
+.kv__badge {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--vp-c-text-2);
+}
+.kv__badge code {
+  margin-left: 0.5em;
+}
+.kv__chapters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+.kv__chapter {
+  font-size: 0.78rem;
+  line-height: 1.2;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.kv__chapter:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+.kv__chapter--active {
+  border-color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+}
+/* Grouped rail (stitched master tour): one block per section. */
+.kv__chapters--grouped {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.85rem;
+}
+.kv__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.kv__group-head {
+  align-self: flex-start;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 0.2rem 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-text-1);
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.kv__group-head:hover,
+.kv__group-head--active {
+  color: var(--vp-c-brand-1);
+  border-bottom-color: var(--vp-c-brand-1);
+}
+.kv__group-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--vp-c-divider);
+}
+
+/* ── TourStepCards ──────────────────────────────────────────────────────── */
+.ksteps {
+  list-style: none;
+  margin: 1rem 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+.ksteps__card {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 1rem;
+  background: var(--vp-c-bg-soft);
+  margin: 0 !important;
+}
+.ksteps__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.ksteps__num {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ksteps__title {
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
+.ksteps__head:hover .ksteps__title {
+  color: var(--vp-c-brand-1);
+}
+.ksteps__body {
+  font-size: 0.88rem;
+  color: var(--vp-c-text-2);
+  margin: 0.5rem 0;
+}
+.ksteps__shot {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--vp-c-divider);
+  cursor: pointer;
+}
+
+/* ── FeatureGrid ────────────────────────────────────────────────────────── */
+.kgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin: 2rem 0;
+}
+.kgrid__card {
+  display: block;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  padding: 1rem;
+  background: var(--vp-c-bg-soft);
+  text-decoration: none !important;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.kgrid__card:hover {
+  border-color: var(--vp-c-brand-1);
+  transform: translateY(-2px);
+}
+.kgrid__card--highlight {
+  border-color: var(--vp-c-brand-2);
+}
+.kgrid__poster {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--vp-c-divider);
+  margin-bottom: 0.75rem;
+}
+.kgrid__poster--empty {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  color: var(--vp-c-text-3);
+  background: var(--vp-c-bg);
+}
+.kgrid__title {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+  border: none;
+  padding: 0;
+}
+.kgrid__tagline {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--vp-c-text-2);
+}
+
+/* ── FeatureDemo / page accents ─────────────────────────────────────────── */
+.kdemo__summary {
+  font-size: 1.05rem;
+  color: var(--vp-c-text-1);
+}
+.kdemo__links {
+  display: flex;
+  gap: 3rem;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--vp-c-divider);
+}
+.kdemo__links h3 {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+}
+.khero {
+  max-width: 960px;
+  margin: 0 auto 2rem;
+  padding: 0 1.5rem;
+}
+.feature-tagline {
+  font-size: 1.15rem;
+  color: var(--vp-c-text-2);
+  margin-top: -0.5rem;
+}

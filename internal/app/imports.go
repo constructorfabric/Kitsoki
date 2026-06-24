@@ -1,4 +1,4 @@
-// Package app — story imports (reference: docs/imports.md).
+// Package app — story imports (reference: docs/stories/imports.md).
 //
 // Imports compose one app inside another with an aliased namespace and an
 // explicit world projection. Each import binds a child manifest under an
@@ -41,12 +41,83 @@ import (
 // state-path segment and world-key prefix.
 var importAliasRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
+// ReservedWorldKeys are engine-owned global world variables that the runtime
+// writes directly (see internal/orchestrator/host_dispatch.go on an
+// `on_error:` redirect). They are NEVER namespaced by import folding: a story
+// imported under an alias still reads/writes the bare `last_error` /
+// `host_error` keys, matching how the engine writes them. Consequently any
+// room may reference `world.last_error` / `world.host_error` and list them in
+// `relevant_world` without declaring them in its own world block, at every
+// import-nesting depth.
+//
+//   - last_error: string — the failing host call's error message.
+//   - host_error: map — {namespace, message, data?, stderr?, exit_code?}.
+//   - write_mode_scope: string ("" | "turn" | "session") — the active
+//     write-mode grant breadth in a write_mode: read_only room. Set and cleared
+//     ONLY by the engine on a grant / turn / session boundary; a story `set:`-ing
+//     it is rejected at load time (a story must not be able to self-grant write
+//     mode). See WriteModeScopeWorldKey and docs/proposals/agent-write-mode-opt-in.md.
+var ReservedWorldKeys = map[string]struct{}{
+	"last_error":           {},
+	"host_error":           {},
+	WriteModeScopeWorldKey: {},
+}
+
+// ImportResolver is an injected hook that resolves an `@kitsoki/<name>`
+// import source to an absolute manifest path. It is the seam through which the
+// `--kitsoki-repo` override AND the embedded story library reach the loader
+// WITHOUT a package global (DI per CLAUDE.md).
+//
+// name is the bare story name (`dev-story` for `@kitsoki/dev-story`).
+// importerDir is the directory of the manifest doing the import, so a resolver
+// that points at a live checkout can apply relative paths correctly.
+//
+// override distinguishes the resolver's two roles, which sit on OPPOSITE sides
+// of on-disk discovery (see resolveImportSource's order):
+//
+//   - override=true  → "the explicit --kitsoki-repo / KITSOKI_REPO override".
+//     Consulted BEFORE findRepoRoot so an operator's checkout always wins.
+//     A (path,nil) result is used; a ("",nil) result means "no override set,
+//     fall through"; a non-nil error means "override set but the story is
+//     missing there" and is surfaced (never silently swallowed).
+//   - override=false → "the embedded-library fallback". Consulted only AFTER
+//     findRepoRoot fails. A non-nil error there is the terminal failure.
+//
+// A nil resolver means neither override nor embedded fallback is configured:
+// the loader keeps today's behaviour and errors on a failed `@kitsoki/<name>`
+// lookup. The loader builds one closure that handles both calls.
+type ImportResolver func(name, importerDir string, override bool) (string, error)
+
+// WriteModeScopeWorldKey is the engine-reserved world variable holding the
+// active write-mode grant breadth ("" | "turn" | "session") in a
+// write_mode: read_only room. It is engine-owned: the write-mode gate reads it
+// to short-circuit a re-ask while a turn/session grant is active, and the engine
+// sets/clears it on grant and at the turn/session boundary. A story may not
+// `set:` it (load-time invariant). See docs/proposals/agent-write-mode-opt-in.md.
+const WriteModeScopeWorldKey = "write_mode_scope"
+
+// WriteMode posture values for State.WriteMode (validated at load time).
+const (
+	// WriteModeOpen (or absent) = today's static posture: a dispatched agent runs
+	// under its declared bypassPermissions / converse tool policy verbatim.
+	WriteModeOpen = "open"
+	// WriteModeReadOnly = the room boots read-only and every mutating tool call is
+	// gated through the operator-ask write-mode opt-in.
+	WriteModeReadOnly = "read_only"
+)
+
 // resolveImports walks def.Imports and folds each imported child into def.
 // Errors are returned aggregated; the caller wraps in errors.Join.
 //
 // parents is the canonical-path stack of in-progress loads, used to detect
 // cycles. A repeated path produces a ValidationError naming the cycle.
-func resolveImports(def *AppDef, file, baseDir string, parents []string) []error {
+//
+// resolver is the injected embedded-library / --kitsoki-repo fallback for
+// `@kitsoki/<name>` sources; nil keeps the legacy error-on-missing behaviour.
+// It is threaded unchanged into every recursive child load so a base story
+// imported from the embedded library can itself import siblings via
+// `@kitsoki/<name>`.
+func resolveImports(def *AppDef, file, baseDir string, parents []string, resolver ImportResolver) []error {
 	if def == nil || len(def.Imports) == 0 {
 		return nil
 	}
@@ -67,7 +138,7 @@ func resolveImports(def *AppDef, file, baseDir string, parents []string) []error
 			continue
 		}
 
-		childPath, resolveErr := resolveImportSource(imp.Source, baseDir)
+		childPath, resolveErr := resolveImportSource(imp.Source, baseDir, resolver)
 		if resolveErr != nil {
 			errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: %v", alias, resolveErr)})
 			continue
@@ -89,7 +160,7 @@ func resolveImports(def *AppDef, file, baseDir string, parents []string) []error
 
 		// Load the child manifest. Imports are recursive — the child's own
 		// imports are resolved before we fold it into the parent.
-		childDef, childErrs := loadImportedChild(childPath, append(parents, canonical))
+		childDef, childErrs := loadImportedChild(childPath, append(parents, canonical), resolver)
 		if len(childErrs) > 0 {
 			errs = append(errs, childErrs...)
 			continue
@@ -124,8 +195,8 @@ func resolveImports(def *AppDef, file, baseDir string, parents []string) []error
 		}
 
 		// Record post-fold metadata: the alias, its declared entry, and
-		// the child manifest's path. Used by validation (§16.7) and the
-		// metamode auto-watch (§16.4).
+		// the child manifest's path. Used by the reach-into-child guard and
+		// the metamode auto-watch.
 		entryName := imp.Entry
 		if entryName == "" {
 			if s, ok := childDef.Root.(string); ok {
@@ -170,7 +241,7 @@ func appendUnique(list []string, v string) []string {
 
 // loadImportedChild reads, parses, and recursively resolves a child
 // manifest. The child's own include: and imports: are processed in turn.
-func loadImportedChild(path string, parents []string) (*AppDef, []error) {
+func loadImportedChild(path string, parents []string, resolver ImportResolver) (*AppDef, []error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, []error{&ValidationError{File: path, Message: fmt.Sprintf("read: %v", err)}}
@@ -181,7 +252,7 @@ func loadImportedChild(path string, parents []string) (*AppDef, []error) {
 		return nil, mergeErrs
 	}
 	// Recursively resolve the child's own imports BEFORE folding into parent.
-	if impErrs := resolveImports(def, path, baseDir, parents); len(impErrs) > 0 {
+	if impErrs := resolveImports(def, path, baseDir, parents, resolver); len(impErrs) > 0 {
 		return nil, impErrs
 	}
 	// Expand the child's phase templates so the parent sees concrete states.
@@ -192,14 +263,46 @@ func loadImportedChild(path string, parents []string) (*AppDef, []error) {
 }
 
 // resolveImportSource maps a `source:` value to an absolute manifest path.
-func resolveImportSource(src, importerDir string) (string, error) {
+//
+// For an `@kitsoki/<name>` source the resolution ORDER is:
+//
+//  1. the injected resolver's `--kitsoki-repo` / KITSOKI_REPO override
+//     (override=true) — checked FIRST so an explicit operator checkout always
+//     wins, and a missing story under that override is a hard error;
+//  2. a discovered on-disk kitsoki checkout (findRepoRoot walking up from
+//     importerDir) — the dev-checkout / dogfood path;
+//  3. the injected resolver's embedded-library fallback (override=false) —
+//     reached only when no override is set AND no on-disk root is found.
+//
+// The loader builds one closure serving both resolver calls; nil keeps the
+// legacy error-on-missing behaviour.
+func resolveImportSource(src, importerDir string, resolver ImportResolver) (string, error) {
 	if strings.HasPrefix(src, "@kitsoki/") {
 		name := strings.TrimPrefix(src, "@kitsoki/")
 		if name == "" || strings.ContainsAny(name, "/\\") {
 			return "", fmt.Errorf("source %q: invalid @kitsoki name", src)
 		}
+		// 1. Explicit override wins over everything, even an on-disk root.
+		if resolver != nil {
+			resolved, rErr := resolver(name, importerDir, true)
+			if rErr != nil {
+				return "", fmt.Errorf("source %q: %w", src, rErr)
+			}
+			if resolved != "" {
+				return resolved, nil
+			}
+		}
+		// 2. Discovered on-disk kitsoki checkout.
 		root, err := findRepoRoot(importerDir)
 		if err != nil {
+			// 3. No on-disk checkout: embedded-library fallback.
+			if resolver != nil {
+				resolved, rErr := resolver(name, importerDir, false)
+				if rErr != nil {
+					return "", fmt.Errorf("source %q: %w", src, rErr)
+				}
+				return resolved, nil
+			}
 			return "", fmt.Errorf("source %q: %w", src, err)
 		}
 		candidate := filepath.Join(root, "stories", name, "app.yaml")
@@ -280,6 +383,13 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 	// 1. Build name-set lookups for the rewriter.
 	childWorld := make(map[string]struct{}, len(child.World))
 	for k := range child.World {
+		// Reserved engine globals stay BARE — never prefixed by the rewriter —
+		// so child refs to world.last_error / world.host_error and
+		// relevant_world: [last_error] resolve to the same flat keys the
+		// runtime writes. See ReservedWorldKeys.
+		if _, reserved := ReservedWorldKeys[k]; reserved {
+			continue
+		}
 		childWorld[k] = struct{}{}
 	}
 	childIntent := make(map[string]struct{}, len(child.Intents))
@@ -323,7 +433,7 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 		}
 	}
 
-	// 3a. Enforce per-exit `requires:` (proposal §7). For every transition
+	// 3a. Enforce per-exit `requires:`. For every transition
 	// in the child whose target is `@exit:X`, the transition's effects
 	// must collectively set every key in child.Exits[X].Requires. This is
 	// the best-effort static check; it catches the author-error of
@@ -332,6 +442,9 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 	// a non-zero default also count (the key is provably set at runtime).
 	defaultedKeys := make(map[string]struct{}, len(child.World))
 	for k, v := range child.World {
+		if _, reserved := ReservedWorldKeys[k]; reserved {
+			continue
+		}
 		if v.Default != nil && !isZeroDefault(v.Default) {
 			defaultedKeys[k] = struct{}{}
 		}
@@ -374,6 +487,35 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 	}
 	parent.States[alias] = wrapper
 
+	// 6a. Re-entry reset: synthesise on_enter setters that re-seed every
+	// child world key to its schema default. The import compound is a
+	// flattened path+world overlay with no first-class per-entry "instance":
+	// the active state path resets to the entry child statelessly, but the
+	// child's prefixed world keys (maker__iteration, maker__goal_achieved,
+	// maker__terminal_reason, …) otherwise persist their terminal values from
+	// a prior pass. A parent that drives the import to @exit and then RE-ENTERS
+	// it for the next item would then run the sub-story's first room against
+	// stale "already done" flags and no-op. Re-seeding defaults on every enter
+	// makes each entry a fresh instance. On the first entry this is a no-op
+	// (the keys were already seeded to these defaults at session boot via
+	// WorldFromSchema). Reserved engine globals stay flat and are skipped.
+	// These fire BEFORE the world_in projection below so projected inputs win.
+	for _, ck := range sortedKeys(child.World) {
+		if _, reserved := ReservedWorldKeys[ck]; reserved {
+			continue
+		}
+		def := child.World[ck].Default
+		if def == nil {
+			continue // no declared default → nothing deterministic to reset to
+		}
+		// A world_in input is operator/parent-projected on entry; the world_in
+		// setter (added next) overwrites it anyway, so skip the redundant reset.
+		if _, isInput := imp.WorldIn[ck]; isInput {
+			continue
+		}
+		wrapper.OnEnter = append(wrapper.OnEnter, Effect{Set: map[string]any{alias + "__" + ck: def}})
+	}
+
 	// 6. world_in: synthesise on_enter setters on the wrapper. They fire
 	// when a transition enters the compound, before the initial child is
 	// entered, so the child sees the projected world from the first turn.
@@ -393,6 +535,11 @@ func foldChild(parent *AppDef, alias string, imp *ImportDef, child *AppDef, file
 		parent.World = make(map[string]VarDef)
 	}
 	for _, ck := range sortedKeys(child.World) {
+		// Reserved engine globals are flat at every depth: don't synthesise an
+		// alias__last_error schema entry. See ReservedWorldKeys.
+		if _, reserved := ReservedWorldKeys[ck]; reserved {
+			continue
+		}
 		newKey := alias + "__" + ck
 		if _, exists := parent.World[newKey]; exists {
 			errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: world key %q collides", alias, newKey)})
@@ -716,8 +863,8 @@ func checkExitRequiresRec(statePath string, states map[string]*State, exits map[
 //   - relative `../...` chain — the consecutive `..` segments are
 //     counted; if they would walk above the child's wrapper (i.e.,
 //     exceed depthFromChildRoot + 1, where +1 is the wrapper level
-//     itself), the load fails per §8 "Transitions from inside the
-//     child to outside are forbidden."
+//     itself), the load fails: transitions from inside the
+//     child to outside are forbidden.
 //   - already-qualified targets (slashed or dotted, no leading `..`) —
 //     passed through; the validator will reject any that don't resolve.
 //
@@ -774,7 +921,7 @@ func rewriteChildStateTransitionsAtDepth(s *State, alias string, imp *ImportDef,
 			// Allowed: dotdots <= depth+1 (walks at most up to the wrapper).
 			// Forbidden: dotdots > depth+1 (escapes the wrapper).
 			if dotdots > depth+1 {
-				*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: target %q walks above the child's namespace (depth %d, %d `..` segments); cross-boundary parent targets are forbidden per §8", alias, t, depth, dotdots)})
+				*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("imports.%s: target %q walks above the child's namespace (depth %d, %d `..` segments); cross-boundary parent targets are forbidden", alias, t, depth, dotdots)})
 			}
 			return t
 		}
@@ -817,17 +964,28 @@ func rewriteChildStateTransitionsAtDepth(s *State, alias string, imp *ImportDef,
 				}
 			}
 			tr.Target = rwTarget(origTarget)
-			// Effect-internal on_error targets.
+			// Effect-internal targets: on_error redirects AND the
+			// `target:` an on_complete: effect dispatches when a
+			// background job finishes. Both are state refs in the
+			// child's namespace and must be rewritten exactly like a
+			// transition target — otherwise a folded phase-template
+			// graph (bugfix) lands on bare `phase_N_executing` names
+			// that don't exist under the alias wrapper.
 			for j, eff := range tr.Effects {
 				if eff.OnError != "" {
 					eff.OnError = rwTarget(eff.OnError)
-					tr.Effects[j] = eff
+				}
+				if eff.Target != "" {
+					eff.Target = rwTarget(eff.Target)
 				}
 				for k, sub := range eff.OnComplete {
 					if sub.OnError != "" {
 						sub.OnError = rwTarget(sub.OnError)
-						eff.OnComplete[k] = sub
 					}
+					if sub.Target != "" {
+						sub.Target = rwTarget(sub.Target)
+					}
+					eff.OnComplete[k] = sub
 				}
 				tr.Effects[j] = eff
 			}
@@ -839,17 +997,25 @@ func rewriteChildStateTransitionsAtDepth(s *State, alias string, imp *ImportDef,
 	if s.Timeout != nil {
 		s.Timeout.Target = rwTarget(s.Timeout.Target)
 	}
-	// OnEnter on_error.
+	// OnEnter effect-internal targets: on_error redirects AND the
+	// on_complete: `target:` a finishing background job dispatches.
+	// (Most folded background jobs live in on_enter:, which is where the
+	// bugfix phase template puts its execute → next-phase chains.)
 	for i, eff := range s.OnEnter {
 		if eff.OnError != "" {
 			eff.OnError = rwTarget(eff.OnError)
-			s.OnEnter[i] = eff
+		}
+		if eff.Target != "" {
+			eff.Target = rwTarget(eff.Target)
 		}
 		for j, sub := range eff.OnComplete {
 			if sub.OnError != "" {
 				sub.OnError = rwTarget(sub.OnError)
-				eff.OnComplete[j] = sub
 			}
+			if sub.Target != "" {
+				sub.Target = rwTarget(sub.Target)
+			}
+			eff.OnComplete[j] = sub
 		}
 		s.OnEnter[i] = eff
 	}

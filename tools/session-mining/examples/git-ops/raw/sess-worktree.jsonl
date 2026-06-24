@@ -1,0 +1,3 @@
+{"type": "user", "message": {"content": "set up a worktree for the new cache feature"}}
+{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "tu1", "name": "Bash", "input": {"command": "git worktree add .worktrees/feat-cache -b feat-cache"}}]}}
+{"type": "user", "toolUseResult": {"stdout": "Preparing worktree (new branch 'feat-cache')\nHEAD is now at 1a2b3c4 fix(auth): handle nil session on expiry", "stderr": "", "interrupted": false}, "message": {"content": [{"type": "tool_result", "tool_use_id": "tu1", "is_error": false, "content": "Preparing worktree (new branch 'feat-cache')"}]}}

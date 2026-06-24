@@ -1,0 +1,95 @@
+{
+  "_comment": "Bugfix bake-off narrative deck — slidey spec scaffold. Scene types (title / cards / narrative) match stories/slidey-edit/baked/deck.json + stories/slidey-edit/schemas/deck.json so it bakes to static HTML via `slidey bundle` (see deck/README.md). Every number is a placeholder marked 'TBD from summary.json' until the live grid runs and the report fill step populates docs/case-studies/bugfix-bakeoff.md.",
+  "meta": {
+    "title": "The Bugfix Bake-off",
+    "resolution": { "width": 1920, "height": 1080 },
+    "theme": "rose-pine-moon",
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Kitsoki case study",
+      "title": "The Bugfix Bake-off",
+      "subtitle": "Is structure worth more than a bigger model?",
+      "narration": "We hold the bugs fixed and vary two things — the structure of the workflow, and the model behind it — then grade every run against a hidden oracle."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The naive baseline",
+      "lede": "One big prompt, plus a few nudges.",
+      "body": "The default way to fix a bug with an agent is a single multi-stage prompt: reproduce, implement, test, all in one breath — and when it falls short, you nudge it. Up to five oracle-gated guidance turns. No enforced order, no typed artifacts, no boundary that fails closed.",
+      "narration": "The naive baseline is one multi-stage prompt plus up to five guidance turns. Nothing enforces the order, and nothing fails closed when a stage is skipped."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The kitsoki pipeline",
+      "lede": "The same work, as a state machine.",
+      "body": "Kitsoki's bugfix story is a seven-room pipeline: reproduce → propose → implement → test → review → validate → done. Every boundary is deterministic, every phase emits a typed artifact, and a failing test — not a verdict — is the reproduction. Same model, different structure.",
+      "narration": "The kitsoki treatment drives the seven-room bugfix pipeline. Every phase boundary is deterministic and emits a typed artifact, and a failing test is the reproduction."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "The experiment: a 2×4 grid",
+      "narration": "For each of five real bugs we run a two-by-four grid: two treatments by four candidates, all from the fix's hermetic parent commit, graded against the fix's own regression test as a hidden oracle.",
+      "cards": [
+        { "label": "2 treatments", "sub": "kitsoki pipeline vs single prompt", "style": "primary" },
+        { "label": "4 candidates", "sub": "GLM-5.2 · Opus 4.8 · Sonnet 4.6 · GPT-5.5", "style": "secondary" },
+        { "label": "5 real bugs", "sub": "tui · runtime · web · P1–P3", "style": "default" },
+        { "label": "hidden oracle", "sub": "the fix's own regression test", "style": "default" }
+      ]
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Results grid",
+      "narration": "Each bug yields eight cells. Solve rates fill in here once the live grid runs.",
+      "cards": [
+        { "label": "kitsoki solve rate", "sub": "TBD from summary.json", "style": "primary" },
+        { "label": "single solve rate", "sub": "TBD from summary.json", "style": "secondary" },
+        { "label": "best candidate", "sub": "TBD from summary.json", "style": "default" },
+        { "label": "worst candidate", "sub": "TBD from summary.json", "style": "default" }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Takeaway · the structure axis",
+      "lede": "Structure closes the gap.",
+      "body": "The kitsoki treatment beats the single prompt by TBD from summary.json points of solve rate — at a fraction of the guidance turns, because each turn a single prompt burns is a failed oracle gate the pipeline catches at a room boundary.",
+      "narration": "On the structure axis, the pipeline lifts the solve rate by a margin to be filled from the results, and it spends far fewer guidance turns getting there."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Takeaway · the model axis",
+      "lede": "Bigger model, smaller win.",
+      "body": "Across the four candidates the solve-rate spread is TBD from summary.json — measured here against the structure gap. If structure moves the needle more than swapping models does, structure is the lever and model is the cost knob.",
+      "narration": "On the model axis, the spread between the strongest and weakest model is to be filled from the results — and compared head to head against what structure alone buys."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Cost per solved bug",
+      "lede": "Solves aren't free.",
+      "body": "Cost divided by solve rate is the honest unit. A high solve rate bought with runaway tokens — the reprocessing tax of a long single-prompt loop — costs more per fix than a structured run that calls the model only where judgement is needed. Numbers: TBD from summary.json.",
+      "narration": "The honest unit is cost per solved bug. A single prompt that wanders pays the reprocessing tax; the pipeline pays for judgement, not for replaying the conversation."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "The cheaper-model-with-structure result",
+      "narration": "The money question: can a cheaper model with the pipeline match a frontier model without it?",
+      "cards": [
+        { "label": "cheap + structure", "sub": "TBD from summary.json", "style": "primary" },
+        { "label": "frontier + single", "sub": "TBD from summary.json", "style": "secondary" },
+        { "label": "cost delta", "sub": "TBD from summary.json", "style": "default" }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Conclusion",
+      "lede": "Structure is the lever. Model is the cost knob.",
+      "body": "The bake-off framework is reusable: drop new bugs into bakeoff.yaml, point it at new candidates, and regrade against the hermetic baselines and hidden oracles. Offline report regen runs with zero re-spend.",
+      "narration": "If a cheaper model with structure matches a frontier model without it, structure is the lever and model choice is just the cost knob. The framework is reusable — add bugs, add candidates, regrade."
+    }
+  ]
+}

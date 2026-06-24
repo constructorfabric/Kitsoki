@@ -20,8 +20,8 @@ func init() {
 
 // recordingSink captures every OnRoomEnter call for assertion.
 type recordingSink struct {
-	mu      sync.Mutex
-	calls   []recordedEnter
+	mu    sync.Mutex
+	calls []recordedEnter
 }
 
 type recordedEnter struct {

@@ -1,6 +1,6 @@
-// Package host — wrapped Bash MCP server for host.oracle.ask and host.oracle.decide.
+// Package host — wrapped Bash MCP server for host.agent.ask and host.agent.decide.
 //
-// Problem (H1 from the oracle code review):
+// Problem (H1 from the agent code review):
 // ApplyBashProfile, MakeSandboxEnv, and EnsureScratchDir were defined but
 // never called from production code. The Bash tool flowed directly through
 // claude's built-in implementation; kitsoki couldn't intercept argv. An ask
@@ -17,7 +17,7 @@
 //     set to the scratch dir for sandboxed-write profiles.
 //  5. Returns stdout+stderr+exit-code as the tool result.
 //
-// Handlers wire the server as follows (oracle_ask.go, oracle_decide.go):
+// Handlers wire the server as follows (agent_ask.go, agent_decide.go):
 //   - When Bash appears in the effective tool list, BuildBashMCPEntry appends
 //     a "kitsoki-bash" MCP server entry to the --mcp-config JSON.
 //   - The tool is namespaced "mcp__kitsoki-bash__Bash" in claude's tool list.
@@ -57,6 +57,13 @@ type BashMCPServer struct {
 	profile    *BashProfile
 	workingDir string
 	mcpSrv     *mcpsdk.Server
+	// gate, when non-nil, is the write-mode gate for a write_mode: read_only
+	// room: a Bash command the read-only profile would reject is not denied
+	// outright but routed through the gate (which forwards an action proposal to
+	// the operator and records a WriteModeGranted decision). On a grant the
+	// command executes; on a deny the LLM sees the gate's tool-error. nil keeps
+	// the static bash-profile behavior verbatim (ask/decide, open rooms).
+	gate *WriteModeGate
 }
 
 // NewBashMCPServer constructs a BashMCPServer. profile must not be nil for
@@ -97,6 +104,16 @@ func NewBashMCPServer(profile *BashProfile, workingDir string) *BashMCPServer {
 		InputSchema: inputSchema,
 	}, s.handleBash)
 
+	return s
+}
+
+// WithGate attaches a write-mode gate to the server so a read-only-profile
+// rejection becomes a gated action proposal rather than an outright deny. Returns
+// the receiver for chaining. Used by the in-process write_mode: read_only path
+// (and its tests); the subprocess path keeps gate nil (the read-only floor is
+// enforced by the bash profile + --disallowedTools at dispatch).
+func (s *BashMCPServer) WithGate(gate *WriteModeGate) *BashMCPServer {
+	s.gate = gate
 	return s
 }
 
@@ -193,7 +210,21 @@ func (s *BashMCPServer) handleBash(ctx context.Context, req *mcpsdk.CallToolRequ
 	// Profile enforcement: ApplyBashProfile returns a non-empty string when
 	// the command is denied. Surface that string as a tool error to the LLM.
 	if msg := ApplyBashProfile(s.profile, command); msg != "" {
-		return bashErrorResult("Bash command rejected by profile: " + msg), nil
+		// Write-mode gate: in a write_mode: read_only room a profile rejection is
+		// a MUTATING step, not a hard deny. Route it through the gate, which
+		// short-circuits an active turn/session grant, else forwards an action
+		// proposal to the operator (headless ⇒ deny). On a grant the command
+		// proceeds; on a deny the LLM sees a gate tool-error.
+		if s.gate != nil && s.gate.ReadOnly {
+			tc := ToolCall{Name: "Bash", Command: command}
+			dec := s.gate.Resolve(ctx, tc)
+			if !dec.Granted {
+				return bashErrorResult(describeGateErrorForLLM(describeAction(tc, EffectWrite), dec.By)), nil
+			}
+			// Granted: fall through to execute the command.
+		} else {
+			return bashErrorResult("Bash command rejected by profile: " + msg), nil
+		}
 	}
 
 	// Execute the command.
@@ -241,6 +272,13 @@ func (s *BashMCPServer) execCommand(ctx context.Context, command string) (*mcpsd
 	env := os.Environ()
 	if len(extraEnv) > 0 {
 		env = append(env, extraEnv...)
+	}
+	// IDE auto-connect scrub (shared decision #1) — when kitsoki holds the one
+	// IDE link, a bash_mcp child must not open its own socket to the editor.
+	// Outermost wrap, gated on a connected link in ctx; no-op otherwise so the
+	// child env is byte-identical to today on every headless/flow path.
+	if l := IDELinkFromContext(ctx); l != nil && l.Connected() {
+		env = envScrubIDE(env)
 	}
 	cmd.Env = env
 
@@ -390,8 +428,7 @@ func RunBashMCPServerFromConfig(ctx context.Context, configPath string, stdin io
 		return fmt.Errorf("mcp-bash: parse profile config: %w", err)
 	}
 
-	var profile *BashProfile
-	profile = &BashProfile{
+	profile := &BashProfile{
 		Kind:       BashProfileKind(cfg.ProfileKind),
 		Commands:   cfg.Commands,
 		ScratchDir: cfg.ScratchDir,

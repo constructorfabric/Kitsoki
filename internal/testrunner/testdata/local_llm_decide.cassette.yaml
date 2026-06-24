@@ -1,0 +1,45 @@
+# local_llm_decide.cassette.yaml — HAND-SEEDED, NOT a live recording.
+#
+# Seeded fixture for the local-model transport conformance test. To honour the
+# no-LLM-tests rule (memory: "No LLM tests by default") this cassette is authored
+# by hand to mimic the EpisodeAgent blocks a real agent.local run would emit —
+# it was never produced from a live llama-server.
+#
+# It carries two episodes shaped as if recorded from a builtin.local_llm backend
+# registered under the alias "agent.local":
+#   - a decide verdict matching the canonical judge_verdict schema, and
+#   - an extract turn (routing/extraction-style) returning a small object.
+#
+# The conformance test (TestConformance_LocalLLMCassette) loads this fixture,
+# replays it through the cassette agent transport, and asserts the replayed
+# Submission bytes are byte-identical to the seeded response — proving the
+# local-model-shaped Submission round-trips identically across the transport.
+# Meta (episode_id / match_idx / call_id) differs by transport and is NOT
+# asserted on for cross-transport equality.
+kind: host_cassette
+app_id: local_llm_conformance
+episodes:
+  - id: decide_verdict
+    match:
+      handler: agent.local
+      verb: decide
+    agent:
+      verb: decide
+      model: qwen2.5-1.5b
+      prompt_tokens: 120
+      response_tokens: 24
+      response: '{"verdict":"pass","intent":"accept","reason":"the change is correct and tested","confidence":0.88}'
+    response:
+      data: {}
+  - id: extract_turn
+    match:
+      handler: agent.local
+      verb: extract
+    agent:
+      verb: extract
+      model: qwen2.5-1.5b
+      prompt_tokens: 64
+      response_tokens: 9
+      response: '{"ticket":"CLOUD-42","priority":"high"}'
+    response:
+      data: {}

@@ -1,0 +1,83 @@
+# importer-gate — engine gate for "maker loop settles through an import".
+#
+# A deliberately thin importer of cherny-loop. Its sole purpose is to prove the
+# ENGINE fix for the import-compound gate-classification bug: cherny-loop's
+# autonomous maker→checker→gate emit-chain must SETTLE to @exit:achieved within
+# one turn EVEN IN STAGED MODE when cherny is an imported sub-story — exactly as
+# it does standalone (stories/cherny-loop/flows/achieved_via_loop.yaml).
+#
+# Before the fix, `isDecisionGate` built its emit-target set from the bare
+# child emit names (`mark_achieved`, …) while `allowedIntentNames` returned the
+# import-rewritten arc keys (`maker__mark_achieved`, …); the mismatch
+# misclassified every forward emit as operator-only, so the chain STALLED at the
+# imported `gating` room in staged mode. See internal/machine/machine.go
+# isDecisionGate (the resolveEmittedIntentName alias walk).
+#
+# This story is an engine fixture, not a product story; it stays minimal. It
+# also gates the import-compound RE-ENTRY reset (GAP 2): after the maker import
+# reaches @exit:achieved once, importer-gate re-enters it for a second run. The
+# engine re-seeds the child's prefixed world keys to their schema defaults on
+# every (re-)enter (internal/app/imports.go), so the SECOND run is a fresh
+# cherny instance — it re-proves the gate RED and counts maker__iteration from 1
+# again, rather than inheriting the first run's terminal "already achieved,
+# iteration=1" state and no-opping. See flows/reentry_resets_import.yaml.
+
+app:
+  id: importer-gate
+  version: 0.1.0
+  title: "Importer gate"
+  author: "Kitsoki"
+  license: "CC0"
+
+world:
+  brief:        { type: string, default: "" }
+  gate_command: { type: string, default: "" }
+  status:       { type: string, default: "" }
+  runs:         { type: int,    default: 0 }   # how many maker runs have finished
+
+intents:
+  start:
+    description: "Set the brief + gate and enter the imported maker loop."
+    slots:
+      brief:        { type: string, required: false }
+      gate_command: { type: string, required: false }
+  again:
+    description: "Re-enter the maker import for a second run."
+  finish:
+    description: "Stop after the current run."
+  look:
+    description: "Re-render the current room."
+
+imports:
+  maker:
+    source: ../cherny-loop
+    entry: configuring
+    world_in:
+      goal_text:    "{{ world.brief }}"
+      gate_command: "{{ world.gate_command }}"
+      gate_mode:    "script"
+    exits:
+      # achieved projects back to `done_one` (NOT a terminal @exit) so the
+      # importer can choose to re-enter the maker for a second run, exercising
+      # the import-compound re-entry reset.
+      achieved:
+        to: done_one
+        set:
+          status: "ran"
+      exhausted:
+        to: "@exit:stalled"
+        set:
+          status: "stalled"
+      abandoned:
+        to: "@exit:stalled"
+        set:
+          status: "stalled"
+
+exits:
+  done:    { requires: [status] }
+  stalled: { requires: [status] }
+
+root: idle
+
+include:
+  - rooms/*.yaml

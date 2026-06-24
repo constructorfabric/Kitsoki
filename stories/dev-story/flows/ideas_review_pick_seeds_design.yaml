@@ -1,0 +1,46 @@
+# ideas_review_pick_seeds_proposal — the writer's-block handoff, intent-only.
+#
+# Entering `ideas` runs the reviewer (decide) which surfaces candidates. `pick 1`
+# seeds world.design_seed_idea from candidate 1 and jumps into the proposal
+# intake (proposal room). The operator then types a message in intake to mint
+# the slug + workspace and advance to search. Here we only assert the seed + the
+# jump — the discuss → search path is covered by design_happy_path.
+#
+# The intake room has no on_enter (no chat to resolve); no host stubs needed for
+# the proposal landing turn itself.
+
+test_kind: flow
+app: ../app.yaml
+# Enter via go_ideas so the `ideas` on_enter (the reviewer decide) fires — a
+# flow's seeded initial_state does NOT run on_enter.
+initial_state: landing
+initial_world:
+  judge_mode: "human"
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      ideas_review:
+        data:
+          ok: true
+          submitted:
+            summary: "Backlog current; two candidates worth proposing."
+            reclassifications: []
+            candidates:
+              - { item: "single LLM chat across rooms with scoped containment", rationale: "richer context without the history-mcp hack", effort: "medium" }
+              - { item: "choice widget (yes/no, multi-choice)", rationale: "reused across many rooms", effort: "small" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/ideas-review/latest.json", message_id: "latest.json#1" }
+
+turns:
+  # Enter the reviewer — on_enter surfaces the candidates.
+  - intent: { name: go_ideas, slots: {} }
+    expect_state: ideas
+
+  # Pick candidate 1 → seed the proposal pipeline and land in intake.
+  - intent: { name: pick, slots: { n: 1 } }
+    expect_state: design
+    expect_world:
+      design_seed_idea: "single LLM chat across rooms with scoped containment"
+
+expect_no_errors: true

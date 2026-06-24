@@ -22,7 +22,7 @@ var kitsokiEngineerPrompt string
 // the engineer in a random directory.
 func kitsokiEngineer() Agent {
 	return Agent{
-		Name:         "kitsoki-engineer",
+		Name:         NameKitsokiEngineer,
 		SystemPrompt: kitsokiEngineerPrompt,
 		Model:        "",
 		Tools: []string{

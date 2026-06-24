@@ -1,0 +1,46 @@
+# Traceability:
+# - Source call site: stories/dev-story/rooms/design.yaml, host.agent.decide id `name_slug`.
+# - Prompt: stories/dev-story/prompts/design_slug.md.
+# - Schema: stories/dev-story/schemas/slug.json.
+# - Purpose: cheap naming/classification call in the proposal intake path.
+kind: agent_eval
+app: ../app.yaml
+call: name_slug
+
+task:
+  goal: "Generate a concise kebab-case proposal slug from an operator idea."
+  boundedness:
+    max_turns: 1
+    tool_policy: none
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.95
+    max_p95_latency_ms: 4000
+    max_avg_cost_usd: 0.0008
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low]
+  repeat: 5
+
+comparator:
+  kind: field_subset
+
+examples:
+  - name: model-harness-eval-story
+    args:
+      idea: "Build a reusable story that compares configured model harnesses and applies the best local override."
+    expect:
+      slug: model-harness-eval
+      rationale: "Captures the reusable model/harness evaluation story."
+  - name: async-inbox-routing
+    args:
+      idea: "Improve inbox notifications so background jobs route operators back to the waiting task."
+    expect:
+      slug: async-inbox-routing
+      rationale: "Captures background job inbox routing."

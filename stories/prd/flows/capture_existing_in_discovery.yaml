@@ -1,0 +1,47 @@
+# capture_existing_in_discovery — the operator names docs mid-chat and they
+# are recorded into world.upstream_paths so they thread to the researcher.
+#
+# capture_existing is a self-loop in idle (target: . → on_enter does NOT
+# re-fire, the chat is preserved, same idiom as discuss). It sets
+# upstream_paths from the named paths. A follow-up discuss turn confirms the
+# conversation continues undisturbed.
+#
+# Intent-only: the discovery chat + converse are stubbed.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+
+host_handlers:
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "PRD idea discovery", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "Got it — I'll factor that in.", chat_id: "chat-1", claude_session_id: "sess-1" }
+
+turns:
+  # Operator opens the discovery chat with a message.
+  - intent: { name: discuss, slots: { message: "I want a CLI for X" } }
+    expect_state: idle
+    expect_world:
+      idea_turns: 1
+
+  # Mid-chat, the operator points at an existing doc. It is captured into
+  # upstream_paths (self-loop; the chat is not re-created).
+  - intent: { name: capture_existing, slots: { paths: "docs/auth.md docs/quota.md" } }
+    expect_state: idle
+    expect_world:
+      upstream_paths: "docs/auth.md docs/quota.md"
+      idea_turns:     1   # capture_existing does NOT increment turns (no converse)
+
+  # The conversation carries on normally afterward; upstream_paths persists.
+  - intent: { name: discuss, slots: { message: "the auth model matters" } }
+    expect_state: idle
+    expect_world:
+      idea_turns:     2
+      upstream_paths: "docs/auth.md docs/quota.md"
+
+expect_no_errors: true

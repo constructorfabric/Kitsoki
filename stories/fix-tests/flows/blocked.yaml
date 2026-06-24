@@ -1,0 +1,45 @@
+# blocked — first run red; the fixer hits a question it must not answer
+# alone (needs_decision=true) and the pipeline stops at blocked.
+# run(1) -> fixing(needs_decision=true) -> blocked
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  test_cmd:   "make test"
+  max_cycles: 3
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 1, ok: false, stdout: "--- FAIL: TestAmbiguous\nFAIL\n" }
+        delay: "10ms"
+      write_report:
+        data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-blocked.md" }
+  host.agent.task:
+    by_call:
+      fix:
+        delay: "10ms"
+        data:
+          submitted:
+            summary_title:      "Ambiguous intended behaviour"
+            summary_markdown:   "The test asserts X but the code does Y; it is unclear which is intended."
+            files_changed:      []
+            fixed_tests:        []
+            remaining_failures: ["TestAmbiguous"]
+            needs_decision:     true
+            open_questions:     ["Should Add() round half-up or half-even? The test and the docs disagree."]
+            confidence:         0.0
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: start }
+    advance_clock: "2s"
+    expect_state: blocked
+    expect_world:
+      outcome:     "blocked"
+      cycle:       1
+      report_path: ".artifacts/fix-tests/report-blocked.md"
+
+expect_no_errors: true

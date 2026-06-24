@@ -6,7 +6,7 @@
 #         merge → @exit:merged → main(status=merged)
 #
 # judge_mode is human throughout; the operator (here, the flow runner)
-# accepts at every checkpoint. The stubbed host.local_files.ticket
+# accepts at every checkpoint. The stubbed host.gh.ticket
 # returns the seed bug list; iface.transport.post (host.append_to_file)
 # is stubbed to ok:true. In a real run against the on-disk seed bug,
 # host.append_to_file appends `## Comment <iso> by <author>` blocks
@@ -17,7 +17,7 @@
 # Why the flow can't ASSERT on-disk file state today:
 #   testrunner/flows.go's HostHandlers map only registers STUB
 #   handlers — there's no path to register the REAL
-#   host.local_files.ticket against a temp git repo from a fixture.
+#   host.gh.ticket against a temp git repo from a fixture.
 #   The on-disk assertion is documented in the README's "Manual
 #   walkthrough" section and exercised by hand, not by this flow.
 #
@@ -36,7 +36,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world:
   core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
   core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
@@ -84,21 +84,21 @@ host_handlers:
   host.local:
     data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0, state: "success" }
 
-  # Ticket iface — host.local_files.ticket. Returns the seed bug list
+  # Ticket iface — host.gh.ticket. Returns the seed bug list
   # for ticket.list_mine / ticket.search and ok for ticket.transition.
-  host.local_files.ticket:
+  host.gh.ticket:
     data:
       ok: true
       tickets:
         - { id: "2026-05-14T103205Z-tui-view-render-before-bind", title: "TUI view templates render BEFORE on_enter binds", status: "open", priority: "P2", assignee: "" }
 
-  # Oracle calls — single stub serves every merged room's on_enter
+  # Agent calls — single stub serves every merged room's on_enter
   # artifact bind AND every judge prompt. The bf rooms each bind the
   # whole `submitted:` blob into their own world key; judge prompts
   # are NOT invoked in judge_mode=human (the `when:` clause skips
   # them) so the verdict fields are inert here.
-  host.oracle.decide:
-    data:
+  host.agent.decide:
+    data: &agent_stub
       ok: true
       stdout: ""
       submitted:
@@ -139,8 +139,15 @@ host_handlers:
         reason:     "Stub artifact passes the schema; accept advances."
         confidence_pct: 90
 
+  # host.agent.task — bf reproducing/implementing/testing/validating
+  # rooms generate their artifact via the `task` verb (judge steps use
+  # `decide`). Same stub payload as decide (shared anchor); the artifact
+  # schema's additionalProperties tolerates the judge fields.
+  host.agent.task:
+    data: *agent_stub
+
 turns:
-  # core.main → core.bf.reproducing (dispatch into the bugfix sub-story
+  # core.landing → core.bf.reproducing (dispatch into the bugfix sub-story
   # AND auto-fire `start` via bf.idle's on_enter, which emit_intents
   # `start` when entered with a ticket loaded and no reproduction
   # artifact yet). One turn instead of two — the bf.idle dwell-and-
@@ -194,9 +201,9 @@ turns:
   # accept → @exit:merged. dev-story's imports.pr.exits.merged.to = main
   # projects pr__pr_url into the parent's last_pr_url and sets
   # status="merged". Under kitsoki-dev's wrapper, this lands at
-  # core.main with the projected world.
+  # core.landing with the projected world.
   - intent: { name: core__pr__accept, slots: {} }
-    expect_state: core.main
+    expect_state: core.landing
     expect_world:
       core__status:      "merged"
       core__last_pr_url: "https://example/pr/103205"

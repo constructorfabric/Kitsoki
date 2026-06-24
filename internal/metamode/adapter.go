@@ -1,47 +1,16 @@
-// Package-internal adapters that satisfy ChatStore and OracleCaller
-// against the real internal/chats and internal/host symbols.
-//
-// Adapter design notes (referenced from the WS-A3 report):
-//
-//   - ChatStore: the production chat row already implements all the
-//     methods we need on *chats.Store; the adapter is a thin
-//     translation that wraps a *chats.Chat reference into a
-//     ChatHandle. We do NOT reuse internal/chathost's adapter
-//     (which targets host.ChatStore — a different, larger surface)
-//     because ResolveMeta is a strictly smaller seam.
-//
-//   - OracleCaller: the real host.OracleAskWithMCPHandler has three
-//     impedance mismatches with our typed AskInput:
-//
-//     1. It reads the prompt from disk (prompt_path arg). We
-//     materialise the system-prompt-prefixed user message into a
-//     tempfile and hand the path to the handler.
-//
-//     2. It has no "SystemPrompt" arg of its own. We prefix it to
-//     the user text in the rendered prompt body (with a clear
-//     separator), which is functionally equivalent for a one-shot
-//     claude -p call.
-//
-//     3. The non-chat path doesn't accept a claude session id, and
-//     the chat-aware path takes a chat_id and double-appends the
-//     same turn we'd just appended at the controller level. We
-//     therefore call the non-chat path, leaving session resume
-//     as a known WS-A4 follow-up: AskInput.ClaudeSessionID is
-//     captured (so tests can assert it's plumbed) but the public
-//     handler does not currently honor it on this code path.
-//
-//     The adapter explicitly threads the agent's ToolAllowlist into
-//     args["mcp_servers"] as a hint (today the handler does not gate
-//     by tool name — that's a later harness change). Storing the
-//     allowlist there makes the surface visible at the call site even
-//     before it is enforced.
-//
-// If a future workstream wants real session resume here, the cleanest
-// fix is to grow OracleAskWithMCPHandler to accept a claude_session_id
-// arg on the non-chat path (a 5-line patch in host/oracle_ask_with_mcp.go
-// — see line 307 where claudeSessionID is hard-coded to ""). Out of
-// scope for WS-A3.
 package metamode
+
+// This file holds the package-internal adapters that satisfy ChatStore
+// and AgentCaller against the real internal/chats and internal/host
+// symbols. See the package doc (doc.go, "# Lifecycle") for why these
+// seams exist and the three constraints host.AgentAskWithMCPHandler
+// imposes that the AgentCaller adapter bridges.
+//
+// Session resume is the open seam: the adapter captures and forwards a
+// claude session id, but the handler's non-chat path does not yet
+// honour it (see the package "# Non-goals"). Wiring it up means growing
+// host.AgentAskWithMCPHandler to accept a claude_session_id arg on the
+// non-chat path.
 
 import (
 	"context"
@@ -100,9 +69,8 @@ func (a *chatStoreAdapter) GetMeta(ctx context.Context, chatID string) (ChatHand
 // underlying List with an empty room filter and post-filter for the
 // "meta:" prefix here — chats.Store.List takes an exact-match room,
 // not a prefix, so the cheap path is "list all, filter in Go". Meta
-// chats per app are few (the proposal §2.1 is explicit about one
-// active session per (mode, scope)), so the post-filter scan stays
-// O(small).
+// chats per app are few (one active session per (mode, scope) — see
+// docs/stories/meta-mode.md), so the post-filter scan stays O(small).
 func (a *chatStoreAdapter) ListMeta(ctx context.Context, appID string) ([]ChatHandle, error) {
 	if a == nil || a.s == nil {
 		return nil, fmt.Errorf("metamode.ListMeta: nil store")
@@ -204,16 +172,16 @@ func (h *chatHandle) FirstUserMessage() (string, error) {
 	return "", nil
 }
 
-// ─── OracleCaller adapter ────────────────────────────────────────────────────
+// ─── AgentCaller adapter ────────────────────────────────────────────────────
 
-// NewOracleCallerAdapter returns an OracleCaller that dispatches to
-// host.OracleAskWithMCPHandler. See the package doc above for the
+// NewAgentCallerAdapter returns an AgentCaller that dispatches to
+// host.AgentAskWithMCPHandler. See the package doc above for the
 // impedance-mismatch notes.
-func NewOracleCallerAdapter() OracleCaller { return &oracleAdapter{} }
+func NewAgentCallerAdapter() AgentCaller { return &agentAdapter{} }
 
-type oracleAdapter struct{}
+type agentAdapter struct{}
 
-func (a *oracleAdapter) Ask(ctx context.Context, in AskInput) (AskOutput, error) {
+func (a *agentAdapter) Ask(ctx context.Context, in AskInput) (AskOutput, error) {
 	// Materialise the rendered prompt to a tempfile so the handler
 	// can read it back via prompt_path. We control both ends so we
 	// can pick a stable, expr-free template body (the handler runs
@@ -221,13 +189,13 @@ func (a *oracleAdapter) Ask(ctx context.Context, in AskInput) (AskOutput, error)
 	// placeholders so render is an identity transform).
 	//
 	// The write/cleanup mechanics are shared with the per-call
-	// `agent:` path in host.oracle.ask_with_mcp via
+	// `agent:` path in host.agent.ask_with_mcp via
 	// host.WritePromptTempFile; the composition step (prepending
 	// system prompt to user text) stays here because it is a
 	// metamode-specific semantic decision.
 	// Compose the agent's system prompt + user message, then wrap the
 	// whole thing in pongo2's `{% verbatim %}…{% endverbatim %}` block
-	// so the downstream host.oracle.ask_with_mcp's mandatory pongo2
+	// so the downstream host.agent.ask_with_mcp's mandatory pongo2
 	// render pass treats the body as literal text — not a template.
 	//
 	// The body routinely contains pongo2 syntax (the system prompt
@@ -251,7 +219,7 @@ func (a *oracleAdapter) Ask(ctx context.Context, in AskInput) (AskOutput, error)
 	body := "{% verbatim %}" + composePromptBody(in.SystemPrompt, in.UserMessage) + "{% endverbatim %}"
 	promptPath, cleanup, err := host.WritePromptTempFile(body)
 	if err != nil {
-		return AskOutput{}, fmt.Errorf("metamode.OracleAdapter: %w", err)
+		return AskOutput{}, fmt.Errorf("metamode.AgentAdapter: %w", err)
 	}
 	defer cleanup()
 
@@ -261,8 +229,8 @@ func (a *oracleAdapter) Ask(ctx context.Context, in AskInput) (AskOutput, error)
 		"args": map[string]any{},
 		// Opt into streaming so each tool-use / assistant chunk lands
 		// in the slog trace in real time (see
-		// internal/host/oracle_ask_with_mcp.go's stream-json branch).
-		// Only metamode sets this — every other oracle caller still
+		// internal/host/agent_ask_with_mcp.go's stream-json branch).
+		// Only metamode sets this — every other agent caller still
 		// uses the buffered "text" path.
 		"output_format": "stream-json",
 	}
@@ -275,6 +243,12 @@ func (a *oracleAdapter) Ask(ctx context.Context, in AskInput) (AskOutput, error)
 	if len(in.ToolAllowlist) > 0 {
 		args["__meta_tool_allowlist"] = append([]string(nil), in.ToolAllowlist...)
 	}
+	// Attach the studio MCP server(s) the controller scoped to the story
+	// tree. The handler materialises this into a --mcp-config file for the
+	// duration of the call. Empty/nil → no --mcp-config (the stub path).
+	if len(in.MCPServers) > 0 {
+		args["mcp_servers"] = in.MCPServers
+	}
 	// Thread the per-chat claude session id so turns share Claude-side
 	// memory. The handler mints one when this is empty (e.g. first turn
 	// of a fresh chat) and returns the resolved id in Data, which we
@@ -283,12 +257,12 @@ func (a *oracleAdapter) Ask(ctx context.Context, in AskInput) (AskOutput, error)
 		args["claude_session_id"] = in.ClaudeSessionID
 	}
 
-	res, err := host.OracleAskWithMCPHandler(ctx, args)
+	res, err := host.AgentAskWithMCPHandler(ctx, args)
 	if err != nil {
-		return AskOutput{}, fmt.Errorf("metamode.OracleAdapter: handler: %w", err)
+		return AskOutput{}, fmt.Errorf("metamode.AgentAdapter: handler: %w", err)
 	}
 	if res.Error != "" {
-		return AskOutput{}, fmt.Errorf("metamode.OracleAdapter: %s", res.Error)
+		return AskOutput{}, fmt.Errorf("metamode.AgentAdapter: %s", res.Error)
 	}
 	// Strip source-color sentinels: the controller persists Reply to
 	// the meta chat and re-feeds it to claude on subsequent turns,

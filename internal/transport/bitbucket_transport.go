@@ -1,34 +1,3 @@
-// Package transport — Bitbucket Server (Stash) Transport.Post driver.
-//
-// Posts comments to a Bitbucket Server pull request via the REST API,
-// authenticating with a Bearer personal-access token.  Mirrors the shape
-// of the Jira transport so the host.transport.post bridge dispatches into
-// either driver without special-casing.
-//
-// API surface:
-//
-//	POST {base}/rest/api/1.0/projects/{project}/repos/{slug}/pull-requests/{pr_id}/comments
-//	{"text": "<text>"}
-//	200 → {"id": 12345, "version": 0, ...}
-//
-// Routing
-// -------
-// Unlike Jira (where SessionKey.Thread is the issue key and that's all the
-// API needs), Bitbucket needs three coordinates to identify a PR:
-// project, repo slug, and PR id.  Those flow in via Message.Extra as
-// `pr_project`, `pr_slug`, `pr_id` — set by the orchestrator's
-// `host.transport.post` arg block in app.yaml.  SessionKey.Thread is kept
-// for orchestrator-side correlation (typically the Jira ticket key) but
-// has no role in routing the REST call.
-//
-// TLS
-// ---
-// The default deployment targets an enterprise ZTA-proxy mount at
-// https://127.0.0.1:3128/bitbucket which presents a self-signed cert.
-// The default HTTP client therefore skips TLS verification.  Callers
-// pointing at a vanilla Bitbucket Server should set
-// BitbucketConfig.BaseURL and supply their own *http.Client via
-// BitbucketConfig.HTTPClient.
 package transport
 
 import (
@@ -40,15 +9,13 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // BitbucketConfig configures the Bitbucket transport.
 type BitbucketConfig struct {
-	// BaseURL is the Bitbucket REST root.  Defaults to an enterprise
-	// ZTA-proxy mount when empty
-	// (`https://localhost:3128/bitbucket`).  Point at a vanilla
-	// Bitbucket Server by setting this explicitly.
+	// BaseURL is the Bitbucket REST root.  Defaults to the Acronis ZTA
+	// proxy mount when empty, mirroring tools/loopy's
+	// `_DEFAULT_API_BASE = "https://localhost:3128/bitbucket"`.
 	BaseURL string
 	// Token is the Bitbucket personal access token presented via Bearer.
 	Token string
@@ -60,15 +27,26 @@ type BitbucketConfig struct {
 	HTTPClient *http.Client
 }
 
-// BitbucketTransport implements Transport against Bitbucket Server REST.
+// BitbucketTransport posts comments to a Bitbucket Server (Stash) pull
+// request over the REST API, authenticating with a Bearer personal-access
+// token. Unlike Jira, the PR is addressed by three coordinates that do not
+// fit [SessionKey] — pr_project, pr_slug, pr_id — so they ride in
+// [Message].Extra (see the package Routing section); SessionKey.Thread is
+// kept only for orchestrator-side correlation. The default deployment targets
+// the Acronis ZTA proxy ([DefaultBitbucketBaseURL]), which presents a
+// self-signed cert, so the default HTTP client skips TLS verification; callers
+// wanting strict verification inject their own *http.Client via
+// [BitbucketConfig].HTTPClient. The zero value is not usable; construct via
+// [NewBitbucketTransport].
 type BitbucketTransport struct {
 	cfg    BitbucketConfig
 	client *http.Client
 }
 
-// DefaultBitbucketBaseURL is the example ZTA-proxy mount used by the
-// reference deployment.  Override via BitbucketConfig.BaseURL or
-// $BITBUCKET_BASE_URL to point at a vanilla Bitbucket Server.
+// DefaultBitbucketBaseURL is the Acronis ZTA-proxy mount that
+// tools/loopy's bitbucket_io speaks to.  Stays in sync with
+// pr_refine.bitbucket_io._DEFAULT_API_BASE so both surfaces target the
+// same proxy.
 const DefaultBitbucketBaseURL = "https://localhost:3128/bitbucket"
 
 // NewBitbucketTransport constructs a BitbucketTransport.  Returns an error
@@ -88,7 +66,7 @@ func NewBitbucketTransport(cfg BitbucketConfig) (*BitbucketTransport, error) {
 	client := cfg.HTTPClient
 	if client == nil {
 		client = &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: httpClientTimeout,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			},

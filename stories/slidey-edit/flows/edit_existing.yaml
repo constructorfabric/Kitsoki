@@ -1,0 +1,79 @@
+# edit_existing — idle can now hand an existing slidey JSON spec into drafting
+# without confusing drafting's once: cache. The input lands in source_deck,
+# deck stays empty until the agent returns, then the normal render/review path
+# continues.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Spatial-annotation explainer deck (3 scenes)." }
+  addressed: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      author_deck:
+        data:
+          ok: true
+          submitted:
+            spec_path: "stories/slidey-edit/baked/deck.json"
+            summary: "Edited the existing spatial-annotation explainer deck."
+            edited: ["1/card_0"]
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "stories/slidey-edit/baked/deck.html"
+          semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
+
+  host.starlark.run:
+    by_call:
+      seed_annotation:
+        data:
+          annotation:
+            anchor:
+              kind: "semantic_element"
+              semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+              label: "Scene 1 · card 0"
+            instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+            frame_handle: "slidey-edit#1"
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "slideshow", mime: "text/html" }, path: "stories/slidey-edit/baked/deck.html", kind: "slideshow", mime: "text/html" }
+      emit_semantic:
+        data: { ok: true, handle: { id: "slidey-semantic#1", kind: "data", mime: "application/json" }, path: "stories/slidey-edit/baked/deck.semantic.json", kind: "data", mime: "application/json" }
+
+turns:
+  - intent:
+      name: edit_existing
+      slots:
+        spec_path: "stories/slidey-edit/baked/deck.json"
+        summary: "Spatial-annotation explainer deck (3 scenes)."
+        feedback: "Tighten the card copy."
+    # Drafting auto-renders once the edit binds a deck spec, so edit_existing
+    # flows straight through drafting → rendering → reviewing in one turn.
+    expect_state: reviewing
+    expect_world:
+      source_deck:
+        spec_path: "stories/slidey-edit/baked/deck.json"
+        summary: "Spatial-annotation explainer deck (3 scenes)."
+      draft_feedback: "Tighten the card copy."
+      deck:
+        spec_path: "stories/slidey-edit/baked/deck.json"
+        summary: "Edited the existing spatial-annotation explainer deck."
+        edited: ["1/card_0"]
+      deck_handle: "slidey-edit#1"
+      semantic_handle: "slidey-semantic#1"
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "author_deck" }
+
+expect_terminal: false
+expect_no_errors: true

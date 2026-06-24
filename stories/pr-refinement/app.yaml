@@ -1,10 +1,10 @@
 # pr-refinement — first-class PR-refinement pipeline.
 #
-# Wave 2 / Phase 2 of the dev-story / bugfix unify design.
-# pr-refinement is a story, not a library. The six visible rooms
+# PR-refinement pipeline (see docs/case-studies/bug-fix.md —
+# pr-refinement is a story, not a library). The six visible rooms
 # (open_pr → ci_monitoring → diagnose → resolve_comments → re_push →
-# merge) collapse a pr-refine driver and the autonomous merge-monitor
-# loop into one provider-neutral state machine.
+# merge) collapse cyber-repo's `tools/loopy/pr-refine.py` and the
+# autonomous merge-monitor loop into one provider-neutral state machine.
 #
 # # Standalone-runnable.
 #
@@ -62,16 +62,16 @@ app:
 # Host allow-list. The four iface defaults below (vcs, ci, transport,
 # ticket) register implicitly through resolveAllInterfaces — every
 # `iface.<name>.<op>` site is union'd into hosts as `<binding>.<op>`
-# at load time. Bare `host.inbox.add` and `host.oracle.decide`
+# at load time. Bare `host.inbox.add` and `host.agent.decide`
 # calls are listed explicitly because they are not wrapped by an iface.
 hosts:
   - host.inbox.add
-  - host.oracle.decide
+  - host.agent.decide
 
-# Persona table (oracle-split proposal §3.5).
+# Persona table (agent-split proposal §3.5).
 #
 # All LLM calls in pr-refinement are judgment calls — analysis
-# and inter-phase gates. No file-mutation oracles in this story.
+# and inter-phase gates. No file-mutation agents in this story.
 #
 #   diagnoser    decide   reads CI log, produces typed diagnosis artifact
 #   judge        decide   every awaiting_reply gate

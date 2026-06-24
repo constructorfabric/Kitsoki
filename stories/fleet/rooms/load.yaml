@@ -1,0 +1,50 @@
+# load — parse the decomposition.yaml into a brief list.
+#
+# on_enter runs fleet_load.py on decomposition_path, emitting fleet_briefs =
+# [{id, brief, gate_command, status:"pending", last_error:""}]. `start` enters
+# the board (the dispatcher loop head).
+
+states:
+
+  load:
+    description: "Parse the decomposition manifest into the fleet brief list."
+    relevant_world: [decomposition_path, fleet_briefs, load_error]
+    view:
+      - prose: "Loaded {{ len(world.fleet_briefs) }} brief(s) from {{ world.decomposition_path }}."
+      - prose: "Load error: {{ world.load_error }}"
+        when: "world.load_error != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start"
+              hint:  "fan ship-it out over the briefs (merge-lock serializes)"
+              intent: start
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: fleet_load
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "stories/fleet/scripts/fleet_load.py"
+            - "{{ world.decomposition_path }}"
+            - "{{ world.fleet_state_path }}"
+        bind:
+          fleet_briefs:     "stdout_json.fleet_briefs"
+          fleet_state_path: "stdout_json.fleet_state_path"
+          load_error:       "stdout_json.error"
+        on_error: load
+    on:
+      start:
+        - target: board
+      quit:
+        - target: load
+          effects:
+            - say: "Stopped before fan-out."
+      look:
+        - target: .

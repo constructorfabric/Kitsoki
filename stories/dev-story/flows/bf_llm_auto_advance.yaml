@@ -14,7 +14,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   ticket_id:                  "TKT-100"
   ticket_title:               "Auto-advance across import boundary"
@@ -57,7 +57,7 @@ host_handlers:
   # different ticket. The verdict.intent="accept" is the BARE name
   # the LLM produces; the dispatcher resolves it through the
   # imported state's IntentAliases to `bf__accept` and fires the arc.
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -80,7 +80,7 @@ host_handlers:
         intent:  "accept"
         reason:  "High confidence; auto-advance."
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -103,7 +103,7 @@ host_handlers:
         intent:  "accept"
         reason:  "High confidence; auto-advance."
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -139,7 +139,7 @@ turns:
   # on_enter auto-emits `start` when entered with a ticket loaded
   # (see stories/bugfix/rooms/idle.yaml). The emit immediately fires
   # reproducing.on_enter, which (in llm_then_human mode) runs the
-  # artifact + judge oracle and emit_intent's the verdict. The
+  # artifact + judge agent and emit_intent's the verdict. The
   # dispatcher resolves bare `accept` → `bf__accept` via IntentAliases
   # and the next phase's on_enter cascades the same way — landing at
   # bf.implementing (no judge in implementing, so the chain stops).

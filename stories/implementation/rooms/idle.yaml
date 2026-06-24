@@ -28,6 +28,39 @@ states:
             - { label: "quit",  intent: quit,  hint: "abandon the pipeline" }
             - { label: "look",  intent: look,  hint: "re-render" }
     relevant_world: [ticket_id, ticket_title, judge_mode, workspace_id]
+    # Provision the worktree on entry — mirrors bugfix/rooms/idle.yaml.
+    # The impl pipeline writes code, commits, and opens a PR against
+    # world.workdir; entry paths that don't pre-seed it (dev-story's
+    # `drive` / `go_implementation` / design_done `implement`) used to
+    # land here with workdir="" and run the whole pipeline against the
+    # repo root with no branch — the agent saw an empty workdir and got
+    # "confused". Flow fixtures seed initial_state=idle (which bypasses
+    # on_enter) so they keep observing the parked state; live entry now
+    # gets a real worktree. Guarded by impl_provision_attempted so an
+    # on_error bounce or re-entry doesn't double-provision.
+    on_enter:
+      # Step 1: derive workspace identity from ticket_id (only when the
+      # parent hasn't already projected a workdir in via world_in:).
+      - when: "world.ticket_id != '' && world.workdir == '' && !world.impl_provision_attempted"
+        set:
+          workspace_id:   "impl-{{ world.ticket_id }}"
+          feature_branch: "feature/{{ world.ticket_id }}"
+          workdir:        ".worktrees/impl-{{ world.ticket_id }}"
+      # Step 2: create the worktree on disk. `id:` pins the dir basename
+      # to world.workspace_id so a later workspace.sync (keyed on the id)
+      # finds the dir worktreeCreate made. The handler ignores the
+      # interface's `ticket_id` label and reads id/name/base.
+      - when: "world.ticket_id != '' && world.feature_branch != '' && world.workdir != '' && !world.impl_provision_attempted"
+        invoke: iface.workspace.create
+        with:
+          id:   "{{ world.workspace_id }}"
+          name: "{{ world.feature_branch }}"
+          base: "{{ world.base_branch }}"
+        on_error: idle
+      # Step 3: pin "we provisioned once" so any re-entry skips the chain.
+      - when: "world.ticket_id != '' && !world.impl_provision_attempted"
+        set:
+          impl_provision_attempted: true
     on:
       start:
         - target: review_task_executing

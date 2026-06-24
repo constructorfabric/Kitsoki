@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kitsoki/session-mining/analysis.schema.json",
+  "title": "session-mining per-instance analysis (REPORT 2)",
+  "description": "Per-intent recipe: the grounded, validated actions + parameters that would reproduce the requested output, plus a determinism verdict scored from measured trace signals. Linked from intents.json by instance_id.",
+  "type": "object",
+  "required": ["schema_version", "job", "instances"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "job": { "type": "string" },
+    "tags_version": { "type": "string" },
+    "vocab_version": { "type": "string" },
+    "prompt_version": { "type": "string" },
+    "clusters": {
+      "type": "array",
+      "description": "deterministic grouping of instances by tag-set + normalized action signature",
+      "items": {
+        "type": "object",
+        "required": ["key", "instances", "count"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "description": "cluster key: action tags + normalized signature" },
+          "count": { "type": "integer", "minimum": 1 },
+          "instances": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "instances": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/instance" }
+    }
+  },
+  "$defs": {
+    "instance": {
+      "type": "object",
+      "required": ["instance_id", "tags", "determinism", "actions", "measured", "grounding"],
+      "additionalProperties": false,
+      "properties": {
+        "instance_id": { "type": "string", "pattern": "^.+#[0-9]+$" },
+        "tags": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": { "type": "array", "items": { "type": "string" } },
+            "surface": { "type": "array", "items": { "type": "string" } },
+            "scope": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "determinism": { "enum": ["deterministic", "agent-gated", "irreducible-llm"] },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["tool", "signature", "parameters", "cite", "grounded"],
+            "additionalProperties": false,
+            "properties": {
+              "tool": { "type": "string" },
+              "signature": { "type": "string", "description": "genericized tool-call signature" },
+              "parameters": { "type": "object", "additionalProperties": true },
+              "cite": {
+                "type": "object",
+                "required": ["line"],
+                "additionalProperties": true,
+                "properties": {
+                  "line": { "type": "integer", "minimum": 1, "description": "1-based line in traces/<session>.txt" },
+                  "tool_call_index": { "type": "integer", "minimum": 0 }
+                }
+              },
+              "grounded": { "type": "boolean", "description": "deterministic verification verdict (ground.py)" },
+              "outcome": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "real result of this command, recovered from raw (Phase 1)",
+                "properties": {
+                  "is_error":    { "type": "boolean" },
+                  "stdout_head": { "type": "string" },
+                  "stderr_head": { "type": "string" },
+                  "interrupted": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "agent_gates": {
+          "type": "array",
+          "description": "present only when determinism != deterministic",
+          "items": {
+            "type": "object",
+            "required": ["decision", "validator"],
+            "additionalProperties": false,
+            "properties": {
+              "decision": { "type": "string" },
+              "validator": { "type": "string", "description": "the strict check that would confirm the choice" }
+            }
+          }
+        },
+        "measured": {
+          "type": "object",
+          "description": "trace signals measured deterministically (NOT LLM estimates)",
+          "additionalProperties": false,
+          "properties": {
+            "tool_calls": { "type": "integer", "minimum": 0 },
+            "edit_rerun_cycles": { "type": "integer", "minimum": 0 },
+            "retries": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "grounding": {
+          "type": "object",
+          "required": ["actions_cited", "actions_validated"],
+          "additionalProperties": false,
+          "properties": {
+            "actions_cited": { "type": "integer", "minimum": 0 },
+            "actions_validated": { "type": "integer", "minimum": 0 },
+            "quarantined": { "type": "boolean", "description": "true if no action grounded; recipe untrustworthy" }
+          }
+        },
+        "satisfaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "did the result satisfy the user's intent? (follow-up turn; Phase 1)",
+          "properties": {
+            "followup_text_head": { "type": "string" },
+            "corrected":          { "type": "boolean" },
+            "corrective_ops":     { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

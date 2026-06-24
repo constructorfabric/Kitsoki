@@ -1,8 +1,8 @@
-// Package host — Bash tool restriction profiles for host.oracle.ask and
-// host.oracle.decide.
+// Package host — Bash tool restriction profiles for host.agent.ask and
+// host.agent.decide.
 //
 // Three profiles restrict what Bash commands an LLM agent may run inside an
-// ask/decide call (oracle-split proposal §2.3). The profile is applied by the
+// ask/decide call. The profile is applied by the
 // kitsoki-bash MCP wrapper (bash_mcp.go): commands that don't match the profile
 // are replaced with a tool error so the LLM sees the rejection and cannot
 // mutate anything unexpected.

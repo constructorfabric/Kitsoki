@@ -216,7 +216,7 @@ func TestOrchestratorTraceWinningPath(t *testing.T) {
 
 	// Acceptance criteria:
 	// - Exactly one harness.recording_hit per LLM-routed turn. The
-	//   semantic-routing tier (proposal §10 Phase 2) now resolves
+	//   semantic-routing tier now resolves
 	//   "hang the cloak" and "read the message" via implicit-synonym
 	//   matches against the intent's Examples, so only the
 	//   slot-requiring `go` turns plus any other matcher misses go
@@ -273,7 +273,7 @@ func countMsg(records []slog.Record, msg string) int {
 
 // TestTurnDoneCarriesRenderedView asserts that turn.done events embed the
 // rendered view string under view_rendered. This is the asymmetric-win
-// observability surface from ai-collaboration-proposal.md §1: any --trace
+// observability surface documented in docs/architecture/overview.md "Observability": any --trace
 // consumer (AI collaborator, future analytics, flow-test assertions) gets
 // the rendered narrative for free, by-byte reproducible.
 func TestTurnDoneCarriesRenderedView(t *testing.T) {

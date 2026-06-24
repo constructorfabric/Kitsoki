@@ -25,7 +25,7 @@ func TestValidateJQL(t *testing.T) {
 		{name: "natural language", input: "open presentation service bugs", wantErr: true, errFrag: "natural language"},
 
 		// Bare issue keys.
-		{name: "bare issue key PLTFRM", input: "PROJ-123", wantErr: false},
+		{name: "bare issue key PLTFRM", input: "PLTFRM-123", wantErr: false},
 		{name: "bare issue key DBI", input: "DBI-9876", wantErr: false},
 		{name: "bare issue key with underscore", input: "AB_TEST-1", wantErr: false},
 

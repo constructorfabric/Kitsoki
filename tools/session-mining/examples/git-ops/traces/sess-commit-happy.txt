@@ -1,0 +1,4 @@
+USER: commit the staged fix
+AI: Let me check what is staged first.
+  > Bash: git status --short
+  > Bash: git commit -m "fix(auth): handle nil session on expiry"

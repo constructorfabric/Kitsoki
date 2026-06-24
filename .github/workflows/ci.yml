@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Lets `make pr-ci` (scripts/open-pr.sh --ci) trigger a run on any branch on
+  # demand — so you can gate PR creation on a real green CI run without CI
+  # firing on every half-finished push.
+  workflow_dispatch:
+
+# Cancel superseded runs for the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # ffmpeg backs the video-frame / chapter handlers (internal/video,
+      # internal/host video tests, runstatus video RPC). jq is preinstalled on
+      # ubuntu-latest; Go comes from setup-go above; the committed
+      # internal/runstatus/web/assets/.gitkeep satisfies the //go:embed pattern
+      # so no pnpm/SPA build is needed just to test.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      # `make test` runs `go test ./...` plus the deterministic story flow
+      # suites (no LLM, no cost).
+      - name: Run tests
+        run: make test

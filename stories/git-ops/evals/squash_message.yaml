@@ -1,0 +1,46 @@
+# Traceability:
+# - Source call site: stories/git-ops/rooms/squash.yaml, host.agent.decide id `squash_message`.
+# - Prompt: stories/git-ops/prompts/commit_message.md.
+# - Schema: stories/git-ops/schemas/commit_verdict.json.
+# - Purpose: author a conventional squash commit message from a branch diff.
+kind: agent_eval
+app: ../app.yaml
+call: squash_message
+
+task:
+  goal: "Generate a conventional squash commit message for branch integration."
+  boundedness:
+    max_turns: 1
+    tool_policy: none
+    prepared_context: true
+  adherence_bar:
+    min_pass_rate: 0.98
+    max_p95_latency_ms: 4000
+    max_avg_cost_usd: 0.0008
+
+matrix:
+  profiles: [claude-native, codex-native, synthetic-claude, synthetic-codex]
+  models:
+    claude-native: [haiku, sonnet]
+    synthetic-claude: [syn:small:text, syn:large:text]
+    synthetic-codex: [syn:small:text, syn:large:text]
+    codex-native: [gpt-5-codex, gpt-5]
+  effort: [low]
+  repeat: 5
+
+comparator:
+  kind: field_subset
+
+examples:
+  - name: feature-squash-message
+    args:
+      staged_diff_stat: "stories/model-harness-eval/app.yaml | 20 +++++++++++++++-----\ntools/session-mining/eval_pilot_report.py | 40 ++++++++++++++++++++++++++++++++"
+      current_branch: "model-harness-pilot"
+      refactor_mode: false
+      squash_mode: true
+      integration_branch: "main"
+    expect:
+      type: feat
+      scope: null
+      summary: "add model harness evaluation story"
+      message: "feat: add model harness evaluation story"

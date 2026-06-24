@@ -5,7 +5,7 @@ package host_test
 //
 // Coverage:
 //   M1 — per-subcommand checks for git/sed/awk; read-only allowlist correctness.
-//   H1 — OracleAskHandler and OracleDecideHandler wire kitsoki-bash MCP when
+//   H1 — AgentAskHandler and AgentDecideHandler wire kitsoki-bash MCP when
 //         Bash is in the tool list; built-in Bash is removed from --allowedTools.
 //   H1 — Profile enforcement: read-only blocks dangerous commands; sandboxed-write
 //         allows any command but executes in a scratch dir.
@@ -278,13 +278,13 @@ func TestAllProfiles_BlockMetaChars(t *testing.T) {
 	}
 }
 
-// ── H1: OracleAskHandler wires kitsoki-bash MCP and removes built-in Bash ───
+// ── H1: AgentAskHandler wires kitsoki-bash MCP and removes built-in Bash ───
 
-// TestOracleAsk_BashProfile_WiresKitsokiBashMCP verifies that when an ask
+// TestAgentAsk_BashProfile_WiresKitsokiBashMCP verifies that when an ask
 // agent declares Bash + read-only profile, the handler:
 //  1. Rewrites "Bash" → "mcp__kitsoki-bash__Bash" in --allowedTools.
 //  2. Includes a --mcp-config flag.
-func TestOracleAsk_BashProfile_WiresKitsokiBashMCP(t *testing.T) {
+func TestAgentAsk_BashProfile_WiresKitsokiBashMCP(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	promptFile := filepath.Join(dir, "p.md")
@@ -308,7 +308,7 @@ func TestOracleAsk_BashProfile_WiresKitsokiBashMCP(t *testing.T) {
 		stub,
 	)
 
-	res, err := host.OracleAskHandler(ctx, map[string]any{
+	res, err := host.AgentAskHandler(ctx, map[string]any{
 		"prompt_path": promptFile,
 		"agent":       "reader",
 	})

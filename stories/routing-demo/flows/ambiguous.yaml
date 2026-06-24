@@ -1,0 +1,15 @@
+# Lesson 3 effects: the disambiguated intents record last_action. The TIE
+# itself (bare "save" → disambiguation card) is a routing outcome, so it's
+# covered by the turn --input probe in README.md, not by this transition test.
+test_kind: flow
+app: ../app.yaml
+initial_state: ambiguous
+turns:
+  - intent: { name: save_doc }
+    expect_state: ambiguous
+    expect_world: { last_action: "save_doc" }
+  - intent: { name: save_game }
+    expect_state: ambiguous
+    expect_world: { last_action: "save_game" }
+  - intent: { name: back }
+    expect_state: hub

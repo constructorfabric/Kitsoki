@@ -2,8 +2,8 @@
 # more times than reproducing_budget allows, the next refine routes to
 # @exit:abandoned with abandon_reason=reproducing_cycle_budget_exhausted.
 #
-# Mirrors an upstream pipeline's cycle_budget_exhaust.yaml scenario 1,
-# against the kitsoki bugfix story's per-phase counters.
+# Mirrors cyber-repo's stories/bugfix/flows/cycle_budget_exhaust.yaml,
+# scenario 1, against the kitsoki bugfix story's per-phase counters.
 #
 # Pattern: world_override seeds the counter at the budget (3); the next
 # refine sees the gate condition `reproducing_cycle >= reproducing_budget`
@@ -33,7 +33,7 @@ host_handlers:
     data: { ok: true, sha: "abc", diff: "" }
   host.local:
     data: { ok: true, log: "PASS", passed: 1, failed: 0 }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -42,7 +42,7 @@ host_handlers:
         bug_verified:     true
         involved_components: [{ name: "x" }]
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -51,7 +51,7 @@ host_handlers:
         bug_verified:     true
         involved_components: [{ name: "x" }]
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -95,7 +95,7 @@ host_handlers:
     data: { ok: true, sha: "abc", diff: "" }
   host.local:
     data: { ok: true, log: "PASS", passed: 1, failed: 0 }
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       submitted:
@@ -104,7 +104,7 @@ host_handlers:
         bug_verified:     true
         involved_components: [{ name: "x" }]
 
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       submitted:
@@ -113,7 +113,7 @@ host_handlers:
         bug_verified:     true
         involved_components: [{ name: "x" }]
 
-  host.oracle.decide:
+  host.agent.decide:
     data:
       ok: true
       submitted:

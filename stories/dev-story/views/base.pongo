@@ -1,6 +1,6 @@
 {% comment %}
 dev-story — app-wide base view. Mirrors stories/oregon-trail/views/base.pongo
-and follows the style-guide block convention (docs/story-style.md §2):
+and follows the style-guide block convention (docs/stories/story-style.md §2):
 
   status   — top status line; dev-story's "ticket · workspace · branch · PR · inbox" readout
   heading  — room title (default: state.description)
@@ -8,7 +8,7 @@ and follows the style-guide block convention (docs/story-style.md §2):
   choices  — action list (typed list element)
   footer   — optional bottom matter; default empty
 
-When dev-story is imported under kitsoki-dev, this base IS the
+When dev-story is imported under kitsoki-dev / cyber-repo, this base IS the
 host base — sub-stories (bf, impl, pr, rev, cyp) inherit our block contract
 when their own `extends: "base"` is rewritten to this file by the imports
 mechanism. Standalone dev-story runs render the same chrome.

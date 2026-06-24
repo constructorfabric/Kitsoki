@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "report_artifact",
+  "description": "Artifact returned by the model-harness evaluation reporter.",
+  "type": "object",
+  "required": [
+    "question",
+    "markdown_path",
+    "deck_path",
+    "slidey_spec_path",
+    "case_study_path",
+    "summary_path",
+    "configured_options",
+    "recommendations",
+    "override",
+    "summary_markdown",
+    "status"
+  ],
+  "properties": {
+    "question": { "type": "string", "minLength": 4 },
+    "markdown_path": { "type": "string", "minLength": 4 },
+    "deck_path": { "type": "string", "minLength": 4 },
+    "slidey_spec_path": { "type": "string", "minLength": 4 },
+    "case_study_path": { "type": "string", "minLength": 4 },
+    "summary_path": { "type": "string", "minLength": 4 },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "partial", "blocked"]
+    },
+    "configured_options": {
+      "type": "array",
+      "description": "Effective harness/model/effort options discovered from checked-in config plus the main-checkout local override.",
+      "items": {
+        "type": "object",
+        "required": ["profile", "backend", "model"],
+        "properties": {
+          "profile": { "type": "string", "minLength": 1 },
+          "backend": { "type": "string", "minLength": 1 },
+          "model": { "type": "string", "minLength": 1 },
+          "effort": { "type": "string" },
+          "source": { "type": "string" },
+          "models": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          },
+          "efforts": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "recommendations": {
+      "type": "object",
+      "required": ["fastest", "cheapest", "best", "selected"],
+      "properties": {
+        "fastest": { "$ref": "#/definitions/recommendation" },
+        "cheapest": { "$ref": "#/definitions/recommendation" },
+        "best": { "$ref": "#/definitions/recommendation" },
+        "selected": { "$ref": "#/definitions/recommendation" }
+      },
+      "additionalProperties": false
+    },
+    "override": {
+      "type": "object",
+      "required": ["mode", "path", "applied", "summary", "selected_profile", "selected_model"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["report", "local", "project", "author"] },
+        "path": { "type": "string", "minLength": 1 },
+        "applied": { "type": "boolean" },
+        "summary": { "type": "string", "minLength": 1 },
+        "diff_summary": { "type": "string" },
+        "selected_profile": { "type": "string", "minLength": 1 },
+        "selected_model": { "type": "string", "minLength": 1 },
+        "selected_effort": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "summary_markdown": {
+      "type": "string",
+      "minLength": 80,
+      "description": "Concise review summary with headline results, gaps, and next actions."
+    },
+    "commands_run": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "eval_datasets": { "type": "integer", "minimum": 0 },
+        "eval_reports": { "type": "integer", "minimum": 0 },
+        "intent_suite_reports": { "type": "integer", "minimum": 0 },
+        "coverage_jobs": { "type": "integer", "minimum": 0 },
+        "readiness_gaps": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    }
+  },
+  "definitions": {
+    "recommendation": {
+      "type": "object",
+      "required": ["profile", "model", "rationale", "evidence_status"],
+      "properties": {
+        "profile": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "effort": { "type": "string" },
+        "rationale": { "type": "string", "minLength": 1 },
+        "evidence_status": {
+          "type": "string",
+          "enum": ["measured", "inferred", "missing"]
+        },
+        "pass_rate_median": { "type": "number", "minimum": 0, "maximum": 1 },
+        "latency_ms_median": { "type": "number", "minimum": 0 },
+        "latency_ms_p5": { "type": "number", "minimum": 0 },
+        "latency_ms_p95": { "type": "number", "minimum": 0 },
+        "avg_cost_usd": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

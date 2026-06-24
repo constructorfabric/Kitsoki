@@ -1,18 +1,19 @@
-// Package harness — BuildTransitionSchema is the single source of truth for
-// the transition-tool input schema. Both LiveHarness and ClaudeCLIHarness
-// derive their tool schema from here so semantic formats declared on slots
-// (e.g. `format: jql`) flow through to slot extraction in either harness.
 package harness
 
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"kitsoki/internal/app"
 )
 
-// BuildTransitionSchema returns a JSON Schema (draft 2020-12) describing the
-// arguments to the transition tool. Top-level shape:
+// BuildTransitionSchema is the single source of truth for the transition
+// tool's input schema: both LiveHarness and ClaudeCLIHarness derive their tool
+// schema from here, so a semantic slot format (e.g. `format: jql`) declared once
+// flows into either harness identically. It returns a JSON Schema (draft
+// 2020-12) describing the arguments to the transition tool. Top-level shape:
 //
 //	{intent: <enum>, slots: {<flat union of all slot defs>}, confidence}
 //
@@ -79,8 +80,9 @@ func BuildTransitionSchema(appDef *app.AppDef, allowedIntents []string) ([]byte,
 
 // buildSlotProperty renders one slot's JSON-Schema property.
 func buildSlotProperty(slot app.Slot) map[string]any {
+	typ := mapSlotType(slot.Type)
 	prop := map[string]any{
-		"type": mapSlotType(slot.Type),
+		"type": typ,
 	}
 	if slot.Description != "" {
 		prop["description"] = slot.Description
@@ -88,7 +90,7 @@ func buildSlotProperty(slot app.Slot) map[string]any {
 	if len(slot.Examples) > 0 {
 		examples := make([]any, len(slot.Examples))
 		for i, ex := range slot.Examples {
-			examples[i] = ex
+			examples[i] = schemaExampleValue(typ, ex)
 		}
 		prop["examples"] = examples
 	}
@@ -110,16 +112,34 @@ func buildSlotProperty(slot app.Slot) map[string]any {
 // like "enum") falls back to "string", which is the right default for the
 // LLM-facing extraction surface.
 func mapSlotType(t string) string {
-	switch t {
+	switch strings.TrimSpace(strings.ToLower(t)) {
 	case "string":
 		return "string"
-	case "number":
+	case "number", "float":
 		return "number"
-	case "integer":
+	case "integer", "int":
 		return "integer"
-	case "boolean":
+	case "boolean", "bool":
 		return "boolean"
 	default:
 		return "string"
 	}
+}
+
+func schemaExampleValue(schemaType, example string) any {
+	switch schemaType {
+	case "integer":
+		if n, err := strconv.Atoi(strings.TrimSpace(example)); err == nil {
+			return n
+		}
+	case "number":
+		if n, err := strconv.ParseFloat(strings.TrimSpace(example), 64); err == nil {
+			return n
+		}
+	case "boolean":
+		if b, err := strconv.ParseBool(strings.TrimSpace(example)); err == nil {
+			return b
+		}
+	}
+	return example
 }

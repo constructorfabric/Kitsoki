@@ -1,0 +1,23 @@
+# issues_migrated.inspect.yaml — the recorded fs/probe interactions for the
+# verify gate (verify/issues_migrated.star) on the apply-green path.
+#
+# Wired into a flow via `starlark_inspect_cassette:` (the exact sibling of
+# starlark_http_cassette:). The testrunner builds a ReplayInspector from this
+# cassette and WRAPS the REAL host.starlark.run handler with it, so the actual
+# verify script runs (json.decode, len, the >= expected_min compare) but its one
+# allow-listed probe — gh.issue.list — is served from disk: no real `gh` call,
+# no network, no cost (the no-LLM / no-cost test rule, AGENTS.md).
+#
+# The script calls ctx.probe("gh.issue.list", [repo]); the ReplayInspector
+# matches on the probe NAME (target), not the args, so this one interaction
+# serves the probe regardless of which repo issue_source resolves to. The
+# recorded out is 3 issues, so n (3) >= expected_min (3) → {ok: true}.
+kind: inspect_cassette
+interactions:
+  - op: probe
+    target: gh.issue.list
+    exit: 0
+    out: |
+      [{"number":1,"title":"Top-of-chat message cut off","state":"OPEN"},
+       {"number":2,"title":"Routing chip backfill","state":"OPEN"},
+       {"number":3,"title":"Cap tall agent chat bubbles","state":"OPEN"}]

@@ -9,8 +9,93 @@
       <span class="event-detail__val">{{ event.time }}</span>
     </div>
 
-    <template v-if="isOracleComplete">
-      <OracleDetail :event="event" />
+    <!-- machine.gate_decided: decision detail — state, available intents, chosen, confidence -->
+    <template v-if="obsKind === 'decision' && event.msg === 'machine.gate_decided'">
+      <div v-if="event.attrs.state" class="event-detail__kv">
+        <span class="event-detail__key">Gate State</span>
+        <code class="event-detail__val">{{ event.attrs.state }}</code>
+      </div>
+      <div v-if="Array.isArray(event.attrs.available_intents) && (event.attrs.available_intents as string[]).length" class="event-detail__block">
+        <span class="event-detail__key">Available Intents</span>
+        <div class="event-detail__intent-chips">
+          <span
+            v-for="intent in (event.attrs.available_intents as string[])"
+            :key="intent"
+            class="event-detail__intent-chip"
+            :class="{ 'event-detail__intent-chip--chosen': intent === event.attrs.chosen_intent }"
+          >{{ intent }}</span>
+        </div>
+      </div>
+      <div v-if="event.attrs.decider" class="event-detail__kv">
+        <span class="event-detail__key">Decider</span>
+        <code class="event-detail__val">{{ event.attrs.decider }}</code>
+      </div>
+      <div v-if="event.attrs.chosen_intent" class="event-detail__kv">
+        <span class="event-detail__key">Chosen</span>
+        <code class="event-detail__val event-detail__val--chosen">{{ event.attrs.chosen_intent }}</code>
+      </div>
+      <div v-if="event.attrs.confidence != null" class="event-detail__kv event-detail__kv--bar">
+        <span class="event-detail__key">Confidence</span>
+        <ConfidenceBar
+          :confidence="(event.attrs.confidence as number)"
+          class="event-detail__conf-bar"
+        />
+      </div>
+      <div v-if="event.attrs.bailed_to_human" class="event-detail__kv">
+        <span class="event-detail__key">Bailed to Human</span>
+        <span class="event-detail__val event-detail__val--warn">yes</span>
+      </div>
+      <div v-if="event.attrs.reason" class="event-detail__block">
+        <span class="event-detail__key">Reason</span>
+        <pre class="event-detail__pre">{{ event.attrs.reason }}</pre>
+      </div>
+    </template>
+
+    <!-- machine.write_mode_granted: the write-mode gate's recorded opt-in / denial -->
+    <template v-else-if="obsKind === 'decision' && event.msg === 'machine.write_mode_granted'">
+      <div v-if="event.attrs.state" class="event-detail__kv">
+        <span class="event-detail__key">Room</span>
+        <code class="event-detail__val">{{ event.attrs.state }}</code>
+      </div>
+      <div v-if="event.attrs.action" class="event-detail__kv">
+        <span class="event-detail__key">Action</span>
+        <code class="event-detail__val">{{ event.attrs.action }}</code>
+      </div>
+      <div v-if="event.attrs.effect" class="event-detail__kv">
+        <span class="event-detail__key">Effect</span>
+        <code class="event-detail__val">{{ event.attrs.effect }}</code>
+      </div>
+      <div class="event-detail__kv">
+        <span class="event-detail__key">Granted</span>
+        <span
+          class="event-detail__val"
+          :class="event.attrs.granted ? 'event-detail__val--chosen' : 'event-detail__val--warn'"
+        >{{ event.attrs.granted ? 'yes' : 'no' }}</span>
+      </div>
+      <div v-if="event.attrs.scope" class="event-detail__kv">
+        <span class="event-detail__key">Scope</span>
+        <code class="event-detail__val">{{ event.attrs.scope }}</code>
+      </div>
+      <div v-if="event.attrs.by" class="event-detail__kv">
+        <span class="event-detail__key">By</span>
+        <code class="event-detail__val">{{ event.attrs.by }}</code>
+      </div>
+    </template>
+
+    <!-- turn.start: routing detail — shows how the turn was routed -->
+    <template v-else-if="obsKind === 'routing' && event.msg === 'turn.start'">
+      <RoutingDetail :event="event" />
+      <div class="event-detail__block">
+        <div class="event-detail__attrs-header">
+          <span class="event-detail__key">Attrs</span>
+          <button class="event-detail__copy-btn" @click="copyAttrs">Copy</button>
+        </div>
+        <pre class="event-detail__pre">{{ prettyJson(event.attrs) }}</pre>
+      </div>
+    </template>
+
+    <template v-else-if="isAgentComplete">
+      <AgentDetail :event="event" :session-id="resolvedSessionId" />
     </template>
 
     <template v-else-if="isLlmEvent">
@@ -103,17 +188,6 @@
       </div>
     </template>
 
-    <template v-else-if="isWorldWriteEvent">
-      <div v-if="event.attrs.key" class="event-detail__kv">
-        <span class="event-detail__key">Key</span>
-        <code class="event-detail__val">{{ event.attrs.key }}</code>
-      </div>
-      <div v-if="event.attrs.value !== undefined" class="event-detail__block">
-        <span class="event-detail__key">Value</span>
-        <pre class="event-detail__pre">{{ prettyJson(event.attrs.value) }}</pre>
-      </div>
-    </template>
-
     <template v-else>
       <div class="event-detail__block">
         <div class="event-detail__attrs-header">
@@ -123,15 +197,27 @@
         <pre class="event-detail__pre">{{ prettyJson(event.attrs) }}</pre>
       </div>
     </template>
+
+    <!-- Annotate button: shown at the bottom when a live session_id is available. -->
+    <AnnotateButton
+      v-if="resolvedSessionId"
+      :session-id="resolvedSessionId"
+      :target-call-id="event.attrs.call_id as string | undefined"
+      :target-turn="event.turn > 0 ? event.turn : undefined"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive } from "vue";
 import type { TraceEvent } from "../types.js";
-import OracleDetail from "./oracle/OracleDetail.vue";
+import AgentDetail from "./agent/AgentDetail.vue";
+import ConfidenceBar from "./agent/ConfidenceBar.vue";
+import RoutingDetail from "./agent/RoutingDetail.vue";
 import HostCliDetail from "./HostCliDetail.vue";
 import HostBuiltinDetail from "./HostBuiltinDetail.vue";
+import AnnotateButton from "./AnnotateButton.vue";
+import { observationKind } from "../lib/observation.js";
 
 interface HarnessCallProp {
   namespace: string;
@@ -142,8 +228,18 @@ interface HarnessCallProp {
   incomplete: boolean;
 }
 
-const props = defineProps<{ event: TraceEvent; harnessCall?: HarnessCallProp }>();
+const props = defineProps<{
+  event: TraceEvent;
+  harnessCall?: HarnessCallProp;
+  /** Optional explicit session id. Falls back to event.session_id. */
+  sessionId?: string;
+}>();
 const { harnessCall } = props;
+
+// Resolve the session id: explicit prop takes precedence, then event.session_id.
+const resolvedSessionId = computed(() =>
+  (props.sessionId || props.event.session_id) || ""
+);
 
 const TRUNCATE_LIMIT = 500;
 const showFull = reactive(new Set<string>());
@@ -172,9 +268,11 @@ async function copyAttrs(): Promise<void> {
   }
 }
 
-// oracle.<verb>.complete events get a rich sub-renderer.  Verb is taken from
-// attrs.verb when present, else inferred from the msg ("oracle.ask.complete"
-// → "ask") so lean traces without the full attrs payload still route here.
+// Observation kind — used by the new decision/routing detail branches.
+const obsKind = computed(() => observationKind(props.event.msg));
+
+// agent.call.complete events get a rich sub-renderer (AgentDetail), which
+// reads attrs.verb to route to the per-verb body.
 const CLI_NAMESPACES = new Set([
   "host.local.run_tests", "host.local.build",
   "host.git.commit", "host.git.diff",
@@ -182,14 +280,21 @@ const CLI_NAMESPACES = new Set([
 ]);
 function isCliNamespace(ns: string): boolean { return CLI_NAMESPACES.has(ns); }
 
-const ORACLE_COMPLETE_RE = /^oracle\.(decide|extract|ask|task|converse)\.complete$/;
-const isOracleComplete = computed(() => ORACLE_COMPLETE_RE.test(props.event.msg));
+// Canonical agent completion: the engine emits agent.call.complete with the
+// verb in attrs.verb. AgentDetail reads attrs.verb to route to the per-verb
+// sub-renderer (DecideDetail / TaskDetail / …).
+// agent.call.error ALSO routes to AgentDetail: a failed call still has a verb to
+// render and MAY carry a transcript_ref (the partial agent actions up to the
+// failure), which AgentDetail surfaces as the Agent-actions affordance. AgentDetail
+// guards missing success fields with its error banner + raw-attrs fallback.
+const isAgentComplete = computed(
+  () => props.event.msg === "agent.call.complete" || props.event.msg === "agent.call.error"
+);
 
-// Legacy: oracle.* start/other + turn.llm.* get the old prompt/response dump.
-const isLlmEvent = computed(() => !isOracleComplete.value && (props.event.msg.startsWith("oracle.") || props.event.msg.startsWith("turn.llm.")));
+// Legacy: agent.* start/other + turn.llm.* get the old prompt/response dump.
+const isLlmEvent = computed(() => !isAgentComplete.value && (props.event.msg.startsWith("agent.") || props.event.msg.startsWith("turn.llm.")));
 const isHostEvent = computed(() => props.event.msg.startsWith("harness.") || props.event.msg.startsWith("host."));
 const isTransitionEvent = computed(() => props.event.msg.startsWith("machine.transition") || props.event.msg === "TransitionApplied");
-const isWorldWriteEvent = computed(() => props.event.msg.startsWith("machine.world."));
 </script>
 
 <style scoped>
@@ -205,14 +310,14 @@ const isWorldWriteEvent = computed(() => props.event.msg.startsWith("machine.wor
 }
 
 .event-detail__key {
-  color: #64748b;
+  color: var(--k-fg-muted, #64748b);
   min-width: 5.5rem;
   flex-shrink: 0;
   font-size: 0.75rem;
 }
 
 .event-detail__val {
-  color: #e2e8f0;
+  color: var(--k-fg, #e2e8f0);
   word-break: break-word;
 }
 
@@ -226,13 +331,13 @@ const isWorldWriteEvent = computed(() => props.event.msg.startsWith("machine.wor
 }
 
 .event-detail__pre {
-  background: #080f1a;
-  border: 1px solid #1e293b;
+  background: var(--k-bg-deep, #080f1a);
+  border: 1px solid var(--k-border, #1e293b);
   border-radius: 4px;
   padding: 0.4rem 0.6rem;
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
-  color: #7dd3fc;
+  color: var(--k-fg-code, #7dd3fc);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
@@ -241,8 +346,8 @@ const isWorldWriteEvent = computed(() => props.event.msg.startsWith("machine.wor
 code.event-detail__val {
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;
-  color: #7dd3fc;
-  background: #080f1a;
+  color: var(--k-fg-code, #7dd3fc);
+  background: var(--k-bg-deep, #080f1a);
   padding: 0.05rem 0.25rem;
   border-radius: 3px;
 }
@@ -255,9 +360,9 @@ code.event-detail__val {
 }
 
 .event-detail__copy-btn {
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #94a3b8;
+  background: var(--k-bg-input, #1e293b);
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-muted, #94a3b8);
   cursor: pointer;
   padding: 0.1rem 0.4rem;
   border-radius: 3px;
@@ -265,12 +370,12 @@ code.event-detail__val {
 }
 
 .event-detail__copy-btn:hover {
-  background: #334155;
-  color: #e2e8f0;
+  background: var(--k-bg-hover, #334155);
+  color: var(--k-fg, #e2e8f0);
 }
 
 .event-detail__pre--error {
-  color: #f87171;
+  color: var(--k-error, #f87171);
   border-color: #7f1d1d;
 }
 
@@ -278,8 +383,8 @@ code.event-detail__val {
   display: block;
   margin-top: 0.3rem;
   background: none;
-  border: 1px solid #334155;
-  color: #60a5fa;
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-accent, #60a5fa);
   cursor: pointer;
   font-size: 0.75rem;
   padding: 0.15rem 0.5rem;
@@ -287,6 +392,50 @@ code.event-detail__val {
 }
 
 .event-detail__toggle-btn:hover {
-  background: #1e293b;
+  background: var(--k-bg-hover, #1e293b);
+}
+
+/* Decision detail — intent chips */
+.event-detail__intent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.2rem;
+}
+
+.event-detail__intent-chip {
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: var(--k-bg-input, #1e293b);
+  border: 1px solid var(--k-border, #334155);
+  color: var(--k-fg-muted, #94a3b8);
+}
+
+.event-detail__intent-chip--chosen {
+  background: var(--k-bg-selection, #1e3a5f);
+  border-color: var(--k-border-focus, #3b82f6);
+  color: var(--k-fg-accent, #93c5fd);
+  font-weight: 600;
+}
+
+.event-detail__val--chosen {
+  color: var(--k-fg-accent, #93c5fd);
+  font-weight: 600;
+}
+
+.event-detail__val--warn {
+  color: var(--k-warning, #fbbf24);
+  font-weight: 600;
+}
+
+.event-detail__kv--bar {
+  align-items: center;
+}
+
+.event-detail__conf-bar {
+  flex: 1;
+  min-width: 8rem;
 }
 </style>

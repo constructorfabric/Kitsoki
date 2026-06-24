@@ -4,6 +4,7 @@ package machine_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"kitsoki/internal/app"
@@ -23,8 +24,6 @@ func mustNew(t *testing.T, def *app.AppDef) machine.Machine {
 	require.NoError(t, err)
 	return m
 }
-
-func ptr[T any](v T) *T { return &v }
 
 // ─── (a) simple linear transition ────────────────────────────────────────────
 
@@ -171,6 +170,39 @@ func TestMissingSlots(t *testing.T) {
 	require.Contains(t, res.ValidationError.MissingSlots, "direction")
 	// State must not change.
 	require.Equal(t, app.StatePath("start"), res.NewState)
+}
+
+// A required slot explicitly provided as "" is present and must NOT be
+// reported as missing — emptiness is a schema-validation concern, not a
+// presence concern.
+func TestRequiredSlotEmptyStringIsPresent(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "test"},
+		Root:  "start",
+		World: map[string]app.VarDef{},
+		Intents: map[string]app.Intent{
+			"say": {Slots: map[string]app.Slot{
+				"text": {Type: "string", Required: true},
+			}},
+		},
+		States: map[string]*app.State{
+			"start": {
+				On: map[string][]app.Transition{
+					"say": {{Target: "start"}},
+				},
+			},
+		},
+	}
+
+	m := mustNew(t, def)
+	w := world.New()
+
+	res, err := m.Turn(context.Background(), "start", w, intent.IntentCall{
+		Intent: "say",
+		Slots:  world.Slots{"text": ""}, // explicitly empty, but present
+	})
+	require.NoError(t, err)
+	require.Nil(t, res.ValidationError, "empty string is present, not missing")
 }
 
 // ─── (c) invalid enum slot value ─────────────────────────────────────────────
@@ -466,7 +498,7 @@ func TestEffectInvokeWithTemplatedListArgs(t *testing.T) {
 // ─── parallel state rejection ─────────────────────────────────────────────────
 
 // TestParallelStatesRejected — historical guard against the PoC restriction.
-// After §9.4 lifts the bare-rejection, this test was reframed: an empty
+// Now that the bare-rejection is lifted, this test was reframed: an empty
 // `type: parallel` state (no children) still fails, but on shape grounds
 // (regions count) rather than a blanket "parallel not supported" error.
 // The expanded parallel-state tests live in parallel_test.go.
@@ -595,18 +627,144 @@ func TestRunEffects(t *testing.T) {
 
 	// EffectApplied events for the set effect.
 	foundEffApplied := false
-	for _, ev := range evts {
-		if ev.Kind == store.EffectApplied {
+	// say narration is its own MachineSay event
+	// carrying {text}, NOT an EffectApplied{say}. world.update must mean only a
+	// world mutation. Assert the split holds at the machine layer.
+	var sayEvent *store.Event
+	for i := range evts {
+		ev := evts[i]
+		switch ev.Kind {
+		case store.EffectApplied:
 			foundEffApplied = true
-			break
+			// No EffectApplied may carry a `say` field anymore.
+			var p struct {
+				Say string `json:"say"`
+			}
+			_ = json.Unmarshal(ev.Payload, &p)
+			require.Empty(t, p.Say,
+				"EffectApplied (world.update) must NOT carry say narration")
+		case store.MachineSay:
+			e := evts[i]
+			sayEvent = &e
 		}
 	}
 	require.True(t, foundEffApplied, "EffectApplied event should be emitted for set effects")
+
+	require.NotNil(t, sayEvent, "a say: effect must emit a MachineSay (machine.say) event")
+	var sayPayload struct {
+		Text string `json:"text"`
+	}
+	require.NoError(t, json.Unmarshal(sayEvent.Payload, &sayPayload))
+	require.Contains(t, sayPayload.Text, "you said hi",
+		"MachineSay payload must carry the rendered narration under `text`")
+}
+
+// ─── once: idempotent invoke ───────────────────────────────────────────────
+
+// onceDef builds a minimal app with a single state whose on_enter is one
+// `invoke: host.noop` with `once: true` binding world key "result".
+func onceDef(t *testing.T) *app.AppDef {
+	t.Helper()
+	return &app.AppDef{
+		App:   app.AppMeta{ID: "once-test"},
+		Root:  "s",
+		Hosts: []string{"host.noop"},
+		World: map[string]app.VarDef{
+			"result": {Type: "object", Default: map[string]any{}},
+		},
+		Intents: map[string]app.Intent{},
+		States: map[string]*app.State{
+			"s": {
+				View: app.LegacyView("state s"),
+				OnEnter: []app.Effect{
+					{
+						Invoke: "host.noop",
+						Once:   true,
+						Bind:   map[string]string{"result": "submitted"},
+					},
+				},
+			},
+		},
+	}
+}
+
+// runOnce drives the once: on_enter against a world with the given `result`
+// value and returns the collected host calls + effect events.
+func runOnce(t *testing.T, result any) ([]machine.HostInvocation, []store.Event) {
+	t.Helper()
+	m := mustNew(t, onceDef(t))
+	w := world.New()
+	w.Vars["result"] = result
+	def := onceDef(t)
+	_, hostCalls, _, evts, err := m.RunEffects(
+		context.Background(), "s", w, def.States["s"].OnEnter,
+	)
+	require.NoError(t, err)
+	return hostCalls, evts
+}
+
+// TestOnce_SkipsWhenBindTargetSet asserts a `once: true` invoke whose bind
+// target is already populated produces NO HostInvocation and records the
+// skip on an EffectApplied{skipped:"cached"} event.
+func TestOnce_SkipsWhenBindTargetSet(t *testing.T) {
+	hostCalls, evts := runOnce(t, map[string]any{"verdict": "continue"})
+	require.Empty(t, hostCalls,
+		"once: must skip the invoke when the bind target is already set")
+
+	// The skip is recorded on EffectApplied{skipped:"cached"}.
+	var foundSkip bool
+	for _, ev := range evts {
+		if ev.Kind != store.EffectApplied {
+			continue
+		}
+		var p struct {
+			Namespace string `json:"namespace"`
+			Skipped   string `json:"skipped"`
+		}
+		_ = json.Unmarshal(ev.Payload, &p)
+		if p.Skipped == "cached" {
+			foundSkip = true
+			require.Equal(t, "host.noop", p.Namespace)
+		}
+	}
+	require.True(t, foundSkip,
+		"a skipped once: invoke must emit EffectApplied{skipped:\"cached\"}")
+
+	// And it must NOT emit a HostInvoked event (the call never dispatched).
+	for _, ev := range evts {
+		require.NotEqual(t, store.HostInvoked, ev.Kind,
+			"a skipped once: invoke must not emit HostInvoked")
+	}
+}
+
+// TestOnce_RunsWhenBindTargetEmpty asserts a `once: true` invoke whose bind
+// target is empty DOES dispatch (collected as a HostInvocation) and binds as
+// usual — covering nil, "", {}, and [] as the unset shapes.
+func TestOnce_RunsWhenBindTargetEmpty(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+	}{
+		{"nil", nil},
+		{"empty string", ""},
+		{"empty map", map[string]any{}},
+		{"empty slice", []any{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hostCalls, _ := runOnce(t, tc.value)
+			require.Len(t, hostCalls, 1,
+				"once: must run the invoke when the bind target is unset (%s)", tc.name)
+			require.Equal(t, "host.noop", hostCalls[0].Namespace)
+			require.Equal(t, map[string]string{"result": "submitted"}, hostCalls[0].Bind,
+				"the invoke must carry its bind so the result is cached")
+		})
+	}
 }
 
 // ─── Machine.Menu ────────────────────────────────────────────────────────────
 
-// TestMenu_EnumExpansionPrimaryVsBlocked exercises the §7.2 menu computation
+// TestMenu_EnumExpansionPrimaryVsBlocked exercises the menu computation
 // inside the machine package (where it now lives). An intent with a required
 // enum slot is expanded into per-value rows; rows whose guard dry-run fails
 // surface in Blocked with the failing arm's guard_hint.
@@ -753,4 +911,47 @@ func TestMenu_TemplateMapShape(t *testing.T) {
 
 	_, ok = tm["blocked"].([]any)
 	require.True(t, ok, "blocked key must be []any even when empty")
+}
+
+// TestWorldFromSchema_SeedsReservedStringGlobals pins the fix for the
+// import-folding divergence where dev-story's `landing` rendered correctly
+// standalone but collapsed to just "Quick actions" when imported under
+// kitsoki-dev's `core` alias. The view gates its banner/intro/footer on
+// `world.last_error == ''`; standalone the room's own `last_error: {default:
+// ""}` made that true, but import folding deliberately drops a child's
+// declaration of a reserved key (it stays bare at every depth), so the folded
+// app never seeded `last_error` and `nil == ''` suppressed every gated
+// element. WorldFromSchema now seeds the engine-owned string reserved keys to
+// "" regardless of declaration — the same discipline the cost vars already use.
+func TestWorldFromSchema_SeedsReservedStringGlobals(t *testing.T) {
+	// A schema that declares NEITHER reserved key — mimics the post-fold app
+	// where the child's reserved-key declarations were dropped.
+	w := machine.WorldFromSchema(app.WorldSchema{
+		"some_key": {Type: "string", Default: "x"},
+	})
+
+	le, ok := w.Vars["last_error"]
+	require.True(t, ok, "last_error must be seeded even when undeclared")
+	require.Equal(t, "", le, `last_error must seed to "" so world.last_error == '' is true at boot`)
+
+	wm, ok := w.Vars[app.WriteModeScopeWorldKey]
+	require.True(t, ok, "write_mode_scope must be seeded even when undeclared")
+	require.Equal(t, "", wm)
+
+	// host_error is a map guarded only via ?? / |default: — left nil.
+	_, hostErrSeeded := w.Vars["host_error"]
+	require.False(t, hostErrSeeded, "host_error must NOT be seeded (map zero left nil)")
+
+	// The cost-var precedent still holds.
+	require.Equal(t, 0.0, w.Vars["session_cost_usd"])
+	require.Equal(t, 0.0, w.Vars["turn_cost_usd"])
+}
+
+// TestWorldFromSchema_StoryDefaultWins confirms the seed only fills an absent
+// key: a story that explicitly declares a reserved key keeps its own default.
+func TestWorldFromSchema_StoryDefaultWins(t *testing.T) {
+	w := machine.WorldFromSchema(app.WorldSchema{
+		"last_error": {Type: "string", Default: "boom"},
+	})
+	require.Equal(t, "boom", w.Vars["last_error"])
 }

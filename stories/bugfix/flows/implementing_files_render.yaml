@@ -1,0 +1,62 @@
+# implementing_files_render — the implementing room's `Files:` kv line
+# must render the actual changed-file names, not a Go type dump.
+#
+# Regression guard for the P4 bug where the view templated a raw list
+# (`world.implement_artifact.files_changed`) without a |join filter, so
+# pongo2 stringified the `[]interface{}` to the literal
+# `<[]interface {} Value>`. The fix adds `|join:", "` (see
+# rooms/implementing.yaml). This flow pre-binds implement_artifact with a
+# multi-element list and asserts the rendered view contains the joined
+# file names AND does NOT contain the Go type string.
+#
+# We start directly in `implementing` with the artifact ALREADY bound so
+# implementing.on_enter's `once: true` host.agent.task is a no-op (its
+# bind target is populated). workspace_id and workdir are left empty so
+# the workspace.create / workspace.sync / vcs.commit on_enter steps —
+# all guarded on non-empty ids — skip too. Nothing mutates the preset;
+# the only thing under test is how the view renders the list.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: implementing
+initial_world:
+  ticket_id:    "TKT-FILES"
+  ticket_title: "Files line renders names, not a type dump"
+  thread:       "TKT-FILES"
+  # Empty workspace ids → every on_enter write step is guarded off.
+  workspace_id: ""
+  workdir:      ""
+  bugfix_mode:  "quick"
+  judge_mode:   "human"
+  propose_fix_artifact:
+    summary_title:    "Stub proposal"
+    summary_markdown: "stub"
+    affected_files:   ["internal/tui/ChatTranscript.vue", "internal/tui/transcript_test.ts"]
+  # The artifact under test. files_changed is a multi-element list — the
+  # exact shape that triggered the `<[]interface {} Value>` bug.
+  implement_artifact:
+    summary_title:    "Applied the transcript fix"
+    summary_markdown: "Edited the transcript view and added a regression test covering the render path."
+    applied:          true
+    files_changed:
+      - "internal/tui/ChatTranscript.vue"
+      - "internal/tui/transcript_test.ts"
+
+turns:
+  # `look` re-renders the implementing view (target: "." → on_enter is
+  # skipped, the preset artifact is untouched). The view is asserted
+  # against the landed state.
+  #
+  # The joined file names must appear on the Files line. This positive
+  # match is mutually exclusive with the bug's `<[]interface {} Value>`
+  # rendering (RE2 has no lookahead, so a negative assertion isn't
+  # available — but the two renderings cannot coexist for one field, so
+  # matching the joined names proves the type dump is gone).
+  - intent: { name: look, slots: {} }
+    expect_state: implementing
+    # The list is joined with ", " (the view may soft-wrap the joined
+    # string across lines at the column width, so allow whitespace between
+    # the trailing comma and the second path).
+    expect_view_matches: "Files:[\\s\\S]*ChatTranscript\\.vue,[\\s\\S]*transcript_test\\.ts"
+
+expect_no_errors: true

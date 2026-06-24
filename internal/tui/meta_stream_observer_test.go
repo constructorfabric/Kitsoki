@@ -2,14 +2,15 @@
 // MetaStreamMsg into the bound tea.Program's message channel.
 //
 // Scope is deliberately narrow: this is the producer→consumer wire
-// test. We don't drive the full oracle-runner stream through it;
+// test. We don't drive the full agent-runner stream through it;
 // that integration is implicit through host.WithStreamSink's
-// nil-safe contract and the existing oracle runner tests.
+// nil-safe contract and the existing agent runner tests.
 package tui_test
 
 import (
 	"bytes"
 	"context"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -150,7 +151,7 @@ func TestMetaStreamSink_DispatchesEventAsMsg(t *testing.T) {
 		if !ok {
 			continue
 		}
-		if sm.Event == want {
+		if reflect.DeepEqual(sm.Event, want) {
 			found = true
 			break
 		}

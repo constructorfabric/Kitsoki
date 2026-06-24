@@ -9,7 +9,7 @@ app:
   title: "on_enter override with background + on_complete + target"
 
 hosts:
-  - host.oracle.ask_with_mcp
+  - host.agent.ask_with_mcp
   - host.run
   - host.transport.post
 
@@ -41,7 +41,7 @@ phase_templates:
       "{id}_executing":
         description: "Executing {{ tpl.title }}"
         on_enter:
-          - invoke: host.oracle.ask_with_mcp
+          - invoke: host.agent.ask_with_mcp
             with:
               prompt:        "default-prompt"
             bind:

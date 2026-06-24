@@ -1,0 +1,429 @@
+# git-ops — Interactive Git Workflow
+#
+# Hub-and-spoke story. On entry detects the current branch and
+# lists worktrees; routes to main_ops (integration branch) or
+# branch_ops (feature branch). Each hub offers legal operations for
+# that context. All git commands run via host.run in argv mode; the
+# agent appears only for commit message authoring and conflict resolution.
+#
+# See docs/stories/git-ops.md for the full design rationale.
+
+app:
+  id: git-ops
+  version: 0.1.0
+  title: "git-ops — Interactive Git Workflow"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.agent.decide
+  - host.agent.task
+
+# conflict_resolver is declared with tools: [Read, Edit] and NO Bash —
+# the v1 write-fence. The agent physically cannot run git commit / push /
+# checkout; correctness is gated by the acceptance.post_cmd (git diff --check)
+# plus a post-continue build_check_cmd run.
+agents:
+  conflict_resolver:
+    system_prompt: |
+      You are a conflict resolver. Your only job is to resolve merge conflicts in
+      the files listed. Strategy: preserve both sides' intent — take the target
+      branch version as the base and re-apply the additive changes from the source
+      branch on top. For non-ASCII binary files: write a clean version from scratch.
+      You MUST NOT run any git commands. You MUST NOT stage files, commit, push,
+      or checkout branches. Edit the working tree only; the story drives every git
+      command. Remove all conflict markers (<<<<<<, ======, >>>>>>) before reporting
+      resolved=true.
+    model: claude-sonnet-4-6
+    tools: [Read, Edit]
+    external_side_effect: false
+
+world:
+  integration_branch:       { type: string, default: "main" }
+  current_branch:           { type: string, default: "" }
+  on_integration:           { type: bool,   default: false }
+  working_dir:              { type: string, default: "." }
+  main_worktree_path:       { type: string, default: "" }
+  route:                    { type: string, default: "look" }
+  git_status:               { type: object, default: {} }
+  commits_ahead:            { type: int,    default: 0 }
+  commits_behind:           { type: int,    default: 0 }
+  has_uncommitted:          { type: bool,   default: false }
+  worktree_list:            { type: object, default: {} }
+  staged_diff_stat:         { type: string, default: "" }
+  commit_message:           { type: string, default: "" }
+  last_op_output:           { type: string, default: "" }
+  last_op_ok:               { type: bool,   default: true }
+  rebase_done:              { type: bool,   default: false }
+  rebase_base_sha:          { type: string, default: "" }
+  conflict_origin:          { type: string, default: "" }
+  conflict_files:           { type: string, default: "" }
+  conflict_verdict:         { type: object, default: {} }
+  conflict_intent_guidance: { type: string, default: "" }
+  merge_branch_name:        { type: string, default: "" }
+  stash_ref:                { type: string, default: "" }
+  stash_worktree:           { type: string, default: "" }
+  last_op_outcome:          { type: string, default: "" }
+  refactor_mode:            { type: bool,   default: false }
+  squash_mode:              { type: bool,   default: false }
+  build_check_cmd:          { type: string, default: "go build ./... && go test ./..." }
+  build_check_disabled:     { type: bool,   default: false }
+  amend_mode:               { type: bool,   default: false }
+  worktree_desc:            { type: string, default: "" }
+  worktree_branch_name:     { type: string, default: "" }
+  worktree_path:            { type: string, default: "" }
+  remove_branch:            { type: bool,   default: true }
+  undo_mode:                { type: string, default: "mixed" }
+  upstream_tracking:        { type: bool,   default: false }
+  no_common_ancestor:       { type: bool,   default: false }
+  pre_rebase_tag:           { type: string, default: "" }
+  merge_in_progress:        { type: bool,   default: false }
+  descendant_ok:            { type: bool,   default: false }
+  add_path:                 { type: string, default: "" }
+  suspicious_confirmed:     { type: bool,   default: false }
+  # cleanup operand-as-slot (git-ops-smoothing slice 1)
+  worktree:                 { type: string, default: "" }
+  force_cleanup:            { type: string, default: "" }
+  # integrate arc (lost-work-safe rebase-onto-current-main)
+  integrate_branch:         { type: string, default: "" }
+  integrate_outcome:        { type: string, default: "" }
+  last_error:               { type: string, default: "" }
+  integrated_sha:           { type: string, default: "" }
+  # Raw host.run result markers — empty by default, set ONLY post-host (templated
+  # string binds applied post-dispatch). The integrate no-JSON guard hinges on
+  # run_exit being non-empty so it can't fire on the pre-bind default world.
+  run_exit:                 { type: string, default: "" }
+  run_stdout:               { type: string, default: "" }
+  # checkpoint / restore arc (safe step-retry — see rooms/checkpoint.yaml).
+  # A checkpoint parks committed HEAD + dirty tracked tree under
+  # refs/kitsoki/checkpoints/<slug> WITHOUT touching the working tree or the
+  # stash stack (git stash create). restore resets back to it, auto-saving the
+  # current state first so a restore is itself reversible.
+  checkpoint_label:         { type: string, default: "" }
+  checkpoint_ref:           { type: string, default: "" }
+  checkpoint_sha:           { type: string, default: "" }
+  checkpoint_dirty:         { type: bool,   default: false }
+  checkpoint_outcome:       { type: string, default: "" }
+  checkpoint_list:          { type: object, default: {} }
+  restore_label:            { type: string, default: "" }
+  restore_outcome:          { type: string, default: "" }
+
+intents:
+  # ── Routing (internal; emitted by on_enter) ─────────────────────────
+  on_main:
+    description: "Route to main_ops (fired by idle on_enter)."
+    examples: []
+    priority: 95
+    hidden: true
+  on_branch:
+    description: "Route to branch_ops (fired by idle on_enter)."
+    examples: []
+    priority: 95
+    hidden: true
+  rebase_conflict:
+    description: "Internal routing: rebase produced conflicts."
+    examples: []
+    priority: 95
+  rebase_continue:
+    description: "Internal routing: continue the rebase after conflict resolution."
+    examples: []
+    priority: 95
+  conflict_resolved:
+    description: "Internal routing: conflict resolution complete."
+    examples: []
+    priority: 95
+  abort_to_main:
+    description: "Internal routing: abort to main_ops."
+    examples: []
+    priority: 95
+  abort_to_branch:
+    description: "Internal routing: abort to branch_ops."
+    examples: []
+    priority: 95
+  re_rebase_needed:
+    description: "Internal routing: re-rebase required before merging or squashing."
+    examples: []
+    priority: 95
+  gosum_fix:
+    description: "Internal routing: only go.sum is conflicted — handle via go mod tidy."
+    examples: []
+    priority: 95
+  pull_done:
+    description: "Internal routing: pull completed successfully."
+    examples: []
+    priority: 95
+  pull_conflict:
+    description: "Internal routing: pull produced conflicts."
+    examples: []
+    priority: 95
+  undo_done:
+    description: "Internal routing: undo operation complete."
+    examples: []
+    priority: 95
+  integrated:
+    description: "Internal routing: integrate succeeded (rebase+build+merge clean)."
+    examples: []
+    priority: 95
+  integrate_aborted:
+    description: "Internal routing: integrate produced no JSON result (host abort) — re-render with a synthesized last_error, never a blank stall."
+    examples: []
+    priority: 95
+  cleanup_done:
+    description: "Internal routing: a cleanup removed cleanly; leave for the hub."
+    examples: []
+    priority: 95
+
+  # ── Hub operations ───────────────────────────────────────────────────
+  commit:
+    description: "Stage and commit changes with an agent-authored message."
+    # "commit the staged fix"/"…work" are verbatim mined real-session phrasings.
+    # They subset-match BOTH commit ("commit") and stage ("staged"→stage), so
+    # routing resolves them via the leading-verb tie-break (the imperative verb
+    # "commit" leads) — see internal/semroute matchBare. Listed here so the
+    # phrasings are documented vocabulary, not load-bearing for the tie-break.
+    examples: ["commit", "commit it", "commit them", "commit this", "ok commit",
+               "commit your work", "commit everything", "single commit",
+               "commit the staged fix", "commit the staged work"]
+    priority: 80
+
+  merge_into_main:
+    description: "Merge the current feature branch into the integration branch."
+    examples: ["merge", "ok merge", "ok merge now", "merge it", "ship it",
+               "merge to main", "merge into main", "land this branch", "doit"]
+    priority: 80
+
+  squash:
+    description: "Squash all branch commits into one, then merge."
+    examples: ["squash", "squash and merge", "clean up commits",
+               "make a few broad commits", "squash my history"]
+    priority: 80
+
+  rebase:
+    description: "Rebase the current branch onto the integration branch."
+    examples: ["rebase", "rebase on main", "rebase against main", "rebase onto main",
+               "sync with main", "pull in main", "bring in the latest from main"]
+    priority: 80
+
+  stage:
+    description: "Classify and stage working-tree changes."
+    examples: ["stage", "stage everything", "add all", "just add the Go files",
+               "stage only my changes", "leave the WIP alone"]
+    priority: 75
+
+  worktree_create:
+    description: "Create a new linked worktree under .worktrees/ on a new branch."
+    examples: ["create a worktree in .worktrees for", "make it a worktree under .worktrees",
+               "create worktree", "new worktree"]
+    priority: 75
+    slots:
+      desc: { type: string, required: false }
+
+  worktree_list:
+    description: "List and classify existing worktrees."
+    examples: ["review the existing worktrees", "list worktrees", "show worktrees",
+               "worktree audit"]
+    priority: 70
+
+  cleanup:
+    description: "Remove a worktree and optionally its branch after merge."
+    examples: ["remove the worktree", "clean up the worktrees",
+               "get me to a clean git state", "remove branch and worktree"]
+    priority: 70
+
+  undo:
+    description: "Undo the last commit (--mixed by default)."
+    examples: ["undo last commit", "drop the commit", "uncommit this",
+               "amend", "undo", "reset"]
+    priority: 70
+
+  pull:
+    description: "Pull from upstream with --rebase."
+    examples: ["pull", "pull from upstream", "git pull", "sync upstream"]
+    priority: 70
+
+  merge_branch:
+    description: "Merge a named branch into the integration branch (from main_ops)."
+    examples: ["merge branch", "merge a branch", "merge into main"]
+    priority: 65
+    slots:
+      branch: { type: string, required: false }
+
+  defer:
+    description: "Return to hub without merging; preserve rebase_done."
+    examples: ["wait", "let's wait", "not yet", "hold off",
+               "defer the merge", "I want to merge more changes first"]
+    priority: 60
+
+  # ── Sub-room intents ─────────────────────────────────────────────────
+  add_file:
+    description: "Stage a specific file path."
+    examples: ["add file", "stage file", "git add"]
+    priority: 70
+    slots:
+      path: { type: string, required: false }
+
+  add_all:
+    description: "Stage all changes (git add -A). Opt-in; warns on suspicious files."
+    examples: ["add all", "stage all", "git add -A", "add everything"]
+    priority: 65
+
+  reset:
+    description: "Unstage all staged changes (git reset HEAD)."
+    examples: ["reset", "unstage", "git reset"]
+    priority: 60
+
+  accept:
+    description: "Accept the agent's output and execute the operation."
+    examples: ["accept", "ok", "yes", "lgtm", "continue", "proceed"]
+    priority: 85
+
+  edit_message:
+    description: "Replace the agent commit message with a custom one."
+    examples: ["edit", "change message", "use this message"]
+    priority: 60
+    slots:
+      message: { type: string, required: false }
+
+  regenerate:
+    description: "Ask the agent to produce a new commit message."
+    examples: ["regenerate", "try again", "redo"]
+    priority: 60
+
+  guide:
+    description: "Provide high-level guidance for conflict resolution and retry."
+    examples: ["guide", "hint", "use ours", "keep theirs", "take main"]
+    priority: 65
+    slots:
+      intent: { type: string, required: false }
+
+  abort:
+    description: "Abort the current rebase or merge."
+    examples: ["abort", "give up", "cancel rebase", "cancel merge"]
+    priority: 65
+
+  remove_worktree:
+    description: "Remove the named worktree but keep the branch."
+    examples: ["remove worktree", "remove tree", "delete worktree"]
+    priority: 65
+    slots:
+      path:     { type: string, required: false }
+      worktree: { type: string, required: false }
+      force:    { type: string, required: false }
+
+  remove_all:
+    description: "Remove the named worktree and its branch."
+    examples: ["remove all", "remove both", "delete both", "clean up branch and worktree"]
+    priority: 65
+    slots:
+      path:     { type: string, required: false }
+      worktree: { type: string, required: false }
+      force:    { type: string, required: false }
+
+  confirm_force_delete:
+    description: "Confirm force-deleting an unmerged branch after the -d refusal."
+    examples: ["force delete", "yes delete it", "delete anyway", "force"]
+    priority: 90
+
+  integrate:
+    description: "Lost-work-safe integrate: rebase a branch onto CURRENT main, build-check, then merge."
+    examples: ["integrate", "integrate branch", "integrate this branch",
+               "rebase onto current main and merge", "land safely"]
+    priority: 80
+    slots:
+      branch: { type: string, required: false }
+      force:  { type: string, required: false }
+
+  checkpoint:
+    description: "Save a restorable checkpoint of the current branch state (HEAD + dirty tree) under refs/kitsoki/checkpoints."
+    examples: ["checkpoint", "save a checkpoint", "snapshot this", "save my state",
+               "checkpoint before I try this", "mark a safe point"]
+    priority: 70
+    slots:
+      label: { type: string, required: false }
+
+  restore:
+    description: "Restore the branch to a previously saved checkpoint (auto-saves current state first so it's reversible)."
+    examples: ["restore", "restore checkpoint", "go back to the checkpoint",
+               "roll back to my snapshot", "reset to the safe point", "undo to checkpoint"]
+    priority: 70
+    slots:
+      label: { type: string, required: false }
+
+  prune:
+    description: "Run git worktree prune to clear stale refs."
+    examples: ["prune", "clean up stale", "git worktree prune"]
+    priority: 60
+
+  describe:
+    description: "Provide a short description to derive a branch name for a new worktree."
+    examples: ["describe", "name it", "for"]
+    priority: 60
+    slots:
+      desc: { type: string, required: false }
+
+  mixed_reset:
+    description: "Undo last commit, keep changes unstaged (--mixed, default)."
+    examples: ["mixed", "unstage", "soft uncommit"]
+    priority: 65
+
+  soft_reset:
+    description: "Undo last commit, keep changes staged (--soft)."
+    examples: ["soft", "soft reset", "keep staged"]
+    priority: 65
+
+  hard_reset:
+    description: "Undo last commit and discard all changes (--hard). Requires confirmation."
+    examples: ["hard", "hard reset", "discard"]
+    priority: 65
+
+  hard_reset_confirm:
+    description: "Confirm the destructive --hard reset after the interstitial."
+    examples: ["confirm hard reset", "yes discard", "i understand"]
+    priority: 90
+
+  confirm_add_all:
+    description: "Confirm staging all files including suspicious ones."
+    examples: ["yes add all", "confirm", "add them anyway", "i understand"]
+    priority: 90
+
+  back:
+    description: "Return to the hub without executing an operation."
+    examples: ["back", "cancel", "go back"]
+    priority: 55
+
+  retry:
+    description: "Retry the build check after a post-merge or post-conflict failure."
+    examples: ["retry", "try build again", "recheck"]
+    priority: 65
+
+  rollback:
+    description: "Abort the merge and roll back after a post-merge build failure."
+    examples: ["rollback", "abort merge", "git merge --abort"]
+    priority: 65
+
+  nothing_staged:
+    description: "Internal routing: no staged changes, return to hub."
+    examples: []
+    priority: 95
+
+  quit:
+    description: "Exit the git-ops session."
+    examples: ["quit", "exit", "done", "bye"]
+    priority: 50
+
+  look:
+    # Status-query phrasings. Avoid examples that reduce to a bare command verb
+    # stem — "is this committed"→{commit} and "what files are staged"→{stage}
+    # collided with the commit/stage intents and produced spurious 0.50 ties on
+    # inputs like "commit the staged fix". Reworded to working-tree-state
+    # phrasings that carry their own stems.
+    examples: ["look", "what branch are we on", "is the working tree clean",
+               "what's uncommitted", "am I on main", "show the working tree state",
+               "refresh", "status"]
+    priority: 10
+
+root: idle
+
+include:
+  - rooms/*.yaml

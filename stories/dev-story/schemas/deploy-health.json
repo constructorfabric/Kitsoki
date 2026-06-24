@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "deploy_health",
+  "description": "The post-deploy health verdict read off the verification probe: whether the new release is healthy or must be rolled back.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["healthy", "unhealthy"],
+      "description": "healthy = the verification probe is green, keep the release; unhealthy = the probe is red, roll back."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One line stating what the verification probe showed."
+    }
+  },
+  "required": ["verdict", "summary"]
+}

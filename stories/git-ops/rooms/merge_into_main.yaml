@@ -1,0 +1,203 @@
+# merge_into_main — merge feature branch into integration branch.
+#
+# SINGLE-SCRIPT design: one bash script runs all guards and the merge itself.
+# This avoids the flow-test pitfall where on_enter `when:` guards evaluate
+# against the default world before any invoke binds.
+#
+# The script returns a JSON envelope with:
+#   outcome: "merged" | "re_rebase_needed" | "merge_in_progress" | "post_merge_test_fail"
+#   descendant_ok: bool
+#   merge_in_progress: bool
+#   last_op_ok: bool
+#   last_op_output: string
+#   stash_ref: string
+#   rebase_done: bool (true only when merge succeeded)
+#
+# emit_intent: "{{ world.last_op_outcome }}" fires after bind → routes to the
+# named intent handler → handles each outcome.
+
+states:
+
+  merge_into_main:
+    description: "Merge feature branch into integration branch via main_worktree_path (no git checkout)."
+    relevant_world: [current_branch, integration_branch, main_worktree_path, rebase_base_sha,
+                     rebase_done, build_check_disabled, last_op_outcome, descendant_ok]
+    view:
+      - kv:
+          pairs:
+            "Feature branch":  '{{ world.current_branch|default:"(unknown)" }}'
+            "Integration":     '{{ world.integration_branch }}'
+            "Target worktree": '{{ world.main_worktree_path|default:"(same)" }}'
+      - heading: "Rebase required — stale or non-descendant"
+        when: "world.last_op_outcome == 're_rebase_needed'"
+      - prose: "HEAD is not a descendant of {{ world.integration_branch }}, or the merge-base has moved since the last rebase. Run rebase first."
+        when: "world.last_op_outcome == 're_rebase_needed'"
+      - heading: "Merge in progress on target worktree"
+        when: "world.last_op_outcome == 'merge_in_progress'"
+      - prose: "MERGE_HEAD or rebase-in-progress detected in {{ world.main_worktree_path }}. Resolve or abort that operation first."
+        when: "world.last_op_outcome == 'merge_in_progress'"
+      - heading: "Post-merge build failed"
+        when: "world.last_op_outcome == 'post_merge_test_fail'"
+      - prose: "Build failed after merge: {{ world.last_op_output }}. Use rollback to abort the merge or retry to recheck."
+        when: "world.last_op_outcome == 'post_merge_test_fail'"
+      - heading: "Merge successful — cleanup offered"
+        when: "world.last_op_outcome == 'merged'"
+      - prose: "Branch {{ world.current_branch }} merged into {{ world.integration_branch }}. Use cleanup to remove the worktree and branch."
+        when: "world.last_op_outcome == 'merged'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "defer"
+              hint:  "return to branch_ops without merging (rebase_done preserved)"
+              intent: defer
+            - label: "rebase"
+              hint:  "rebase first (guard 1 failed)"
+              intent: rebase
+              when:  "world.last_op_outcome == 're_rebase_needed'"
+            - label: "retry"
+              hint:  "retry the build check"
+              intent: retry
+              when:  "world.last_op_outcome == 'post_merge_test_fail'"
+            - label: "rollback"
+              hint:  "git merge --abort in the target worktree"
+              intent: rollback
+              when:  "world.last_op_outcome == 'post_merge_test_fail'"
+            - label: "cleanup"
+              hint:  "remove worktree + branch after successful merge"
+              intent: cleanup
+              when:  "world.last_op_outcome == 'merged'"
+            - label: "back"
+              hint:  "return to hub"
+              intent: back
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: merge_exec
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              INTEGRATION="{{ world.integration_branch }}"
+              STORED_SHA="{{ world.rebase_base_sha }}"
+              MAIN_WT="{{ world.main_worktree_path }}"
+              BUILD_CMD="{{ world.build_check_cmd }}"
+              BUILD_DISABLED="{{ world.build_check_disabled }}"
+              BRANCH="{{ world.current_branch }}"
+
+              # Guard 1: descendant check + stale-rebase check
+              if ! git merge-base --is-ancestor "$INTEGRATION" HEAD 2>/dev/null; then
+                jq -n '{outcome:"re_rebase_needed",descendant_ok:false,merge_in_progress:false,last_op_ok:false,last_op_output:"HEAD is not a descendant of integration",stash_ref:"",rebase_done:false}'
+                exit 0
+              fi
+              if [ -n "$STORED_SHA" ]; then
+                CURRENT_BASE=$(git merge-base HEAD "$INTEGRATION" 2>/dev/null || echo "")
+                if [ "$CURRENT_BASE" != "$STORED_SHA" ]; then
+                  jq -n '{outcome:"re_rebase_needed",descendant_ok:false,merge_in_progress:false,last_op_ok:false,last_op_output:"Stale rebase — merge-base has moved",stash_ref:"",rebase_done:false}'
+                  exit 0
+                fi
+              fi
+
+              # Guard 2: MERGE_HEAD / rebase-in-progress on target worktree
+              GIT_DIR=$(git -C "$MAIN_WT" rev-parse --git-dir 2>/dev/null || echo ".git")
+              if [ -f "$MAIN_WT/$GIT_DIR/MERGE_HEAD" ] || [ -f "$GIT_DIR/MERGE_HEAD" ] || [ -d "$MAIN_WT/$GIT_DIR/rebase-apply" ] || [ -d "$MAIN_WT/$GIT_DIR/rebase-merge" ]; then
+                jq -n '{outcome:"merge_in_progress",descendant_ok:true,merge_in_progress:true,last_op_ok:false,last_op_output:"Merge or rebase in progress on target worktree",stash_ref:"",rebase_done:false}'
+                exit 0
+              fi
+
+              # Stash if target tree is dirty
+              DIRTY=$(git -C "$MAIN_WT" status --porcelain 2>/dev/null | grep -c . || true)
+              STASH_REF=""
+              if [ "$DIRTY" -gt 0 ]; then
+                STASH_OUT=$(git -C "$MAIN_WT" stash push -u -m 'git-ops-wip' 2>&1 || true)
+                STASH_REF=$(git -C "$MAIN_WT" stash list 2>/dev/null | head -1 | cut -d: -f1 || echo "")
+              fi
+
+              # Guard 3: merge with --no-ff in target worktree (no git checkout)
+              # || MERGE_EXIT=$? OUTSIDE the $(): a `|| true` inside would mask
+              # a conflicting merge as success and skip the stash-pop rollback.
+              MERGE_EXIT=0
+              MERGE_OUT=$(git -C "$MAIN_WT" merge --no-ff "$BRANCH" 2>&1) || MERGE_EXIT=$?
+              if [ "$MERGE_EXIT" -ne 0 ]; then
+                [ -n "$STASH_REF" ] && git -C "$MAIN_WT" stash pop 2>/dev/null || true
+                jq -n --arg out "$MERGE_OUT" --arg sr "$STASH_REF" \
+                  '{outcome:"merge_failed",descendant_ok:true,merge_in_progress:false,last_op_ok:false,last_op_output:$out,stash_ref:$sr,rebase_done:false}'
+                exit 0
+              fi
+
+              # Pop stash
+              [ -n "$STASH_REF" ] && git -C "$MAIN_WT" stash pop 2>/dev/null || true
+
+              # Post-merge build check
+              if [ "$BUILD_DISABLED" != "true" ]; then
+                # || BUILD_EXIT=$? OUTSIDE the $(): a `|| true` inside would mask
+                # a post-merge build failure as success (no post_merge_test_fail).
+                BUILD_EXIT=0
+                BUILD_OUT=$(bash -c "$BUILD_CMD" 2>&1) || BUILD_EXIT=$?
+                if [ "$BUILD_EXIT" -ne 0 ]; then
+                  jq -n --arg out "$BUILD_OUT" --arg sr "$STASH_REF" \
+                    '{outcome:"post_merge_test_fail",descendant_ok:true,merge_in_progress:false,last_op_ok:false,last_op_output:$out,stash_ref:$sr,rebase_done:false}'
+                  exit 0
+                fi
+              fi
+
+              jq -n --arg sr "$STASH_REF" \
+                '{outcome:"merged",descendant_ok:true,merge_in_progress:false,last_op_ok:true,last_op_output:"Merge successful",stash_ref:$sr,rebase_done:false}'
+          cwd: "{{ world.working_dir }}"
+        bind:
+          last_op_outcome:   "stdout_json.outcome"
+          descendant_ok:     "stdout_json.descendant_ok"
+          merge_in_progress: "stdout_json.merge_in_progress"
+          last_op_ok:        "stdout_json.last_op_ok"
+          last_op_output:    "stdout_json.last_op_output"
+          stash_ref:         "stdout_json.stash_ref"
+        on_error: branch_ops
+      - when: "world.last_op_outcome == 'merged'"
+        set:
+          rebase_done:     false
+          rebase_base_sha: ""
+    on:
+      defer:
+        - target: branch_ops
+      rebase:
+        - target: rebase
+          effects:
+            - set:
+                rebase_done:     false
+                last_op_outcome: ""
+                descendant_ok:   false
+      retry:
+        - when: "world.last_op_outcome == 'post_merge_test_fail'"
+          target: merge_into_main
+          effects:
+            - set:
+                last_op_outcome: ""
+      rollback:
+        - when: "world.last_op_outcome == 'post_merge_test_fail'"
+          target: main_ops
+          effects:
+            - invoke: host.run
+              id: merge_abort
+              with:
+                cmd: git
+                args: ["merge", "--abort"]
+                cwd: "{{ world.main_worktree_path }}"
+              bind:
+                last_op_ok: ok
+              on_error: merge_into_main
+            - set:
+                last_op_outcome: ""
+      cleanup:
+        - when: "world.last_op_outcome == 'merged'"
+          target: cleanup
+      back:
+        - target: main_ops
+          effects:
+            - set:
+                last_op_outcome: ""
+      look:
+        - target: .

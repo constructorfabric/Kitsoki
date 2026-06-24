@@ -366,28 +366,29 @@ func TestOnComplete_SayText(t *testing.T) {
 	require.NoError(t, sched.WaitIdle(waitCtx))
 	require.NoError(t, orch.WaitListenerIdle(waitCtx, sid))
 
-	// Verify EffectApplied{say:"job finished"} appears in the event log.
+	// Verify MachineSay{text:"job finished"} appears in the event log.
+	// (say narration is split out of EffectApplied into its own MachineSay event.)
 	history, err := s.LoadHistory(sid)
 	require.NoError(t, err)
 
 	foundSay := false
 	for _, ev := range history {
-		if ev.Kind != store.EffectApplied {
+		if ev.Kind != store.MachineSay {
 			continue
 		}
 		var p struct {
-			Say string `json:"say"`
+			Text string `json:"text"`
 		}
 		if jsonErr := json.Unmarshal(ev.Payload, &p); jsonErr != nil {
 			continue
 		}
-		if p.Say == "job finished" {
+		if p.Text == "job finished" {
 			foundSay = true
 			break
 		}
 	}
 	require.True(t, foundSay,
-		"EffectApplied{say:'job finished'} must appear in background_completion turn events")
+		"MachineSay{text:'job finished'} must appear in background_completion turn events")
 }
 
 // TestOnComplete_HostCallError_PartialWorldNotPersisted verifies P1-1: when

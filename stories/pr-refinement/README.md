@@ -1,9 +1,10 @@
 # pr-refinement — first-class PR refinement pipeline
 
-A reusable kitsoki story implementing the Wave 2 / Phase 2 scope of
-the dev-story / bugfix unify design. pr-refinement is **its own
-story** — not a library, not an `include:` directory. It has its
-own `app.yaml`, its own rooms, its own flows, and runs standalone.
+A reusable kitsoki story implementing the PR-refinement pipeline from
+the [bug-fix case study](../../docs/case-studies/bug-fix.md). Per that
+design, pr-refinement is **its own story** — not a library, not an
+`include:` directory. It has its own `app.yaml`, its own rooms, its
+own flows, and runs standalone.
 
 Standalone:
 
@@ -107,14 +108,14 @@ working tree is already established when pr-refinement enters).
 | `ci` | `run_tests`, `build`, `remote_status` | `host.local` |
 | `transport` | `post` | `host.append_to_file` |
 
-Note: `vcs.merge` is new in Wave 2 (not in the original contract
-§2.2); see the "Wave 2 contract additions" appendix of the dev-story
-implementation contract.
+Note: `vcs.merge` is new in Wave 2 (not in the original contract §2.2).
+See the "Wave 2 contract additions" appendix at the end of
+`docs/proposals/notes/dev-story-implementation-contract.md`.
 
 ### Host requirements
 
 Standalone Wave 2 needs every iface's default handler plus
-`host.inbox.add` and the oracle verb handlers below. The flow fixtures
+`host.inbox.add` and the agent verb handlers below. The flow fixtures
 stub them all with canned envelopes; Slice β shipped most of these in
 Wave 1.
 
@@ -125,7 +126,7 @@ Wave 1.
 | `host.local` | Wave 1 | `internal/host/local_ci.go` |
 | `host.append_to_file` | Wave 1 | `internal/host/append_file_transport.go` |
 | `host.inbox.add` | Wave 1 | `internal/host/inbox_add.go` |
-| `host.oracle.decide` | oracle-split Phase 8 | `internal/host/oracle_decide.go` |
+| `host.agent.decide` | agent-split Phase 8 | `internal/host/agent_decide.go` |
 
 The host registry's prefix-fallback lets each default handler back
 every op on the iface; per-op handlers can be added later without
@@ -134,12 +135,12 @@ the bare `host.git` handler is invoked for `host.git.merge` calls in
 flow fixtures (the handler's `data:` envelope just returns the
 canned `sha`).
 
-### Oracle-split persona table (Phase 8)
+### Agent-split persona table (Phase 8)
 
-This story's oracle calls are all verdict-producing judgments. The
+This story's agent calls are all verdict-producing judgments. The
 `diagnoser` persona additionally does structured CI failure analysis
 (still classified `decide` because the output is a JSON artifact schema
-with no file writes — see oracle-split proposal §6 table).
+with no file writes — see agent-split proposal §6 table).
 
 | Persona | Verb | Phases |
 |---|---|---|
@@ -153,12 +154,12 @@ prompt, no file access needed.
 
 Identical to bugfix. Two checkpoints (`diagnose_awaiting_reply` and
 `merge_awaiting_reply`) follow the canonical contract §6 shape, each
-calling `host.oracle.decide` (agent: `judge`) when `judge_mode != 'human'`.
+calling `host.agent.decide` (agent: `judge`) when `judge_mode != 'human'`.
 
 | Mode | Behaviour at every checkpoint |
 |---|---|
 | `human` | Post + inbox-mirror; wait for an explicit reply intent. |
-| `llm` | Post + inbox-mirror + `host.oracle.decide`. Confident verdict auto-fires via `emit_intent:`. |
+| `llm` | Post + inbox-mirror + `host.agent.decide`. Confident verdict auto-fires via `emit_intent:`. |
 | `llm_then_human` | Same as `llm` for the auto-fire path; uncertain or low-confidence verdicts hold the state for a human. |
 
 ## File layout
@@ -190,7 +191,11 @@ stories/pr-refinement/
 
 ## See also
 
-- [`docs/imports.md`](../../docs/imports.md) — imports authoring
+- [`docs/case-studies/bug-fix.md`](../../docs/case-studies/bug-fix.md)
+  — the full design (pr-refinement as first-class story).
+- [`docs/proposals/notes/dev-story-implementation-contract.md`](../../docs/proposals/notes/dev-story-implementation-contract.md)
+  — the contract (Wave 2 appendix at the bottom).
+- [`docs/stories/imports.md`](../../docs/stories/imports.md) — imports authoring
   reference.
 - [`stories/bugfix/`](../bugfix/) — the upstream story that hands off
   here.

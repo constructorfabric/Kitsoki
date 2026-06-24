@@ -426,6 +426,67 @@ func TestQueue_ListDrivesFilterByStatus(t *testing.T) {
 	}
 }
 
+func TestQueue_ListDrivesByOrigin(t *testing.T) {
+	cs, fake := openTestStore(t)
+	ctx := context.Background()
+	c1, _ := cs.Create(ctx, "app1", "live", "", "t1")
+	c2, _ := cs.Create(ctx, "app1", "live", "", "t2")
+	c3, _ := cs.Create(ctx, "app1", "live", "", "t3")
+
+	fake.Advance(1 * time.Millisecond)
+	current, err := cs.Enqueue(ctx, chats.EnqueueOptions{
+		ChatID:          c1.ID,
+		Transport:       chats.DriveTransportStateMachine,
+		Payload:         "current",
+		OriginSessionID: "session-a",
+	})
+	if err != nil {
+		t.Fatalf("Enqueue current: %v", err)
+	}
+	fake.Advance(1 * time.Millisecond)
+	other, err := cs.Enqueue(ctx, chats.EnqueueOptions{
+		ChatID:          c2.ID,
+		Transport:       chats.DriveTransportStateMachine,
+		Payload:         "other",
+		OriginSessionID: "session-b",
+	})
+	if err != nil {
+		t.Fatalf("Enqueue other: %v", err)
+	}
+	fake.Advance(1 * time.Millisecond)
+	unscoped := enqueueOK(t, cs, c3.ID, "no-origin")
+	if err := cs.MarkDriveDismissed(ctx, unscoped.DriveID); err != nil {
+		t.Fatalf("MarkDriveDismissed: %v", err)
+	}
+	done, err := cs.Enqueue(ctx, chats.EnqueueOptions{
+		ChatID:          c3.ID,
+		Transport:       chats.DriveTransportStateMachine,
+		Payload:         "done",
+		OriginSessionID: "session-c",
+	})
+	if err != nil {
+		t.Fatalf("Enqueue done: %v", err)
+	}
+	if _, err := cs.Dequeue(ctx, c3.ID); err != nil {
+		t.Fatalf("Dequeue done: %v", err)
+	}
+	if err := cs.MarkDriveDone(ctx, done.DriveID, 1); err != nil {
+		t.Fatalf("MarkDriveDone: %v", err)
+	}
+
+	got, err := cs.ListDrivesByOrigin(ctx, []chats.DriveStatus{chats.DriveStatusPending})
+	if err != nil {
+		t.Fatalf("ListDrivesByOrigin: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2: %+v", len(got), got)
+	}
+	if got[0].DriveID != current.DriveID || got[1].DriveID != other.DriveID {
+		t.Fatalf("unexpected origin drive order: got [%s %s], want [%s %s]",
+			got[0].DriveID, got[1].DriveID, current.DriveID, other.DriveID)
+	}
+}
+
 func TestQueue_ListDrivesRespectsLimit(t *testing.T) {
 	cs, fake := openTestStore(t)
 	ctx := context.Background()

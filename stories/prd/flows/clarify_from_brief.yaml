@@ -1,0 +1,76 @@
+# clarify_from_brief — brief —clarify→ clarifying, KEEPING the record.
+#
+# Proves the non-destructive back-path: from the brief review, `clarify`
+# returns to clarifying for another round WITHOUT discarding the
+# accumulated Q&A (unlike `restart_from clarifying`, which wipes it).
+# clarification_log is preserved verbatim and only this round's working
+# answer state is cleared; answering + submitting then APPENDS a second
+# round (clarifying_cycle 1 → 2), proving keep-and-extend end to end.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: brief
+initial_world:
+  idea:                  "A CLI for X"
+  workdir:               "."
+  output_path:           ".artifacts/prd.md"
+  judge_mode:            "human"
+  clarifying_cycle:      1
+  clarification_log:     "── Round 1 ──\nQuestions: {\"questions\":[{\"id\":\"q1\",\"question\":\"Who is the primary user?\"}]}\nAnswers: Q1: platform devs\n\n"
+  clarification_answers: "Q1: platform devs\n"
+  answered_count:        1
+  answered_ids:          "|1|"
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    # on_enter analyst (id: analyst_questions) → falls through to this envelope.
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q2", question: "What is explicitly out of scope?", why: "bounds the work" }
+    by_call:
+      # The matcher maps the reply to this round's only question (position 1).
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q1: internal tooling is out of scope\n"
+            answered_ids_append: "|1|"
+            matched_count:       1
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/out.md", message_id: "out#1" }
+
+turns:
+  # Non-destructive clarify: keep clarification_log, clear only this round's
+  # working answer state, re-run the analyst.
+  - intent: { name: clarify, slots: {} }
+    expect_state: clarifying
+    expect_world:
+      # PRESERVED — restart_from clarifying would have blanked this. This is
+      # the assertion that distinguishes clarify from restart_from.
+      clarification_log:     "── Round 1 ──\nQuestions: {\"questions\":[{\"id\":\"q1\",\"question\":\"Who is the primary user?\"}]}\nAnswers: Q1: platform devs\n\n"
+      clarification_answers: ""
+      answered_count:        0
+      answered_ids:          ""
+      clarifying_cycle:      1
+
+  # Answer the new question, then submit → brief; the round appends as
+  # Round 2 (clarifying_cycle advances to 2 — accumulation, not reset).
+  - intent: { name: answer, slots: { n: 1, text: "internal tooling is out of scope" } }
+    expect_state: clarifying
+    expect_world:
+      answered_count:        1
+      clarification_answers: "Q1: internal tooling is out of scope\n"
+  - intent: { name: submit_answers, slots: {} }
+    expect_state: brief
+    expect_world:
+      clarifying_cycle: 2
+
+expect_no_errors: true

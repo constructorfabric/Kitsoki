@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 
 	"kitsoki/internal/app"
 	"kitsoki/internal/host"
@@ -76,7 +78,12 @@ func (o *Orchestrator) dispatchBackground(
 				}
 				cleanArgs[k] = v
 			}
-			return hosts.Invoke(jobCtx, namespace, cleanArgs)
+			// Install a fresh per-job usage box so a background agent call's
+			// token usage reaches its AgentReturned.Meta, mirroring the
+			// foreground host-dispatch path (host_dispatch.go). jobCtx already
+			// carries the EventSink + AgentCallCtx inherited from the
+			// dispatch-time context, so the trace write picks the box up.
+			return hosts.Invoke(host.WithAgentUsageBox(jobCtx), namespace, cleanArgs)
 		},
 	}
 
@@ -95,10 +102,12 @@ func (o *Orchestrator) dispatchBackground(
 
 	// Bind the job ID into world.
 	// Walk hc.Bind: if any entry maps dkey=="job_id", use that world key.
-	// Otherwise default to "last_job_id".
+	// Otherwise default to "last_job_id". Sorted iteration (not raw map
+	// order) so that when more than one entry maps to "job_id" the chosen
+	// world key is deterministic across runs rather than map-randomized.
 	bindKey := "last_job_id"
-	for wkey, dkey := range hc.Bind {
-		if dkey == "job_id" {
+	for _, wkey := range slices.Sorted(maps.Keys(hc.Bind)) {
+		if hc.Bind[wkey] == "job_id" {
 			bindKey = wkey
 			break
 		}

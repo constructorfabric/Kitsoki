@@ -1,0 +1,40 @@
+# route_undo — utterance "undo last commit" → routes to undo room.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    '{"branch":"feat/x","main_worktree_path":".","worktree_list":{"raw":""},"commits_ahead":1,"commits_behind":0,"has_uncommitted":false,"no_common_ancestor":false}'
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      1
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+      last_commit_summary:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "abc1234 feat: add foo"
+
+turns:
+  - intent: { name: undo, slots: {} }
+    expect_state: undo
+    expect_world:
+      last_op_output: "abc1234 feat: add foo"
+
+expect_no_errors: true

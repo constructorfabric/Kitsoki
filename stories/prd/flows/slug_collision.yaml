@@ -1,0 +1,65 @@
+# slug_collision — the search gate's workspace mint, collision-suffixed.
+#
+# Documents the uniquify contract: when scripts/prd_slug.py finds the base
+# slug already taken (an in-progress .artifacts/prd/<slug>/ workspace or a
+# published docs/prd/<slug>.md), it appends -2, -3, … until unique. A second
+# PRD authored for the same idea in the same tree therefore lands in its OWN
+# workspace rather than silently overwriting the first.
+#
+# Intent-only: the deterministic script is stubbed (host.run can't run a real
+# subprocess in a flow), so the stub returns the -2-suffixed envelope the real
+# script computes on a collision (verified out-of-band against prd_slug.py).
+# The point under test is that the gate BINDS prd_slug / prd_workspace from
+# the script's stdout_json — whatever uniquified name it returns — so the
+# pipeline carries the collision-safe folder forward.
+#
+# initial_state: search seeds the (clean) scout result directly so confirm
+# advances; the mint then fires on the confirm arc.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: search
+initial_world:
+  workdir:    "."
+  judge_mode: "human"
+  idea:       "A CLI for X that helps developers do Y."
+  prd_existing_state:
+    overlaps: []
+    roadmap_fit: "Greenfield — no existing PRD covers this."
+
+host_handlers:
+  # clarifying's analyst (advanced to by confirm).
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+  # The base slug "a-cli-for-x-that-helps" is already taken, so prd_slug.py
+  # returns the -2-suffixed workspace. The gate binds it verbatim.
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"slug":"a-cli-for-x-that-helps-2","workspace":".artifacts/prd/a-cli-for-x-that-helps-2"}'
+          stdout_json: { slug: "a-cli-for-x-that-helps-2", workspace: ".artifacts/prd/a-cli-for-x-that-helps-2" }
+
+turns:
+  # confirm mints the workspace; the collision-suffixed slug/workspace are
+  # bound from the script's stdout_json and carried into clarifying.
+  - intent: { name: confirm, slots: {} }
+    expect_state: clarifying
+    expect_world:
+      prd_overlap_decision: "new"
+      prd_slug:             "a-cli-for-x-that-helps-2"
+      prd_workspace:        ".artifacts/prd/a-cli-for-x-that-helps-2"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "mint_workspace" }
+
+expect_no_errors: true

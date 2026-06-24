@@ -24,7 +24,7 @@ states:
     description: "Bug-fix pipeline parked. Waiting for start."
     # Flattened view (no extends/blocks chrome) — `choice:` cannot live
     # inside a `blocks:` map (typed metadata is lost through the
-    # inheritance pipeline; see docs/choice-widget.md §3.1). The
+    # inheritance pipeline; see docs/stories/choice-widget.md §3.1). The
     # status/heading the base.pongo used to render is now inlined as a
     # prose status line + the kv body; the standalone-only border
     # chrome is dropped.
@@ -93,8 +93,26 @@ states:
       # but breaking the YAML cycle here means the failure is
       # reported once and the operator stays at idle to inspect.
 
-      # Step 1: derive workspace identity from ticket_id.
-      - when: "world.ticket_id != '' && world.workspace_id == '' && !world.bf_autostart_attempted"
+      # Step 1: derive workspace identity from ticket_id. Skipped in triage
+      # mode — triage is read-only against the current tree, so it needs no
+      # worktree (and creating one would be wasted side-effect).
+      #
+      # The worktree dir is ticket-scoped (`.worktrees/bf-<ticket>`), but the
+      # calling session's identity (world.session_id, projected from the
+      # orchestrator's per-session SessionID) is threaded into workspace.create
+      # below so the host-side `.kitsoki-owner` safety net can refuse to hand
+      # one session's live tree to a DIFFERENT session — the destructive
+      # shared-tree bug
+      # (2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git)
+      # where a `git checkout -- <file>` in one session silently reverted
+      # another session's unrecoverable uncommitted WIP. Two concurrent sessions
+      # racing the same ticket now FAIL LOUDLY (on_error: idle) instead of
+      # silently sharing a checkout; the second session is refused, never handed
+      # the first's tree. (Keeping the dir ticket-scoped preserves the stable
+      # on-disk path contract the dogfood-smoke suite and gitops cleanup rely on;
+      # per-session DISTINCT dirs for same-ticket concurrency is a possible
+      # future enhancement, not needed to close the destructive bug.)
+      - when: "world.ticket_id != '' && world.workspace_id == '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage'"
         set:
           workspace_id:   "bf-{{ world.ticket_id }}"
           feature_branch: "fix/{{ world.ticket_id }}"
@@ -108,19 +126,29 @@ states:
       # (`fix/<ticket>` → `fix-<ticket>`) while world.workspace_id is
       # `bf-<ticket>`, so sync would silently fail and bounce the
       # operator back to idle.
-      - when: "world.ticket_id != '' && world.feature_branch != '' && world.workdir != '' && !world.bf_autostart_attempted"
+      - when: "world.ticket_id != '' && world.feature_branch != '' && world.workdir != '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage'"
         invoke: iface.workspace.create
         with:
-          id:   "{{ world.workspace_id }}"
-          name: "{{ world.feature_branch }}"
-          base: "{{ world.base_branch }}"
+          id:         "{{ world.workspace_id }}"
+          name:       "{{ world.feature_branch }}"
+          base:       "{{ world.base_branch }}"
+          session_id: "{{ world.session_id }}"
         on_error: idle
+
+      # Step 2t (triage mode): no worktree — pin workdir to the current
+      # checkout so the read-only triager runs against the live tree.
+      - when: "world.ticket_id != '' && world.bugfix_mode == 'triage' && world.workdir == '' && !world.bf_autostart_attempted"
+        set:
+          workdir: "."
 
       # Step 3: queue the auto-start emit. emit_intent is queued and
       # dispatched after the effect chain completes, so the next
       # effect (the flag set below) still runs first.
-      - when: "world.ticket_id != '' && !world.bf_autostart_attempted && (world.reproduction_artifact.summary_title == nil || world.reproduction_artifact.summary_title == '')"
+      # Triage mode autostarts into the triaging room instead of reproducing.
+      - when: "world.ticket_id != '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage' && (world.reproduction_artifact.summary_title == nil || world.reproduction_artifact.summary_title == '')"
         emit_intent: start
+      - when: "world.ticket_id != '' && !world.bf_autostart_attempted && world.bugfix_mode == 'triage' && (world.triage_verdict.verdict == nil || world.triage_verdict.verdict == '')"
+        emit_intent: triage
 
       # Step 4: pin "we tried once" so any subsequent re-entry to
       # idle (on_error bounce, restart_from with stage=idle, etc.)
@@ -148,6 +176,14 @@ states:
           effects:
             - set:
                 bugfix_mode: "quick"
+      # Triage-only. Read-only verdict on whether the bug still exists; no
+      # worktree, no fix. Pins bugfix_mode=triage (the idle autostart guard and
+      # the triaging room read it) and enters the triaging room.
+      triage:
+        - target: triaging
+          effects:
+            - set:
+                bugfix_mode: "triage"
       # Skip directly into validating; reproducing/proposing/
       # implementing/testing/reviewing don't run. restart_from_stage gets
       # the value "validate" for audit. Use when the operator already

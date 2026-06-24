@@ -1,6 +1,6 @@
 // Package host — shared helper for materialising a prompt body to a
 // tempfile so handlers that read `prompt_path:` (notably
-// host.oracle.ask_with_mcp) can be reused by callers that already have the
+// host.agent.ask_with_mcp) can be reused by callers that already have the
 // rendered prompt as an in-memory string.
 //
 // Lifted from internal/metamode/adapter.go (WS-A3): both sites need the

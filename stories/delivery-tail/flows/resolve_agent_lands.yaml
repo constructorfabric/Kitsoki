@@ -1,0 +1,57 @@
+# resolve_agent_lands — a never-seen conflict the agent resolves:
+# resolve checkpoints → re-rebase leaves the conflict in progress → cr
+# (conflict-resolve agent edits, story continues the rebase = records rerere,
+# build green) → @exit:resolved → re-enter integrate → integrated → shipped.
+#
+# Proves the imported conflict-resolve agent path lands to main.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+  resolve_attempts:   1
+
+host_handlers:
+  host.run:
+    by_call:
+      resolve_checkpoint:
+        data: { stdout_json: { checkpoint_outcome: saved, checkpoint_ref: "refs/kitsoki/checkpoints/land-burst-fix", checkpoint_label: "land-burst-fix", checkpoint_sha: "ckpt123", checkpoint_dirty: false } }
+      resolve_rebase:
+        data: { stdout_json: { resolve_outcome: conflict, resolve_output: "never-seen conflict in: internal/ratelimit/bucket.go" } }
+      # conflict-resolve (imported) call sites:
+      gather_conflict_files:
+        data: { stdout_json: { conflict_files: "internal/ratelimit/bucket.go", gosum_only: false } }
+      rebase_continue_cmd:
+        data: { stdout_json: { output: "Successfully rebased and updated.", ok: true, new_conflict: false } }
+      build_check_after_rebase: { data: { stdout: "ok", ok: true } }
+      # the retry integrate (single call) lands green
+      integrate_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "e4f5a6b", last_op_ok: true, last_error: "" } }
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok  internal/ratelimit  0.012s" } }
+      cleanup_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: cleaned, last_op_ok: true, last_error: "" } }
+  host.agent.task:
+    data:
+      submitted:
+        resolved:           true
+        confidence:         0.9
+        resolution_summary: "Took main as base, re-applied the burst counter fix."
+        unresolvable_files: []
+
+turns:
+  - intent: { name: begin_resolve, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:             shipped
+      shipped_sha:        "e4f5a6b"
+      checkpoint_outcome: saved
+
+expect_terminal: true
+expect_no_errors: true

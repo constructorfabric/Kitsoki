@@ -11,7 +11,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: core.main
+initial_state: core.landing
 initial_world:
   core__ticket_id:      "2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed"
   core__ticket_title:   "scenarios/README.md says --warp but the boot-time flag path resolution is undocumented"
@@ -45,13 +45,13 @@ host_handlers:
       comments: ""
   host.local:
     data: { ok: true, log: "PASS: 28 tests", passed: 28, failed: 0, state: "success" }
-  host.local_files.ticket:
+  host.gh.ticket:
     data:
       ok: true
       tickets:
         - { id: "2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed", title: "scenarios/README.md says --warp …", status: "open", priority: "P3", assignee: "" }
-  host.oracle.decide:
-    data:
+  host.agent.decide:
+    data: &agent_stub
       ok: true
       submitted:
         summary_title:    "Oregon Trail scenarios README — clarify --warp path resolution"
@@ -86,6 +86,13 @@ host_handlers:
         intent:     "accept"
         reason:     "Stub artifact passes the schema; accept advances."
         confidence_pct: 95
+
+  # host.agent.task — bf reproducing/implementing/testing/validating
+  # rooms generate their artifact via the `task` verb (judge steps use
+  # `decide`). Same stub payload as decide (shared anchor); the artifact
+  # schema's additionalProperties tolerates the judge fields.
+  host.agent.task:
+    data: *agent_stub
 
 turns:
   # bf.idle's auto-start on_enter fires on this transition (ticket is
@@ -131,7 +138,7 @@ turns:
     expect_state: core.pr.merge_awaiting_reply
 
   - intent: { name: core__pr__accept, slots: {} }
-    expect_state: core.main
+    expect_state: core.landing
     expect_world:
       core__status:      "merged"
       core__last_pr_url: "https://example/pr/120000"

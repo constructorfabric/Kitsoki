@@ -8,7 +8,7 @@
 // Pre-2026-05-20 the check was just `resolvedTarget != cur` which
 // silently swallowed both cases — the bugfix `refine:` arcs hit it.
 // The user reported "the refinement came back immediately and didn't
-// change the artifact text" because the oracle in the refined state's
+// change the artifact text" because the agent in the refined state's
 // on_enter wasn't re-invoked.
 
 package machine_test
@@ -66,7 +66,7 @@ func TestSelfTransition_ExplicitTargetFiresOnEnter(t *testing.T) {
 // TestSelfTransition_DotTargetSkipsOnEnter is the negative regression
 // guard: `target: .` (the stay-here idiom) MUST NOT fire on_enter.
 // Otherwise a `look:` arc would inadvertently re-run heavy on_enter
-// chains (e.g. an oracle invoke) every time the user re-rendered.
+// chains (e.g. an agent invoke) every time the user re-rendered.
 func TestSelfTransition_DotTargetSkipsOnEnter(t *testing.T) {
 	def := &app.AppDef{
 		App:  app.AppMeta{ID: "self-dot"},

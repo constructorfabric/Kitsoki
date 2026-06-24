@@ -1,0 +1,79 @@
+# done_refuses_dirty_tree — the open-PR lost-work guard.
+#
+# RED→GREEN: this flow is the regression proof for the lost-work split where
+# the test_author (or any maker room) mutated the worktree without committing,
+# so the committed tip shipped broken/partial while the dirty working tree
+# looked green. On PRE-fix code the `done` room had no clean-tree check, so a
+# dirty worktree exited via @exit:done (status: fixed) — this fixture FAILS
+# (RED). On fixed code `done`'s on_enter re-reads `git status --porcelain`;
+# a non-empty result binds worktree_dirty=true and the accept arc routes to
+# @exit:needs-human carrying last_error — this fixture PASSES (GREEN).
+#
+# Mirror image: happy_human / happy_llm prove the clean-tree case reaches
+# @exit:done. Together they pin both arcs of the guard.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: done
+initial_world:
+  bugfix_exit: "open-PR"
+  ticket_id:    "TKT-DIRTY-1"
+  ticket_title: "Maker left work uncommitted"
+  thread:       "TKT-DIRTY-1"
+  workdir:      ".worktrees/wd-dirty"
+  base_branch:  "main"
+  bugfix_mode:  "quick"
+  judge_mode:   "human"
+  # turn 1 refine bumps done_cycle; keep budget above it so refine re-enters
+  # done (firing on_enter) instead of routing to @exit:abandoned.
+  done_cycle:   0
+  done_budget:  3
+  # done's on_enter agent re-pins done_artifact; seed validate context so the
+  # postmortem stub has something to summarise.
+  validate_artifact:
+    summary_title:    "validated"
+    summary_markdown: "build + suite green on the working tree"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  # done's close-out agent (host.agent.decide → proposer).
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Bug-fix close-out"
+        summary_markdown: "Fix applied; tests added."
+        verdict:    "accept"
+        intent:     "accept"
+        reason:     "stub"
+        confidence: 0.9
+  # The lost-work clean-tree check reports a DIRTY worktree: an untracked test
+  # the maker wrote but never committed. This is the exact incident shape.
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        dirty: true
+        files: "?? internal/app/imports_rewriter_helpers_test.go\n M internal/app/imports_rewriter.go"
+
+turns:
+  # initial_state does NOT fire on_enter (the session is seeded directly into
+  # done). refine with an explicit `target: done` re-enters the state and fires
+  # on_enter — which runs the clean-tree check and binds worktree_dirty=true
+  # from the (dirty) host.run stub. (target "." would skip on_enter.)
+  - intent: { name: refine, slots: { feedback: "fire on_enter to run the clean-tree check" } }
+    expect_state: done
+    expect_world:
+      worktree_dirty: true
+
+  # accept from done: worktree_dirty is true, so the guard arc fires FIRST →
+  # @exit:needs-human, NOT @exit:done.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status: "needs-human"
+
+expect_terminal: true
+expect_no_errors: true

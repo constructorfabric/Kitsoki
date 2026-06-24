@@ -1,0 +1,66 @@
+# incident_monitor_park — the low-severity edge: alert → triage (monitor) →
+# the operator parks it → back at intake with incident_status=='monitoring'.
+#
+# The branch where the right move is to watch, not act. The triage decide
+# recommends monitor (a weak signal), the post-bind emit routes to the verdict,
+# and the operator takes the `watch` disposition — which loops back to the
+# intake room (no action run, no postmortem) and records the parked status.
+# Then a SECOND, worse alert is reported from the parked room, re-arming triage
+# (incident_triage cleared) — proving the loop re-triages cleanly after a park.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: incident
+initial_world: {}
+
+host_handlers:
+  # A weak sev3 signal → monitor. Serves both the first triage and the
+  # re-triage after the park (same handler, no by_call disambiguation needed —
+  # both are the `triage` call site).
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        severity: "sev3"
+        summary: "Single transient 500 in the avatar service; no recurrence."
+        recommendation: "monitor"
+        suspected_cause: ""
+        mitigation: ""
+
+turns:
+  # First alert → triage → monitor recommended → triaged verdict.
+  - intent: { name: report_incident, slots: { alert: "one 500 in avatar svc" } }
+    expect_state: incident_triaged
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: triage }
+        times: 1
+    expect_world:
+      incident_triage:
+        severity: "sev3"
+        summary: "Single transient 500 in the avatar service; no recurrence."
+        recommendation: "monitor"
+        suspected_cause: ""
+        mitigation: ""
+
+  # Park it — `watch` loops back to intake, records monitoring, runs no action.
+  - intent: { name: watch, slots: {} }
+    expect_state: incident
+    expect_world:
+      incident_status: "monitoring"
+
+  # A worse alert arrives from the parked room — report_incident clears the
+  # prior verdict + status (re-arming the once: triage), enters triaging, the
+  # decide re-fires, and the post-bind emit routes to the verdict again. Proves
+  # the park is not a dead end: the loop re-triages cleanly. (The fresh alert is
+  # carried into the new verdict's view.)
+  - intent: { name: report_incident, slots: { alert: "avatar svc now 500ing on every request" } }
+    expect_state: incident_triaged
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: triage }
+        times: 1
+    expect_world:
+      incident_alert: "avatar svc now 500ing on every request"
+
+expect_no_errors: true

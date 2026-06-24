@@ -31,11 +31,11 @@ func TestTranscript_ReconstructUsesUserInput(t *testing.T) {
 
 	entries := []journal.Entry{
 		{
-			Ts:    time.Now(),
-			Turn:  1,
-			Seq:   0,
-			Kind:  journal.KindViewRendered,
-			Body:  body,
+			Ts:   time.Now(),
+			Turn: 1,
+			Seq:  0,
+			Kind: journal.KindViewRendered,
+			Body: body,
 		},
 	}
 
@@ -65,11 +65,11 @@ func TestTranscript_ReconstructFallsBackToSystemForEmptyInput(t *testing.T) {
 
 	entries := []journal.Entry{
 		{
-			Ts:    time.Now(),
-			Turn:  5,
-			Seq:   0,
-			Kind:  journal.KindViewRendered,
-			Body:  body,
+			Ts:   time.Now(),
+			Turn: 5,
+			Seq:  0,
+			Kind: journal.KindViewRendered,
+			Body: body,
 		},
 	}
 

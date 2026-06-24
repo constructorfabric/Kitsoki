@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	// bareIssueKeyRE matches Jira issue keys like PROJ-123 (after trim).
+	// bareIssueKeyRE matches Jira issue keys like PLTFRM-123 (after trim).
 	bareIssueKeyRE = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-\d+$`)
 
 	// jqlOperatorRE matches the comparison operators that are unambiguous
@@ -50,5 +50,5 @@ func validateJQL(v any) error {
 	if jqlKeywordRE.MatchString(s) {
 		return nil
 	}
-	return fmt.Errorf("looks like natural language, not JQL — compile to a JQL expression with operators (=, ~, in, is) or use a single issue key like PROJ-123 (got %q)", s)
+	return fmt.Errorf("looks like natural language, not JQL — compile to a JQL expression with operators (=, ~, in, is) or use a single issue key like PLTFRM-123 (got %q)", s)
 }

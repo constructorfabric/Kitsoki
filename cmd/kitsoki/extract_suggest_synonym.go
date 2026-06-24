@@ -2,7 +2,7 @@
 //
 // kitsoki extract suggest-synonym <session-id> <call-id>
 //
-// Reads the journal for the given session, finds the host.oracle.extract call
+// Reads the journal for the given session, finds the host.agent.extract call
 // identified by <call-id> (format: "turn:seq"), and — when that call resolved
 // via the LLM tier — proposes a synonym entry. The proposal is formatted as a
 // YAML fragment ready to paste into the synonyms file used by the resolver
@@ -31,7 +31,7 @@ import (
 func extractCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "extract",
-		Short: "Tools for host.oracle.extract (oracle-split Phase 5)",
+		Short: "Tools for host.agent.extract (agent-split Phase 5)",
 	}
 	cmd.AddCommand(extractSuggestSynonymCmd())
 	return cmd
@@ -43,7 +43,7 @@ func extractSuggestSynonymCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "suggest-synonym <session-id> <call-id>",
 		Short: "Propose a synonym entry from an LLM-tier extract call",
-		Long: `Reads the journal for <session-id>, finds the host.oracle.extract call
+		Long: `Reads the journal for <session-id>, finds the host.agent.extract call
 identified by <call-id> (format "turn:seq" or a plain turn number when there
 is only one extract call on that turn), and prints a proposed synonym YAML
 entry that would make future identical inputs resolve deterministically.
@@ -54,7 +54,7 @@ deterministic-tier calls there is nothing to promote.
 The output is a copy-pasteable YAML snippet plus a diff hint showing which
 synonyms file to paste it into.
 
-Implements D4 of the oracle-split proposal: progressive determinism with a
+Implements D4 of the agent-split proposal: progressive determinism with a
 measurable knob.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -67,7 +67,7 @@ measurable knob.`,
 	return cmd
 }
 
-// journalExtractCall holds a decoded host.oracle.extract call pair
+// journalExtractCall holds a decoded host.agent.extract call pair
 // (invoked + returned).
 type journalExtractCall struct {
 	Turn int64
@@ -103,7 +103,7 @@ func runExtractSuggestSynonym(cmd *cobra.Command, sessionID, callID, dbPath stri
 	}
 
 	if len(calls) == 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "No host.oracle.extract calls found in session %q.\n", sessionID)
+		fmt.Fprintf(cmd.OutOrStdout(), "No host.agent.extract calls found in session %q.\n", sessionID)
 		return nil
 	}
 
@@ -159,13 +159,13 @@ func runExtractSuggestSynonym(cmd *cobra.Command, sessionID, callID, dbPath stri
 }
 
 // scanExtractCalls walks the journal for sid and collects all matched
-// host.oracle.extract invoked+returned pairs.
+// host.agent.extract invoked+returned pairs.
 func scanExtractCalls(jr journal.Reader, sid app.SessionID) ([]journalExtractCall, error) {
-	var pending map[string]journalExtractCall
-	pending = make(map[string]journalExtractCall)
+	pending := make(map[string]journalExtractCall)
 	var results []journalExtractCall
 
-	for e := range jr.ReplayTyped(sid) {
+	typedSeq, typedErr := jr.ReplayTyped(sid)
+	for e := range typedSeq {
 		switch e.Kind {
 		case journal.KindHostInvoked:
 			var body map[string]any
@@ -173,7 +173,7 @@ func scanExtractCalls(jr journal.Reader, sid app.SessionID) ([]journalExtractCal
 				continue
 			}
 			ns, _ := body["namespace"].(string)
-			if ns != "host.oracle.extract" {
+			if ns != "host.agent.extract" {
 				continue
 			}
 			callArgs, _ := body["args"].(map[string]any)
@@ -198,7 +198,7 @@ func scanExtractCalls(jr journal.Reader, sid app.SessionID) ([]journalExtractCal
 				continue
 			}
 			ns, _ := body["namespace"].(string)
-			if ns != "host.oracle.extract" {
+			if ns != "host.agent.extract" {
 				continue
 			}
 			data, _ := body["data"].(map[string]any)
@@ -224,6 +224,9 @@ func scanExtractCalls(jr journal.Reader, sid app.SessionID) ([]journalExtractCal
 			results = append(results, call)
 			delete(pending, matchKey)
 		}
+	}
+	if err := typedErr(); err != nil {
+		return nil, err
 	}
 	return results, nil
 }

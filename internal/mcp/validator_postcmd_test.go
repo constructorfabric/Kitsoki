@@ -284,7 +284,7 @@ func TestValidator_PostCmdArgsForwarded(t *testing.T) {
 	cs, _, done := connectValidatorWithCfg(t, kitsokimcp.ValidatorConfig{
 		PostCmd: script,
 		PostCmdArgs: []kitsokimcp.PostCmdArg{
-			{Key: "ticket", Value: "PROJ-89912"},
+			{Key: "ticket", Value: "PLTFRM-89912"},
 			{Key: "worktree", Value: "/tmp/work"},
 		},
 	})
@@ -301,10 +301,10 @@ func TestValidator_PostCmdArgsForwarded(t *testing.T) {
 	require.NoError(t, err)
 	got := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
 
-	// Expected argv: --ticket PROJ-89912 --worktree /tmp/work --submitted-json <some path>
+	// Expected argv: --ticket PLTFRM-89912 --worktree /tmp/work --submitted-json <some path>
 	require.GreaterOrEqual(t, len(got), 6, "argv: %v", got)
 	assert.Equal(t, "--ticket", got[0])
-	assert.Equal(t, "PROJ-89912", got[1])
+	assert.Equal(t, "PLTFRM-89912", got[1])
 	assert.Equal(t, "--worktree", got[2])
 	assert.Equal(t, "/tmp/work", got[3])
 	assert.Equal(t, "--submitted-json", got[4])

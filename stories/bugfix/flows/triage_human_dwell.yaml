@@ -1,0 +1,51 @@
+# triage_human_dwell — triage-only mode, human judge (no LLM).
+#
+# In judge_mode=human the triaging room does NOT auto-fire accept: the operator
+# reads the bound verdict in the view, then explicitly accepts. Turn 1 enters
+# triaging and binds the verdict (STILL-LIVE here); turn 2 accepts → @exit:triaged.
+# Proves the dwell + manual-accept path and that the verdict survives to the exit.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-TRIAGE-2"
+  ticket_title:     "A defect still present in the tree"
+  thread:           "TKT-TRIAGE-2"
+  workdir:          "."
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        verdict:          "STILL-LIVE"
+        confidence:       0.84
+        summary_title:    "STILL-LIVE — cited handler still reads the buggy field (illustrative fixture)"
+        evidence:         "internal/example/foo.go:42 the cited function still reads cfg.legacyField as the report describes; no regression test pins the fix. (Illustrative stub — not a claim about any real ticket.)"
+        summary_markdown: "Hypothetical STILL-LIVE verdict used only to exercise the human-mode dwell + manual-accept path; illustrative content, not a claim about any real ticket."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref:     null
+        involved_components:
+          - { name: "internal/example/foo.go", reason: "cited buggy field still read (illustrative)" }
+
+turns:
+  # triage → triaging (verdict bound, no auto-accept in human mode).
+  - intent: { name: triage, slots: {} }
+    expect_state: triaging
+    expect_world:
+      bugfix_mode: triage
+  # operator accepts → @exit:triaged.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__triaged
+    expect_world:
+      status: triaged
+    expect_world_final:
+      status: triaged
+
+expect_terminal: true
+expect_no_errors: true

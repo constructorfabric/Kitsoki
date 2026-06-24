@@ -1,0 +1,25 @@
+# Cassette for the ide_awareness diagnose flow — one host.ide.get_diagnostics
+# episode. The recorded response is the already-unwrapped host.ide.* Result.Data
+# shape (connected + diagnostics); on replay the cassette dispatcher returns it
+# WITHOUT ever constructing an ide.Link or dialing a socket.
+#
+# This is the slice-1 proof that cassette replay is socket-free: the
+# accompanying fixture points $HOME at an empty temp dir so a real lock-file
+# discovery + ws dial would fail outright — and the flow still passes, because
+# replay never touches the link path.
+
+kind: host_cassette
+app_id: ide-awareness-demo
+generated_at: 2026-06-02T00:00:00Z
+match_on: [handler]
+
+episodes:
+  - id: ide_get_diagnostics
+    match:
+      handler: host.ide.get_diagnostics
+    response:
+      data:
+        connected: true
+        diagnostics:
+          - { file: "/ws/a.go", message: "undefined: x", severity: "error" }
+    replay: any

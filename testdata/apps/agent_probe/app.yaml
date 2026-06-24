@@ -1,0 +1,52 @@
+app:
+  id: agent-probe
+  version: 0.1.0
+
+# A tiny agent room for exercising the harness picker: one conversational room
+# whose typed turn runs host.agent.ask under the session's ACTIVE harness
+# profile and shows the model's reply. Switch the provider in the header, ask
+# "who are you", and the trace stamps the selected profile/model on each call.
+# Backed by a host cassette for deterministic, no-LLM demos/tests.
+hosts:
+  - host.agent.ask
+
+world:
+  reply:    { type: string, default: "" }
+  question: { type: string, default: "" }
+
+root: probe
+
+intents:
+  ask:
+    title: "Ask"
+    description: "Ask the active provider's model who it is."
+    slots:
+      question: { type: string, required: true }
+
+states:
+  probe:
+    mode: conversational
+    default_intent: ask
+    description: "Ask the active harness profile's model anything (e.g. who are you)."
+    view:
+      - prose: >
+          {{ world.reply|default:"Type a question — e.g. who are you — and the
+          active harness profile's model answers. Switch providers in the
+          header; each agent call is stamped with its profile + model in the
+          trace." }}
+    on:
+      ask:
+        - target: .
+          effects:
+            - set:
+                question: "{{ slots.question }}"
+                reply: ""
+            - invoke: host.agent.ask
+              id: identify
+              with:
+                prompt: prompts/identify.md
+                args:
+                  question: "{{ slots.question }}"
+              bind:
+                reply: stdout
+              on_error: probe

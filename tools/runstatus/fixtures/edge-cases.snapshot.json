@@ -151,6 +151,7 @@
           "TemplateFile": ""
         },
         "Terminal": false,
+        "Decider": "",
         "Initial": "{% if world.wearing_cloak %}dark{% else %}lit{% endif %}",
         "States": {
           "dark": {
@@ -243,6 +244,7 @@
               "TemplateFile": ""
             },
             "Terminal": false,
+            "Decider": "",
             "Initial": "",
             "States": null,
             "On": {
@@ -268,7 +270,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "AgentPlugin": ""
                     },
                     {
                       "When": "",
@@ -284,7 +288,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "It's pitch dark -- you can't see to do that.",
@@ -337,7 +343,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "AgentPlugin": ""
                     },
                     {
                       "When": "",
@@ -353,7 +361,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "You can't see well enough in the dark to head that way. Try going north, or finding a way to make light.",
@@ -472,6 +482,7 @@
               "TemplateFile": ""
             },
             "Terminal": false,
+            "Decider": "",
             "Initial": "",
             "States": null,
             "On": {
@@ -511,7 +522,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "",
@@ -566,7 +579,9 @@
                       "OnComplete": null,
                       "Target": "",
                       "EmitIntent": "",
-                      "EmitSlots": null
+                      "EmitSlots": null,
+                      "Effects": null,
+                      "AgentPlugin": ""
                     }
                   ],
                   "GuardHint": "",
@@ -716,6 +731,7 @@
           "TemplateFile": ""
         },
         "Terminal": false,
+        "Decider": "",
         "Initial": "",
         "States": null,
         "On": {
@@ -755,7 +771,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -792,7 +810,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "AgentPlugin": ""
                 },
                 {
                   "When": "",
@@ -808,7 +828,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -841,7 +863,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "You aren't wearing the cloak -- nothing to hang.",
@@ -896,7 +920,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "AgentPlugin": ""
                 },
                 {
                   "When": "",
@@ -912,7 +938,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -945,7 +973,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "You're already wearing the cloak.",
@@ -1057,6 +1087,7 @@
           "TemplateFile": ""
         },
         "Terminal": true,
+        "Decider": "",
         "Initial": "",
         "States": null,
         "On": null,
@@ -1135,6 +1166,7 @@
           "TemplateFile": ""
         },
         "Terminal": false,
+        "Decider": "",
         "Initial": "",
         "States": null,
         "On": {
@@ -1190,7 +1222,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "The weather outside is awful -- you've only just arrived.",
@@ -1223,7 +1257,9 @@
                   "OnComplete": null,
                   "Target": "",
                   "EmitIntent": "",
-                  "EmitSlots": null
+                  "EmitSlots": null,
+                  "Effects": null,
+                  "AgentPlugin": ""
                 }
               ],
               "GuardHint": "",
@@ -1279,6 +1315,17 @@
       "Agent": ""
     },
     "Hosts": null,
+    "AgentPlugins": {
+      "agent.claude": {
+        "Plugin": "builtin.claude_cli",
+        "Command": "",
+        "Args": null,
+        "Endpoint": "",
+        "Tool": "",
+        "Env": null,
+        "Headers": null
+      }
+    },
     "Proposals": null,
     "Include": null,
     "PhaseTemplates": null,
@@ -1350,6 +1397,7 @@
         }
       }
     },
+    "Decider": null,
     "Agents": null,
     "Imports": null,
     "Exits": null,
@@ -1357,10 +1405,10 @@
     "HostInterfaces": null,
     "ImportWrappers": null,
     "LoadedManifests": [
-      "/home/cloud-user/code/kitsoki/.worktrees/runstatus-fixtures-playwright/testdata/apps/cloak/app.yaml"
+      "/home/cloud-user/code/kitsoki/testdata/apps/cloak/app.yaml"
     ],
     "Routing": null,
-    "BaseDir": "/home/cloud-user/code/kitsoki/.worktrees/runstatus-fixtures-playwright/testdata/apps/cloak"
+    "BaseDir": "/home/cloud-user/code/kitsoki/testdata/apps/cloak"
   },
   "mermaid": {
     "source": "%% Cloak of Darkness\n%% kitsoki viz --flowchart --detail states\nflowchart LR\n\n  Start([\"\u003cb\u003eStart\u003c/b\u003e\"]):::input\n\n  subgraph SG_bar[\"\u003cb\u003ephase 1 · bar\u003c/b\u003e — A small bar off the foyer. Lit when the cloak is hung up; dark otherwise.\"]\n    direction LR\n    ST_bar_dark[/\"bar.dark\"/]:::room\n    ST_bar_lit[/\"bar.lit\"/]:::room\n  end\n\n  subgraph SG_cloakroom[\"\u003cb\u003ephase 2 · cloakroom\u003c/b\u003e — A small cloakroom with a single hook. Exit east.\"]\n    direction LR\n    ST_cloakroom[/\"cloakroom\"/]:::room\n  end\n\n  subgraph SG_ended[\"\u003cb\u003ephase 3 · ended\u003c/b\u003e — The journey is over.\"]\n    direction LR\n    ST_ended[/\"ended\"/]:::room\n  end\n\n  subgraph SG_foyer[\"\u003cb\u003ephase 0 · foyer\u003c/b\u003e — The entrance hall of the opera house. South leads to the bar; west to the cloakroom.\"]\n    direction LR\n    ST_foyer[/\"foyer\"/]:::room\n  end\n\n  Start --\u003e ST_foyer\n\n  ST_bar_dark -- \"*(any)\" --\u003e ST_bar_dark\n  ST_bar_dark -- \"go (default)\" --\u003e ST_bar_dark\n  ST_bar_dark -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_bar_lit -- \"go (default)\" --\u003e ST_bar_lit\n  ST_bar_lit -- \"look\" --\u003e ST_bar_lit\n  ST_bar_lit -- \"read_message\" --\u003e ST_ended\n  ST_bar_lit -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_cloakroom -- \"go (default)\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"hang_cloak (default)\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"hang_cloak [world.wearing_cloak …]\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"look\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"wear_cloak (default)\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"wear_cloak [world.wearing_cloak …]\" --\u003e ST_cloakroom\n  ST_cloakroom -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_foyer -- \"go [slots.direction == '…]\" --\u003e ST_bar\n  ST_foyer -- \"go [slots.direction == '…]\" --\u003e ST_cloakroom\n  ST_foyer -- \"go (default)\" --\u003e ST_foyer\n  ST_foyer -- \"go [slots.direction == '…]\" --\u003e ST_foyer\n  ST_foyer -- \"look\" --\u003e ST_foyer\n\n  classDef input  fill:#eef,stroke:#446,stroke-width:1.5px\n  classDef room   fill:#fff,stroke:#357,stroke-width:1.5px\n  classDef work   fill:#f7f7fa,stroke:#888\n  classDef llm    fill:#f0e6ff,stroke:#6a3eb5,stroke-width:2px,color:#3a2270\n  classDef shell  fill:#fef6e4,stroke:#a85,stroke-width:1.5px\n  classDef store  fill:#eef5fb,stroke:#369,stroke-width:1px\n  classDef cache  fill:#fff6e0,stroke:#a86,stroke-width:1.5px\n  classDef err    fill:#fff5f5,stroke:#c66,stroke-width:1px,stroke-dasharray:4 3\n  classDef next   fill:#e8f5e9,stroke:#272,stroke-width:1.5px\n  classDef note   fill:#fffbe6,stroke:#a90,stroke-width:1px,stroke-dasharray:2 2,color:#553\n",
@@ -1402,20 +1450,21 @@
     {
       "time": "2026-05-25T12:00:00.02Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 1,
       "state_path": "foyer",
       "attrs": {
         "model": "claude-3-sonnet",
         "prompt": "You are an interactive fiction engine running a game called Cloak of Darkness. The player is in the foyer — a spacious hall splendidly decorated in red and gold, with glittering chandeliers overhead. The entrance from the street is to the north, and there are doorways south and west. The player is wearing a velvet cloak. Intents available: go (move in a direction), look (look around). Your task is to determine which intent the player expresses and extract any slot values. Reply with a JSON object: {\"intent\": \"\u003cintent-name\u003e\", \"slots\": {}}. Only use the available intents listed. If the player's input does not clearly match any intent, use the closest one or ask for clarification. Remember: you are not the narrator — you are the intent router. Do not generate game text; only route the intent. Input: \"look\"",
-        "prompt_tokens": 480
+        "prompt_tokens": 480,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T12:00:00.18Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 1,
       "state_path": "foyer",
@@ -1423,7 +1472,18 @@
         "intent": "look",
         "model": "claude-3-sonnet",
         "response": "After reviewing the player's input carefully, I can identify this as a \"look\" intent — the player wants to examine or describe the current room. This is a straightforward intent match. {\"intent\": \"look\", \"slots\": {}}",
-        "response_tokens": 42
+        "response_tokens": 42,
+        "verb": "ask",
+        "meta": {
+          "transport": "claude-cli",
+          "usage": {
+            "input_tokens": 900,
+            "output_tokens": 54,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 450
+          },
+          "cost_usd": 0.003848
+        }
       }
     },
     {
@@ -1471,19 +1531,20 @@
     {
       "time": "2026-05-25T12:00:05.02Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 2,
       "state_path": "foyer",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 510
+        "prompt_tokens": 510,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T12:00:05.175Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 2,
       "state_path": "foyer",
@@ -1493,6 +1554,17 @@
         "response_tokens": 28,
         "slots": {
           "direction": "west"
+        },
+        "verb": "ask",
+        "meta": {
+          "transport": "claude-cli",
+          "usage": {
+            "input_tokens": 954,
+            "output_tokens": 30,
+            "cache_read_input_tokens": 686,
+            "cache_creation_input_tokens": 76
+          },
+          "cost_usd": 0.001517
         }
       }
     },
@@ -1550,26 +1622,38 @@
     {
       "time": "2026-05-25T12:00:10.02Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 3,
       "state_path": "cloakroom",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 620
+        "prompt_tokens": 620,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T12:00:10.175Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 3,
       "state_path": "cloakroom",
       "attrs": {
         "intent": "hang_cloak",
         "model": "claude-3-sonnet",
-        "response_tokens": 20
+        "response_tokens": 20,
+        "verb": "ask",
+        "meta": {
+          "transport": "claude-cli",
+          "usage": {
+            "input_tokens": 1008,
+            "output_tokens": 30,
+            "cache_read_input_tokens": 725,
+            "cache_creation_input_tokens": 80
+          },
+          "cost_usd": 0.001577
+        }
       }
     },
     {
@@ -1588,13 +1672,14 @@
     {
       "time": "2026-05-25T12:00:10.185Z",
       "level": "DEBUG",
-      "msg": "machine.world.write",
+      "msg": "world.update",
       "session_id": "sess-edge-001",
       "turn": 3,
       "state_path": "cloakroom",
       "attrs": {
-        "key": "wearing_cloak",
-        "value": false
+        "set": {
+          "wearing_cloak": false
+        }
       }
     },
     {
@@ -1629,19 +1714,20 @@
     {
       "time": "2026-05-25T12:00:15.018Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 4,
       "state_path": "cloakroom",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 635
+        "prompt_tokens": 635,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T12:00:15.17Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 4,
       "state_path": "cloakroom",
@@ -1651,6 +1737,17 @@
         "response_tokens": 24,
         "slots": {
           "direction": "east"
+        },
+        "verb": "ask",
+        "meta": {
+          "transport": "claude-cli",
+          "usage": {
+            "input_tokens": 1062,
+            "output_tokens": 30,
+            "cache_read_input_tokens": 764,
+            "cache_creation_input_tokens": 84
+          },
+          "cost_usd": 0.001636
         }
       }
     },
@@ -1708,19 +1805,20 @@
     {
       "time": "2026-05-25T12:00:20.018Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 5,
       "state_path": "foyer",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 520
+        "prompt_tokens": 520,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T12:00:20.17Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 5,
       "state_path": "foyer",
@@ -1730,6 +1828,17 @@
         "response_tokens": 26,
         "slots": {
           "direction": "south"
+        },
+        "verb": "ask",
+        "meta": {
+          "transport": "claude-cli",
+          "usage": {
+            "input_tokens": 1116,
+            "output_tokens": 30,
+            "cache_read_input_tokens": 803,
+            "cache_creation_input_tokens": 89
+          },
+          "cost_usd": 0.001697
         }
       }
     },
@@ -1799,20 +1908,21 @@
     {
       "time": "2026-05-25T12:00:25.03Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 6,
       "state_path": "bar.lit",
       "attrs": {
         "model": "claude-3-sonnet",
         "prompt": "You are Claude, an AI assistant made by Anthropic. The player has engaged off-path mode in this interactive fiction game. In this mode you can respond freely without being constrained to the game's state machine. The player is asking you to introduce yourself. This is a meta-conversation outside the game narrative — you are free to be helpful and conversational. The player said: 'tell me about yourself'. Please respond naturally and helpfully, explaining what you are and how you're helping power this interactive fiction experience. You can mention that you're the AI helping route intents and generate responses in the Cloak of Darkness game, but you're also just Claude. Be warm, brief, and engaging.",
-        "prompt_tokens": 800
+        "prompt_tokens": 800,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T12:00:25.28Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 6,
       "state_path": "bar.lit",
@@ -1820,7 +1930,18 @@
         "model": "claude-3-sonnet",
         "prompt": "You are an interactive fiction engine running a game called Cloak of Darkness. The player is in the foyer — a spacious hall splendidly decorated in red and gold, with glittering chandeliers overhead. The entrance from the street is to the north, and there are doorways south and west. The player is wearing a velvet cloak. Intents available: go (move in a direction), look (look around). Your task is to determine which intent the player expresses and extract any slot values. Reply with a JSON object: {\"intent\": \"\u003cintent-name\u003e\", \"slots\": {}}. Only use the available intents listed. If the player's input does not clearly match any intent, use the closest one or ask for clarification. Remember: you are not the narrator — you are the intent router. Do not generate game text; only route the intent. Input: \"tell me about yourself\"",
         "response": "I'm Claude, an AI assistant created by Anthropic. In this interactive fiction experience, I'm working behind the scenes to help interpret your natural language inputs — figuring out which game intent you mean (like 'go', 'look', 'hang the cloak') and extracting any relevant slot values (like which direction you want to go). I'm also helping to generate the narrative responses when you do things in the game world. Think of me as the intelligence that bridges your natural English with the structured state machine that powers the Cloak of Darkness story. Outside the game, I can chat with you freely about anything — this is exactly what off-path mode is for. The cloak game itself is a classic work of interactive fiction by Roger Firth, adapted here as a kitsoki state machine to demonstrate how the system works. Is there anything else you'd like to know?",
-        "response_tokens": 180
+        "response_tokens": 180,
+        "verb": "ask",
+        "meta": {
+          "transport": "claude-cli",
+          "usage": {
+            "input_tokens": 1170,
+            "output_tokens": 215,
+            "cache_read_input_tokens": 842,
+            "cache_creation_input_tokens": 93
+          },
+          "cost_usd": 0.004531
+        }
       }
     },
     {
@@ -1875,26 +1996,38 @@
     {
       "time": "2026-05-25T12:00:35.018Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.start",
+      "msg": "agent.call.start",
       "session_id": "sess-edge-001",
       "turn": 8,
       "state_path": "bar.lit",
       "attrs": {
         "model": "claude-3-sonnet",
-        "prompt_tokens": 555
+        "prompt_tokens": 555,
+        "verb": "ask"
       }
     },
     {
       "time": "2026-05-25T12:00:35.17Z",
       "level": "DEBUG",
-      "msg": "oracle.ask.complete",
+      "msg": "agent.call.complete",
       "session_id": "sess-edge-001",
       "turn": 8,
       "state_path": "bar.lit",
       "attrs": {
         "intent": "read_message",
         "model": "claude-3-sonnet",
-        "response_tokens": 20
+        "response_tokens": 20,
+        "verb": "ask",
+        "meta": {
+          "transport": "claude-cli",
+          "usage": {
+            "input_tokens": 1224,
+            "output_tokens": 30,
+            "cache_read_input_tokens": 881,
+            "cache_creation_input_tokens": 97
+          },
+          "cost_usd": 0.001816
+        }
       }
     },
     {
@@ -1913,25 +2046,27 @@
     {
       "time": "2026-05-25T12:00:35.18Z",
       "level": "DEBUG",
-      "msg": "machine.world.write",
+      "msg": "world.update",
       "session_id": "sess-edge-001",
       "turn": 8,
       "state_path": "bar.lit",
       "attrs": {
-        "key": "message_rumpled",
-        "value": false
+        "set": {
+          "message_rumpled": false
+        }
       }
     },
     {
       "time": "2026-05-25T12:00:35.183Z",
       "level": "DEBUG",
-      "msg": "machine.world.write",
+      "msg": "world.update",
       "session_id": "sess-edge-001",
       "turn": 8,
       "state_path": "bar.lit",
       "attrs": {
-        "key": "disturbance",
-        "value": 0
+        "set": {
+          "disturbance": 0
+        }
       }
     },
     {

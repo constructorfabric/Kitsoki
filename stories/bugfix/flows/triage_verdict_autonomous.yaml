@@ -1,0 +1,49 @@
+# triage_verdict_autonomous — triage-only mode, autonomous one-shot (no LLM).
+#
+# The `triage` intent from idle enters the triaging room with bugfix_mode=triage
+# and NO worktree. triaging.on_enter runs the read-only triager (stubbed here),
+# binds the standardized triage_verdict, then — because judge_mode is non-human —
+# auto-fires `accept`, which posts the verdict to the transport and routes to
+# @exit:triaged. All in one turn. This is the cheap pre-flight that answers
+# "does this bug still exist?" without spending the full maker pipeline.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-TRIAGE-1"
+  ticket_title:     "Some defect that already got fixed upstream"
+  thread:           "TKT-TRIAGE-1"
+  workdir:          "."
+  judge_mode:       "llm_then_human"
+  bf_autostart_attempted: true
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        verdict:          "ALREADY-FIXED"
+        confidence:       0.92
+        summary_title:    "ALREADY-FIXED — severity sort landed in localfiles_ticket.go"
+        evidence:         "internal/host/localfiles_ticket.go:328 listAllBugs now sorts by severityRank then ID DESC; bugSummary reads the `severity` frontmatter field. The cited buggy `priority` read is gone."
+        summary_markdown: "The reported defect no longer exists. `listAllBugs` was changed to a multi-key sort (severity ASC, then ID DESC), and `bugSummary` reads `severity` rather than the absent `priority` field. A regression test pins the ordering. Recommend closing as fixed."
+        suggested_action: "close as fixed"
+        fixed_in_ref:     "localfiles_ticket.go:328"
+        involved_components:
+          - { name: "internal/host/localfiles_ticket.go", reason: "sort + summary field fixed" }
+
+turns:
+  # triage → triaging.on_enter binds the verdict → auto-accept → @exit:triaged.
+  - intent: { name: triage, slots: {} }
+    expect_state: __exit__triaged
+    expect_world:
+      bugfix_mode: triage
+      status:      triaged
+    expect_world_final:
+      status: triaged
+
+expect_terminal: true
+expect_no_errors: true

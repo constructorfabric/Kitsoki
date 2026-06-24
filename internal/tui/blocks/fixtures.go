@@ -97,7 +97,7 @@ func DefaultChatFixture() ChatFixture {
 			{Index: 3, Name: "approve", Label: "Approve", Available: false, GuardHint: "CI not yet green"},
 		},
 		FooterLine1: "proposing · cypilot · 2 queued · 1 unread",
-		FooterLine2: "PR #4821 · CI: failing (3) · PROJ-90014",
+		FooterLine2: "PR #4821 · CI: failing (3) · PLTFRM-90014",
 		PromptMode:  ModeNormal,
 	}
 }
@@ -111,9 +111,9 @@ func WorldFixture() []WorldNode {
 		{Key: "name", Value: `"brad"`, HasKids: false, Depth: 2, Selected: true},
 		{Key: "role", Value: `"dev"`, HasKids: false, Depth: 2},
 		{Key: "tickets [3]", Expanded: true, HasKids: true, Depth: 1},
-		{Key: "[0]", Value: "PROJ-89912", HasKids: false, Depth: 2},
-		{Key: "[1]", Value: "PROJ-90001", HasKids: false, Depth: 2},
-		{Key: "[2]", Value: "PROJ-90014", HasKids: false, Depth: 2},
+		{Key: "[0]", Value: "PLTFRM-89912", HasKids: false, Depth: 2},
+		{Key: "[1]", Value: "PLTFRM-90001", HasKids: false, Depth: 2},
+		{Key: "[2]", Value: "PLTFRM-90014", HasKids: false, Depth: 2},
 		{Key: "flags", HasKids: true, Depth: 0},
 		{Key: "providers", HasKids: true, Depth: 0},
 	}

@@ -1,0 +1,61 @@
+# brief_ready_judge_clarify — the brief quality gate's clarify loop.
+#
+# In the brief room, `ready` arms the on_enter judge. A `clarify` verdict
+# re-renders here with the specific gaps and does NOT advance — the gate
+# out of the brief room (via the judge) IS a passing brief, so a non-passing
+# brief keeps the operator here to edit the brief / re-run `ready`.
+#
+# brief_cycle tracks the number of attempts: each `ready` increments it.
+# The brief already exists on disk (brief_path seeded) so the scaffold is
+# once-guarded and must NOT re-run on either `ready` re-entry.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: brief
+initial_world:
+  judge_mode:        "human"
+  idea:              "A CLI for X that helps developers do Y."
+  workdir:           "."
+  brief_path:        ".artifacts/prd_brief.md"
+  clarification_log: "── Round 1 ──\nQuestions: who is the user?\nAnswers: platform developers\n\n"
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    by_call:
+      brief_check:
+        data:
+          ok: true
+          submitted:
+            verdict:   "clarify"
+            reason:    "The What-changes is vague and success criteria are missing."
+            questions: ["What does the developer do differently?", "How do we measure success?"]
+
+turns:
+  # ready → judge armed (cycle 0→1) → verdict clarify → stay in brief with
+  # the gaps rendered. Scaffold once-guarded → no host.artifacts_dir.
+  - intent: { name: ready, slots: {} }
+    expect_state: brief
+    expect_world:
+      brief_cycle: 1
+      brief_path:  ".artifacts/prd_brief.md"
+      brief_decision:
+        verdict:   "clarify"
+        reason:    "The What-changes is vague and success criteria are missing."
+        questions: ["What does the developer do differently?", "How do we measure success?"]
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: "brief_check" }
+    expect_no_host_calls: [host.artifacts_dir]
+
+  # Edited the brief, ready again → still clarify → cycle 1→2, no advance.
+  - intent: { name: ready, slots: {} }
+    expect_state: brief
+    expect_world:
+      brief_cycle: 2
+
+expect_no_errors: true

@@ -116,4 +116,3 @@ func (o *Orchestrator) notifyBackgroundTurn(sid app.SessionID, outcome *TurnOutc
 		}(ob)
 	}
 }
-

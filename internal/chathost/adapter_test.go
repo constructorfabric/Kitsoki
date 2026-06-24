@@ -35,7 +35,7 @@ func TestAdapter_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	// Create via adapter
-	c, err := a.Create(ctx, "my-app", "oracle", "", "Test Chat")
+	c, err := a.Create(ctx, "my-app", "agent", "", "Test Chat")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestAdapter_RoundTrip(t *testing.T) {
 	}
 
 	// List
-	chatsOut, err := a.List(ctx, "my-app", "oracle", "")
+	chatsOut, err := a.List(ctx, "my-app", "agent", "")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

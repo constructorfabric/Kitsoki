@@ -1,0 +1,30 @@
+# decompose_error — decomposer agent fails → @exit:needs-human, non-blank last_error.
+#
+# The agent host call returns an error. on_error fires, the engine sets last_error
+# from the host error message, and decompose_error auto-bails to @exit:needs-human.
+# The exit requires last_error to be non-blank — verified here.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      decomposer:
+        error: "host.agent.task: decomposer session abandoned without successful submit"
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: __exit__needs-human
+    expect_world:
+      last_error: "host.agent.task: decomposer session abandoned without successful submit"
+
+expect_terminal: true
+expect_no_errors: true

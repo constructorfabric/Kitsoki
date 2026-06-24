@@ -1,4 +1,5 @@
-// Package trace provides structured JSONL tracing for kitsoki sessions (§11).
+// Package trace provides structured JSONL tracing for kitsoki sessions
+// (see docs/tracing/trace-format.md for the on-disk schema).
 //
 // Usage pattern: every component (orchestrator, harness, machine) receives a
 // *slog.Logger at construction time. When --trace is active the caller installs
@@ -10,7 +11,7 @@
 //
 //	turn.start, turn.routed, turn.stepped, turn.persisted, turn.done
 //	harness.request, harness.response.raw, harness.response.parsed
-//	harness.retry, harness.error, harness.exec, harness.oracle_hit, harness.oracle_miss
+//	harness.retry, harness.error, harness.exec, harness.agent_hit, harness.agent_miss
 //	machine.guard.eval, machine.guard.winner, machine.effect.applied
 //	machine.transition, machine.validation.rejected
 //	expr.compile_error, expr.eval_error
@@ -44,6 +45,12 @@ const (
 	EvTurnStepped   = "turn.stepped"
 	EvTurnPersisted = "turn.persisted"
 	EvTurnDone      = "turn.done"
+	// EvTurnError fires when a turn aborts because machine.Turn itself
+	// returned an error (e.g. an effect's set/when expression failed to
+	// compile or evaluate). It guarantees the failure is recorded in the
+	// trace — the orchestrator also journals a store.MachineError event so
+	// the persisted session trace has a row for the failed turn.
+	EvTurnError = "turn.error"
 
 	// Harness.
 	EvHarnessRequest        = "harness.request"
@@ -71,9 +78,9 @@ const (
 	// Fires at any of the three sites that previously disagreed:
 	// machine.dispatchEmittedIntents, parallel.turnParallel (transition or
 	// on_enter), and machine.DispatchPostBindEmits.
-	EvIntentEmitted              = "machine.intent.emitted"
-	EvIntentEmitDepthCap         = "machine.intent.emit.depth_cap"
-	EvIntentEmitParallelDropped  = "machine.intent.emit.parallel_dropped"
+	EvIntentEmitted             = "machine.intent.emitted"
+	EvIntentEmitDepthCap        = "machine.intent.emit.depth_cap"
+	EvIntentEmitParallelDropped = "machine.intent.emit.parallel_dropped"
 
 	// Expr.
 	EvExprCompileError = "expr.compile_error"
@@ -86,7 +93,39 @@ const (
 	EvTurnDeterministicHit  = "turn.deterministic_hit"
 	EvTurnDeterministicMiss = "turn.deterministic_miss"
 
-	// Semantic routing (semroute, Phase 2). EvTurnSemanticHit
+	// Pre-LLM intercept (kitsoki intercept). EvInterceptMatched fires when the
+	// side-effect-free Orchestrator.Classify resolves a verdict via a no-LLM
+	// tier (deterministic / synonym / embedding) and the external gate may
+	// execute; EvInterceptPassed fires when no no-LLM tier matched and the
+	// gate lets the turn proceed to the LLM untouched. Classify itself never
+	// emits these — the intercept gate that calls Classify does — so Classify
+	// stays a pure read.
+	EvInterceptMatched = "intercept.matched"
+	EvInterceptPassed  = "intercept.passed"
+
+	// Multi-turn intercept drive (conflict-capable intercept; see
+	// docs/architecture/prompt-intercept.md §"Multi-turn commands"). When a
+	// matched command's flow enters a room flagged intercept_drive: rest, the
+	// gate escalates from the stateless OneShot to a budgeted, persisted,
+	// synchronous drive-to-rest. EvInterceptEscalated opens that record (the
+	// durable pointer the agent's ephemeral block report references and the
+	// live-watch surface keys on); EvInterceptResolved / EvInterceptAborted close
+	// it (the flow settled at a non-flagged resting place, or was safe-aborted
+	// leaving a clean tree). The live, round-by-round feed while the drive runs is
+	// the persisted session's OWN native events (agent.call.*, transitions) — the
+	// drive needs no bespoke per-round event; `rounds` on the closing event is
+	// derived from that same event log.
+	//
+	// Field schema:
+	//   - intercept.escalated: input, intent, session_id, reason ("multi_turn")
+	//   - intercept.resolved:  session_id, outcome, rounds, final_state
+	//   - intercept.aborted:   session_id, outcome, rounds, final_state
+	EvInterceptEscalated = "intercept.escalated"
+	EvInterceptResolved  = "intercept.resolved"
+	EvInterceptAborted   = "intercept.aborted"
+
+	// Semantic routing (semroute; see
+	// docs/architecture/semantic-routing.md). EvTurnSemanticHit
 	// fires when [semroute.Matcher.Match] returns a single-intent
 	// verdict above the configured high-bar; the orchestrator's
 	// SubmitDirect path runs immediately after. EvTurnSemanticMiss
@@ -95,8 +134,8 @@ const (
 	// matcher returned a 0.50 tie and the orchestrator surfaces the
 	// disambiguation card.
 	//
-	// Field schema (locked by proposal §8 — TUI route badges read
-	// these names directly):
+	// Field schema (locked by docs/architecture/semantic-routing.md —
+	// TUI route badges read these names directly):
 	//   - semantic_hit:       intent, reason, confidence, state_path
 	//   - semantic_miss:      state_path
 	//   - semantic_ambiguous: candidates, state_path
@@ -105,16 +144,34 @@ const (
 	EvTurnSemanticMiss      = "turn.semantic_miss"
 	EvTurnSemanticAmbiguous = "turn.semantic_ambiguous"
 
+	// EvTurnDefaultRouted fires when deterministic + semantic (+ turn-cache)
+	// all missed and the current state declares a free-text default_intent:
+	// the whole utterance is routed deterministically to that intent's single
+	// required string slot, with no main-turn LLM. The `intent` and `slot`
+	// attrs name where the text landed. This is the conversational-room sink
+	// (e.g. a discovery room's `discuss`) so plain prose never has to survive
+	// an LLM classification that can mis-pick a command intent.
+	EvTurnDefaultRouted = "turn.default_routed"
+
 	// EvTurnLLMRouted fires once on the orchestrator side after the
 	// harness resolves an intent via the LLM. Phase 5's cache
-	// writeback hooks into the same event (proposal §1); Phase 2
-	// only emits the trace breadcrumb.
+	// writeback hooks into the same event (see the turn-cache tier in
+	// docs/architecture/semantic-routing.md); Phase 2 only emits the
+	// trace breadcrumb.
 	EvTurnLLMRouted = "turn.llm_routed"
 
-	// Off-path side-channel (§7.7).  The off-path runtime is intentionally
+	// EvTurnLLMMiss fires when the local-model routing tier (agent.local on a
+	// semantic no_match) was tried but did not produce a usable verdict — it
+	// returned "none"/low-confidence or errored — so routing falls through to
+	// the main-turn LLM. The `model` attr names the backend that missed. Lets
+	// the routing pipeline mark the local-LLM layer as tried-and-missed rather
+	// than inferring it only when the cloud model later wins.
+	EvTurnLLMMiss = "turn.llm_miss"
+
+	// Off-path side-channel.  The off-path runtime is intentionally
 	// orthogonal to the state machine — no Turn() fires, no transition events
-	// land on the journey.  These trace constants are the only structured
-	// breadcrumb of that activity in --trace-pretty output.
+	// land on the journey.  These trace constants are the structured slog
+	// breadcrumb of that activity.
 	EvOffPathEnter        = "offpath.enter"
 	EvOffPathExit         = "offpath.exit"
 	EvOffPathAskStart     = "offpath.ask.start"
@@ -122,7 +179,7 @@ const (
 	EvOffPathAskError     = "offpath.ask.error"
 	EvOffPathChatResolved = "offpath.chat.resolved"
 
-	// Timeout dispatcher (§9.5).  arm / cancel / fire / rearm cover every
+	// Timeout dispatcher.  arm / cancel / fire / rearm cover every
 	// dispatcher-side state change; error covers persistence and dispatch
 	// failures.
 	EvTimeoutArmed     = "timeout.armed"
@@ -131,7 +188,7 @@ const (
 	EvTimeoutError     = "timeout.error"
 	EvTimeoutRearmed   = "timeout.rearmed"
 
-	// Teleport (used by inbox, off-path return, oracle return, etc.).
+	// Teleport (used by inbox, off-path return, agent return, etc.).
 	// The synthetic turn it appends is already covered by turn.* but
 	// teleport.* records the user-visible "I jumped sideways" intent.
 	EvTeleportStart = "teleport.start"
@@ -245,6 +302,13 @@ func (t *TurnLogger) Debug(ctx context.Context, msg string, args ...any) {
 // Info emits an info event.
 func (t *TurnLogger) Info(ctx context.Context, msg string, args ...any) {
 	t.l.InfoContext(ctx, msg, args...)
+}
+
+// Warn emits a warning event. Used for turn-fatal faults (e.g. a turn
+// that aborted because an effect expression failed to compile) that must
+// surface in the trace at a level callers don't suppress.
+func (t *TurnLogger) Warn(ctx context.Context, msg string, args ...any) {
+	t.l.WarnContext(ctx, msg, args...)
 }
 
 // Enabled returns whether debug-level logging is enabled (for cheap guard).

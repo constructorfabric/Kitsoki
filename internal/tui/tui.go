@@ -1,6 +1,7 @@
-// Package tui implements the full-screen Bubble Tea interface (§9a).
+// Package tui implements the full-screen Bubble Tea interface.
 // It composes sub-models for the location header, transcript pane,
-// menu list, inbox panel (§2.2), graph overlay, prompt input, and slot-fill modals.
+// menu list, inbox panel, graph overlay, prompt input, and slot-fill modals.
+// See docs/tui/README.md for the surface overview.
 //
 // The inbox panel displays background-job notifications below the Actions menu in
 // the right column. It polls a *jobs.JobStore every 2 s (200 ms when a job is
@@ -37,23 +38,28 @@ import (
 	"kitsoki/internal/metamode"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/render"
+	"kitsoki/internal/store"
 	"kitsoki/internal/trace"
 	"kitsoki/internal/tui/blocks"
+	"kitsoki/internal/userfacing"
 	"kitsoki/internal/viz"
 	"kitsoki/internal/world"
 )
 
-// Mode describes which interaction mode the TUI is currently in (§7.3, §7.7).
+const githubInboxPollInterval = 5 * time.Minute
+
+// Mode describes which interaction mode the TUI is currently in.
 type Mode int
 
 const (
 	// ModeOnPath is the default on-path mode.
 	ModeOnPath Mode = iota
-	// ModeOffPath is the visually-framed free-form mode (§7.7).
+	// ModeOffPath is the visually-framed free-form mode. See
+	// docs/stories/state-machine.md §11 "Off-path: the global escape hatch".
 	ModeOffPath
-	// ModeSlotFilling is active while the user fills missing slots (§7.3).
+	// ModeSlotFilling is active while the user fills missing slots.
 	ModeSlotFilling
-	// ModeDisambiguating is active while the disambiguation menu is shown (§7.4).
+	// ModeDisambiguating is active while the disambiguation menu is shown.
 	ModeDisambiguating
 	// ModeAwaitingLLM is active while the LLM harness is processing a turn.
 	// Input is disabled and a spinner is shown.
@@ -62,25 +68,34 @@ const (
 	ModeMenu
 	// ModeMeta is active while a /meta overlay owns the prompt and
 	// transcript (named, persistent sidebar conversation against a
-	// declared meta mode). Replaces the former ModeEdit / edit-mode
-	// overlay (Phase B).
+	// declared meta mode). See docs/stories/meta-mode.md.
+	// Replaces the former ModeEdit / edit-mode overlay (Phase B).
 	ModeMeta
 	// ModeMetaSessions is active while the "Meta sessions" foyer
-	// overlay (proposal §2.1) is on screen. Arrow keys navigate the
+	// overlay is on screen. Arrow keys navigate the
 	// listed chats; Enter resumes one; Esc closes the overlay and
 	// returns to ModeOnPath.
 	ModeMetaSessions
 	// ModeWorldView is active while /world's dedicated hierarchical
 	// viewer owns the pane. Arrow keys move the cursor; Enter expands
-	// or collapses nodes; q/Esc returns to chat. Single-pane-tui
-	// proposal §"Phase 1.5".
+	// or collapses nodes; q/Esc returns to chat.
 	ModeWorldView
 	// ModeChoosing is active while an inline choice widget owns the
 	// keyboard focus. Arrow keys / Space / Tab / Enter drive the
 	// picker; Esc cancels; a printable letter defocuses the widget
 	// back to the prompt textarea so the user always has the free-
-	// text escape hatch (choice-widget proposal §2.2 / §5 Phase C).
+	// text escape hatch. See docs/stories/choice-widget.md §2.10
+	// "Coexisting with a free-text verb".
 	ModeChoosing
+	// ModeOperatorQuestion is active while a dispatched agent's forwarded
+	// AskUserQuestion owns the keyboard. Arrow keys move the cursor; Space
+	// toggles a multi-select option; Enter confirms the current question
+	// (advancing through a multi-question batch); Esc lets the agent decide
+	// on its own. Unlike ModeChoosing this overlays a turn that is still
+	// in flight — the agent is blocked waiting for the answer — so on commit
+	// the model resumes ModeAwaitingLLM rather than returning to ModeOnPath.
+	// See internal/tui/operator_question.go.
+	ModeOperatorQuestion
 )
 
 // ctrlCQuitWindow is how long after a Ctrl+C the next Ctrl+C will quit
@@ -120,7 +135,7 @@ type continueTurnOutcomeMsg struct {
 	err     error
 }
 
-// RootModel is the top-level Bubble Tea model composing all sub-models (§9a.1).
+// RootModel is the top-level Bubble Tea model composing all sub-models.
 // It uses pointer receivers so the same *RootModel can be type-asserted after
 // being returned from Update as a tea.Model interface.
 type RootModel struct {
@@ -132,19 +147,20 @@ type RootModel struct {
 	height   int
 	quitting bool
 
-	location       locationModel
-	transcript     transcriptModel
-	menu           menuModel
-	inbox          inboxModel
-	offPath        offPathModel
-	clarify        clarifyModel
-	disambiguation disambiguationModel
-	choice         choiceWidgetModel
-	menuSystem     menuSystemModel
-	metaMode       metaModel
-	sessionsPanel  sessionsPanelModel
-	worldView      worldViewModel
-	prompt         textarea.Model
+	location         locationModel
+	transcript       transcriptModel
+	menu             menuModel
+	inbox            inboxModel
+	offPath          offPathModel
+	clarify          clarifyModel
+	disambiguation   disambiguationModel
+	choice           choiceWidgetModel
+	operatorQuestion operatorQuestionModel
+	menuSystem       menuSystemModel
+	metaMode         metaModel
+	sessionsPanel    sessionsPanelModel
+	worldView        worldViewModel
+	prompt           textarea.Model
 
 	// pendingDraft holds whatever was in the prompt textarea when an
 	// interactive choice widget seized focus. Open() clears the
@@ -152,6 +168,11 @@ type RootModel struct {
 	// field; /input restores this draft so the user can resume
 	// composing.
 	pendingDraft string
+
+	// routing tracks the live routing-pipeline state for the in-flight turn:
+	// which tiers were tried/missed and which one won. Reset at submit time,
+	// updated by RoutingTier{Miss,Hit}Msg, and finalized at turn completion.
+	routing routingPipeline
 
 	// chatStore is the persistent chat row backend; used by the
 	// metamode controller to resolve / append. nil disables /meta
@@ -164,7 +185,7 @@ type RootModel struct {
 	// via WithMetaController.
 	metaController *metamode.Controller
 
-	// metaStreamSink, when non-nil, tees streaming oracle events from
+	// metaStreamSink, when non-nil, tees streaming agent events from
 	// each meta-mode Send into the transcript pane via MetaStreamMsg.
 	// The sink is allocated up-front (NewMetaStreamSink) and bound to
 	// the tea.Program post-construction via Attach() — mirrors the
@@ -172,6 +193,40 @@ type RootModel struct {
 	// leaves stream events on the slog trace only; the user falls
 	// back to the buffered "agent is thinking…" UX.
 	metaStreamSink *MetaStreamSink
+
+	// operatorPrompter, when non-nil, is injected into each turn ctx so a
+	// dispatched agent agent that forwards an AskUserQuestion surfaces the
+	// question as an inline widget (ModeOperatorQuestion) and blocks for the
+	// operator's answer. Allocated up-front (NewTUIOperatorPrompter) and bound
+	// to the tea.Program post-construction via Attach() — mirrors
+	// metaStreamSink's lifecycle. Nil leaves the headless posture: the agent
+	// is told to proceed on its own.
+	operatorPrompter *TUIOperatorPrompter
+
+	// spatialPrompter, when non-nil, is injected into each turn ctx so a
+	// dispatched oracle that requests a spatial ambient (host.SpatialPrompterFrom)
+	// surfaces an OSC 8 link to a transient chrome-less `/point` window and
+	// blocks the turn until the operator submits a visual bundle. Allocated
+	// up-front (NewTUISpatialPrompter) and bound to the tea.Program
+	// post-construction via Attach() — mirrors operatorPrompter's lifecycle. Nil
+	// leaves the headless posture: no spatial ambient is requested, the turn runs
+	// text-only.
+	spatialPrompter *TUISpatialPrompter
+
+	// metaStreamPending holds a pure-narration ("thinking") assistant
+	// message that has streamed in but not yet been committed to the
+	// transcript. A text-only assistant message is ambiguous while the
+	// stream is live: it is either intermediate narration (more model
+	// activity follows) or the model's FINAL answer (the terminal
+	// `result` event follows). handleMetaStreamEvent defers each such
+	// message by one event — flushing it as thinking the moment further
+	// model activity proves it was intermediate, and DROPPING it when
+	// `result` arrives first. Dropping is the point: the room (on-path)
+	// or metaSendDone's AppendSystem (meta) presents the final answer,
+	// so streaming it here too would duplicate it as muted thinking.
+	// Always cleared at turn boundaries so it can never leak across
+	// turns if the `result` stream event is lost to backpressure.
+	metaStreamPending string
 
 	// initialTypedView carries the typed-view payload for the very
 	// first frame so NewRootModel can paint via AppendSystemTyped (the
@@ -195,7 +250,26 @@ type RootModel struct {
 
 	// lastNotifications is the most-recent polling snapshot, used to build
 	// the status-line badge without re-querying the database on every View().
-	lastNotifications []jobs.Notification
+	lastNotifications   []jobs.Notification
+	lastGitHubInboxSync time.Time
+
+	// minerService is the ambient miner's control seam (ad-hoc-workbench slice
+	// 4). When non-nil, /mine drives pause/resume/scope/now/decide through it
+	// and reads its live state. nil (the default until the runtime sibling
+	// lands) leaves the surface read-only against mineStateValue and turns
+	// every control verb into a "miner not wired" hint. See mine_command.go.
+	minerService MinerService
+
+	// mineStateValue is the last-pushed MineState snapshot — the proposal
+	// queue + miner status the footer badge and /mine status read when no
+	// service is wired (or as the post-decision echo cache when one is).
+	mineStateValue MineState
+
+	// traceHistory reads the session event history for read-only surfaces such
+	// as /work. It is optional; production wires the SQLite store history and
+	// studio tests can wire JSONL history. When omitted, trace-backed proposal
+	// rows are simply absent and the miner-service queue remains authoritative.
+	traceHistory func() (store.History, error)
 
 	// lastCtrlC is the time the most recent Ctrl+C was pressed, used to
 	// detect a double-tap quit. Zero means no recent press (or the window
@@ -250,15 +324,16 @@ type RootModel struct {
 
 	// journalWriter, when non-nil, receives typed journal entries for
 	// inbox read/dismiss (sites 27) and disambiguation (site 31)
-	// lifecycle events (continue-mode §4.9 dual-write).
+	// lifecycle events (continue-mode dual-write).
 	// Nil disables journal writes (back-compat default for tests).
 	journalWriter journal.Writer
 
-	// traceRing is the always-on in-memory ring buffer built by
-	// BuildTraceLogger.  buildMetaTurnContext snapshots it to
-	// traceFilePath on every meta-mode Send so the agent can Read
-	// the file for session-history context. Nil disables the dump
-	// (tests / headless callers).
+	// traceRing is an optional in-memory ring buffer.  When non-nil and
+	// traceFileExternal is false, buildMetaTurnContext snapshots it to
+	// traceFilePath on every meta-mode Send so the agent can Read the file
+	// for session-history context.  Production kitsoki run uses the
+	// EventSink JSONL path directly (traceFileExternal=true); the ring
+	// is wired in tests that want a lightweight fallback without a real file.
 	traceRing *trace.RingBuffer
 	// traceFileExternal is true when traceFilePath points at a file an
 	// external writer is keeping current (e.g. --trace /path.jsonl).  In
@@ -292,10 +367,10 @@ type RootModel struct {
 	//                       authoritative record)
 	//   - routingTraceOpen / routingTraceTurn (overlay state)
 
-	// actionsAuto, when true, auto-prints the room's /actions block at
+	// actionsAuto, when true, auto-prints the room's /intents block at
 	// the end of every successful turn — single-pane-tui proposal
-	// §"/actions auto on|off". Toggled by `/actions auto on` /
-	// `/actions auto off`. Persists for the session. The default is
+	// §"/intents auto on|off". Toggled by `/intents auto on` /
+	// `/intents auto off`. Persists for the session. The default is
 	// off; rooms may later declare an override in YAML.
 	actionsAuto bool
 
@@ -303,7 +378,6 @@ type RootModel struct {
 	// other-room completions the user has been notified about but
 	// not yet visited via /jump. Bounded at recentBackgroundCap so
 	// the slice doesn't grow unbounded across a long session.
-	// Single-pane-tui proposal §"Queueing across navigation".
 	backgroundCompletions []backgroundCompletion
 
 	// inputQueue is the room-local FIFO of in-room submissions
@@ -312,8 +386,7 @@ type RootModel struct {
 	// the queue scaffolding; phase 6 splits it per-room.
 	inputQueue []string
 
-	// transcripts is the per-room transcript buffer map (single-pane-tui
-	// proposal §"Per-room transcript buffers"). The active room's
+	// transcripts is the per-room transcript buffer map. The active room's
 	// transcript lives on m.transcript; on every room change the
 	// outgoing buffer is saved here under its room key and the
 	// incoming room's buffer is loaded back into m.transcript. See
@@ -328,6 +401,58 @@ type RootModel struct {
 	// once non-empty it tracks the on-path top-level segment, or
 	// metaRoomKey while a /meta overlay owns the pane.
 	activeRoom app.StatePath
+
+	// resumed is set by the resume options (WithResumedJourney /
+	// WithResumedTranscript) so construction can suppress start-of-session
+	// boilerplate — chiefly the welcome banner, which is already in the
+	// prior session's scrollback and otherwise re-appears mid-transcript
+	// (inheriting the preceding agent body's styling) on --continue.
+	resumed bool
+
+	// ideLink is the process-lifetime IDE connection the `/ide` command
+	// starts and stops. nil until the first `/ide connect` succeeds; once
+	// non-nil it is the same handle pushed onto the orchestrator via
+	// SetIDELink so per-turn host.ide.* dispatch resolves it. The TUI also
+	// reads it directly at turn-submit to capture the active selection as
+	// ambient context (handleSubmit → captureIDEAmbient). Held as the
+	// host.IDELink interface plus the lifecycle methods the command needs
+	// (Candidates/ConnectLock/Close); *ide.Link is the production value, and
+	// tests inject an in-memory fake so the footer + ambient-capture paths
+	// can be exercised without a real socket. The orchestrator only needs
+	// the host.IDELink subset. See docs/tui/README.md ("Editor awareness: /ide").
+	ideLink ideLinkHandle
+
+	// pendingIDEAmbient is the editor selection captured at the current
+	// turn's submit (read-at-submit, slice 2 open question #2), waiting to
+	// be injected onto the turn ctx in startAsyncTurn so the agent prompt
+	// scope exposes it as `args.ide`. Zero (empty File) when the link is
+	// off, the selection was empty, or the active file is deny-ruled.
+	// Cleared every submit so it never leaks across turns.
+	pendingIDEAmbient host.IDEAmbient
+
+	// lastIDEAmbient is the selection that most recently rode a turn, used to
+	// inject only on change: a selection the operator holds across several
+	// turns must not silently re-shape every follow-up. captureIDEAmbient
+	// skips injection + echo when the live selection equals this, and resets
+	// it to zero whenever there is no usable selection (off / empty / denied)
+	// so that re-selecting the same range later counts as new.
+	lastIDEAmbient host.IDEAmbient
+
+	// ideDeny is the kitsoki-side deny list gating ambient selection
+	// attach: when the active file matches any of these patterns the
+	// selection is NOT attached to the turn and no `⧉ Selected …` echo is
+	// emitted. kitsoki cannot read Claude Code's own Read deny-rules and
+	// must not assume parity, so this is an explicit, minimal local
+	// setting (default empty — nothing denied). Patterns are matched with
+	// path/filepath.Match against both the absolute path and its base name.
+	ideDeny []string
+
+	// openArtifact opens a resolved artifact path in the OS's default handler
+	// (or $EDITOR). It is the seam the `/open` slash command drives; tests
+	// inject a recording fake so the command's path-resolution and reporting
+	// run without launching a real opener. Nil means "use the default OS
+	// opener" (set in NewRootModel) — the production behavior.
+	openArtifact func(path string) error
 }
 
 const recentBackgroundCap = 8
@@ -365,9 +490,27 @@ func WithChatStore(cs *chats.Store) RootModelOption {
 	return func(m *RootModel) { m.chatStore = cs }
 }
 
+// WithTraceHistory wires a read-only event-history source into the RootModel.
+// /work uses it to surface trace-backed mining proposals even when a miner
+// service snapshot is not available.
+func WithTraceHistory(fn func() (store.History, error)) RootModelOption {
+	return func(m *RootModel) { m.traceHistory = fn }
+}
+
+// WithIDEDenyList seeds the kitsoki-side deny list that gates ambient editor
+// selection attach (the `/ide` slice). When the active file matches any pattern
+// the selection never rides a turn and no `⧉ Selected …` echo is emitted.
+// kitsoki cannot read Claude Code's own Read deny-rules and must not assume
+// parity, so the list is explicit and local; the default (option omitted) is
+// empty — nothing denied. Patterns are filepath.Match globs tried against both
+// the absolute path and the base name (so "*.env" and "/secrets/*" both work).
+func WithIDEDenyList(patterns []string) RootModelOption {
+	return func(m *RootModel) { m.ideDeny = patterns }
+}
+
 // WithMetaController injects a pre-built *metamode.Controller into the
 // RootModel. Tests use this to bypass the production wiring (which
-// requires a real agent registry, chat store, and oracle adapter)
+// requires a real agent registry, chat store, and agent adapter)
 // and inject a controller pointed at fakes.
 //
 // When non-nil, this controller is used regardless of what
@@ -377,12 +520,12 @@ func WithMetaController(c *metamode.Controller) RootModelOption {
 	return func(m *RootModel) { m.metaController = c }
 }
 
-// WithTraceRingBuffer wires the always-on in-memory trace ring into
-// the RootModel.  buildMetaTurnContext snapshots it to disk on every
-// meta-mode Send so the agent can Read the recent session history.
-// Production passes the ring built by BuildTraceLogger; tests pass nil
-// (the dump is silently skipped) unless they explicitly want to assert
-// on the on-disk file.
+// WithTraceRingBuffer wires an in-memory trace ring into the RootModel.
+// buildMetaTurnContext snapshots it to disk on every meta-mode Send when
+// no external trace file is available.  Tests that want a lightweight
+// fallback without a real EventSink file pass a ring here; tests and
+// production callers that hand the agent a real JSONL path via
+// WithExternalTraceFile do not need to set a ring.
 func WithTraceRingBuffer(rb *trace.RingBuffer) RootModelOption {
 	return func(m *RootModel) { m.traceRing = rb }
 }
@@ -412,7 +555,7 @@ func WithExternalTraceFile(path string) RootModelOption {
 
 // WithJournalWriter injects a journal.Writer into the RootModel. When non-nil,
 // inbox read/dismiss events (site 27) and disambiguation choice events (site 31)
-// emit typed journal entries for continue-mode durability (§4.9 dual-write).
+// emit typed journal entries for continue-mode durability (dual-write).
 // When nil (the default), no journal entries are written — this preserves
 // backward compatibility for tests and headless callers.
 func WithJournalWriter(jw journal.Writer) RootModelOption {
@@ -441,16 +584,37 @@ func WithInitialTypedView(typed *app.View, env expr.Env, rr *render.AppRenderer)
 // caller binds it to the *tea.Program post-construction via
 // sink.Attach(prog), exactly like RoutingObserver.Attach. When
 // omitted (or nil), meta-mode falls back to the buffered "agent is
-// thinking…" spinner UX — slog still records the stream-json events
-// for --trace-pretty consumers.
+// thinking…" spinner UX — slog still records the stream-json events.
 func WithMetaStreamSink(sink *MetaStreamSink) RootModelOption {
 	return func(m *RootModel) { m.metaStreamSink = sink }
+}
+
+// WithOperatorPrompter wires a *TUIOperatorPrompter into the RootModel so a
+// dispatched agent agent that forwards an AskUserQuestion surfaces it as an
+// inline question widget and blocks for the operator's answer. Like
+// WithMetaStreamSink the prompter is unbound at construction; the caller binds
+// it to the *tea.Program post-construction via prompter.Attach(prog). When
+// omitted (or nil) the headless tool-denied posture applies: the agent is told
+// to proceed on its own.
+func WithOperatorPrompter(prompter *TUIOperatorPrompter) RootModelOption {
+	return func(m *RootModel) { m.operatorPrompter = prompter }
+}
+
+// WithSpatialPrompter wires a *TUISpatialPrompter into the RootModel so a
+// dispatched oracle that requests a spatial ambient surfaces an OSC 8 link to a
+// transient chrome-less `/point` window and blocks the turn for the operator's
+// visual bundle. Like WithOperatorPrompter the prompter is unbound at
+// construction; the caller binds it to the *tea.Program post-construction via
+// prompter.Attach(prog). When omitted (or nil) no spatial ambient is requested
+// and the turn runs text-only (the headless posture).
+func WithSpatialPrompter(prompter *TUISpatialPrompter) RootModelOption {
+	return func(m *RootModel) { m.spatialPrompter = prompter }
 }
 
 // WithRoutingObserver wires a *RoutingObserver into the RootModel. The
 // observer is the slog→tea.Msg bridge that converts orchestrator
 // routing events into RoutingTier*Msg deliveries for the progressive
-// resolution chip (semantic-routing proposal §8). The caller is
+// resolution chip (see docs/architecture/semantic-routing.md). The caller is
 // responsible for inserting the observer as one handler in the slog
 // pipeline (typically alongside the trace ring buffer) and for
 // invoking obs.Attach(prog) once the *tea.Program is constructed.
@@ -471,10 +635,11 @@ func WithRoutingObserver(obs *RoutingObserver) RootModelOption {
 // The initialView passed to NewRootModel should already be the view
 // rendered from the journey (via orch.RenderState) by the caller.
 //
-// NOTE: A full Bubble Tea overlay picker (§5.4) is a follow-up; this option
-// is phase-A plumbing only.
+// NOTE: A full Bubble Tea overlay picker is a follow-up; this option
+// is initial plumbing only.
 func WithResumedJourney(state app.StatePath, w world.World, turn app.TurnNumber) RootModelOption {
 	return func(m *RootModel) {
+		m.resumed = true
 		m.currentState = state
 		computedMenu := orchestrator.ComputeMenu(m.orch.AppDef(), m.orch.Machine(), state, w)
 		m.menu, _ = m.menu.Update(menuItemsChanged{items: computedMenu.Primary, blocked: computedMenu.Blocked})
@@ -485,7 +650,7 @@ func WithResumedJourney(state app.StatePath, w world.World, turn app.TurnNumber)
 }
 
 // WithResumedTranscript seeds the transcript pane from journal entries
-// collected by AttachSession (continue-mode §4.6 transcript rehydration).
+// collected by AttachSession (continue-mode transcript rehydration).
 //
 // The entries slice must be ordered by (turn, seq) — the order AttachSession
 // returns them in.  Each entry is mapped to the matching live transcript
@@ -499,6 +664,7 @@ func WithResumedJourney(state app.StatePath, w world.World, turn app.TurnNumber)
 // an empty initialView string to avoid duplicating the last view.rendered row.
 func WithResumedTranscript(entries []journal.Entry) RootModelOption {
 	return func(m *RootModel) {
+		m.resumed = true
 		if len(entries) == 0 {
 			return
 		}
@@ -527,25 +693,27 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 	sp.Style = lipgloss.NewStyle().Foreground(colorPrimary)
 
 	m := RootModel{
-		orch:           orch,
-		sid:            sid,
-		appPath:        appPath,
-		mode:           ModeOnPath,
-		width:          defaultWidth,
-		height:         defaultHeight,
-		location:       newLocationModel(),
-		transcript:     newTranscriptModel(defaultWidth-menuWidth-6, transcriptHeight-inboxHeight),
-		menu:           newMenuModel(menuWidth, transcriptHeight-inboxHeight),
-		inbox:          newInboxModel(menuWidth, inboxHeight),
-		offPath:        newOffPathModel(offPathBannerFromApp(orch.AppDef())),
-		clarify:        newClarifyModel(),
-		disambiguation: newDisambiguationModel(),
-		choice:         newChoiceWidgetModel(),
-		menuSystem:     newMenuSystemModel(metaMenuEntries(orch.AppDef())),
-		metaMode:       newMetaModel(),
-		sessionsPanel:  newSessionsPanelModel(),
-		prompt:         ti,
-		spinner:        sp,
+		orch:             orch,
+		sid:              sid,
+		appPath:          appPath,
+		mode:             ModeOnPath,
+		width:            defaultWidth,
+		height:           defaultHeight,
+		location:         newLocationModel(),
+		transcript:       newTranscriptModel(defaultWidth-menuWidth-6, transcriptHeight-inboxHeight),
+		menu:             newMenuModel(menuWidth, transcriptHeight-inboxHeight),
+		inbox:            newInboxModel(menuWidth, inboxHeight),
+		offPath:          newOffPathModel(offPathBannerFromApp(orch.AppDef())),
+		clarify:          newClarifyModel(),
+		disambiguation:   newDisambiguationModel(),
+		choice:           newChoiceWidgetModel(),
+		operatorQuestion: newOperatorQuestionModel(),
+		menuSystem:       newMenuSystemModel(metaMenuEntries(orch.AppDef())),
+		metaMode:         newMetaModel(),
+		sessionsPanel:    newSessionsPanelModel(),
+		prompt:           ti,
+		spinner:          sp,
+		openArtifact:     osOpenArtifact,
 	}
 
 	// Set initial state.
@@ -561,9 +729,15 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 	}
 
 	// Print a Claude-Code-style welcome banner into scrollback once
-	// at startup. It scrolls off naturally as content grows.
-	if welcome := buildWelcome(orch, sid, appPath, m.currentTheme(), defaultWidth); welcome != "" {
-		m.transcript.pending = append(m.transcript.pending, welcome)
+	// at startup. It scrolls off naturally as content grows. Suppressed
+	// on resume (--continue): the banner is start-of-session boilerplate
+	// already in the prior session's scrollback, and re-emitting it AFTER
+	// the reconstructed transcript drops a mis-styled box (it picks up the
+	// trailing agent body's background) into the middle of the history.
+	if !m.resumed {
+		if welcome := buildWelcome(orch, sid, appPath, defaultWidth); welcome != "" {
+			m.transcript.pending = append(m.transcript.pending, welcome)
+		}
 	}
 
 	// Show initial view in transcript. When the root state's view is a
@@ -633,7 +807,7 @@ func NewRootModel(orch *orchestrator.Orchestrator, sid app.SessionID, appPath, i
 				Chats:  metamode.NewChatStoreAdapter(m.chatStore),
 				Agents: reg,
 				AppDef: orch.AppDef(),
-				Oracle: metamode.NewOracleCallerAdapter(),
+				Agent:  metamode.NewAgentCallerAdapter(),
 			}
 		}
 	}
@@ -671,7 +845,7 @@ func metaMenuEntries(def *app.AppDef) []metaMenuEntry {
 
 // defaultMetaLabel synthesises a display label for a meta mode that
 // declares no explicit `label:`. Grouped keys render as
-// `<Group> › <Trigger>` (proposal §1.1 cosmetic), ungrouped keys keep
+// `<Group> › <Trigger>` (cosmetic), ungrouped keys keep
 // the legacy `meta: <name>` form so back-compat apps look the same.
 func defaultMetaLabel(name string, mode *app.MetaModeDef) string {
 	if mode != nil && mode.Group != "" && mode.Trigger != "" {
@@ -740,6 +914,20 @@ func pickDefaultMetaMode(def *app.AppDef, names []string) string {
 	}
 	if len(groupKeys) > 0 {
 		sort.Strings(groupKeys)
+		// Prefer the story group so bare `/meta` targets the running
+		// story (engine-targeting via `/meta kitsoki …` is explicit);
+		// otherwise fall back to the lex-first group. Without this the
+		// lex-first builtin group is `kitsoki` (< `story`), so bare
+		// `/meta` would open the engine editor whenever $KITSOKI_REPO is
+		// set — surprising and contrary to the story-by-default rule.
+		if story := groups[defaultMetaGroup]; story != nil {
+			if story.defaultKey != "" {
+				return story.defaultKey
+			}
+			if story.anyKey != "" {
+				return story.anyKey
+			}
+		}
 		first := groups[groupKeys[0]]
 		if first.defaultKey != "" {
 			return first.defaultKey
@@ -807,11 +995,16 @@ func (m RootModel) scheduleInboxPoll(delay time.Duration) tea.Cmd {
 
 // pollInbox reads notifications from the job store and returns an inboxRefreshed
 // message.  Runs inline (called from the Update goroutine via tea.Cmd).
-func (m RootModel) pollInbox() tea.Msg {
+func (m RootModel) pollInbox(syncGitHub bool) tea.Msg {
 	if m.jobStore == nil {
 		return nil
 	}
 	ctx := context.Background()
+	if syncGitHub {
+		if _, err := syncGitHubInboxNotifications(ctx, m.jobStore, m.sid, ""); err != nil {
+			slog.Debug("tui: github inbox sync skipped", "err", err)
+		}
+	}
 	ns, err := m.jobStore.ListNotifications(ctx, m.sid, 20)
 	if err != nil {
 		slog.Warn("tui: inbox poll error", "err", err)
@@ -851,6 +1044,11 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.mode == ModeChoosing {
 		return m.updateChoosing(msg)
 	}
+	// If a forwarded agent question is on screen, it owns the keyboard until
+	// the operator answers (or hits Esc to let the agent decide).
+	if m.mode == ModeOperatorQuestion {
+		return m.updateOperatorQuestion(msg)
+	}
 	// If the system menu overlay is active, it owns the keyboard.
 	if m.mode == ModeMenu {
 		return m.updateMenuSystem(msg)
@@ -885,6 +1083,18 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inFlightCancel = nil
 		return m.handleTurnOutcome(msg)
 
+	case operatorQuestionMsg:
+		return m.handleOperatorQuestion(msg)
+
+	case minePassDoneMsg:
+		return m.handleMinePassDone(msg)
+
+	case spatialPointMsg:
+		return m.handleSpatialPoint(msg)
+
+	case spatialClearMsg:
+		return m.handleSpatialClear(msg)
+
 	case offPathReplyMsg:
 		return m.handleOffPathReply(msg)
 
@@ -915,12 +1125,15 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case metaDoneDoneMsg:
 		return m.handleMetaDoneDone(msg)
 
+	case ideConnectDoneMsg:
+		return m.handleIDEConnectDone(msg)
+
 	case MetaStreamMsg:
 		// Route to the shared handler. Its own in-flight gate
 		// (ModeMeta+metaMode.inFlight OR ModeAwaitingLLM) decides
 		// whether to render the event or drop it as stale — the
-		// previous unconditional drop here meant on-path oracle calls
-		// (e.g. bf.reproducing_executing's host.oracle.ask_with_mcp)
+		// previous unconditional drop here meant on-path agent calls
+		// (e.g. bf.reproducing_executing's host.agent.ask_with_mcp)
 		// never surfaced their tool-use trail in the transcript even
 		// though the runner was streaming the events all along.
 		return m.handleMetaStreamEvent(msg), nil
@@ -969,15 +1182,20 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ir := m.newInlineRouter()
 		switch tm := msg.(type) {
 		case RoutingTierMissMsg:
-			m.transcript.UpdateLive(ir.phaseLine(missTierPhase(tm.Tier)))
+			// A tier was tried with no confident match — advance the pipeline.
+			// Reason carries the backend for a local-LLM miss so the right LLM
+			// layer is marked.
+			m.routing.markMiss(tm.Tier, tm.Reason)
+			m.transcript.UpdateLive(m.routing.renderProgress())
 		case RoutingTierHitMsg:
-			m.transcript.FinalizeLive(ir.r.RoutingResolved(blocks.Resolved{
-				Kind:       hitTierKind(tm.Tier, m.currentState),
-				Intent:     tm.Intent,
-				Source:     hitTierSource(tm.Tier),
-				Confidence: tm.Confidence,
-				Detail:     hitTierDetail(tm),
-			}))
+			// Mark the winning layer (the LLM layer's detail names the backend,
+			// e.g. agent.local) and settle the resolved line. Guard on hasLive so
+			// this and the turn-completion finalizer can't both commit (whichever
+			// runs first settles; the other sees no live line and skips).
+			m.routing.markHit(tm.Tier, tm.Intent, hitDetailFor(tm), tm.Confidence, tm.Tier == TierLLM)
+			if m.transcript.hasLive() {
+				m.transcript.FinalizeLive(m.routing.renderResolved())
+			}
 		case RoutingAmbiguousMsg:
 			m.transcript.UpdateLive(ir.r.RoutingResolved(blocks.Resolved{
 				Source: blocks.SourceAmbiguous,
@@ -992,7 +1210,12 @@ func (m RootModel) updateInner(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.jobStore == nil {
 			return m, nil
 		}
-		return m, func() tea.Msg { return m.pollInbox() }
+		now := m.inboxClock().Now()
+		syncGitHub := m.lastGitHubInboxSync.IsZero() || now.Sub(m.lastGitHubInboxSync) >= githubInboxPollInterval
+		if syncGitHub {
+			m.lastGitHubInboxSync = now
+		}
+		return m, func() tea.Msg { return m.pollInbox(syncGitHub) }
 
 	case inboxRefreshed:
 		// Single-pane redesign: print a transcript line for each
@@ -1337,7 +1560,7 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					ctx := context.Background()
 					_ = js.MarkNotificationRead(ctx, nID)
-					return m.pollInbox()
+					return m.pollInbox(false)
 				}
 			}
 			return m, nil
@@ -1409,7 +1632,7 @@ func (m RootModel) routeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Single-pane redesign (phase 4): numeric quick-select is gone.
 		// Numbers are normal text in the prompt — "1.5" or "10 tickets"
 		// no longer trip the menu hotkey. Action selection moves to
-		// /actions <n> (already wired in phase 1) and synonym/intent
+		// /intents <n> (already wired in phase 1) and synonym/intent
 		// names (semantic routing handles the rest).
 	}
 
@@ -1571,7 +1794,7 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Single-pane redesign (proposal §"Input feedback"): echo the
+	// Input feedback: echo the
 	// user's input into the transcript immediately, before any routing
 	// or dispatch. The transcript — not the input area — is the source
 	// of truth for "what just happened."
@@ -1587,7 +1810,7 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	}
 
 	// Off-path mode: free-form chat that does NOT touch world or state.
-	// Routes directly to host.oracle.talk via Orchestrator.AskOffPath
+	// Routes directly to host.agent.talk via Orchestrator.AskOffPath
 	// rather than through MatchDeterministic → harness → machine.
 	if m.mode == ModeOffPath {
 		m.transcript.AppendBlock(ir.settledLine("", "", blocks.SourceOffPath, 0, ""))
@@ -1596,19 +1819,28 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 
 	m.lastInput = input
 
+	// Ambient editor context: when the IDE link is connected, read the
+	// active selection NOW (read-at-submit) and stash it for injection onto
+	// the turn ctx in startAsyncTurn. The `⧉ Selected N lines from <file>`
+	// echo is appended here so the operator sees exactly what rode the turn
+	// (the echo is the source of truth, slice 2 open question #2). A
+	// deny-ruled file attaches nothing and emits no echo.
+	m = m.captureIDEAmbient()
+
 	// Live in-place routing block: starts at the deterministic phase
 	// and is replaced by UpdateLive / FinalizeLive as the pipeline
 	// progresses. routingObserver translates orchestrator slog
 	// events into RoutingTier{Miss,Hit,Ambiguous,Cancel}Msg
 	// deliveries which the dispatcher above feeds through
 	// UpdateLive. The settled line stays in the transcript as a
-	// permanent record (proposal §"Input feedback" step 3).
-	m.transcript.AppendLive(ir.phaseLine(blocks.PhaseDeterministic))
+	// permanent record.
+	m.routing = newRoutingPipeline()
+	m.transcript.AppendLive(m.routing.renderProgress())
 
 	// Cheap, side-effect-free match against the current menu. This avoids the
 	// LLM round-trip when the user typed something we can route locally — but
 	// we still dispatch the resulting transition asynchronously so a slow
-	// on_enter host call (e.g. host.oracle.ask, host.run on a long command)
+	// on_enter host call (e.g. host.agent.ask, host.run on a long command)
 	// doesn't freeze the TUI.
 	orch := m.orch
 	sid := m.sid
@@ -1617,22 +1849,23 @@ func (m RootModel) dispatchInput(input string) (tea.Model, tea.Cmd) {
 	if err != nil {
 		// Drop the placeholder before printing the error.
 		m.transcript.FinalizeLive("")
-		m.transcript.AppendError("", fmt.Sprintf("error: %v", err))
+		m.transcript.AppendError("", fmt.Sprintf("error: %s", userfacing.Error(err)))
 		return m, nil
 	}
 	if hit {
-		settled := ir.settledLine(
-			"in-room", intent,
-			blocks.SourceDeterministic, 0, "",
-		)
-		m.transcript.FinalizeLive(settled)
-		return startAsyncTurn(m, input, asyncSubmitDirectFromInput(orch, sid, intent, slots, input), pendingDeterministic)
+		// Deterministic match at submit time — the pipeline resolves on the
+		// first layer and settles immediately (this path has no completion-time
+		// finalizer because handleTurnOutcome skips deterministic turns).
+		m.routing.markHit(TierDeterministic, intent, "", 0, false)
+		m.transcript.FinalizeLive(m.routing.renderResolved())
+		return startAsyncTurn(m, input, asyncSubmitDirectFromInput(orch, sid, intent, slots, input, orchestrator.RouteProvenance{Source: "deterministic"}), pendingDeterministic)
 	}
 
-	// No deterministic match — advance the live routing block to
-	// "LLM…" and dispatch through the LLM router. The settled line
-	// lands in handleTurnOutcome.
-	m.transcript.UpdateLive(ir.phaseLine(blocks.PhaseLLM))
+	// No deterministic match — the deterministic layer is passed-through; the
+	// async router (semantic → LLM) drives the rest via RoutingTier*Msg, and
+	// handleTurnOutcome finalizes. Advance the live pipeline now.
+	m.routing.markMiss(TierDeterministic, "")
+	m.transcript.UpdateLive(m.routing.renderProgress())
 	return startAsyncTurn(m, input, asyncTurn(orch, sid, input), pendingLLM)
 }
 
@@ -1667,10 +1900,12 @@ func asyncSubmitDirect(orch *orchestrator.Orchestrator, sid app.SessionID, inten
 
 // asyncSubmitDirectFromInput is asyncSubmitDirect's user-input-preserving
 // variant: the deterministic match has the user's original text, so we
-// thread it through onto the TurnStarted audit record.
-func asyncSubmitDirectFromInput(orch *orchestrator.Orchestrator, sid app.SessionID, intent string, slots map[string]any, userInput string) func(context.Context) (*orchestrator.TurnOutcome, error) {
+// thread it through onto the TurnStarted audit record. prov records which
+// surface resolved the intent (deterministic menu match, disambiguation
+// pick, …) so the persisted trace explains the transition.
+func asyncSubmitDirectFromInput(orch *orchestrator.Orchestrator, sid app.SessionID, intent string, slots map[string]any, userInput string, prov orchestrator.RouteProvenance) func(context.Context) (*orchestrator.TurnOutcome, error) {
 	return func(ctx context.Context) (*orchestrator.TurnOutcome, error) {
-		return orch.SubmitDirectFromInput(ctx, sid, intent, slots, userInput)
+		return orch.SubmitDirectRouted(ctx, sid, intent, slots, userInput, prov)
 	}
 }
 
@@ -1685,24 +1920,49 @@ func startAsyncTurn(
 ) (RootModel, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Wire the meta-stream sink into the turn context so any
-	// host.oracle.ask_with_mcp call fired by an on_enter chain streams
+	// host.agent.ask_with_mcp call fired by an on_enter chain streams
 	// live tool-use / narration events into the chat transcript — same
-	// surface meta-mode already uses. The oracle handler auto-enables
+	// surface meta-mode already uses. The agent handler auto-enables
 	// stream-json output when StreamSinkFrom(ctx) != nil, and the
 	// orchestrator passes this ctx straight through to host.Invoke.
 	if m.metaStreamSink != nil {
 		ctx = host.WithStreamSink(ctx, m.metaStreamSink)
 	}
+	// Ambient editor context captured at submit (captureIDEAmbient). A
+	// no-op (empty File) leaves the prompt scope byte-identical to a turn
+	// with no editor; otherwise the agent handlers expose it as args.ide.
+	ctx = host.WithIDEAmbient(ctx, m.pendingIDEAmbient)
+	// Wire the operator prompter so a dispatched agent agent that forwards an
+	// AskUserQuestion can surface it as an inline widget and block for the
+	// operator's answer. Nil-safe: WithOperatorPrompter no-ops on a nil
+	// prompter, leaving the headless tool-denied posture.
+	if m.operatorPrompter != nil {
+		ctx = host.WithOperatorPrompter(ctx, m.operatorPrompter)
+	}
+	// Wire the spatial prompter so a dispatched oracle that requests a spatial
+	// ambient surfaces an OSC 8 link to a transient `/point` window and blocks
+	// the turn for the operator's visual bundle. Nil-safe: WithSpatialPrompter
+	// no-ops on a nil prompter, leaving the text-only headless posture.
+	if m.spatialPrompter != nil {
+		ctx = host.WithSpatialPrompter(ctx, m.spatialPrompter)
+	}
 	m.inFlightCancel = cancel
 	m.mode = ModeAwaitingLLM
 	m.pendingKind = kind
+	// Fresh turn: never carry a deferred thought from a prior turn (the
+	// previous turn's `result` event may have been dropped to
+	// backpressure before it could clear the buffer).
+	m.metaStreamPending = ""
 
 	cmd := func() tea.Msg {
 		out, err := run(ctx)
 		if err != nil {
-			// If the context was cancelled, return a ModeCancelled outcome
-			// rather than a raw error.
-			if ctx.Err() != nil {
+			// Only treat this as a cancellation when the error itself is a
+			// context cancellation/deadline. Checking ctx.Err() alone is wrong:
+			// the ctx may have been cancelled asynchronously after a genuine
+			// non-cancellation error was produced, which would misclassify a
+			// real failure as a clean cancel.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return turnOutcomeMsg{
 					outcome: &orchestrator.TurnOutcome{Mode: orchestrator.ModeCancelled},
 					input:   input,
@@ -1757,8 +2017,50 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		next.transcript.AppendBlock(body)
 		return next, cmd
 
-	case "/actions":
+	case "/intents":
 		body, next, cmd := ActionsCommand{}.Run(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
+	case "/ideas":
+		body, next, cmd := IdeasCommand{}.Run(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
+	case "/chat":
+		body, next, cmd := ChatCommand{}.Run(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
+	case "/provider":
+		body, next, cmd := ProviderCommand{}.Run(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
+	case "/model":
+		body, next, cmd := ModelCommand{}.Run(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
+	case "/effort":
+		body, next, cmd := EffortCommand{}.Run(m, parts[1:])
+		if body != "" {
+			next.transcript.AppendBlock(body)
+		}
+		return next, cmd
+
+	case "/mine":
+		body, next, cmd := MineCommand{}.Run(m, parts[1:])
 		if body != "" {
 			next.transcript.AppendBlock(body)
 		}
@@ -1812,12 +2114,27 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	case "/world":
 		return m.openWorldView()
 
+	case "/ide":
+		return m.handleIDESlash(parts[1:])
+
+	case "/open":
+		return m.handleOpenSlash(parts[1:])
+
 	case "/inbox":
 		// Single-pane redesign: print the inbox inline as a chat
 		// block. The legacy panel toggle is preserved for back-compat
 		// until phase 3 deletes the panel.
-		m.transcript.AppendBlock(renderInboxBlock(m, parts[1:]))
+		var block string
+		var cmd tea.Cmd
+		m, block, cmd = renderInboxBlock(m, parts[1:])
+		m.transcript.AppendBlock(block)
 		m.inbox.ToggleExpanded()
+		return m, cmd
+
+	case "/work":
+		var block string
+		m, block = renderWorkBlock(m, parts[1:])
+		m.transcript.AppendBlock(block)
 		return m, nil
 
 	case "/meta":
@@ -2095,7 +2412,7 @@ func (m RootModel) handleTraceToggle() RootModel {
 func (m RootModel) dispatchMenuEntry(entry *orchestrator.MenuEntry) (tea.Model, tea.Cmd) {
 	if len(entry.MissingSlots) == 0 {
 		// All slots are known — submit directly. Run async with the spinner
-		// so a slow on_enter host call (e.g. host.oracle.ask) does not freeze
+		// so a slow on_enter host call (e.g. host.agent.ask) does not freeze
 		// the TUI.
 		slots := entry.PrefilledSlots
 		if slots == nil {
@@ -2130,16 +2447,6 @@ func (m RootModel) dispatchMenuEntry(entry *orchestrator.MenuEntry) (tea.Model, 
 	return m, nil
 }
 
-func (m RootModel) runTurn(input string) tea.Cmd {
-	orch := m.orch
-	sid := m.sid
-	return func() tea.Msg {
-		ctx := context.Background()
-		out, err := orch.Turn(ctx, sid, input)
-		return turnOutcomeMsg{outcome: out, input: input, err: err}
-	}
-}
-
 func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 	// Clear in-flight state (safe to call even if already cleared).
 	if m.inFlightCancel != nil {
@@ -2148,6 +2455,10 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 	if m.mode == ModeAwaitingLLM {
 		m.mode = ModeOnPath
 	}
+	// Turn finished: drop any deferred final-answer thought so it can't
+	// leak into a later turn's thinking. The room presents the response
+	// in the view it renders below.
+	m.metaStreamPending = ""
 
 	prevState := string(m.currentState)
 
@@ -2155,7 +2466,7 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		// Drop any in-flight routing placeholder; the user already saw
 		// their echo, the error is a complete narrative.
 		m.transcript.FinalizeLive("")
-		m.transcript.AppendError("", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 
@@ -2170,24 +2481,34 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 	case orchestrator.ModeTransitioned, orchestrator.ModeCompleted:
 		m.currentState = out.NewState
 		// Swap the transcript buffer if this transition crossed a
-		// room boundary (single-pane-tui proposal §"Per-room
-		// transcript buffers"). No-op when prev/new share a top-level
-		// segment.
+		// room boundary (each room keeps its own transcript buffer).
+		// No-op when prev/new share a top-level segment.
 		m.maybeSwitchRoomOnState(app.StatePath(prevState), out.NewState)
 		// Settle the inline routing block if it's still in flight
 		// (deterministic-hit paths already settled at submit time;
 		// LLM paths settle here). Then append the agent's body as a
 		// separate entry — the header was already echoed at submit
 		// time so AppendAgentBody / AppendAgentBodyTyped omit it.
-		ir := m.newInlineRouter()
-		// pendingKind tracks why the model was AwaitingLLM. We use it
-		// to distinguish deterministic (already-settled) from LLM
-		// (needs settling here). Defaults to LLM on the unsettled path
-		// because pendingKind isn't reset elsewhere.
+		// pendingKind tracks why the model was AwaitingLLM. Deterministic turns
+		// already settled their pipeline at submit time; the LLM path settles
+		// here — the SINGLE finalizer, so a late hit event can't double-settle.
 		deterministic := m.pendingKind == pendingDeterministic
-		if !deterministic {
-			res := settledFromOutcome(out, prevState, msg.input, false)
-			m.transcript.FinalizeLive(ir.r.RoutingResolved(res))
+		// Finalize the routing line only if an observer hit hasn't already (the
+		// hit handler clears the live line when it settles). hasLive guards
+		// against a double-commit regardless of which runs first.
+		if !deterministic && m.transcript.hasLive() {
+			// Turns that bypassed submitInput (e.g. a warp) never initialized the
+			// pipeline — give it layers before resolving.
+			if len(m.routing.layers) == 0 {
+				m.routing = newRoutingPipeline()
+			}
+			// No hit event arrived live — fill the winner from the authoritative
+			// TurnStarted provenance (or main-turn claude).
+			if !m.routing.resolved() {
+				routedBy, matchType, conf := provenanceFromEvents(out.Events)
+				m.routing.resolveFromProvenance(routedBy, matchType, conf, intentFromEvents(out.Events))
+			}
+			m.transcript.FinalizeLive(m.routing.renderResolved())
 		}
 		// If the new view declares an interactive choice widget,
 		// open it FIRST so we can strip the choice element from the
@@ -2227,7 +2548,7 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		// Update location.
 		m = m.updateLocation(out)
 
-		// Auto-print the actions block at end of turn when /actions
+		// Auto-print the intents block at end of turn when /intents
 		// auto on was issued. The block follows the agent body so the
 		// user sees: their input → resolution → result → next-step
 		// actions, in scrollback-friendly order.
@@ -2253,6 +2574,44 @@ func (m RootModel) handleTurnOutcome(msg turnOutcomeMsg) (tea.Model, tea.Cmd) {
 		if block := m.clarify.RenderInlineBlock(blocks.New(m.transcript.width, m.currentTheme())); block != "" {
 			m.transcript.AppendBlock(block)
 		}
+
+	case orchestrator.ModeOffPath:
+		// A SYNCHRONOUS off-path outcome — the agent off-ramp fired on a
+		// no-match free-text utterance in a room that declared
+		// `agent_off_ramp:`. The orchestrator already ran the converse
+		// turn and handed back the free-form answer in out.View WITHOUT
+		// advancing the state machine or mutating world. We render that
+		// answer as the soft off-path-themed agent bubble and leave the
+		// user exactly where they were: same room, same menu.
+		//
+		// This is DISTINCT from the typed `/freeform` flow (offpath.go),
+		// which flips the model into the persistent ModeOffPath *view
+		// mode* and gates further input behind the async AskOffPath loop.
+		// Here we must NOT enter that mode — the room is still on-path and
+		// the next turn should route normally — so we keep m.mode at
+		// ModeOnPath (already restored at the top of handleTurnOutcome).
+		m.transcript.FinalizeLive("")
+		// State is unchanged by contract; carry NewState through so a
+		// non-empty resting path keeps currentState honest (it equals the
+		// room the user is standing in).
+		if out.NewState != "" {
+			m.currentState = out.NewState
+		}
+		answer := out.View
+		if answer == "" {
+			answer = "(no reply)"
+		}
+		// Soft amber off-path answer styling — mirrors the typed-trigger
+		// off-path reply (handleOffPathReply → AppendOffPathAnswer) so a
+		// no-match answer reads as the same free-form voice. The user
+		// echo already happened at submit time, so pass userInput="".
+		m.transcript.AppendOffPathAnswer("", answer)
+		// Re-assert the menu from the echoed (unchanged) allowed list so
+		// the room's actions stay advertised, then refresh the location
+		// bar against the unchanged resting state.
+		w := m.orch.InitialWorld()
+		m = m.updateMenuFromAllowed(out.AllowedIntents, w)
+		m = m.updateLocation(out)
 
 	case orchestrator.ModeRejected:
 		m.transcript.FinalizeLive("")
@@ -2394,7 +2753,7 @@ func (m RootModel) handleContinueTurnOutcome(msg continueTurnOutcomeMsg) (tea.Mo
 		// double-Enter from triggering a competing Turn.)
 		m.mode = ModeOnPath
 		m.inFlightCancel = nil
-		m.transcript.AppendError("(slot-fill)", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("(slot-fill)", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	out := msg.outcome
@@ -2481,7 +2840,45 @@ func (m RootModel) resolveMetaName(args []string) string {
 			return key
 		}
 	}
+	// Bare verb: `candidate` is not a group, but a grouped mode may use
+	// it as its TRIGGER — `/meta bug`, `/meta ask`, `/meta edit`. These
+	// are engine builtins keyed `story.bug` / `kitsoki.bug` etc.; the
+	// grouping exists to avoid the trigger colliding with a story's
+	// intent of the same name (see validateMetaModes), so the verbs are
+	// not flat keys and need this lookup. Resolve to the matching verb,
+	// preferring the story group so a bare `/meta <verb>` targets the
+	// RUNNING STORY by default; engine-targeted variants are reached
+	// explicitly via `/meta kitsoki <verb>`.
+	if key := metaVerbKey(def, candidate); key != "" {
+		return key
+	}
 	return candidate
+}
+
+// defaultMetaGroup is the meta-mode group that bare `/meta` and bare
+// `/meta <verb>` resolve into by default — the story-targeting builtins.
+// Engine-targeting (`kitsoki.*`) is always explicit (`/meta kitsoki …`).
+const defaultMetaGroup = "story"
+
+// metaVerbKey resolves a bare verb (the trigger of a grouped meta mode)
+// to a MetaModes key, preferring [defaultMetaGroup] so bare `/meta bug`
+// targets the running story. Returns "" when no mode declares trigger.
+// Iterates in lex order so the non-story fallback is deterministic.
+func metaVerbKey(def *app.AppDef, trigger string) string {
+	var fallback string
+	for _, name := range sortedMetaModeNames(def) {
+		m := def.MetaModes[name]
+		if m == nil || m.Trigger != trigger {
+			continue
+		}
+		if m.Group == defaultMetaGroup {
+			return name
+		}
+		if fallback == "" {
+			fallback = name
+		}
+	}
+	return fallback
 }
 
 // handleMetaList kicks off a transcript-inline listing of this app's
@@ -2537,7 +2934,7 @@ func (m RootModel) handleMetaDone() (tea.Model, tea.Cmd) {
 // regret it.
 func (m RootModel) handleMetaDoneDone(msg metaDoneDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.transcript.AppendError("(meta done)", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("(meta done)", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	id := msg.archivedID
@@ -2633,8 +3030,8 @@ func metaListColumns() []string {
 	return []string{"ID", "MODE", "SCOPE", "UPDATED", "PREVIEW"}
 }
 
-// openSessionsPanel kicks off the foyer "meta sessions" overlay
-// (proposal §2.1). The controller call is async (it touches the
+// openSessionsPanel kicks off the foyer "meta sessions" overlay.
+// The controller call is async (it touches the
 // chats DB), so we leave the model in ModeOnPath until the
 // sessionsPanelLoadedMsg comes back. If meta plumbing is missing
 // we surface a hint via the transcript instead of opening an empty
@@ -2744,7 +3141,7 @@ func dedupSorted(in []string) []string {
 // resolved one, clears the transcript pane, and stays in ModeMeta.
 func (m RootModel) handleMetaNewDone(msg metaNewDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.transcript.AppendError("(meta new)", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("(meta new)", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	if msg.session == nil {
@@ -2932,7 +3329,7 @@ func (m *RootModel) replayMetaTranscript(chatID string) {
 // message was already appended to the in-memory transcript when the
 // user hit Enter; here we append the assistant reply and, when the
 // authoring tools fired, reload the orchestrator.
-// handleMetaStreamEvent renders one streaming oracle event into the
+// handleMetaStreamEvent renders one streaming agent event into the
 // chat transcript as a muted "→ …" line. Called from updateMeta only
 // (the top-level Update silently drops stale events from cancelled or
 // already-finished sends).
@@ -2946,9 +3343,9 @@ func (m *RootModel) replayMetaTranscript(chatID string) {
 //     metaSendDoneMsg's AppendSystem; the stream-side result event
 //     would duplicate it)
 //
-// The handler fires whenever an oracle call is in flight — that's
+// The handler fires whenever an agent call is in flight — that's
 // either a meta-mode turn (ModeMeta + metaMode.inFlight) or an
-// on-path turn that's invoking host.oracle.ask_with_mcp from an
+// on-path turn that's invoking host.agent.ask_with_mcp from an
 // on_enter chain (ModeAwaitingLLM). Both surface the live tool-use
 // trail so the user sees progress instead of a silent spinner.
 // Defensive: events arriving when neither path is in flight are
@@ -2966,36 +3363,90 @@ func (m RootModel) handleMetaStreamEvent(msg MetaStreamMsg) RootModel {
 	ev := msg.Event
 	switch ev.Type {
 	case "assistant":
-		if ev.Tool != "" {
-			// Tool use: separate styling, leading blank line for
-			// breathing room (handled inside AppendMetaToolUse).
-			args := ev.Preview
-			if r := []rune(args); len(r) > 80 {
-				args = string(r[:80]) + "…"
-			}
-			m.transcript.AppendMetaToolUse(ev.Tool, args)
-			return m
+		if ev.Thinking != "" {
+			// Extended-thinking prose. Unlike pure narration (which is
+			// deferred below because the FINAL reply also arrives as a
+			// plain assistant text message), thinking is never the reply —
+			// render it immediately, above whatever this event also
+			// carries. Any earlier deferred thought is proven intermediate
+			// by this fresh assistant event, so flush it first.
+			m = m.flushPendingThought()
+			m.transcript.AppendMetaThinking(ev.Thinking)
 		}
-		if ev.Preview != "" {
-			// Narration / "thinking" prose. Tight (no leading
-			// blank line) so consecutive thoughts read as one
-			// paragraph.
-			m.transcript.AppendMetaThinking(ev.Preview)
+		if ev.Tool != "" {
+			// A thought paired with a tool call is unambiguously
+			// intermediate — a tool round-trip still follows, so it is
+			// never the final answer. Any earlier deferred thought is
+			// therefore also intermediate; flush it, then render this
+			// one in full plus the compact tool breadcrumb. Render the
+			// thought first so it reads above the action it explains.
+			m = m.flushPendingThought()
+			if ev.Text != "" {
+				// Narration / "thinking" prose, in full — the transcript
+				// word-wraps it. Tight (no leading blank line) so
+				// consecutive thoughts read as one paragraph.
+				m.transcript.AppendMetaThinking(ev.Text)
+			}
+			// Tool use: compact one-line args breadcrumb (Preview is
+			// already clipped upstream), separate styling, leading blank
+			// line for breathing room (inside AppendMetaToolUse). One
+			// assistant event can batch several parallel tool calls, so
+			// render each on its own line (ev.Tools); fall back to the
+			// scalar ev.Tool for events that predate the slice.
+			if len(ev.Tools) > 0 {
+				for _, tc := range ev.Tools {
+					m.transcript.AppendMetaToolUse(tc.Name, tc.Preview)
+				}
+			} else {
+				m.transcript.AppendMetaToolUse(ev.Tool, ev.Preview)
+			}
+		} else if ev.Text != "" {
+			// Pure narration with no tool call. Ambiguous until the next
+			// event: intermediate thought (flush) or final answer (drop
+			// on `result`). A previously deferred thought is now proven
+			// intermediate — this fresh assistant message followed it —
+			// so flush that one, then defer this one in its place.
+			m = m.flushPendingThought()
+			m.metaStreamPending = ev.Text
 		}
 	case "system":
 		if ev.Subtype == "api_retry" {
+			// A retry means more model output follows; any held thought
+			// was intermediate.
+			m = m.flushPendingThought()
 			m.transcript.AppendMetaSystemNotice("(retrying claude request…)")
 		}
-	case "user", "result":
-		// Skipped — tool_result content is too noisy, and result
-		// would duplicate the assistant reply already appended via
-		// metaSendDoneMsg.
+	case "user":
+		// tool_result: noisy content we don't render, but its arrival
+		// proves any deferred thought preceded more work — flush it.
+		m = m.flushPendingThought()
+	case "result":
+		// Terminal event: a deferred thought was the model's FINAL
+		// answer. DROP it — the room (on-path) or metaSendDone's
+		// AppendSystem (meta) presents the final reply, so echoing it
+		// here as thinking would duplicate it.
+		m.metaStreamPending = ""
+	}
+	return m
+}
+
+// flushPendingThought commits any deferred pure-narration message to the
+// transcript as "thinking" and clears the buffer. A no-op when nothing
+// is pending. See metaStreamPending for why narration is deferred.
+func (m RootModel) flushPendingThought() RootModel {
+	if m.metaStreamPending != "" {
+		m.transcript.AppendMetaThinking(m.metaStreamPending)
+		m.metaStreamPending = ""
 	}
 	return m
 }
 
 func (m RootModel) handleMetaSendDone(msg metaSendDoneMsg) (tea.Model, tea.Cmd) {
 	m.metaMode.inFlight = false
+	// Turn finished: drop any thought still deferred (it was the final
+	// answer, surfaced below via AppendSystem) so it can't leak into the
+	// next turn's thinking if the `result` stream event was lost.
+	m.metaStreamPending = ""
 
 	if msg.err != nil {
 		if errors.Is(msg.err, metamode.ErrChatBusy) {
@@ -3008,7 +3459,7 @@ func (m RootModel) handleMetaSendDone(msg metaSendDoneMsg) (tea.Model, tea.Cmd) 
 				"this chat is currently held by another driver — wait for it to release, or run `kitsoki chat unlock --force <chat-id>` if you know it's stuck")
 			return m, nil
 		}
-		m.transcript.AppendError("(meta)", fmt.Sprintf("error: %v", msg.err))
+		m.transcript.AppendError("(meta)", fmt.Sprintf("error: %s", userfacing.Error(msg.err)))
 		return m, nil
 	}
 	m.metaMode.turns++
@@ -3032,15 +3483,9 @@ func (m RootModel) handleMetaSendDone(msg metaSendDoneMsg) (tea.Model, tea.Cmd) 
 	return m, nil
 }
 
-// reloadOrchestratorAfterMeta is the no-file-list overload used by
-// the dormant legacy authoring-token dispatcher.
-func (m RootModel) reloadOrchestratorAfterMeta() (tea.Model, tea.Cmd) {
-	return m.reloadOrchestratorAfterMetaWithFiles(nil)
-}
-
 // handleReloadSlash implements `/reload`. It hot-swaps the app
 // definition from disk and re-fires the current state's on_enter
-// chain so view-template edits, on_enter additions, or oracle-prompt
+// chain so view-template edits, on_enter additions, or agent-prompt
 // changes take effect without restarting the session.
 //
 // The flow:
@@ -3051,13 +3496,13 @@ func (m RootModel) reloadOrchestratorAfterMeta() (tea.Model, tea.Cmd) {
 //  2. Refresh the menu, location, and prompt placeholder so they
 //     reflect the new app graph.
 //  3. Dispatch Orchestrator.RerunOnEnter asynchronously — the
-//     current room's on_enter typically calls an oracle and we don't
+//     current room's on_enter typically calls an agent and we don't
 //     want the TUI to freeze for ~60s. The TurnOutcome flows back
 //     through the existing turnOutcomeMsg handler, which re-renders
 //     the view and resets the prompt.
 //
 // `/reload` is destructive on side-effect-bearing on_enter chains
-// (it WILL re-invoke an oracle, re-post to a transport, etc.). The
+// (it WILL re-invoke an agent, re-post to a transport, etc.). The
 // trade-off is intentional — the operator explicitly asked for "redo
 // whatever actions" so that the dogfood "edit story externally,
 // observe the new behaviour" loop closes without a TUI restart.
@@ -3075,9 +3520,17 @@ func (m RootModel) handleReloadSlash() (tea.Model, tea.Cmd) {
 
 	res, err := m.orch.Reload(m.appPath, m.currentState)
 	if err != nil {
-		m.transcript.AppendError("/reload",
-			fmt.Sprintf("reload failed: %v", err))
+		m.transcript.AppendWarning("/reload",
+			fmt.Sprintf("Attempting to reload the story failed due to syntax errors — "+
+				"keeping the previous version running. Fix the file and reload again.\n  %v", err))
 		return m, nil
+	}
+
+	// Record the story change into the trace so the replay stays
+	// self-contained even after a hot-reload (see store.StoryChanged).
+	if recErr := m.orch.RecordEffectiveStory(context.Background(), m.sid); recErr != nil {
+		m.transcript.AppendError("/reload",
+			fmt.Sprintf("reloaded, but recording the story change failed: %v", recErr))
 	}
 
 	// Refresh the menu, location, and prompt placeholder against the
@@ -3123,9 +3576,17 @@ func asyncRerunOnEnter(orch *orchestrator.Orchestrator, sid app.SessionID) func(
 func (m RootModel) reloadOrchestratorAfterMetaWithFiles(changed []string) (tea.Model, tea.Cmd) {
 	res, err := m.orch.Reload(m.appPath, m.currentState)
 	if err != nil {
-		m.transcript.AppendError("(meta)",
-			"applied to disk but reload failed: "+err.Error())
+		m.transcript.AppendWarning("(meta)",
+			"Attempting to reload the story failed due to syntax errors — "+
+				"your edit is saved, but I'm keeping the previous version running. "+
+				"Fix the file and reload again.\n  "+err.Error())
 		return m, nil
+	}
+	// Record the meta edit into the trace so the replay stays self-contained
+	// (the edit may be uncommitted, so a git sha can't name it).
+	if recErr := m.orch.RecordEffectiveStory(context.Background(), m.sid); recErr != nil {
+		m.transcript.AppendError("(meta)",
+			"reloaded, but recording the story change failed: "+recErr.Error())
 	}
 	w := m.orch.CurrentWorld(m.sid)
 	computed := orchestrator.ComputeMenu(m.orch.AppDef(), m.orch.Machine(), m.currentState, w)
@@ -3261,7 +3722,7 @@ func (m RootModel) updateMeta(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// pivot between meta chats (or close the current one) without
 	// forcing /onpath first. /attach hands the terminal to a
 	// tmux-hosted `claude --resume` session against the active
-	// meta chat (proposal §4.2 / §9.3); /sessions list and
+	// meta chat; /sessions list and
 	// /sessions attach <N> work too so the user can hop to any
 	// background claude conversation without leaving /meta.
 	// Anything else with a "/" prefix is still discouraged.
@@ -3307,9 +3768,6 @@ func (m RootModel) updateMeta(msg tea.Msg) (tea.Model, tea.Cmd) {
 // only when the write succeeds so the agent never sees a stale or
 // missing file path in the preamble.
 func (m RootModel) buildMetaTurnContext() metamode.TurnContext {
-	w := m.orch.CurrentWorld(m.sid)
-	view, _ := m.orch.Machine().RenderState(m.currentState, w)
-
 	tracePath := ""
 	switch {
 	case m.traceFilePath == "":
@@ -3331,23 +3789,10 @@ func (m RootModel) buildMetaTurnContext() metamode.TurnContext {
 		}
 	}
 
-	// Surface the imported-manifest paths so the metamode controller's
-	// file-watch tree includes every sibling story's directory. Without
-	// this, an edit in stories/robbery/ while running stories/oregon-trail/
-	// would not auto-reload. (Story-imports proposal §16.4.)
-	var importedPaths []string
-	if def := m.orch.AppDef(); def != nil {
-		importedPaths = append(importedPaths, def.LoadedManifests...)
-	}
-
-	return metamode.TurnContext{
-		StatePath:             string(m.currentState),
-		AppFile:               m.appPath,
-		RenderedView:          view,
-		World:                 w.Vars,
-		TracePath:             tracePath,
-		ImportedManifestPaths: importedPaths,
-	}
+	// World, the rendered view, and the imported-manifest watch set are
+	// derived from the live orchestrator by the shared builder so this
+	// surface and the `kitsoki web` meta driver produce identical context.
+	return metamode.BuildTurnContext(m.orch, m.sid, m.currentState, m.appPath, tracePath)
 }
 
 // exitMetaMode tears down the overlay and pops back to ModeOnPath.
@@ -3358,7 +3803,7 @@ func (m RootModel) exitMetaMode() RootModel {
 	ctrl := m.metaController
 	sess := m.metaMode.session
 	if ctrl != nil && sess != nil {
-		// Exit is currently a no-op (proposal §4.3: drafts survive).
+		// Exit is currently a no-op (drafts survive).
 		// Capture the error for diagnostics but don't block the UX.
 		if err := ctrl.Exit(context.Background(), sess); err != nil {
 			slog.Warn("tui.meta: controller.Exit error", "err", err)
@@ -3462,6 +3907,13 @@ func (m RootModel) handleMenuSystemChoice(msg menuSystemChoiceMsg) (tea.Model, t
 		return m.startMetaMode(msg.modeName)
 	case menuActionMetaSessions:
 		return m.openSessionsPanel()
+	case menuActionHelp:
+		// Same block `/help` produces, surfaced from the Esc menu.
+		body, next, cmd := HelpCommand{}.Run(m, nil)
+		next.transcript.AppendBlock(body)
+		return next, cmd
+	case menuActionWorld:
+		return m.openWorldView()
 	}
 	return m, nil
 }
@@ -3549,7 +4001,7 @@ func (m RootModel) updateDisambiguating(msg tea.Msg) (tea.Model, tea.Cmd) {
 //     ModeOnPath, restoring the pre-widget draft.
 //   - Cancel == false: the user finalised. Dispatch through
 //     asyncSubmitDirect, the same call dispatchMenuEntry uses for the
-//     right-pane menu (proposal §2.3 — dispatch parity).
+//     right-pane menu (dispatch parity).
 func (m RootModel) updateChoosing(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -3648,6 +4100,112 @@ func (m RootModel) updateChoosing(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleOperatorQuestion opens the inline question widget when a dispatched
+// agent agent forwards an AskUserQuestion into kitsoki (operatorQuestionMsg,
+// dispatched by TUIOperatorPrompter.Ask). The turn is still in flight — the
+// agent is blocked on msg.answerCh — so we overlay the question on the live
+// region and switch to ModeOperatorQuestion without disturbing the awaiting
+// state we restore on commit.
+//
+// A malformed (empty) batch can't be answered: we hand the agent a nil answer
+// straight back so it proceeds on its own, rather than trapping the operator.
+func (m RootModel) handleOperatorQuestion(msg operatorQuestionMsg) (tea.Model, tea.Cmd) {
+	if err := m.operatorQuestion.Open(msg.questions, msg.answerCh); err != nil {
+		slog.Warn("tui.operator_question.open_failed", slog.String("err", err.Error()))
+		if msg.answerCh != nil {
+			msg.answerCh <- nil
+		}
+		return m, nil
+	}
+	// Settle any in-flight live line (e.g. a resolved routing line) before the
+	// question takes the slot, then paint the question.
+	if m.transcript.hasLive() {
+		m.transcript.FinalizeLive("")
+	}
+	m.transcript.AppendLive(m.operatorQuestion.View(m.transcript.wrapWidth()))
+	m.mode = ModeOperatorQuestion
+	return m, nil
+}
+
+// updateOperatorQuestion handles input while a forwarded agent question owns the
+// keyboard. Routes tea.KeyMsg through operatorQuestionModel.Update; resize /
+// turn-outcome messages fall through so the rest of the model keeps reacting
+// (mirror updateChoosing).
+//
+// On commit the answer is sent back over the channel the agent is parked on and
+// the model RESUMES ModeAwaitingLLM (the same turn continues) — unlike the
+// choice widget, which starts a fresh turn. A nil answer (Esc) tells the host to
+// let the agent decide on its own.
+func (m RootModel) updateOperatorQuestion(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m = m.resize()
+		m.transcript.UpdateLive(m.operatorQuestion.View(m.transcript.wrapWidth()))
+		return m, nil
+
+	case turnOutcomeMsg:
+		// The turn completed/cancelled while the question was on screen — the
+		// only way this happens is a ctx cancel (Ctrl+C) unblocking the parked
+		// Ask. Tear the widget down (the agent already returned ctx.Err(); no
+		// answer is owed) and fall through to the normal handler.
+		m.operatorQuestion.Close()
+		m.transcript.FinalizeLive("")
+		m.mode = ModeOnPath
+		m.inFlightCancel = nil
+		return m.handleTurnOutcome(msg)
+
+	case continueTurnOutcomeMsg:
+		return m.handleContinueTurnOutcome(msg)
+
+	case tea.KeyMsg:
+		// Ctrl+C cancels the whole turn — the parked agent's ctx is cancelled,
+		// Ask returns, and a turnOutcomeMsg (cancelled) will follow.
+		if msg.Type == tea.KeyCtrlC {
+			if m.inFlightCancel != nil {
+				m.inFlightCancel()
+			}
+			return m, nil
+		}
+
+		var result *operatorQuestionResult
+		var cmd tea.Cmd
+		m.operatorQuestion, cmd, result = m.operatorQuestion.Update(msg)
+		m.transcript.UpdateLive(m.operatorQuestion.View(m.transcript.wrapWidth()))
+		if result == nil {
+			return m, cmd
+		}
+
+		// Hand the answer (or nil on cancel) back to the parked agent and
+		// resume awaiting the in-flight turn's completion.
+		answerCh := m.operatorQuestion.answerCh
+		body := m.operatorQuestion.View(m.transcript.wrapWidth())
+		m.operatorQuestion.Close()
+		m.transcript.FinalizeLive(body)
+		m.mode = ModeAwaitingLLM
+		if result.Cancel {
+			m.transcript.AppendSystem("(left the answer to the agent)")
+			if answerCh != nil {
+				answerCh <- nil
+			}
+		} else {
+			m.transcript.AppendSystem("(answer sent to the agent)")
+			if answerCh != nil {
+				answerCh <- result.Answers
+			}
+		}
+		// Resume the spinner so the awaiting-LLM caption animates again.
+		if cmd == nil {
+			return m, m.spinner.Tick
+		}
+		return m, tea.Batch(cmd, m.spinner.Tick)
+	}
+
+	// Everything else falls through so the model keeps reacting underneath.
+	return m, nil
+}
+
 // findChoiceElement returns the first Kind=="choice" element in a
 // typed View, if any. Choice elements are loader-restricted to one per
 // view (see internal/app/view_element.go), so callers can rely on this
@@ -3713,7 +4271,7 @@ func (m RootModel) handleDisambiguationChoice(msg disambiguationChoiceMsg) (tea.
 		label = chosen.Intent
 	}
 	return startAsyncTurn(m, label,
-		asyncSubmitDirectFromInput(m.orch, m.sid, chosen.Intent, map[string]any{}, label),
+		asyncSubmitDirectFromInput(m.orch, m.sid, chosen.Intent, map[string]any{}, label, orchestrator.RouteProvenance{Source: "disambiguation"}),
 		pendingDeterministic,
 	)
 }
@@ -3756,9 +4314,11 @@ func (m RootModel) updateMenuFromAllowed(allowedNames []string, w interface{}) R
 // now?" and the user has no way to know that a bare Enter triggers
 // the room's default action (typically `continue`).
 //
-// The placeholder reads "↵ <intent> · what now?" when there's a
-// primary entry to advertise; falls back to "what now?" otherwise
-// (e.g. a terminal state where no action is in the menu).
+// The placeholder reads "↵ <intent> · describe what you want, or /help"
+// when there's a primary entry to advertise; falls back to "describe
+// what you want, or /help" otherwise (e.g. a terminal state where no
+// action is in the menu) — a new user gets both the NL-typing signal
+// and the /help discoverability cue.
 //
 // No-op when the prompt is in a mode that owns its own placeholder
 // — meta-mode ("meta chat — /onpath to return") and the game-over
@@ -3773,14 +4333,14 @@ func (m *RootModel) refreshPromptPlaceholder() {
 	}
 	def := m.menu.SelectedEntry()
 	if def == nil {
-		m.prompt.Placeholder = "what now?"
+		m.prompt.Placeholder = "describe what you want, or /help"
 		return
 	}
 	label := def.Intent
 	if def.Display != "" {
 		label = def.Display
 	}
-	m.prompt.Placeholder = "↵ " + label + " · what now?"
+	m.prompt.Placeholder = "↵ " + label + " · describe what you want, or /help"
 }
 
 func (m RootModel) updateLocation(out *orchestrator.TurnOutcome) RootModel {
@@ -3806,7 +4366,7 @@ func (m RootModel) resize() RootModel {
 
 	// Single-pane redesign (phase 3): the menu + inbox right column
 	// is gone — transcript fills the full terminal width. menu.go /
-	// inbox.go are still imported because /actions and /inbox read
+	// inbox.go are still imported because /intents and /inbox read
 	// from them, but their View() output is no longer composed into
 	// the screen.
 	transcriptWidth := m.width
@@ -3837,7 +4397,7 @@ func (m RootModel) resize() RootModel {
 	// World-view sub-model tracks the full pane.
 	m.worldView.SetSize(transcriptWidth, totalHeight)
 
-	// menu / inbox sub-models are kept for the /actions and /inbox
+	// menu / inbox sub-models are kept for the /intents and /inbox
 	// commands but no longer painted. We still size them so any
 	// future inline rendering pulls coherent widths.
 	m.menu.width = transcriptWidth
@@ -3941,7 +4501,11 @@ func (m RootModel) View() string {
 		// the queue affordance is obvious. The hourglass icon also
 		// replaces the textarea's normal "> " prefix on row 0 so
 		// the visual cue is unmistakable.
-		caption := "thinking via claude… (Ctrl+C to cancel)"
+		// Backend-neutral: the pendingLLM path runs the whole router, which may
+		// resolve via the local-model routing tier (agent.local) OR fall through
+		// to the main-turn claude. Naming a specific backend here mislabels a
+		// local-model route as "claude", so the caption stays neutral.
+		caption := "thinking… (Ctrl+C to cancel)"
 		if m.pendingKind == pendingDeterministic {
 			caption = "running…  (Ctrl+C to cancel)"
 		}
@@ -3987,37 +4551,15 @@ func (m RootModel) View() string {
 	//   > [prompt textarea]
 	//   [per-room status row, if the state declares Footer]
 	//   [coloured framework status row: room · state · mode · queue]
-	r := blocks.New(m.width, m.currentTheme())
-	var parts []string
-	if live := m.transcript.LiveLine(); live != "" {
-		parts = append(parts, live)
-	}
-	if bannerLine != "" {
-		parts = append(parts, bannerLine)
-	}
-	parts = append(parts, r.Divider())
-	parts = append(parts, promptLine)
-	if line2 := footerStoryLine(m); line2 != "" {
-		parts = append(parts,
-			lipgloss.NewStyle().
-				Foreground(colorMuted).
-				Italic(true).
-				Render(line2))
-	}
-	parts = append(parts, r.StatusRow(footerFrameworkLine(m), modeLabel(m.mode)))
-
-	// Trim trailing newlines from each part before joining. Every
-	// lipgloss.Render output ends with "\n", and JoinVertical
-	// inserts another "\n" between parts — without this trim the
-	// live region renders 2× as many rows as it visibly contains,
-	// which makes Bubble Tea's "clear-then-redraw" logic move the
-	// cursor too far up on the next paint and overwrite scrollback
-	// rows. (Symptom: status row "awaiting" appearing on the same
-	// terminal line as the last bullet of the agent body above.)
-	for i := range parts {
-		parts[i] = strings.TrimRight(parts[i], "\n")
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+	// Bottom-chrome assembly routes through the frame composer so the
+	// live screen and every headless capture (kitsoki drive / shot) are
+	// the same bytes. composeChromeParts builds the exact part list that
+	// View() used to inline; joinChromeParts performs the same
+	// trim-and-newline join. The live path passes m.width (chrome only —
+	// the body lives in scrollback via tea.Println), so this output is
+	// byte-identical to the pre-composer assembly.
+	parts := composeChromeParts(m, m.width, promptLine, bannerLine)
+	return joinChromeParts(parts)
 }
 
 // promptPrefix returns the styled mode-specific prompt prefix.
@@ -4111,17 +4653,6 @@ func promptHeightFor(ta *textarea.Model) int {
 // requirement: Enter→submit, Alt+Enter/Ctrl+J newline, line numbers
 // off, cursor-line highlight off, per-line prefix via SetPromptFunc.
 
-// renderFooter builds the two-line footer above the prompt. Line 1 is
-// framework-defaulted from RootModel state (location · mode · queue ·
-// unread). Line 2 is the story/room pongo2 template result; empty by
-// default — story authors opt in.
-func (m RootModel) renderFooter() string {
-	r := blocks.New(m.width, m.currentTheme())
-	line1 := footerFrameworkLine(m)
-	line2 := footerStoryLine(m)
-	return r.Footer(line1, line2)
-}
-
 // footerFrameworkLine assembles the location-and-counters portion of
 // the framework footer: room · state · queue · unread. Mode label
 // lives on the right side of the status row, so it's NOT included
@@ -4137,7 +4668,53 @@ func footerFrameworkLine(m RootModel) string {
 	if badge := m.inboxBadge(); badge != "" {
 		parts = append(parts, badge)
 	}
+	if badge := m.proposalsBadge(); badge != "" {
+		parts = append(parts, badge)
+	}
+	if chip := ideFooterChip(m); chip != "" {
+		parts = append(parts, chip)
+	}
 	return strings.Join(parts, " · ")
+}
+
+// discoverabilityHint is the persistent first-run cue re-advertised on
+// every frame, so a user isn't stranded once the welcome banner (which
+// lists /help, /world, …) scrolls off. Rendered on its own faint line in
+// the bottom chrome rather than the status row, so it never crowds out
+// the high-signal location/mode content on narrow terminals.
+const discoverabilityHint = "? help · Esc menu"
+
+// ideFooterChipTemplate is the pongo2 source for the IDE footer indicator.
+// Rendered only when connected so the chip is hidden/off otherwise — no
+// hand-rolled string concatenation builds the operator-visible text.
+const ideFooterChipTemplate = `{% if args.ide.connected %}⧉ ide: {{ args.ide.name }} ✓{% endif %}`
+
+// ideFooterChip renders the footer's IDE indicator through the footer pongo2
+// template against the live link state. Returns "" (hidden) when no editor is
+// connected. The decorative footer never bubbles a template error to the user —
+// a render failure degrades to no chip, matching footerStoryLine.
+func ideFooterChip(m RootModel) string {
+	connected := m.ideConnected()
+	name := ""
+	if connected {
+		name = displayIDEName(m.ideLink.IDEName())
+	}
+	env := expr.Env{
+		Slots: map[string]any{},
+		World: map[string]any{},
+		Event: map[string]any{},
+		Args: map[string]any{
+			"ide": map[string]any{
+				"connected": connected,
+				"name":      name,
+			},
+		},
+	}
+	out, err := render.Pongo(ideFooterChipTemplate, env)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 // footerStoryLine evaluates the active room's State.Footer pongo2
@@ -4146,6 +4723,9 @@ func footerFrameworkLine(m RootModel) string {
 // when evaluation errors — the footer is decorative, not load-bearing,
 // so we never bubble template errors up to the user.
 func footerStoryLine(m RootModel) string {
+	if m.orch == nil {
+		return ""
+	}
 	def := m.orch.AppDef()
 	if def == nil {
 		return ""

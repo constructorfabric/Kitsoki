@@ -1,0 +1,112 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: reporting
+initial_world:
+  question: "Compare current harnesses."
+  apply_mode: "local"
+  override_path: "/Users/brad/code/Kitsoki/.kitsoki.local.yaml"
+  report_artifact:
+    question: "Compare current harnesses."
+    markdown_path: ".context/model-harness-eval.md"
+    deck_path: ".artifacts/model-harness-eval/index.html"
+    slidey_spec_path: "docs/decks/model-harness-eval.json"
+    case_study_path: "docs/case-studies/model-harness-eval.md"
+    summary_path: ".artifacts/model-harness-eval/summary.json"
+    status: "complete"
+    configured_options:
+      - profile: "claude-native"
+        backend: "claude"
+        model: "opus"
+    recommendations:
+      fastest: { profile: "claude-native", model: "haiku", rationale: "Previous fastest placeholder.", evidence_status: "inferred" }
+      cheapest: { profile: "claude-native", model: "haiku", rationale: "Previous cheapest placeholder.", evidence_status: "inferred" }
+      best: { profile: "claude-native", model: "opus", rationale: "Previous best placeholder.", evidence_status: "inferred" }
+      selected: { profile: "synthetic-codex", model: "syn:small:text", rationale: "Previous selected placeholder.", evidence_status: "measured" }
+    override:
+      mode: "local"
+      path: "/Users/brad/code/Kitsoki/.kitsoki.local.yaml"
+      applied: true
+      selected_profile: "synthetic-codex"
+      selected_model: "syn:small:text"
+      selected_effort: "low"
+      summary: "Previous override placeholder."
+    summary_markdown: "## Existing report\n\nA sufficiently long existing summary body that should be cleared before the refined reporter pass runs again."
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      prepare_reports:
+        data:
+          ok: true
+          submitted:
+            question: "Compare current harnesses."
+            markdown_path: ".context/model-harness-eval.md"
+            deck_path: ".artifacts/model-harness-eval/index.html"
+            slidey_spec_path: "docs/decks/model-harness-eval.json"
+            case_study_path: "docs/case-studies/model-harness-eval.md"
+            summary_path: ".artifacts/model-harness-eval/summary.json"
+            status: "partial"
+            configured_options:
+              - profile: "claude-native"
+                backend: "claude"
+                model: "opus"
+                effort: "medium"
+                source: "baseline"
+                models: ["opus", "sonnet", "haiku"]
+              - profile: "codex-native"
+                backend: "codex"
+                model: "gpt-5-codex"
+                source: "local"
+                models: ["gpt-5-codex", "gpt-5"]
+            recommendations:
+              fastest:
+                profile: "claude-native"
+                model: "haiku"
+                rationale: "Fastest inferred configured native option after putting readiness gaps first."
+                evidence_status: "inferred"
+              cheapest:
+                profile: "claude-native"
+                model: "haiku"
+                rationale: "Cheapest inferred configured native option after putting readiness gaps first."
+                evidence_status: "inferred"
+              best:
+                profile: "codex-native"
+                model: "gpt-5-codex"
+                rationale: "Best inferred real-task option, with live eval evidence still missing."
+                evidence_status: "inferred"
+              selected:
+                profile: "synthetic-codex"
+                model: "syn:small:text"
+                rationale: "Selected from the numeric comparison table as the fastest and cheapest cost-compliant measured candidate."
+                evidence_status: "measured"
+                pass_rate_median: 0.67
+                latency_ms_median: 3050
+                latency_ms_p5: 3005
+                latency_ms_p95: 3095
+                avg_cost_usd: 0.0008
+            override:
+              mode: "local"
+              path: "/Users/brad/code/Kitsoki/.kitsoki.local.yaml"
+              applied: true
+              selected_profile: "synthetic-codex"
+              selected_model: "syn:small:text"
+              selected_effort: "low"
+              summary: "Updated main-checkout local default_profile to synthetic-codex and model to syn:small:text."
+            summary_markdown: |
+              ## Refined report
+
+              Readiness gaps come first, then the numeric model/harness table. The measured table selects synthetic-codex / syn:small:text as fastest and cheapest: 3050ms median p95 latency and $0.0008 median average cost. The local override result is recorded at /Users/brad/code/Kitsoki/.kitsoki.local.yaml.
+            limitations: ["Still no live provider benchmark evidence."]
+
+turns:
+  - intent:
+      name: refine
+      slots: { feedback: "put readiness gaps first" }
+    expect_state: reporting
+    expect_world:
+      refine_feedback: "put readiness gaps first"
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "prepare_reports" }
+
+expect_no_errors: true

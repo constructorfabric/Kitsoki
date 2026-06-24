@@ -1,0 +1,76 @@
+# cleanup — remove the maker's worktree + branch (force) after a green re-verify.
+#
+# Reuses the slice-1 git-ops cleanup mechanism: no swallowed failures — the real
+# exit binds and cleanup_outcome only flips to "cleaned" for a remove that
+# succeeded. force=true (--force + branch -D) because the maker's throwaway
+# branch is already merged. A refused cleanup routes to @exit:needs-human with
+# last_error (never a false "cleaned").
+#
+#   cleaned → report
+#   refused → @exit:needs-human (last_error)
+
+states:
+
+  cleanup:
+    description: "Remove the maker's worktree + branch after a green re-verify."
+    relevant_world: [workspace_id, worktree_path, workspace_branch, main_worktree_path, cleanup_outcome, last_error]
+    view:
+      - prose: "Re-verify passed on main. Removing the maker's worktree .worktrees/{{ world.workspace_id }} and branch {{ world.workspace_branch }}."
+      - prose: "Cleaned: {{ world.workspace_branch }} removed."
+        when: "world.cleanup_outcome == 'cleaned'"
+      - heading: "Cleanup refused — needs a human"
+        when: "world.cleanup_outcome == 'refused'"
+      - prose: "{{ world.last_error }}"
+        when: "world.cleanup_outcome == 'refused'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: cleanup_exec
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              MAIN_WT="{{ world.main_worktree_path }}"
+              [ -z "$MAIN_WT" ] && MAIN_WT="."
+              WT="{{ world.worktree_path }}"
+              [ -z "$WT" ] && WT=".worktrees/{{ world.workspace_id }}"
+              BR="{{ world.workspace_branch }}"
+              RM_EXIT=0
+              RM_OUT=$(git -C "$MAIN_WT" worktree remove --force "$WT" 2>&1) || RM_EXIT=$?
+              if [ "$RM_EXIT" -ne 0 ]; then
+                jq -n --arg out "$RM_OUT" '{outcome:"refused",last_op_ok:false,last_error:("worktree remove refused: "+$out)}'
+                exit 0
+              fi
+              git -C "$MAIN_WT" worktree prune 2>&1 || true
+              [ -n "$BR" ] && git -C "$MAIN_WT" branch -D "$BR" 2>&1 || true
+              jq -n --arg wt "$WT" --arg br "$BR" '{outcome:"cleaned",last_op_ok:true,last_error:""}'
+          cwd: "{{ world.main_worktree_path }}"
+        bind:
+          cleanup_outcome: "stdout_json.outcome"
+          last_error:      "stdout_json.last_error"
+        on_error: cleanup
+      - when: "world.cleanup_outcome == 'cleaned'"
+        emit_intent: cleaned_ok
+      - when: "world.cleanup_outcome == 'refused'"
+        emit_intent: cleanup_failed
+    on:
+      cleaned_ok:
+        - target: report
+      cleanup_failed:
+        - target: "@exit:needs-human"
+          effects:
+            # Re-pin last_error (bound on_enter) on the exit arc — same discipline
+            # as integrate_failed; keeps ship-it importable as a tail.
+            - set:
+                status:     "needs-human"
+                last_error: "{{ world.last_error }}"
+      look:
+        - target: .

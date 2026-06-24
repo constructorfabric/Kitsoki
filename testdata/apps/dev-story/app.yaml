@@ -11,9 +11,9 @@ app:
 hosts:
   - host.run
   - host.workspace_manager.get
-  - host.oracle.ask
-  - host.oracle.decide
-  - host.oracle.converse
+  - host.agent.ask
+  - host.agent.decide
+  - host.agent.converse
   - host.chat.resolve
   - host.chat.list
   - host.chat.transcript
@@ -61,14 +61,14 @@ world:
   job_bg_result:       { type: string, default: "" }
   clarification_asked:  { type: bool,   default: false }
   clarification_answer: { type: string, default: "" }
-  oracle_question:      { type: string, default: "" }
-  oracle_answer:        { type: string, default: "" }
-  oracle_turns:         { type: int,    default: 0 }
-  oracle_chat_id:       { type: string, default: "" }
-  oracle_chats_view:    { type: string, default: "" }
-  oracle_transcript_view: { type: string, default: "" }
-  oracle_chat_title:    { type: string, default: "" }
-  oracle_chat_count:    { type: int,    default: 0 }
+  agent_question:      { type: string, default: "" }
+  agent_answer:        { type: string, default: "" }
+  agent_turns:         { type: int,    default: 0 }
+  agent_chat_id:       { type: string, default: "" }
+  agent_chats_view:    { type: string, default: "" }
+  agent_transcript_view: { type: string, default: "" }
+  agent_chat_title:    { type: string, default: "" }
+  agent_chat_count:    { type: int,    default: 0 }
   last_job_id:          { type: string, default: "" }
 
 # Root state is the Main Room.
@@ -94,10 +94,10 @@ intents:
     examples: ["inbox", "check inbox", "open inbox"]
     priority: 20
 
-  go_oracle:
-    title: "Consult the Oracle"
-    description: "Open the Oracle Room for free-form Q&A with Claude."
-    examples: ["oracle", "ask claude", "consult oracle"]
+  go_agent:
+    title: "Consult the Agent"
+    description: "Open the Agent Room for free-form Q&A with Claude."
+    examples: ["agent", "ask claude", "consult agent"]
     priority: 18
 
   go_terminal:
@@ -365,10 +365,10 @@ intents:
     examples: ["cancel job", "stop background job", "kill job"]
     priority: 75
 
-  # Oracle chat-specific
+  # Agent chat-specific
   new_chat:
     title: "Start New Chat"
-    description: "Start a new persistent chat thread in the Oracle room."
+    description: "Start a new persistent chat thread in the Agent room."
     examples: ["new chat", "new", "start new chat", "new chat about X"]
     priority: 95
     slots:
@@ -390,7 +390,7 @@ intents:
 
   rename_chat:
     title: "Rename Chat"
-    description: "Rename an existing Oracle chat."
+    description: "Rename an existing Agent chat."
     examples:
       - "rename 1 \"the auth bug\""
       - "rename chat abc \"refactor plan\""
@@ -408,7 +408,7 @@ intents:
 
   archive_chat:
     title: "Archive Chat"
-    description: "Hide an Oracle chat from the list."
+    description: "Hide an Agent chat from the list."
     examples:
       - "remove 1"
       - "archive 1"
@@ -420,7 +420,7 @@ intents:
         required: true
         description: "Chat ID or list number to archive."
 
-  # Oracle-specific
+  # Agent-specific
   ask_question_bg:
     title: "Ask a Question (Background)"
     description: "Ask Claude a question dispatched as a background job."
@@ -430,7 +430,7 @@ intents:
       question:
         type: string
         required: true
-        description: "Your question for the Oracle (dispatched asynchronously)."
+        description: "Your question for the Agent (dispatched asynchronously)."
 
   ask_question:
     title: "Ask a Question"
@@ -441,7 +441,7 @@ intents:
       question:
         type: string
         required: true
-        description: "Your question for the Oracle."
+        description: "Your question for the Agent."
 
   explore_area:
     title: "Explore an Area"

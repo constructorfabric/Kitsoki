@@ -17,11 +17,17 @@ const (
 	// modeName carries which one; the handler dispatches into
 	// startMetaMode(modeName).
 	menuActionMetaMode
-	// menuActionMetaSessions opens the foyer "meta sessions" panel
-	// (proposal §2.1) — an overlay that lists every active meta chat
+	// menuActionMetaSessions opens the foyer "meta sessions" panel —
+	// an overlay that lists every active meta chat
 	// (this app's plus cross-app `self` chats) and lets the user
 	// resume one without typing `/meta resume <id>`.
 	menuActionMetaSessions
+	// menuActionHelp prints the `/help` command list into the
+	// transcript — the same block `/help` produces, surfaced for
+	// discoverability so a plain app's Esc menu isn't just "Exit".
+	menuActionHelp
+	// menuActionWorld opens the `/world` viewer for the current session.
+	menuActionWorld
 )
 
 // menuSystemChoiceMsg is emitted when the user selects a row. modeName
@@ -91,14 +97,21 @@ func newMenuSystemModel(metaEntries []metaMenuEntry) menuSystemModel {
 	}
 	if len(metaEntries) > 0 {
 		// Only surface the "Meta sessions" panel when there's at least
-		// one mode the user could have a session under. Apps with no
-		// meta modes get an Esc menu that's just Exit.
+		// one mode the user could have a session under.
 		entries = append(entries, menuSystemEntry{
 			action: menuActionMetaSessions,
 			label:  "Meta sessions",
 			hint:   "browse + resume active meta chats",
 		})
 	}
+	// Help + World are always available — they're the discoverability
+	// floor, so even a plain app (no meta modes) gets more than just
+	// "Exit" in the Esc menu. Appended last so any meta-mode hotkey
+	// row indices stay stable.
+	entries = append(entries,
+		menuSystemEntry{action: menuActionHelp, label: "Help", hint: "list the slash commands (/help)"},
+		menuSystemEntry{action: menuActionWorld, label: "World", hint: "inspect the world state (/world)"},
+	)
 	return menuSystemModel{entries: entries}
 }
 

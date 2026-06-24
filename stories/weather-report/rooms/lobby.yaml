@@ -1,0 +1,81 @@
+states:
+  lobby:
+    description: "Weather & Climate — pick a place and a mode"
+    relevant_world: [location, mode, place]
+    # Array-form view (not extends/blocks): `choice:` elements require it.
+    view:
+      - heading: "Weather & Climate"
+      - prose: "glue: `scripts/weather_report.star` · Open-Meteo · deterministic & replayable{% if world.place %}  ·  last: {{ world.place }}{% endif %}"
+      - prose: "Type a place and a deterministic Starlark script will geocode it against the free Open-Meteo API and hand you back a tidy report. The script is sandboxed — no clock, no randomness, no filesystem — so a recorded run replays byte-for-byte."
+      - heading: "Two modes"
+      - list:
+          items:
+            - label: "forecast"
+              hint: "current conditions + a 5-day daily outlook"
+            - label: "climate"
+              hint: "a 2023 month-by-month climate profile (mean temp + precip)"
+      - heading: "What the script does (scripts/weather_report.star)"
+      - list:
+          items:
+            - label: "geocodes the free-text place → lat/lon"
+              hint: "GET geocoding-api.open-meteo.com; fails cleanly on an unknown place"
+            - label: "fetches forecast OR archive data via ctx.http"
+              hint: "branches on the chosen mode; each GET rides the trace as a {method,url,status} summary"
+            - label: "reshapes JSON with the json + math stdlib"
+              hint: "WMO code → label; 365 daily values → 12 monthly aggregates"
+            - label: "returns a typed dict bound into world"
+              hint: "outputs validated against the sidecar after it runs"
+      # `choice:` with a one-shot `param:` renders a labelled free-text field in
+      # both the TUI and web UI: the operator types a city and the intent fires
+      # with `slots.location` set — no LLM needed to resolve the input.
+      - choice:
+          mode: single
+          prompt: "Look up a place"
+          items:
+            - label:  "forecast"
+              intent: forecast
+              hint:   "current conditions + a 5-day outlook"
+              param:
+                slot:        location
+                type:        string
+                placeholder: "city for a forecast (e.g. Tokyo)"
+                required:    true
+            - label:  "climate"
+              intent: climate
+              hint:   "a 2023 month-by-month climate profile"
+              param:
+                slot:        location
+                type:        string
+                placeholder: "city for a climate profile (e.g. Oslo)"
+                required:    true
+            - { label: "quit", intent: quit, hint: "leave" }
+    on:
+      # Each mode sets the inputs the script reads and routes into the shared
+      # report room. We clear any prior outputs so the report room's once: call
+      # re-arms (a second look-up at a new place re-runs the script).
+      forecast:
+        - target: report
+          effects:
+            - set:
+                location: "{{ slots.location }}"
+                mode: "forecast"
+                place: ""
+                coords: ""
+                headline: ""
+                current: {}
+                rows: []
+                climate_summary: {}
+      climate:
+        - target: report
+          effects:
+            - set:
+                location: "{{ slots.location }}"
+                mode: "climate"
+                place: ""
+                coords: ""
+                headline: ""
+                current: {}
+                rows: []
+                climate_summary: {}
+      quit:
+        - target: ended

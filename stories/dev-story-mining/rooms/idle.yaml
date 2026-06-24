@@ -1,0 +1,49 @@
+# idle — parked entry point for the mining loop.
+#
+# No on_enter work (nothing to run until the operator commits). `start`
+# initialises the run and enters the mine phase. Kept deliberately thin:
+# unlike bugfix.idle there is no workspace to auto-provision, so there is
+# no autostart chain to guard — `mining_started` is flipped on start purely
+# as an audit signal that the loop was entered this session.
+
+states:
+
+  idle:
+    description: "dev-story-mining — parked. Type `start` to mine recent transcripts."
+    relevant_world: [job, project_dir, stories_dir, judge_mode]
+    view:
+      - banner:
+          text:     "DEV-STORY-MINING"
+          subtitle: "transcripts → dev-story gates  ·  parked"
+          color:    "#6366F1"   # indigo — the resting hub color
+      - prose: "Mine recent Claude Code transcripts for the decisions you actually make, then install the ones dev-story is missing as named gates."
+      - kv:
+          pairs:
+            Job:           "{{ world.job }}"
+            "Transcripts": '{{ world.project_dir|default:"(current repo)" }}'
+            "Target tree": "{{ world.stories_dir }}"
+            "Judge mode":  "{{ world.judge_mode }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "start"
+              hint:   "mine recent transcripts and enter the loop"
+              intent: start
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      start:
+        - target: mine
+          effects:
+            - set:
+                mining_started: true
+                cycle:          0
+                status:         "open"
+      look:
+        - target: .
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "quit_from_idle", status: "abandoned" }

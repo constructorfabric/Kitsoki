@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "answer_match",
+  "description": "The result of matching ONE operator reply against the current clarifying questions. The matcher reads the questions (numbered 1..N in the order given) and the operator's free-text reply, then reports which question(s) the reply answers — handling out-of-order and number-less replies. It returns only the DELTA for this reply (the story concatenates it onto the running transcript); it must NOT echo back prior answers.",
+  "type": "object",
+  "required": ["answers_block", "answered_ids_append", "matched_count"],
+  "properties": {
+    "answers_block": {
+      "type": "string",
+      "description": "The newly-answered question(s) as transcript lines, one per matched question, each EXACTLY `Qn: <answer>\\n` where n is the question's 1-based position and <answer> is the operator's reply phrased as a clean, self-contained answer to that question. Multiple matched questions → multiple lines, lowest n first. Empty string when the reply answers none of the listed questions."
+    },
+    "answered_ids_append": {
+      "type": "string",
+      "description": "The newly-answered positions as a delimiter-wrapped set fragment to append to answered_ids — each as `|n|` with NO separators between (e.g. answering questions 2 and 4 → `|2||4|`). The positions MUST correspond 1:1 to the lines in answers_block. Empty string when nothing matched. Do NOT include positions already answered in a prior reply."
+    },
+    "matched_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many NEW questions this reply answered (the number of lines in answers_block). 0 when the reply answers none of the listed questions."
+    }
+  },
+  "additionalProperties": true
+}

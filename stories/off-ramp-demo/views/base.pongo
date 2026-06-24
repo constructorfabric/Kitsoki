@@ -1,0 +1,19 @@
+{% comment %}
+Off-Ramp Demo — app-wide base view. Every room extends this and overrides
+only the blocks it needs.
+
+Block contract:
+  status   — a permanent one-line reminder of where you are.
+  heading  — room title; default = state.description.
+  body     — the room content (typed elements).
+  choices  — the action menu (always visible).
+  footer   — optional bottom line.
+{% endcomment %}
+{% block status %}Welcome Desk  |  last visited: {{ world.visited }}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

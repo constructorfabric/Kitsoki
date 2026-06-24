@@ -1,0 +1,73 @@
+# Weather & Climate — a runnable example of host.starlark.run with real HTTP.
+#
+# The operator types a free-text place name and picks one of two modes —
+# `forecast` (a 5-day outlook) or `climate` (a 2023 monthly profile). A single
+# deterministic Starlark script geocodes the place against the free, key-less
+# Open-Meteo API, fetches the right dataset, and reshapes it into a tidy report.
+#
+# This is the canonical "glue" use case for host.starlark.run: a couple of plain
+# JSON HTTP calls plus fiddly, branch-y data wrangling that is awkward in YAML
+# effects and too small for a bespoke Go host handler. See README.md for the
+# walkthrough and scripts/weather_report.star for the glue.
+
+app:
+  id: weather-report
+  version: 0.1.0
+  title: "Weather & Climate"
+  author: "kitsoki"
+  license: "CC0"
+
+# host.starlark.run MUST be declared in the allow-list. It is registered at the
+# exact full name; the registry's longest-prefix fallback resolves it.
+hosts:
+  - host.starlark.run
+
+world:
+  # What the operator supplies, via the forecast/climate intents (free-text
+  # location + the chosen mode). These drive the script's with.inputs.
+  location: { type: string, default: "" }
+  mode:     { type: string, default: "" }   # "forecast" | "climate"
+
+  # The script's typed outputs land here via bind:. They start empty so the
+  # report room's `once: true` re-arms cleanly when they are cleared.
+  place:           { type: string, default: "" }
+  coords:          { type: string, default: "" }
+  headline:        { type: string, default: "" }
+  current:         { type: object, default: {} }   # forecast only; {} for climate
+  rows:            { type: list,   default: [] }   # per-day (forecast) / per-month (climate)
+  climate_summary: { type: object, default: {} }   # climate only; {} for forecast
+
+  # Set by the engine when host.starlark.run returns a Result.Error (a script
+  # fail()/bad-output/non-2xx). The error room reads it.
+  last_error: { type: string, default: "" }
+
+intents:
+  forecast:
+    title: "5-day forecast"
+    description: "Short-range daily outlook for a place (current + next 5 days)."
+    examples: ["forecast for Tokyo", "weather in Paris", "what's it like in Berlin", "forecast Lagos"]
+    slots:
+      location:
+        type: string
+        required: true
+        description: "Free-text place name to look up (a city — 'Tokyo', 'San Francisco')."
+  climate:
+    title: "Annual climate profile"
+    description: "A 2023 month-by-month climate profile for a place."
+    examples: ["climate of Cairo", "climate for Oslo", "yearly climate in Nairobi", "how's the climate in Reykjavik"]
+    slots:
+      location:
+        type: string
+        required: true
+        description: "Free-text place name to look up (a city — 'Cairo', 'Oslo')."
+  back:
+    title: "Look up another place"
+    examples: ["back", "again", "another place", "home", "new search"]
+  quit:
+    title: "Quit"
+    examples: ["quit", "exit", "done"]
+
+root: lobby
+
+include:
+  - rooms/*.yaml

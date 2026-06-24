@@ -1,0 +1,89 @@
+# refine_once_then_accept — refine once (group_cycle→1) then accept.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: fixing
+initial_world:
+  verdict_path:   "stories/ui-fix/testdata/verdict.json"
+  severity_floor: "warn"
+  media_format:   "slideshow"
+  group_budget:   5
+  cursor: 0
+  group_cycle: 0
+  groups:
+    items:
+      - { id: "g1", title: "Group 1", pattern: "Pattern 1", root_cause: "Cause 1", severity: "error", member_ids: ["geometry|tap-target|.trace-filter-chip"], surfaces: ["trace-view"], viewports: ["mobile"], before_frames: ["f1.png"], recommendation: "Fix it" }
+  current:
+    id: "g1"
+    title: "Group 1"
+    pattern: "Pattern 1"
+    root_cause: "Cause 1"
+    severity: "error"
+    member_ids: ["geometry|tap-target|.trace-filter-chip"]
+    surfaces: ["trace-view"]
+    viewports: ["mobile"]
+    before_frames: ["f1.png"]
+    recommendation: "Fix it"
+  fix_result: {}
+
+starlark_http_cassette: ../testdata/empty.http.yaml
+
+host_handlers:
+  host.agent.task:
+    data:
+      submitted:
+        applied: true
+        files: ["tools/runstatus/src/components/TraceView.vue"]
+        summary: "Fixed tap targets."
+        diff_excerpt: "+  min-width: 44px;"
+        notes: ""
+
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: ""
+      stdout_json:
+        findings: []
+
+  host.starlark.run:
+    data:
+      item: {}
+      groups: { items: [] }
+      bucket: { items: [] }
+      result:
+        cleared: true
+        remaining: 0
+        regressions: []
+        after_frames: []
+
+  host.contact_sheet:
+    data:
+      ok: true
+      path: "/tmp/sheet.png"
+      mime: "image/png"
+      kind: "image"
+
+  host.artifacts_dir:
+    data:
+      ok: true
+      handle: "ui-fix-g1#1"
+      path: ".artifacts/ui-fix/g1.png"
+      mime: "image/png"
+      kind: "image"
+
+turns:
+  - intent: { name: refine, slots: { feedback: "use the shared token, not a magic px" } }
+    expect_state: fixing
+    expect_world:
+      group_cycle: 1
+      refine_feedback: "use the shared token, not a magic px"
+
+  # accept → verifying → cleared (starlark) → showcase (one turn chain)
+  - intent: { name: accept, slots: {} }
+    expect_state: showcase
+    expect_world:
+      refine_feedback: ""
+
+expect_terminal: false
+expect_no_errors: true

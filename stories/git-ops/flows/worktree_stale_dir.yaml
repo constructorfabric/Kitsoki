@@ -1,0 +1,37 @@
+# worktree_stale_dir — worktree_create when dir exists on disk but not registered.
+# Asserts: stale_dir outcome shown, not a crash.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: worktree_create
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  worktree_desc:      ""
+
+host_handlers:
+  host.run:
+    by_call:
+      create_worktree:
+        data:
+          ok:        false
+          exit_code: 0
+          stdout:    '{"branch":"add-login","path":".worktrees/add-login","output":"stale directory","ok":false,"outcome":"stale_dir"}'
+          stdout_json:
+            branch:  add-login
+            path:    .worktrees/add-login
+            output:  "stale directory"
+            ok:      false
+            outcome: stale_dir
+
+turns:
+  - intent: { name: describe, slots: { desc: "add login" } }
+    expect_state: worktree_create
+    expect_world:
+      last_op_outcome:     stale_dir
+      worktree_branch_name: add-login
+      worktree_path:        .worktrees/add-login
+
+expect_no_errors: true

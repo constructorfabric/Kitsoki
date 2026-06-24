@@ -1,0 +1,185 @@
+{
+  "name": "kitsoki",
+  "displayName": "Kitsoki",
+  "description": "Embed the kitsoki web UI (chat + trace) inside VS Code.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "kitsoki",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bsacrobatix/Kitsoki.git",
+    "directory": "tools/vscode-kitsoki"
+  },
+  "icon": "media/icon-128.png",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kitsoki",
+          "title": "Kitsoki",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "kitsoki": [
+        {
+          "id": "kitsoki.chat",
+          "name": "Chat",
+          "type": "webview"
+        },
+        {
+          "id": "kitsoki.trace",
+          "name": "Trace",
+          "type": "webview"
+        },
+        {
+          "id": "kitsoki.graph",
+          "name": "Graph",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "kitsoki.openChat",
+        "title": "Kitsoki: Open Chat",
+        "category": "Kitsoki"
+      },
+      {
+        "command": "kitsoki.popOutChat",
+        "title": "Open Chat in Editor",
+        "category": "Kitsoki",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "kitsoki.openTrace",
+        "title": "Kitsoki: Open Trace",
+        "category": "Kitsoki"
+      },
+      {
+        "command": "kitsoki.openGraph",
+        "title": "Kitsoki: Open Graph",
+        "category": "Kitsoki"
+      },
+      {
+        "command": "kitsoki.restartBackend",
+        "title": "Kitsoki: Restart Backend",
+        "category": "Kitsoki"
+      },
+      {
+        "command": "kitsoki.diff.accept",
+        "title": "Kitsoki: Accept Change",
+        "category": "Kitsoki",
+        "icon": "$(check)"
+      },
+      {
+        "command": "kitsoki.diff.reject",
+        "title": "Kitsoki: Reject Change",
+        "category": "Kitsoki",
+        "icon": "$(x)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "kitsoki.popOutChat",
+          "when": "view == kitsoki.chat",
+          "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "kitsoki.diff.accept",
+          "when": "resourceScheme == kitsoki-diff && kitsoki.diffPending",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kitsoki.diff.reject",
+          "when": "resourceScheme == kitsoki-diff && kitsoki.diffPending",
+          "group": "navigation@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "kitsoki.popOutChat",
+          "when": "false"
+        },
+        {
+          "command": "kitsoki.diff.accept",
+          "when": "kitsoki.diffPending"
+        },
+        {
+          "command": "kitsoki.diff.reject",
+          "when": "kitsoki.diffPending"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "kitsoki.diff.accept",
+        "key": "ctrl+alt+y",
+        "mac": "cmd+alt+y",
+        "when": "kitsoki.diffPending"
+      },
+      {
+        "command": "kitsoki.diff.reject",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n",
+        "when": "kitsoki.diffPending"
+      }
+    ],
+    "configuration": {
+      "title": "Kitsoki",
+      "properties": {
+        "kitsoki.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the kitsoki binary. When empty, 'kitsoki' on PATH is used."
+        },
+        "kitsoki.flow": {
+          "type": "string",
+          "default": "",
+          "description": "Flow fixture to pass to 'kitsoki web --flow'. Leave empty for live posture."
+        },
+        "kitsoki.hostCassette": {
+          "type": "string",
+          "default": "",
+          "description": "Host cassette to pass to 'kitsoki web --host-cassette'."
+        },
+        "kitsoki.storiesDir": {
+          "type": "string",
+          "default": "",
+          "description": "Stories directory to pass to 'kitsoki web --stories-dir'."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node esbuild.mjs",
+    "package": "pnpm dlx @vscode/vsce@^3 package --no-dependencies",
+    "test": "node --test --import tsx tests/relay.unit.test.ts tests/bridge-relay.integration.test.ts tests/ide-server.unit.test.ts",
+    "test:bridge": "node --test --import tsx tests/ide-bridge.e2e.test.ts",
+    "playwright": "playwright test",
+    "e2e": "KITSOKI_VSCODE_PACE=0 playwright test vscode-tour.e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^22.15.21",
+    "@types/vscode": "^1.96.0",
+    "@types/ws": "^8.18.1",
+    "@vscode/test-electron": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "playwright": "^1.52.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "ws": "^8.21.0"
+  }
+}

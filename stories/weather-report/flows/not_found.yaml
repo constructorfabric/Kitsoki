@@ -1,0 +1,26 @@
+# Error-path flow: an unknown place name.
+#
+# Geocoding returns no results, so the script fail()s and the report room's
+# on_error: failed arc routes the session into the `failed` room with
+# world.last_error set. Proves the on_error: wiring end-to-end, deterministically
+# (only the single geocode GET is replayed, from cassettes/not_found.http.yaml).
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+
+starlark_http_cassette: ../cassettes/not_found.http.yaml
+
+turns:
+  # forecast for a nonsense place → geocode returns no results → script fail()
+  # → Result.Error → on_error: failed.
+  - intent: { name: forecast, slots: { location: "Zzqxville" } }
+    expect_state: failed
+    expect_view_matches: "no place found matching"
+    expect_host_calls:
+      - handler: host.starlark.run
+
+  # back → clears last_error and returns to the lobby.
+  - intent: { name: back, slots: {} }
+    expect_state: lobby
+
+expect_terminal: false

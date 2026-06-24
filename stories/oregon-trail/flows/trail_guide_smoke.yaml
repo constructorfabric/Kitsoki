@@ -1,6 +1,6 @@
 # trail_guide_smoke — phase F. Exercises the persistent chat room
 # (mode: conversational) end-to-end via stubbed host.chat.* +
-# host.oracle.converse handlers, with no live Claude calls.
+# host.agent.converse handlers, with no live Claude calls.
 #
 # Scenario:
 #   1. Player is at Fort Kearney (leg_b_awaiting_reply). Fires
@@ -11,7 +11,7 @@
 #
 #   2. From the list, `ask_question { question }` transitions to
 #      trail_guide_active_new. on_enter chains:
-#        host.chat.create → host.oracle.converse → host.chat.suggest_title.
+#        host.chat.create → host.agent.converse → host.chat.suggest_title.
 #      The stubs return canned chat_id/answer/title. wagon_chat_turns
 #      bumps to 1.
 #
@@ -74,7 +74,7 @@ host_handlers:
 
   # converse — minimal envelope. answer is the only field consumed by
   # the state machine; session_id round-trip is decorative for the stub.
-  host.oracle.converse:
+  host.agent.converse:
     data:
       answer:            "Stub wagon-master answer."
       session_id:        "stub-session-id"
@@ -138,10 +138,10 @@ turns:
   # Turn 2: ask the wagon master a question. Transitions to
   # trail_guide_active_new because the player is asking from the list
   # (no chat_id yet). on_enter chains: host.chat.create →
-  # host.oracle.converse → host.chat.suggest_title. wagon_chat_turns hits 1.
+  # host.agent.converse → host.chat.suggest_title. wagon_chat_turns hits 1.
   #
   # Also asserts the named-agent round-trip: HostDispatched for
-  # host.oracle.converse must carry args.agent == "wagon_master" so the
+  # host.agent.converse must carry args.agent == "wagon_master" so the
   # engine threads the agent down to the handler (where it resolves to
   # the agent's system_prompt and rides through to claude).
   - intent:
@@ -156,9 +156,9 @@ turns:
       wagon_chat_title: "River strategy and crossings"
       wagon_chat_turns: 1
     expect_events:
-      - kind: HostDispatched
+      - kind: harness.dispatched
         effect:
-          namespace: host.oracle.converse
+          namespace: host.agent.converse
           args:
             chat_id:  "stub-chat-id"
             question: "what should I do at the next river"
@@ -166,7 +166,7 @@ turns:
 
   # Turn 3: ask again. Routes to trail_guide_active (NOT _active_new
   # — the create only fires once per chat). on_enter re-fires
-  # host.oracle.converse + host.chat.suggest_title (which is a no-op
+  # host.agent.converse + host.chat.suggest_title (which is a no-op
   # rename on the now-polished title in a real run). wagon_chat_turns
   # bumps to 2.
   - intent:

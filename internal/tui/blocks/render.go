@@ -8,8 +8,10 @@ import (
 )
 
 // Mode controls the prompt prefix glyph and (indirectly via the theme
-// chosen by the caller) the prompt colour. Listed in the proposal:
-// `> ` normal, `» ` meta, `# ` off-path, `? ` slot-filling, `… ` awaiting LLM.
+// chosen by the caller) the prompt colour. The mode-prefix glyphs are
+// the chat-view input vocabulary (docs/tui/README.md "Input, menu,
+// inbox, meta-mode"): `> ` normal, `» ` meta, `# ` off-path,
+// `? ` slot-filling, `… ` awaiting LLM.
 type Mode int
 
 const (
@@ -137,6 +139,37 @@ type Welcome struct {
 	// Status is the optional bottom-row context line (e.g.
 	// "session: sess_42 · room: idle"). Rendered muted-italic.
 	Status string
+	// Logo, when true, renders the Kitsoki "Mesa Sun" pixel-art mark to
+	// the left of the text column. Brand colours are fixed (the desert
+	// palette) regardless of the active theme; see [mesaSunArt].
+	Logo bool
+}
+
+// mesaSunArt renders the Kitsoki "Mesa Sun" mark (docs/branding/logo.md) as
+// compact terminal pixel-art: a five-rayed desert sun above a terraced,
+// stepped pueblo with a single dark doorway, on a rust ground band. Each
+// line is padded to a fixed 10-column canvas so the column joins cleanly
+// beside the welcome text. When noColor is set the desert tints drop but
+// the block silhouette still reads.
+func mesaSunArt(noColor bool) string {
+	st := func(c lipgloss.Color) lipgloss.Style {
+		if noColor {
+			return lipgloss.NewStyle()
+		}
+		return lipgloss.NewStyle().Foreground(c)
+	}
+	gold, clay, adobe, rust, door := st(brandGold), st(brandClay), st(brandAdobe), st(brandRust), st(brandShadow)
+	lines := []string{
+		gold.Render(`  \  |  / `), // rays: up-left, up, up-right
+		gold.Render(` ── ███ ──`), // horizontal rays + sun
+		gold.Render(`    ███   `), // sun base
+		clay.Render(`    ▟█▙   `), // raised central block
+		adobe.Render(`   ▟███▙  `), // upper terrace (lighter tier)
+		clay.Render(`  ▟█████▙ `), // lower terrace
+		"  " + clay.Render("███") + door.Render("█") + clay.Render("███") + " ", // ground floor + doorway
+		rust.Render(` █████████`), // ground band
+	}
+	return strings.Join(lines, "\n")
 }
 
 // WelcomeBlock renders the multi-line bordered welcome banner. Boxed
@@ -175,6 +208,12 @@ func (r *Renderer) WelcomeBlock(w Welcome) string {
 	}
 
 	body := strings.Join(lines, "\n")
+	// Brand logo column to the left of the text, top-aligned so the mark's
+	// crown lines up with the title. JoinHorizontal pads the shorter block
+	// to match heights.
+	if w.Logo {
+		body = lipgloss.JoinHorizontal(lipgloss.Top, mesaSunArt(r.NoColor), "   ", body)
+	}
 	// Thick border that spans the full terminal width — gives the
 	// welcome banner the heft the user asked for ("consume the
 	// full width and have a thicker border"). Width includes the
@@ -192,7 +231,7 @@ func (r *Renderer) WelcomeBlock(w Welcome) string {
 // ─── User turn ───────────────────────────────────────────────────────────
 
 // UserTurn renders the immediate echo of the user's submitted text.
-// Printed the instant Enter is pressed (proposal §"Input feedback").
+// Printed the instant Enter is pressed, for immediate input feedback.
 func (r *Renderer) UserTurn(text string) string {
 	return r.style(r.Theme.Primary, nil, true, false).Render("> " + text)
 }
@@ -250,9 +289,10 @@ const (
 
 // Resolved is the settled routing line that replaces the in-flight
 // RoutingStatus once the pipeline finishes. Kind is one of
-// nav | view | system | in-room | off-path (proposal "Settled-line
-// format"); detail varies per source — slots for slot-parser, confidence
-// for LLM, blank for deterministic.
+// nav | view | system | in-room | off-path; detail varies per source —
+// slots for slot-parser, confidence for LLM, blank for deterministic.
+// The settled-line format is documented in docs/tui/README.md
+// ("Observers: engine events → transcript").
 type Resolved struct {
 	Kind       string
 	Intent     string
@@ -261,8 +301,8 @@ type Resolved struct {
 	Detail     string
 }
 
-// RoutingResolved renders the settled resolution line. Format mirrors
-// the proposal's table:
+// RoutingResolved renders the settled resolution line. Format (see
+// docs/tui/README.md "Observers: engine events → transcript"):
 //
 //	→ nav: back   (deterministic · 1.00)
 //	→ in-room: pick_branch   (LLM · 0.84)   slots: {branch: "main"}
@@ -358,8 +398,9 @@ type MenuAction struct {
 }
 
 // Menu renders the room's actions block. By default it's a numbered
-// list; rooms can later override the pongo template (proposal:
-// "Rendering is room-provided"). Phase 0 ships the default.
+// list; rooms can later override the pongo template (docs/tui/README.md
+// "The view pipeline: typed elements + pongo2" — rendering is
+// room-provided). Phase 0 ships the default.
 func (r *Renderer) Menu(actions []MenuAction) string {
 	if len(actions) == 0 {
 		return r.style(r.Theme.Muted, nil, false, true).Render("  (no actions available)")
@@ -539,7 +580,7 @@ func (r *Renderer) Inbox(n InboxNotification) string {
 
 // BackgroundComplete renders the one-line completion summary printed
 // in the user's current room when a different room's queue finishes
-// in the background (proposal §"Queueing across navigation").
+// in the background.
 func (r *Renderer) BackgroundComplete(room, summary string) string {
 	line := fmt.Sprintf("✓ %s · %s", room, summary)
 	return r.style(r.Theme.Accent, nil, true, false).Render(line)

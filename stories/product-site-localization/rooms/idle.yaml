@@ -1,0 +1,56 @@
+states:
+  idle:
+    description: "Choose a product-site localization target."
+    relevant_world: [locale, target_kind, target_id, notes]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Pick one locale and one target. Thai (`th`) and Japanese (`ja`) are the first production locales; English (`en`) is the source/fallback locale."
+          - kv:
+              pairs:
+                Locale: "{{ world.locale|default:'(not yet chosen)' }}"
+                Target: "{% if world.target_kind %}{{ world.target_kind }}/{{ world.target_id }}{% else %}(not yet chosen){% endif %}"
+          - heading: "Translation layout"
+          - list:
+              items:
+                - label: "tools/site/i18n/<locale>/features/<feature-id>.json"
+                  hint: "feature catalog overlays"
+                - label: "tools/site/src/<locale>/..."
+                  hint: "localized static VitePress pages"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "start"
+                  hint: "slots: locale, target_kind, target_id"
+                - label: "quit"
+                - label: "look"
+    on:
+      start:
+        - target: translating
+          effects:
+            - set:
+                locale: "{{ slots.locale }}"
+                target_kind: "{{ slots.target_kind }}"
+                target_id: "{{ slots.target_id }}"
+                notes: "{{ slots.notes ?? '' }}"
+                source_path: "{{ slots.target_kind == 'feature' ? 'features/' + slots.target_id + '.yaml' : 'tools/site/src/' + slots.target_id + '.md' }}"
+                output_path: "{{ slots.target_kind == 'feature' ? 'tools/site/i18n/' + slots.locale + '/features/' + slots.target_id + '.json' : 'tools/site/src/' + slots.locale + '/' + slots.target_id + '.md' }}"
+                translation_artifact: {}
+                validation_ok: false
+                validation_log: ""
+                refine_feedback: ""
+                status: "running"
+                cycle: 0
+      quit:
+        - target: done
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .
+      "*":
+        - default: true
+          target: .
+          effects:
+            - say: "Use `start locale=th target_kind=feature target_id=complete-product-tour`."

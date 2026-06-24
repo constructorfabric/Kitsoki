@@ -1,7 +1,7 @@
 # Replay recording for Oregon Trail — Mode 2 flow fixtures with input: turns
 # and Mode 1 static-harness pass-rate tests.
 #
-# Hand-authored bootstrap (per docs/testing.md §4); replace with a Mode-1
+# Hand-authored bootstrap (per docs/tracing/testing.md §4); replace with a Mode-1
 # `--emit-recording` capture once enough flows exercise input: routing.
 #
 # Coverage: every verb used in flows/winning_deterministic.yaml (continue,

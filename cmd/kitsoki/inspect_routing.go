@@ -215,7 +215,7 @@ func runUnusedSynonyms(cmd *cobra.Command, def *app.AppDef, cachePath string) er
 // intent), and emits a copy-pasteable YAML block of phrasings that
 // the LLM resolved for each intent but for which the AppDef declares
 // no matching synonym. The format mirrors the proposal §7.7 example
-// — see docs/semantic-routing.md.
+// — see docs/architecture/semantic-routing.md.
 //
 // Auto-promotion is deliberately not implemented (see proposal §7.7).
 // This surface is READ-ONLY: it does not modify the YAML on disk.

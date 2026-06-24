@@ -1,9 +1,9 @@
 // Tests for the [Signature] public API.
 //
-// The §3 worked-example table is the calibration corpus. Beyond fixed
-// inputs we also encode the proposal's stated invariants as property
-// tests: order, whitespace, case, punctuation, and stopword content
-// must not affect the signature.
+// The worked-example table in docs/architecture/semantic-routing.md is
+// the calibration corpus. Beyond fixed inputs we also encode the stated
+// invariants as property tests: order, whitespace, case, punctuation, and
+// stopword content must not affect the signature.
 package lex
 
 import (
@@ -14,7 +14,7 @@ import (
 
 // ====================== fixed corpus ======================
 
-// TestSignature_EquivalenceGroups pins the §3 worked-example table.
+// TestSignature_EquivalenceGroups pins the worked-example table.
 // Inputs A1 and A2 belong to the same equivalence group; B and C are
 // distinct. We don't pin exact hex bytes — only the equivalence shape.
 func TestSignature_EquivalenceGroups(t *testing.T) {
@@ -201,9 +201,9 @@ func TestSignature_Deterministic(t *testing.T) {
 	}
 }
 
-// TestSignature_StopwordContentDoesNotChangeSig pins §3 bullet 3 — two
-// inputs that differ only in *which* stopwords they include must produce
-// the same signature.
+// TestSignature_StopwordContentDoesNotChangeSig pins stopword-invariance:
+// two inputs that differ only in *which* stopwords they include must
+// produce the same signature.
 func TestSignature_StopwordContentDoesNotChangeSig(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -231,8 +231,8 @@ func TestSignature_StopwordContentDoesNotChangeSig(t *testing.T) {
 
 // TestSignature_PermutationInvariant samples N random permutations of a
 // fixed content-word multiset and asserts every permutation produces the
-// same signature. This encodes §3 bullet 2 (word-order insensitivity) as
-// a property rather than a fixed table.
+// same signature. This encodes word-order insensitivity as a property
+// rather than a fixed table.
 func TestSignature_PermutationInvariant(t *testing.T) {
 	t.Parallel()
 	base := []string{"buy", "6", "oxen", "200", "lbs", "food"}

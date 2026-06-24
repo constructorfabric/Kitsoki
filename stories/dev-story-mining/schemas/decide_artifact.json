@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "decide_artifact",
+  "description": "The ranked selection of ENRICH/GAP items to ticket, highest-value first.",
+  "type":    "object",
+  "required": ["selected", "rationale", "summary_markdown"],
+  "properties": {
+    "selected": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Chosen items, ranked by (# intents × mechanicalness).",
+      "items": {
+        "type": "object",
+        "required": ["theme", "room"],
+        "properties": {
+          "theme": { "type": "string", "description": "The decision theme being installed." },
+          "room":  { "type": "string", "description": "Exact room file path to edit (or new room path for a GAP)." },
+          "gate":  { "type": "string", "description": "One sentence naming the gate to install." }
+        },
+        "additionalProperties": true
+      }
+    },
+    "rationale":        { "type": "string", "minLength": 4, "description": "Why this ranking / why the top item first." },
+    "summary_markdown": { "type": "string", "minLength": 40, "description": "Human-readable decision delivered to the transport." }
+  },
+  "additionalProperties": true
+}

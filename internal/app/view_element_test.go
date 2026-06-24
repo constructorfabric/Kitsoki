@@ -165,6 +165,43 @@ func TestView_ArrayForm_ElementLevelWhen(t *testing.T) {
 	}
 }
 
+// A `when:` nested INSIDE a kv body (sibling of pairs:) instead of at the
+// element level (sibling of kv:) is a silent footgun — it used to be dropped,
+// so the guard never ran. The loader now rejects it loudly. See nestedWhenGuard.
+func TestView_NestedWhen_Rejected(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+	}{
+		{"kv", `view:
+  - kv:
+      when: "world.flag"
+      pairs:
+        A: "1"
+`},
+		{"list", `view:
+  - list:
+      when: "world.flag"
+      items:
+        - "first"
+`},
+		{"banner", `view:
+  - banner:
+      text: "HI"
+      when: "world.flag"
+`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := unmarshalViewErr(tc.body)
+			if err == nil {
+				t.Fatalf("expected a load error for a nested when: in a %s body", tc.name)
+			}
+			if !strings.Contains(err.Error(), "must be a sibling") {
+				t.Errorf("error = %q, want it to mention the misplaced when:", err)
+			}
+		})
+	}
+}
+
 // ---- Block-inheritance form -------------------------------------------------
 
 func TestView_ExtendsBlocksForm(t *testing.T) {

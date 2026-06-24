@@ -1,7 +1,7 @@
 # disease_with_mcp — proposal §9.6, engine gap closure.
 #
 # Drives the narrated branch of `event_disease.on_enter`:
-# host.oracle.decide returns a typed-JSON illness diagnosis via
+# host.agent.decide returns a typed-JSON illness diagnosis via
 # the submit tool (schema in stories/oregon-trail/mcp/illness.json).
 # The fixture stubs the handler with a canned `submitted:` payload —
 # Claude is never actually launched — so the test runs offline and
@@ -10,7 +10,7 @@
 #
 # What this fixture proves
 # ------------------------
-# 1. host.oracle.decide is allow-listed (app.yaml hosts:).
+# 1. host.agent.decide is allow-listed (app.yaml hosts:).
 # 2. The narrated arm of event_disease.on_enter fires when
 #    world.narration == true (and the deterministic arm does NOT —
 #    no rng_last % 5 selection happens).
@@ -41,7 +41,7 @@ initial_world:
   party_alive:   5
   health_avg:    80
   # ── Narrated mode: routes event_disease.on_enter through
-  # host.oracle.decide instead of the deterministic
+  # host.agent.decide instead of the deterministic
   # rng_last % 5 illness selector.
   narration:     true
   miles_traveled: 0
@@ -51,13 +51,13 @@ initial_world:
   current_event_attempts: 0
 
 host_handlers:
-  # Stub the typed-JSON oracle call. The handler returns a Result.Data
+  # Stub the typed-JSON agent call. The handler returns a Result.Data
   # map that mirrors what the real handler exposes when the validator
   # captures a successful submit: a `submitted` sub-map with the
   # schema-validated illness diagnosis. The orchestrator's bind step
   # walks `submitted.<key>` for each bind entry and writes the value
   # into world.
-  host.oracle.decide:
+  host.agent.decide:
     data:
       stdout: "diagnosed: cholera (severity 3, treatment fluids)"
       exit_code: 0
@@ -73,7 +73,7 @@ turns:
   # event_disease.on_enter runs:
   #   1. Shared baseline:       current_event_attempts=0, health_avg -= 10
   #   2. when: not narration    SKIPPED (narration is true)
-  #   3. when: world.narration  invokes host.oracle.decide;
+  #   3. when: world.narration  invokes host.agent.decide;
   #                              bind populates the three world keys
   #                              from the stubbed `submitted` payload.
   - intent: { name: continue, slots: {} }

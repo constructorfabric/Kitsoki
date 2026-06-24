@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kitsoki Run Status — Dev</title>
+    <!-- Kitsoki "Mesa Sun" mark — see index.html for the inline-SVG rationale. -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ccircle%20cx='50'%20cy='32'%20r='18'%20fill='%23e0a23a'/%3E%3Cg%20stroke='%23e0a23a'%20stroke-width='6'%20stroke-linecap='round'%3E%3Cline%20x1='78'%20y1='32'%20x2='71'%20y2='32'/%3E%3Cline%20x1='70'%20y1='12'%20x2='65'%20y2='17'/%3E%3Cline%20x1='50'%20y1='4'%20x2='50'%20y2='11'/%3E%3Cline%20x1='30'%20y1='12'%20x2='35'%20y2='17'/%3E%3Cline%20x1='22'%20y1='32'%20x2='29'%20y2='32'/%3E%3C/g%3E%3Cpath%20d='M8%2084%20L8%2074%20L36%2074%20L36%2059%20L64%2059%20L64%2074%20L92%2074%20L92%2084%20Z'%20fill='%23a8492b'/%3E%3Crect%20x='8'%20y='84'%20width='84'%20height='8'%20fill='%237d2e1c'/%3E%3C/svg%3E"
+    />
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; padding: 1.5rem; }
@@ -37,7 +43,8 @@
         <option value="in-progress">in-progress</option>
         <option value="completed">completed</option>
         <option value="edge-cases">edge-cases</option>
-        <option value="oracle-rich">oracle-rich (oracle sub-renderers)</option>
+        <option value="agent-rich">agent-rich (agent sub-renderers)</option>
+        <option value="agent-with-separate-prompts">agent-with-separate-prompts (prompts in separate files)</option>
       </select>
       <button id="btn-load-fixture">Load Fixture</button>
       <button id="btn-live">Live mode (/)</button>

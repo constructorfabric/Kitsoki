@@ -1,0 +1,79 @@
+# observability_alert — the page-now branch: signal → query → triage (alert) →
+# page the owning team (transport post + inbox mirror) → done → landing.
+#
+# The signal has crossed a page-worthy threshold. The triage decide recommends
+# alert, so the post-bind emit auto-routes there; alerting posts the page
+# out-of-band (iface.transport.post, stubbed by the resolved host name) and
+# mirrors it into the inbox (host.inbox.add, stubbed), sets obs_status=='alerted'
+# and advances to the read-out. Proves the alert arc fires BOTH out-of-band
+# calls. The query host.run runs REAL printf.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: observability
+initial_world: {}
+
+host_handlers:
+  # Triage verdict — a sustained breach → alert.
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        disposition: "alert"
+        summary: "checkout 5xx rate at 4.2% — sustained SLO breach."
+        detail: "value 4.2%, threshold 2.0%, rising for 8 minutes."
+  host.run:
+    data:
+      ok: true
+      stdout: "checkout 5xx rate: value 4.2%, threshold 2.0%, trend up"
+      exit_code: 0
+  # The out-of-band page (iface.transport.post → host.append_to_file default).
+  # Stub by the RESOLVED host name; the dispatched-handler trace still records
+  # the iface call site (iface.transport.post), which is what we assert below.
+  host.append_to_file:
+    data:
+      ok: true
+      message_id: "obs-alert-001"
+  # The inbox mirror.
+  host.inbox.add:
+    data:
+      ok: true
+      id: "inbox-obs-001"
+
+turns:
+  # Name the signal → query → triage → post-bind emit routes on
+  # disposition=='alert' → triaged read-out.
+  - intent: { name: query_signal, slots: { signal: "checkout 5xx rate" } }
+    expect_state: observability_triaged
+    expect_host_calls:
+      - handler: host.run
+        args: { call: query }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: triage }
+        times: 1
+    expect_world:
+      obs_signal: "checkout 5xx rate"
+      obs_triage:
+        disposition: "alert"
+        summary: "checkout 5xx rate at 4.2% — sustained SLO breach."
+        detail: "value 4.2%, threshold 2.0%, rising for 8 minutes."
+
+  # Alert → page out-of-band + mirror into inbox → done.
+  - intent: { name: raise_alert, slots: {} }
+    expect_state: observability_done
+    expect_host_calls:
+      - handler: host.append_to_file.post
+        args: { call: alert }
+        times: 1
+      - handler: host.inbox.add
+        args: { call: alert-inbox }
+        times: 1
+    expect_world:
+      obs_status: "alerted"
+      obs_action: "obs-alert-001"
+
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

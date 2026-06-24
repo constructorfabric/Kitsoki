@@ -1,13 +1,3 @@
-// Package transport defines the output-only Transport.Post abstraction
-// described in the bug-fix room proposal §4.
-//
-// A Transport is an output adapter onto an external surface — Jira ticket
-// comments, Bitbucket PR comments, the TUI transcript pane. Phase templates
-// invoke `transport.post` with a target transport key; the transport renders
-// and delivers the message.
-//
-// v1 is output-only. There is no inbound `Open(handler)` loop; inbound is
-// the orchestrator's job (`loop.py` polling, or a future webhook receiver).
 package transport
 
 import (
@@ -21,7 +11,7 @@ import (
 //
 // Examples:
 //
-//	{Transport: "jira",      Thread: "PROJ-12345"}
+//	{Transport: "jira",      Thread: "PLTFRM-12345"}
 //	{Transport: "bitbucket", Thread: "DBI/repo/pulls/42"}
 //	{Transport: "tui",       Thread: "<session-uuid>"}
 type SessionKey struct {
@@ -175,9 +165,15 @@ func (r *Registry) Close() error {
 var ErrTransportNotFound = fmt.Errorf("transport: not found")
 
 // DefaultBotMarker is the prefix every transport prepends to its Post bodies
-// so orchestrators can filter their own output on inbound polling. Per
-// proposal §4.3.
+// so polling orchestrators can recognise and filter their own output when
+// they later read a thread back. Overridable per-transport in app.yaml.
 const DefaultBotMarker = "[kitsoki]"
+
+// httpClientTimeout bounds a single REST call made by a driver's default
+// HTTP client (Jira, Bitbucket). It is a whole-request deadline, not just a
+// connect timeout; callers that need different behaviour inject their own
+// *http.Client via the driver config.
+const httpClientTimeout = 30 * time.Second
 
 // registryKey is the context key used by WithRegistry / FromContext.
 type registryKey struct{}

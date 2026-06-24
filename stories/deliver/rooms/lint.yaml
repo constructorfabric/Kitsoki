@@ -1,0 +1,59 @@
+# lint — deterministic validation of the decomposition manifest (NO LLM).
+#
+# Runs stories/deliver/scripts/lint_decomposition.py against decomposition_path.
+# Checks: at least one brief; ids unique & non-empty; each brief has non-empty
+# brief + gate_command; every dep references an existing id; no dep cycle.
+#
+# stdout JSON: { "route": "ok"|"fail", "error": "<specific failure>" }
+# last_error is bound from stdout_json.error (empty string when route=="ok").
+#
+# The lint_route reset at the top of on_enter follows the board.yaml pattern:
+# set to "" BEFORE the invoke so post-bind emit guards don't fire on the
+# stale prior value, only on the freshly-bound result.
+#
+# lint_passed → fleet import entry (load) — fleet parses decomposition_path
+# lint_failed → @exit:needs-human with SPECIFIC non-blank last_error
+
+states:
+
+  lint:
+    description: "Validate the decomposition manifest deterministically (no LLM)."
+    relevant_world: [decomposition_path, lint_route, last_error]
+    view:
+      - prose: "Validating decomposition manifest at {{ world.decomposition_path }}…"
+      - kv:
+          pairs:
+            Result: '{{ world.lint_route|default:"(pending)" }}'
+            Error:  '{{ world.last_error }}'
+        when: "world.last_error != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # Reset so post-bind guards defer to the fresh result (board.yaml pattern).
+      - set: { lint_route: "" }
+      - invoke: host.run
+        id: lint
+        with:
+          cmd: python3
+          args:
+            - "stories/deliver/scripts/lint_decomposition.py"
+            - "{{ world.decomposition_path }}"
+        bind:
+          lint_route: "stdout_json.route"
+          last_error:  "stdout_json.error"
+        on_error: lint
+      - when: "world.lint_route == 'ok'"
+        emit_intent: lint_passed
+      - when: "world.lint_route == 'fail'"
+        emit_intent: lint_failed
+    on:
+      lint_passed:
+        - target: fleet
+      lint_failed:
+        - target: "@exit:needs-human"
+      look:
+        - target: .

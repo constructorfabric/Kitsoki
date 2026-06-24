@@ -16,16 +16,23 @@ type Reader interface {
 	LoadDocument(sid app.SessionID, doc DocID) (current json.RawMessage, version Version, err error)
 
 	// ReplayFrom returns an iterator over patch entries for (sid, doc) where
-	// DocVersion >= from, ordered by (Turn, Seq).
-	ReplayFrom(sid app.SessionID, doc DocID, from Version) iter.Seq[Entry]
+	// DocVersion >= from, ordered by (Turn, Seq). Because an iter.Seq cannot
+	// return an error, scan/query failures are captured and exposed via the
+	// returned accessor: range the sequence to completion, then check err().
+	// A non-nil err() means the stream ended on a DB error (corrupt/incomplete),
+	// not a clean end — callers on the replay path must not treat the two alike.
+	ReplayFrom(sid app.SessionID, doc DocID, from Version) (seq iter.Seq[Entry], err func() error)
 
 	// ReplayTyped returns an iterator over all typed (non-patch,
-	// non-checkpoint) entries for sid, ordered by (Turn, Seq).
-	ReplayTyped(sid app.SessionID) iter.Seq[Entry]
+	// non-checkpoint) entries for sid, ordered by (Turn, Seq). As with
+	// ReplayFrom, check the returned err() accessor after ranging to detect a
+	// scan/query failure that truncated the stream.
+	ReplayTyped(sid app.SessionID) (seq iter.Seq[Entry], err func() error)
 
 	// LatestCheckpoint returns the most recent checkpoint entry for (sid, doc).
-	// Returns a zero Entry and false if no checkpoint exists.
-	LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bool)
+	// The bool is false (with a nil error) when no checkpoint exists; a non-nil
+	// error signals a query/scan failure, kept distinct from "not found".
+	LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bool, error)
 
 	// ListLiveDocs returns the set of DocIDs that have at least one entry for sid.
 	ListLiveDocs(sid app.SessionID) []DocID
@@ -116,8 +123,8 @@ func (r *memReader) LoadDocument(sid app.SessionID, doc DocID) (json.RawMessage,
 	return checkpointBody, highestVer, nil
 }
 
-func (r *memReader) ReplayFrom(sid app.SessionID, doc DocID, from Version) iter.Seq[Entry] {
-	return func(yield func(Entry) bool) {
+func (r *memReader) ReplayFrom(sid app.SessionID, doc DocID, from Version) (iter.Seq[Entry], func() error) {
+	seq := func(yield func(Entry) bool) {
 		r.store.mu.RLock()
 		snapshot := make([]Entry, len(r.store.entries))
 		copy(snapshot, r.store.entries)
@@ -153,10 +160,11 @@ func (r *memReader) ReplayFrom(sid app.SessionID, doc DocID, from Version) iter.
 			}
 		}
 	}
+	return seq, func() error { return nil }
 }
 
-func (r *memReader) ReplayTyped(sid app.SessionID) iter.Seq[Entry] {
-	return func(yield func(Entry) bool) {
+func (r *memReader) ReplayTyped(sid app.SessionID) (iter.Seq[Entry], func() error) {
+	seq := func(yield func(Entry) bool) {
 		r.store.mu.RLock()
 		snapshot := make([]Entry, len(r.store.entries))
 		copy(snapshot, r.store.entries)
@@ -188,19 +196,20 @@ func (r *memReader) ReplayTyped(sid app.SessionID) iter.Seq[Entry] {
 			}
 		}
 	}
+	return seq, func() error { return nil }
 }
 
-func (r *memReader) LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bool) {
+func (r *memReader) LatestCheckpoint(sid app.SessionID, doc DocID) (Entry, bool, error) {
 	r.store.mu.RLock()
 	defer r.store.mu.RUnlock()
 
 	for i := len(r.store.entries) - 1; i >= 0; i-- {
 		e := r.store.entries[i]
 		if e.Session == sid && e.Doc == doc && IsCheckpointKind(e.Kind) {
-			return e, true
+			return e, true, nil
 		}
 	}
-	return Entry{}, false
+	return Entry{}, false, nil
 }
 
 func (r *memReader) ListLiveDocs(sid app.SessionID) []DocID {

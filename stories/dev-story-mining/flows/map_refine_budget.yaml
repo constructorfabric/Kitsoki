@@ -1,0 +1,35 @@
+# map_refine_budget — refining past the map budget bails to @exit:abandoned.
+#
+# Exercises the L2 cycle-budget gate on the map room: with map_cycle already
+# at map_budget, a `refine` redirects to @exit:abandoned with a structured
+# reason instead of looping. Seeded artifacts keep it LLM-free; the refine
+# arc that bails takes no transport.post, so no host call fires at all.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: map
+initial_world:
+  job:        "intents-20260615"
+  stories_dir: "stories"
+  judge_mode: "human"
+  map_cycle:  3
+  map_budget: 3
+  mine_artifact:
+    brief_path:   ".artifacts/session-mining/intents-20260615/BRIEF.md"
+    intent_count: 154
+    summary_markdown: "154 intents catalogued."
+  map_artifact:
+    themes:
+      - { theme: "Pre-existing failure vs regression", intents: 8, home_room: "stories/bugfix/rooms/validating.yaml", status: "ENRICH" }
+    summary_markdown: "Map present but the operator keeps rejecting it."
+
+turns:
+  # Already at budget — refine bails out instead of re-mapping.
+  - intent: { name: refine, slots: { feedback: "still wrong home room" } }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "map_cycle_budget_exhausted"
+      status: "abandoned"
+
+expect_terminal: true
+expect_no_errors: true

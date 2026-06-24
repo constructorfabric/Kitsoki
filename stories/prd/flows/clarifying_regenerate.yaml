@@ -1,0 +1,62 @@
+# clarifying_regenerate — `regenerate` re-asks this round's questions and,
+# at the round budget, abandons instead of looping.
+#
+# Two behaviours under test:
+#   1. regenerate is a self-transition that DISCARDS this round's working
+#      answers (clarification_answers / answered_count / answered_ids
+#      cleared) so the freshly-regenerated list starts clean, carries the
+#      steering note into refine_feedback, and bumps clarifying_cycle + cycle.
+#   2. once clarifying_cycle reaches clarifying_budget the next regenerate
+#      takes the @exit:abandoned arm with abandon_reason
+#      "clarifying_budget_exhausted" (the guard fires BEFORE the self-loop).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: clarifying
+initial_world:
+  idea:              "A CLI for X"
+  workdir:           "."
+  output_path:       ".artifacts/prd.md"
+  judge_mode:        "human"
+  clarifying_cycle:  0
+  clarifying_budget: 1   # one regenerate allowed; the second abandons
+  clarifications:
+    questions:
+      - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+  clarification_answers: "Q1: a half-typed answer\n"
+  answered_count:        1
+  answered_ids:          "|1|"
+
+host_handlers:
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Sharper: which user segment first?", why: "narrows the persona" }
+
+turns:
+  # Within budget → re-ask: clear this round's answers, carry the steering
+  # note, bump the round counter.
+  - intent: { name: regenerate, slots: { feedback: "make the questions sharper" } }
+    expect_state: clarifying
+    expect_world:
+      clarification_answers: ""
+      answered_count:        0
+      answered_ids:          ""
+      clarifying_cycle:      1
+      cycle:                 1
+      refine_feedback:       "make the questions sharper"
+
+  # At budget (clarifying_cycle 1 >= clarifying_budget 1) → abandon.
+  - intent: { name: regenerate, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "clarifying_budget_exhausted"
+      status:         "abandoned"
+
+expect_terminal: true
+expect_no_errors: true

@@ -1,8 +1,8 @@
 // Package host — host.local — build/test runner provider.
 //
-// Implements the `ci` host_interface from the dev-story
-// implementation contract.  A single prefix-fallback handler
-// dispatches the three ci ops via the `op` arg.
+// Implements the `ci` host_interface (see docs/architecture/hosts.md).  A
+// single prefix-fallback handler dispatches the three ci ops via the
+// `op` arg.
 //
 // The handler defaults to `go test ./...` for run_tests and `go build
 // ./...` for build, but a per-world override can be supplied via the

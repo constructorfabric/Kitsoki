@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GroupSet",
+  "description": "Ranked pattern groups identified by the review agent.",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "pattern", "root_cause", "severity", "member_ids", "surfaces", "viewports", "before_frames", "recommendation"],
+        "additionalProperties": false,
+        "properties": {
+          "id":             { "type": "string", "description": "Short slug, e.g. 'tap-target-trace'" },
+          "title":          { "type": "string" },
+          "pattern":        { "type": "string", "description": "One sentence describing the repeating problem." },
+          "root_cause":     { "type": "string", "description": "The single code-level root cause (one fix clears all members)." },
+          "severity":       { "type": "string", "enum": ["error", "warn", "info"] },
+          "member_ids":     { "type": "array", "items": { "type": "string" }, "description": "Fingerprints or IDs of the member findings." },
+          "surfaces":       { "type": "array", "items": { "type": "string" } },
+          "viewports":      { "type": "array", "items": { "type": "string" } },
+          "before_frames":  { "type": "array", "items": { "type": "string" }, "description": "Frame filenames from the audit capture." },
+          "recommendation": { "type": "string", "description": "Concrete actionable fix guidance." }
+        }
+      }
+    }
+  }
+}

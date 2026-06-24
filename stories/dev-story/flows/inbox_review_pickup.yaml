@@ -8,7 +8,7 @@
 
 test_kind: flow
 app: ../app.yaml
-initial_state: main
+initial_state: landing
 initial_world:
   judge_mode: "human"
   judge_confidence_threshold: 0.8
@@ -30,9 +30,9 @@ host_handlers:
       comments: ""
   host.local_files.ticket:
     data: { ok: true }
-  # Phase 9: code-review rooms now use host.oracle.decide (review/judge)
-  # and host.oracle.ask (comment draft).
-  host.oracle.decide:
+  # Phase 9: code-review rooms now use host.agent.decide (review/judge)
+  # and host.agent.ask (comment draft).
+  host.agent.decide:
     data:
       ok: true
       submitted:
@@ -47,12 +47,12 @@ host_handlers:
         verdict:    "pass"
         intent:     "accept"
         reason:     "Stub."
-  host.oracle.ask:
+  host.agent.ask:
     data:
       ok: true
       stdout: "LGTM."
 
-  host.oracle.task:
+  host.agent.task:
     data:
       ok: true
       stdout: "LGTM."
@@ -117,7 +117,7 @@ turns:
   - intent: { name: rev__approve, slots: {} }
     # @exit:reviewed → parent's imports.rev.exits.reviewed.to: main
     # with status="reviewed".
-    expect_state: main
+    expect_state: landing
     expect_world:
       status: "reviewed"
 

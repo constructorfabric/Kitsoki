@@ -1,0 +1,124 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir: "."
+  apply_mode: "local"
+  override_path: "/Users/brad/code/Kitsoki/.kitsoki.local.yaml"
+  output_root: ".artifacts/model-harness-eval"
+  markdown_path: ".context/model-harness-eval.md"
+  deck_path: ".artifacts/model-harness-eval/index.html"
+  summary_path: ".artifacts/model-harness-eval/summary.json"
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      prepare_reports:
+        data:
+          ok: true
+          submitted:
+            question: "How do the available model harnesses perform on real cases?"
+            markdown_path: ".context/model-harness-eval.md"
+            deck_path: ".artifacts/model-harness-eval/index.html"
+            slidey_spec_path: "docs/decks/model-harness-eval.json"
+            case_study_path: "docs/case-studies/model-harness-eval.md"
+            summary_path: ".artifacts/model-harness-eval/summary.json"
+            status: "complete"
+            configured_options:
+              - profile: "claude-native"
+                backend: "claude"
+                model: "opus"
+                effort: "medium"
+                source: "baseline"
+                models: ["opus", "sonnet", "haiku"]
+                efforts: ["low", "medium", "high", "xhigh", "max"]
+              - profile: "synthetic-claude"
+                backend: "claude"
+                model: "syn:large:text"
+                source: "local"
+                models: ["syn:large:text", "syn:small:text"]
+              - profile: "synthetic-codex"
+                backend: "codex"
+                model: "syn:large:text"
+                source: "local"
+                models: ["syn:large:text", "syn:small:text"]
+              - profile: "codex-native"
+                backend: "codex"
+                model: "gpt-5-codex"
+                source: "local"
+                models: ["gpt-5-codex", "gpt-5"]
+            recommendations:
+              fastest:
+                profile: "synthetic-codex"
+                model: "syn:small:text"
+                rationale: "Fastest inferred option among configured lightweight models; live latency samples were not run in the no-cost flow."
+                evidence_status: "inferred"
+              cheapest:
+                profile: "synthetic-codex"
+                model: "syn:small:text"
+                rationale: "Cheapest inferred option because the synthetic small model is the configured low-cost candidate; no paid live cost samples were run."
+                evidence_status: "inferred"
+                avg_cost_usd: 0
+              best:
+                profile: "codex-native"
+                model: "gpt-5-codex"
+                rationale: "Best inferred option for real coding-agent tasks among configured native harnesses; direct benchmark evidence remains a gap."
+                evidence_status: "inferred"
+              selected:
+                profile: "synthetic-codex"
+                model: "syn:small:text"
+                rationale: "Selected because the accepted comparison table identifies it as the fastest and cheapest cost-compliant passing candidate."
+                evidence_status: "measured"
+                pass_rate_median: 0.67
+                latency_ms_median: 3050
+                latency_ms_p5: 3005
+                latency_ms_p95: 3095
+                avg_cost_usd: 0.0008
+            override:
+              mode: "local"
+              path: "/Users/brad/code/Kitsoki/.kitsoki.local.yaml"
+              applied: true
+              selected_profile: "synthetic-codex"
+              selected_model: "syn:small:text"
+              selected_effort: "low"
+              summary: "Set the main-checkout local default_profile to synthetic-codex and that profile's model to syn:small:text while preserving intercept and other harness_profiles."
+              diff_summary: "Updated default_profile: synthetic-codex and harness_profiles.synthetic-codex.model: syn:small:text in /Users/brad/code/Kitsoki/.kitsoki.local.yaml."
+            commands_run:
+              - "go run ./cmd/kitsoki test intents stories/oregon-trail/app.yaml --harness static --json .artifacts/model-harness-eval/intent-reports/oregon-trail.json"
+              - "bash tools/session-mining/examples/git-ops/run.sh --keep .artifacts/model-harness-eval/git-ops-coverage"
+              - "python3 tools/session-mining/eval_pilot_report.py --root stories --intent-root .artifacts/model-harness-eval/intent-reports --coverage-root .artifacts/model-harness-eval --markdown .context/model-harness-eval.md --deck .artifacts/model-harness-eval/index.html --summary .artifacts/model-harness-eval/summary.json"
+            evidence:
+              eval_datasets: 1
+              eval_reports: 3
+              intent_suite_reports: 1
+              coverage_jobs: 1
+              readiness_gaps: 12
+            limitations:
+              - "No live provider-backed benchmark matrix was run."
+            summary_markdown: |
+              ## Model harness eval
+
+              Question: How do the available model harnesses perform on real cases?
+
+              Fastest and cheapest: synthetic-codex / syn:small:text, inferred from the configured lightweight synthetic option. The report includes a numeric comparison table with effectiveness, p95 latency, and average cost columns; configured candidates without measurements are listed as missing. The main-checkout local override result was recorded at /Users/brad/code/Kitsoki/.kitsoki.local.yaml.
+
+turns:
+  - intent:
+      name: start
+      slots:
+        question: "How do the available model harnesses perform on real cases?"
+        apply_mode: "local"
+        override_path: "/Users/brad/code/Kitsoki/.kitsoki.local.yaml"
+    expect_state: reporting
+    expect_world:
+      status: "ready"
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "prepare_reports" }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      status: "done"
+
+expect_no_errors: true

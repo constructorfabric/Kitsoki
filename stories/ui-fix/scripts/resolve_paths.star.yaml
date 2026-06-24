@@ -1,0 +1,5 @@
+inputs: {}
+
+outputs:
+  verdict_path: { type: string }
+  frames_dir:   { type: string }

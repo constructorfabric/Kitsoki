@@ -31,12 +31,12 @@ kitsoki feature, you want to see it work here first, before you
 wire the real external system.
 
 Where this README overlaps with the authoritative docs —
-[`docs/state-machine.md`](../../docs/state-machine.md),
-[`docs/authoring.md`](../../docs/authoring.md),
-[`docs/testing.md`](../../docs/testing.md),
-[`docs/hosts.md`](../../docs/hosts.md),
-[`docs/transports.md`](../../docs/transports.md),
-[`docs/background-jobs/README.md`](../../docs/background-jobs/README.md) —
+[`docs/stories/state-machine.md`](../../docs/stories/state-machine.md),
+[`docs/stories/authoring.md`](../../docs/stories/authoring.md),
+[`docs/tracing/testing.md`](../../docs/tracing/testing.md),
+[`docs/architecture/hosts.md`](../../docs/architecture/hosts.md),
+[`docs/architecture/transports.md`](../../docs/architecture/transports.md),
+[`docs/stories/background-jobs/README.md`](../../docs/stories/background-jobs/README.md) —
 defer to those. The byte-exact schema view is in
 [`APP.md`](./APP.md), produced by `kitsoki render`.
 
@@ -64,14 +64,14 @@ Two modes share the same state graph; the toggle is one world key.
 go run ./cmd/kitsoki run stories/oregon-trail/app.yaml
 
 # Narrated. Same graph; event prose, party-naming, illness
-# diagnosis, and the wagon-master chat go through host.oracle.*.
+# diagnosis, and the wagon-master chat go through host.agent.*.
 go run ./cmd/kitsoki run stories/oregon-trail/app.yaml \
     --world '{"narration": true}'
 ```
 
 Every event substate's `on_enter:` carries paired `when:
 world.narration` / `when: not world.narration` arms that fork into
-the canned-prose branch or the oracle-call branch. The graph is
+the canned-prose branch or the agent-call branch. The graph is
 identical either way — narrated mode is decoration over a
 deterministic core.
 
@@ -87,7 +87,7 @@ go run ./cmd/kitsoki run stories/oregon-trail/app.yaml \
 Available scenarios live in [`scenarios/`](./scenarios/); the same
 file can also be loaded interactively from the TUI via
 `/warp file:scenarios/chimney_robbery.yaml`. Both routes share the
-same loader — see [`../../docs/imports.md` §Operator tooling](../../docs/imports.md#operator-tooling-warp-and---warp).
+same loader — see [`../../docs/stories/imports.md` §Operator tooling](../../docs/stories/imports.md#operator-tooling-warp-and---warp).
 
 ---
 
@@ -182,12 +182,12 @@ want to see the resulting compiled graph.
 
 | Game feature | Kitsoki primitive | Where |
 |---|---|---|
-| Period-flavored prose for events / landmarks | `host.oracle.ask` invoked from event substates' `on_enter:` when `world.narration`; result bound into `world.last_event_prose` / `world.last_landmark_prose`; view prefers the prose over the canned line | [`phases.yaml`](./phases.yaml) `event_*.on_enter`; [`prompts/`](./prompts/) `event_*.md` + `landmark_arrival.md` |
-| "Diagnose the illness" returns structured data, not prose | `host.oracle.decide` with a schema that pins `{ illness, severity, treatment }` via the submit tool; `on_error: {{ tpl.id }}_error` covers handler failure | [`phases.yaml`](./phases.yaml) `event_disease.on_enter`; [`mcp/illness.json`](./mcp/illness.json); [`prompts/event_disease.md`](./prompts/event_disease.md); flow [`flows/disease_with_mcp.yaml`](./flows/disease_with_mcp.yaml) |
-| Different voices for different surfaces in one app | Top-level `agents:` block; each oracle call passes `agent: <name>` and the engine threads the agent's `system_prompt` through to the handler | [`app.yaml`](./app.yaml) §`agents:` (`frontier_guide`, `wagon_master`, `party_namer`, `trail_narrator`, `frontier_doctor`) |
+| Period-flavored prose for events / landmarks | `host.agent.ask` invoked from event substates' `on_enter:` when `world.narration`; result bound into `world.last_event_prose` / `world.last_landmark_prose`; view prefers the prose over the canned line | [`phases.yaml`](./phases.yaml) `event_*.on_enter`; [`prompts/`](./prompts/) `event_*.md` + `landmark_arrival.md` |
+| "Diagnose the illness" returns structured data, not prose | `host.agent.decide` with a schema that pins `{ illness, severity, treatment }` via the submit tool; `on_error: {{ tpl.id }}_error` covers handler failure | [`phases.yaml`](./phases.yaml) `event_disease.on_enter`; [`mcp/illness.json`](./mcp/illness.json); [`prompts/event_disease.md`](./prompts/event_disease.md); flow [`flows/disease_with_mcp.yaml`](./flows/disease_with_mcp.yaml) |
+| Different voices for different surfaces in one app | Top-level `agents:` block; each agent call passes `agent: <name>` and the engine threads the agent's `system_prompt` through to the handler | [`app.yaml`](./app.yaml) §`agents:` (`frontier_guide`, `wagon_master`, `party_namer`, `trail_narrator`, `frontier_doctor`) |
 | Off-path persona = "weathered frontier guide" | `off_path.agent: frontier_guide` references the same named-agent primitive | [`app.yaml`](./app.yaml) §`off_path:` |
-| Wagon-master chat speaks like a wagon master | `host.oracle.converse` called with `agent: wagon_master` per turn | [`rooms/trail_guide.yaml`](./rooms/trail_guide.yaml) |
-| Theme-based party generation ("name the party after the Jackson 5") | `generate_names` intent dispatches `host.oracle.ask` with `agent: party_namer`; deterministic branch uses a CSV lookup table | [`rooms/intro.yaml`](./rooms/intro.yaml) `generate_names`; flow [`flows/party_naming_narrated_agent.yaml`](./flows/party_naming_narrated_agent.yaml) |
+| Wagon-master chat speaks like a wagon master | `host.agent.converse` called with `agent: wagon_master` per turn | [`rooms/trail_guide.yaml`](./rooms/trail_guide.yaml) |
+| Theme-based party generation ("name the party after the Jackson 5") | `generate_names` intent dispatches `host.agent.ask` with `agent: party_namer`; deterministic branch uses a CSV lookup table | [`rooms/intro.yaml`](./rooms/intro.yaml) `generate_names`; flow [`flows/party_naming_narrated_agent.yaml`](./flows/party_naming_narrated_agent.yaml) |
 
 ### 3.6 Transport posts — multi-surface play
 
@@ -195,13 +195,13 @@ want to see the resulting compiled graph.
 |---|---|---|
 | Every arrival shows up as a "Trail Diary" entry | `host.transport.post` to `tui` on every `_awaiting_reply.on_enter`; `phase_id:` is templated per leg for de-dup on re-entry | [`phases.yaml`](./phases.yaml) `_awaiting_reply.on_enter`; flow [`flows/trail_diary_smoke.yaml`](./flows/trail_diary_smoke.yaml) |
 | Death obituary posts to the same thread | `ended_lost.on_enter` posts a final entry | [`rooms/ended.yaml`](./rooms/ended.yaml) |
-| Same state machine runs on a Jira ticket | The transport is configured at session-create time (`kitsoki session create --key jira:OT-1`); no manifest change | (engine-side; see [`docs/transports.md`](../../docs/transports.md)) |
+| Same state machine runs on a Jira ticket | The transport is configured at session-create time (`kitsoki session create --key jira:OT-1`); no manifest change | (engine-side; see [`docs/architecture/transports.md`](../../docs/architecture/transports.md)) |
 
 ### 3.7 Engine surfaces with no game equivalent
 
 | Surface | Kitsoki primitive | Where |
 |---|---|---|
-| Aliased sub-story composition with private worlds | `imports:` — Oregon Trail's `bandits` encounter is a three-layer chain (`oregon-trail` → `frontier_event` → `robbery`) with `world_in:` / per-exit `set:` projections, `host_bindings:` rebinding through to the grandchild, intent re-export both directions, and a state/intent/prompt override triplet. Full reference: [`../../docs/imports.md`](../../docs/imports.md). | [`app.yaml`](./app.yaml) §`imports.frontier`; flows `flows/robbery_*.yaml` |
+| Aliased sub-story composition with private worlds | `imports:` — Oregon Trail's `bandits` encounter is a three-layer chain (`oregon-trail` → `frontier_event` → `robbery`) with `world_in:` / per-exit `set:` projections, `host_bindings:` rebinding through to the grandchild, intent re-export both directions, and a state/intent/prompt override triplet. Full reference: [`../../docs/stories/imports.md`](../../docs/stories/imports.md). | [`app.yaml`](./app.yaml) §`imports.frontier`; flows `flows/robbery_*.yaml` |
 | Parallel state with cross-region `emit:` | `world_clock` compound with `type: parallel` and two sibling regions (`weather`, `calendar`); weather `on:` arms emit `precip_heavy` / `snow_starts`, calendar `on:` arms bind the witnesses into world | [`rooms/world_clock.yaml`](./rooms/world_clock.yaml); flow [`flows/parallel_weather.yaml`](./flows/parallel_weather.yaml) |
 | `Effect.When` for "only fire if narration is on" | `when:` on individual `on_enter` effects — paired with a `not world.narration` arm for the deterministic side | [`phases.yaml`](./phases.yaml) `event_*.on_enter` |
 | `Slot.Default` filling | `propose_crossing` declares `confidence` as `required: false, default: 50`; the engine fills the default into the slot bag before effects run so the templated cost math doesn't crash on a bare `slots.confidence` | [`intents.yaml`](./intents.yaml) `propose_crossing`; flow [`flows/river_ford_no_confidence.yaml`](./flows/river_ford_no_confidence.yaml) |
@@ -326,7 +326,7 @@ result is the outcome.
 ### 4.4 Disease MCP-typed diagnosis — *force the LLM to return validated JSON*
 
 **OT shape.** `event_disease.on_enter` carries a narrated arm
-(`when: world.narration`) that invokes `host.oracle.decide`
+(`when: world.narration`) that invokes `host.agent.decide`
 with `agent: frontier_doctor`, prompt path
 `prompts/event_disease.md`, and an MCP server that registers the
 `submit` tool. [`mcp/illness.json`](./mcp/illness.json) defines the
@@ -358,7 +358,7 @@ substates. `trail_guide_list.on_enter` calls `host.chat.list` with
 own chat history. `ask_question` either creates a new chat
 (`host.chat.create`) or continues an existing one
 (`host.chat.resolve_ref` from a positional / prefix / ULID ref);
-each turn calls `host.oracle.converse` with the resolved `chat_id`.
+each turn calls `host.agent.converse` with the resolved `chat_id`.
 Auto-titling fires at turn 3 via `host.chat.suggest_title`.
 
 **Abstract pattern.** "Persistent advisor scoped to a user, project,
@@ -547,7 +547,7 @@ mention.
 
 **OT shape.** `app.yaml` declares five agents
 (`frontier_guide`, `wagon_master`, `party_namer`, `trail_narrator`,
-`frontier_doctor`). Each oracle invocation passes `agent: <name>`;
+`frontier_doctor`). Each agent invocation passes `agent: <name>`;
 the engine threads the agent's `system_prompt` (and tools, if
 declared) through to the handler. `off_path.agent:` references the
 same primitive — the old inline `persona:` shortcut is now a
@@ -605,7 +605,7 @@ Kansas River resumes there.
 
 **Abstract pattern.** Persistent, persona-tagged side conversations
 that *can* edit application state. Distinct from `off_path:` (which
-is a one-shot oracle dip and explicitly cannot touch state) and
+is a one-shot agent dip and explicitly cannot touch state) and
 from `mode: conversational` rooms (which are chats *inside* the
 story graph). Meta modes live above the graph and can fork the app
 itself.
@@ -649,7 +649,7 @@ stories/oregon-trail/
   phases.yaml              — trail_leg phase template + 7 instances,
                              event substates, traveling.continue
                              guarded arms, cycle budgets, snow-blocked
-                             routing, narrated-mode oracle calls,
+                             routing, narrated-mode agent calls,
                              host.transport.post emissions
   proposals.yaml           — buy_supplies + river_strategy proposal
                              kinds; schema, draft/refine prompts,
@@ -715,7 +715,7 @@ the union of mechanics in §3 with no overlap by design.
 All fixtures run in deterministic mode with **zero external
 dependencies**: no LLM, no network, no real Jira / Slack / code-host
 account. The narrated-mode flow (`narrated_smoke.yaml`) stubs every
-`host.oracle.*` call via `host_handlers:` so it too runs in CI without
+`host.agent.*` call via `host_handlers:` so it too runs in CI without
 secrets. `kitsoki test flows stories/oregon-trail/app.yaml` is the
 single command — it works on a laptop with `go` installed, no other
 setup.
@@ -728,8 +728,8 @@ setup.
 | [`buy_proposal_auto_accept.yaml`](./flows/buy_proposal_auto_accept.yaml) | `policy.auto_accept_if: total_cost < 5` bypasses `reviewing` for $1 baskets. |
 | [`buy_proposal_refine.yaml`](./flows/buy_proposal_refine.yaml) | `refine_purchase` self-stays in `reviewing` and merges supplied slots against the existing draft. |
 | [`buy_then_breakdown.yaml`](./flows/buy_then_breakdown.yaml) | `accept_purchase` credits every inventory key implied by the basket (wheels / clothing / bullets — not just oxen and food). |
-| [`disease_with_mcp.yaml`](./flows/disease_with_mcp.yaml) | Narrated `event_disease.on_enter` round-trips through `host.oracle.decide` with stubbed typed-JSON `submitted:` payload; world keys are bound. |
-| [`host_failure_recovery.yaml`](./flows/host_failure_recovery.yaml) | `on_error:` redirect: stubbed `host.run` / `host.oracle.ask` infra error routes to `{{ tpl.id }}_error`. |
+| [`disease_with_mcp.yaml`](./flows/disease_with_mcp.yaml) | Narrated `event_disease.on_enter` round-trips through `host.agent.decide` with stubbed typed-JSON `submitted:` payload; world keys are bound. |
+| [`host_failure_recovery.yaml`](./flows/host_failure_recovery.yaml) | `on_error:` redirect: stubbed `host.run` / `host.agent.ask` infra error routes to `{{ tpl.id }}_error`. |
 | [`hunt_with_clarification.yaml`](./flows/hunt_with_clarification.yaml) | Full background-hunt lifecycle: submit → mid-flight `RequestClarification` → inbox `action_required` → `answer_clarification` → resume → complete; `expect_jobs:` and `expect_inbox:` both assert. |
 | [`illness_status_visible.yaml`](./flows/illness_status_visible.yaml) | `illness_*` world keys are surfaced on the trail leg's `relevant_world:` so they persist into the next leg's view. |
 | [`illness_twice.yaml`](./flows/illness_twice.yaml) | `event_disease.on_enter` zeroes `current_event_attempts` so a second illness later in the trail still allows the cycle-budget retries. |
@@ -739,7 +739,7 @@ setup.
 | [`losing_starvation.yaml`](./flows/losing_starvation.yaml) | Starvation guard on `traveling.continue` routes to `ended_lost`. |
 | [`month_mechanics.yaml`](./flows/month_mechanics.yaml) | Three arcs in one fixture: snow-blocked South Pass routing; `wait_for_spring` loop; pass-opens-on-april return. |
 | [`weather_by_month.yaml`](./flows/weather_by_month.yaml) | Pins the month-biased weather-kind selector in `event_weather.on_enter`: a december-seeded weather event resolves to `snow` regardless of the raw rng roll. |
-| [`narrated_smoke.yaml`](./flows/narrated_smoke.yaml) | Narrated-mode round-trip: every event substate's narrated arm lights up; stubbed `host.oracle.ask` returns canned prose. |
+| [`narrated_smoke.yaml`](./flows/narrated_smoke.yaml) | Narrated-mode round-trip: every event substate's narrated arm lights up; stubbed `host.agent.ask` returns canned prose. |
 | [`parallel_weather.yaml`](./flows/parallel_weather.yaml) | `world_clock` parallel region's weather → calendar `emit:` propagation; both witnesses flip. |
 | [`party_naming_narrated_agent.yaml`](./flows/party_naming_narrated_agent.yaml) | Narrated `generate_names` threads `agent: party_namer` through to the handler. |
 | [`party_naming.yaml`](./flows/party_naming.yaml) | Deterministic `name_party` / `name_member` / `generate_names` all populate `party_member_*` and `party_names`. |
@@ -748,7 +748,7 @@ setup.
 | [`river_ford_drown.yaml`](./flows/river_ford_drown.yaml) | `river_strategy` proposal in `river_crossing.deep`; ford → drown outcome from the background-job result. |
 | [`river_ford_no_confidence.yaml`](./flows/river_ford_no_confidence.yaml) | `Slot.Default` filling: `propose_crossing` without `confidence` doesn't crash the templated cost math. |
 | [`trail_diary_smoke.yaml`](./flows/trail_diary_smoke.yaml) | `host.transport.post` fires at landmark arrival, event resolution, and death. |
-| [`trail_guide_smoke.yaml`](./flows/trail_guide_smoke.yaml) | Persistent chat: list → ask (creates) → ask (continues) → back. Stubs `host.chat.*` + `host.oracle.converse`. |
+| [`trail_guide_smoke.yaml`](./flows/trail_guide_smoke.yaml) | Persistent chat: list → ask (creates) → ask (continues) → back. Stubs `host.chat.*` + `host.agent.converse`. |
 | [`winning_deterministic.yaml`](./flows/winning_deterministic.yaml) | The canonical happy path: 15 turns, Independence → Willamette, every leg's no-event default arm. |
 
 Running `go run ./cmd/kitsoki test flows stories/oregon-trail/app.yaml`
@@ -805,7 +805,8 @@ go run ./cmd/kitsoki test intents stories/oregon-trail/app.yaml \
 
 [`drive_scripts/win.txt`](./drive_scripts/win.txt) is a plain-text
 script of human-typed inputs ready for the future (unshipped)
-`kitsoki drive` CLI.
+`kitsoki drive` CLI — see
+[`docs/proposals/ai-collaboration-proposal.md`](../../docs/proposals/ai-collaboration-proposal.md).
 
 Pre-built artifacts live under [`../../demo/`](../../demo/):
 `oregon-trail.dot`, `oregon-trail.mmd`, `oregon-trail-win.gif`.

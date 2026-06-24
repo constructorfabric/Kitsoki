@@ -1,0 +1,33 @@
+# done_one — a maker run finished (@exit:achieved projected here). Count it,
+# then either re-enter the maker import for another run (`again`) — exercising
+# the import-compound re-entry reset — or `finish` to a terminal exit.
+states:
+
+  done_one:
+    description: "A maker run finished; run again or finish."
+    relevant_world: [runs, status, maker__iteration, maker__goal_achieved]
+    on_enter:
+      - increment: { runs: 1 }
+    view:
+      - prose: "Run {{ world.runs }} finished (maker iteration {{ world.maker__iteration }})."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "again"
+              intent: again
+            - label: "finish"
+              intent: finish
+    on:
+      again:
+        # Re-enter the maker import. The engine resets the child's prefixed
+        # world keys to defaults on this re-entry, so the second run re-proves
+        # the gate RED and starts iteration from 1 — not a no-op on the prior
+        # run's terminal "achieved" flags.
+        - target: maker
+      finish:
+        - target: "@exit:done"
+          effects:
+            - set: { status: "done" }
+      look:
+        - target: .

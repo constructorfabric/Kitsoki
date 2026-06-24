@@ -1,0 +1,60 @@
+states:
+  idle:
+    description: "Waiting for an evaluation question."
+    relevant_world: [question, apply_mode, override_path, target_story, target_call, output_root, markdown_path, deck_path, slidey_spec_path, case_study_path, summary_path, live_policy, status]
+    view:
+      - banner:
+          text: "MODEL HARNESS EVAL"
+          subtitle: "Ask a broad question; the reporter proposes a model/harness winner and applies an override."
+          color: "#0F766E"
+      - prose: "Provide an overall question about model/harness effectiveness, speed, cost, readiness, coverage, and which configured option should become the default."
+      - kv:
+          pairs:
+            Apply mode: "{{ world.apply_mode }}"
+            Override: "{{ world.override_path }}"
+            Markdown: "{{ world.markdown_path }}"
+            Deck: "{{ world.deck_path }}"
+            Slidey spec: "{{ world.slidey_spec_path }}"
+            Case study: "{{ world.case_study_path }}"
+            Summary: "{{ world.summary_path }}"
+            Live policy: "{{ world.live_policy }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start question=..."
+              hint: "prepare report artifacts for the question"
+              intent: start
+              param: { slot: question, type: string, placeholder: "what should this eval answer?", required: true }
+            - label: "look"
+              intent: look
+    on:
+      start:
+        - target: reporting
+          effects:
+            - set:
+                question: "{{ slots.question }}"
+                apply_mode: "{{ slots.apply_mode ?? world.apply_mode }}"
+                override_path: "{{ slots.override_path ?? world.override_path }}"
+                target_story: "{{ slots.target_story ?? world.target_story }}"
+                target_call: "{{ slots.target_call ?? world.target_call }}"
+                output_root: "{{ slots.output_root ?? world.output_root }}"
+                markdown_path: "{{ slots.markdown_path ?? world.markdown_path }}"
+                deck_path: "{{ slots.deck_path ?? world.deck_path }}"
+                slidey_spec_path: "{{ slots.slidey_spec_path ?? world.slidey_spec_path }}"
+                case_study_path: "{{ slots.case_study_path ?? world.case_study_path }}"
+                summary_path: "{{ slots.summary_path ?? world.summary_path }}"
+                live_policy: "{{ slots.live_policy ?? world.live_policy }}"
+                refine_feedback: ""
+                report_artifact: {}
+                status: "running"
+      restart:
+        - target: idle
+          effects:
+            - set:
+                question: "{{ slots.question ?? '' }}"
+                refine_feedback: ""
+                report_artifact: {}
+                status: "idle"
+      look:
+        - target: .

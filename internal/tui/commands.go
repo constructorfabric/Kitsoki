@@ -13,7 +13,7 @@ import tea "github.com/charmbracelet/bubbletea"
 //   - RoomSwitchCommand    — swaps the active room (and transcript and
 //                            theme); the on-path room keeps processing.
 //
-// Phase 1 only ships the ChatBlockCommand surface — /help and /actions
+// Phase 1 only ships the ChatBlockCommand surface — /help and /intents
 // are the first commands wired through it. Existing commands stay on
 // the inline switch in handleSlashCommand for now; they migrate as
 // later phases convert their overlays into inline blocks.
@@ -26,7 +26,7 @@ import tea "github.com/charmbracelet/bubbletea"
 
 // ChatBlockCommand renders a single transcript block and returns. The
 // command receives the slash arguments (everything after the command
-// name, e.g. `auto on` for `/actions auto on`) and the current model so
+// name, e.g. `auto on` for `/intents auto on`) and the current model so
 // it can read state (room, mode, current menu). It returns the styled
 // block body — the caller appends it via transcript.AppendBlock — and
 // an updated model plus optional follow-up Cmd.

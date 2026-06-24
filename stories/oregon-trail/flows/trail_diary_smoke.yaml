@@ -17,7 +17,7 @@
 #
 # Confirmed against internal/testrunner/flows.go: there is no
 # expect_outbound: / expect_transport: field — the assertion path is
-# `expect_events: [{ kind: HostInvoked, effect: { namespace: ... } }]`.
+# `expect_events: [{ kind: harness.called, effect: { namespace: ... } }]`.
 # machine.go emits the HostInvoked event when the effect is processed
 # (before dispatch). Phase G's transports run in deterministic mode
 # (Lean per proposal §15.8), so no host_handlers are needed; the
@@ -67,7 +67,7 @@ turns:
       event_kind: ""
       illness_kind: ""
     expect_events:
-      - kind: HostInvoked
+      - kind: harness.called
         effect: { namespace: "host.transport.post" }
 
   # ── Turn 2: continue to arrival. miles_override pushes past the
@@ -81,7 +81,7 @@ turns:
     expect_world:
       current_landmark: "Independence"  # set by leg_a_executing.on_enter
     expect_events:
-      - kind: HostInvoked
+      - kind: harness.called
         effect: { namespace: "host.transport.post" }
 
   # ── Turn 3: quit the journey. Routes to ended_lost, whose on_enter
@@ -89,7 +89,7 @@ turns:
   - intent: { name: quit, slots: {} }
     expect_state: ended_lost
     expect_events:
-      - kind: HostInvoked
+      - kind: harness.called
         effect: { namespace: "host.transport.post" }
 
 expect_terminal: true

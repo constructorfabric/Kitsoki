@@ -1,0 +1,87 @@
+# plan_affirm_refine — with a pending plan, a content-bearing follow-up routes
+# to `work` (refine) and re-dispatches the planner with the prior plan as
+# context (landing_plan_prior continuity). Confirms the refine path survives
+# the contextual_routing migration.
+#
+# This is structurally identical to plan_refine.yaml — the CRR slice-3
+# migration keeps the refine path intact (content-bearing follow-ups still hit
+# the work sink, now as a recorded contextual decision rather than a silent
+# default_intent sink). The plan_refine flow is retained as the canonical
+# refine test; this one exists to confirm the migration didn't break it.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  landing_request: "import the issues folder in the repo to github"
+  landing_note:
+    summary: "Planned the local issue → GitHub migration."
+    details: "Would create one GitHub issue per file in issues/."
+    plan:
+      goal: "Migrate repo-local issues/ to GitHub issues."
+      step:
+        kind: run
+        description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+        mutating: true
+      verify:
+        mode: script
+        script: verify/issues_migrated.star
+        inputs: { expected_min: 3 }
+        reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+
+host_handlers:
+  # The re-dispatched planner returns a revised plan (dry-run first).
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Revised the plan: dry-run first, no mutations."
+        details: "Will preview the GitHub issues that would be created without writing any."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Dry-run: preview the GitHub issue that would be created per file in issues/, no writes."
+            mutating: false
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff the dry-run reports >= expected_min issues would be created."
+
+turns:
+  # Drive the refine intent directly. The Go gate proves free-text→refine routing;
+  # this fixture confirms landing_plan_prior continuity and the revised plan binds.
+  - intent: { name: work, slots: { request: "dry-run first, don't write anything yet" } }
+    expect_state: landing
+    expect_host_calls:
+      - handler: host.agent.task
+    expect_world:
+      landing_request: "dry-run first, don't write anything yet"
+      landing_plan_prior:
+        goal: "Migrate repo-local issues/ to GitHub issues."
+        step:
+          kind: run
+          description: "Create a GitHub issue per file in issues/, mapping frontmatter."
+          mutating: true
+        verify:
+          mode: script
+          script: verify/issues_migrated.star
+          inputs: { expected_min: 3 }
+          reason: "Passes iff GitHub lists >= expected_min issues for the repo."
+      landing_note:
+        summary: "Revised the plan: dry-run first, no mutations."
+        details: "Will preview the GitHub issues that would be created without writing any."
+        plan:
+          goal: "Migrate repo-local issues/ to GitHub issues."
+          step:
+            kind: run
+            description: "Dry-run: preview the GitHub issue that would be created per file in issues/, no writes."
+            mutating: false
+          verify:
+            mode: script
+            script: verify/issues_migrated.star
+            inputs: { expected_min: 3 }
+            reason: "Passes iff the dry-run reports >= expected_min issues would be created."
+
+expect_no_errors: true

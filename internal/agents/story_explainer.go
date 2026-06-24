@@ -20,16 +20,16 @@ var storyExplainerPrompt string
 //   - Read + Glob + Grep — the agent explores the story tree to
 //     answer questions about it. No Edit, no Write, no Bash, no
 //     host.* tool — the prompt's refusal pattern points the user at
-//     `/meta story edit` when they ask for a change. Per the bug
-//     format proposal §1.1, the `ask` verb is the read-only sibling
-//     of `edit`; its surface is exactly these three exploration
-//     tools so the agent has no means to mutate the tree.
+//     `/meta story edit` when they ask for a change. The `ask` verb is
+//     the read-only sibling of `edit` (see docs/stories/meta-mode.md);
+//     its surface is exactly these three exploration tools so the
+//     agent has no means to mutate the tree.
 //
 // No DefaultCwd — the metamode adapter pins cwd to the running
 // app's directory the same way it does for story-author.
 func storyExplainer() Agent {
 	return Agent{
-		Name:         "story-explainer",
+		Name:         NameStoryExplainer,
 		SystemPrompt: storyExplainerPrompt,
 		Model:        "",
 		Tools: []string{

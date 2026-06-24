@@ -1,9 +1,9 @@
 // Package host — host.local_files.ticket — file-backed ticket provider.
 //
-// Implements the `ticket` host_interface from the dev-story
-// implementation contract. The on-disk schema (see issues/README.md)
-// is YAML frontmatter, a markdown body, and `## Comment <ISO> by
-// <author>` blocks appended at the bottom.
+// Implements the `ticket` host_interface (see docs/architecture/hosts.md). The
+// on-disk bug format is documented in docs/stories/bugs.md:
+// YAML frontmatter, a markdown body, and `## Comment <ISO> by <author>`
+// blocks appended at the bottom.
 //
 // One prefix-fallback handler dispatches all five ticket ops on the
 // `op` arg the runtime registry rewrites into the args map. This keeps
@@ -35,7 +35,7 @@ import (
 // Required args:
 //   - op (string): one of "search", "get", "comment", "transition", "list_mine".
 //
-// Per-op args/returns follow the contract §2.1.  See doc comments on each
+// Per-op args/returns follow the ticket iface contract.  See doc comments on each
 // dispatch helper below for the precise shape.
 //
 // Optional args (all ops):
@@ -90,9 +90,6 @@ func resolveTicketsRoot(args map[string]any) (string, error) {
 	return cwd, nil
 }
 
-// bugsDir returns the canonical issues/bugs/ subdirectory under root.
-func bugsDir(root string) string { return filepath.Join(root, "issues", "bugs") }
-
 // ticketKindDirs enumerates the issues/* subdirectories scanned by the
 // local-files provider. Keys are the ticket-type label written into the
 // row's `type` field; values are the on-disk directory name. Stable
@@ -129,7 +126,7 @@ type BugComment struct {
 
 // BugFile is the parsed shape of `issues/<kind>/<id>.md`.  Frontmatter
 // is kept as a generic map so unknown keys survive round-trips (per
-// bug-format-proposal §2.2).
+// docs/stories/bugs.md).
 type BugFile struct {
 	ID       string         // filename without `.md`
 	Kind     string         // "bug" | "feature" | "epic" — set by the lister
@@ -526,12 +523,12 @@ func ticketListMine(root string, args map[string]any) (Result, error) {
 // ─── Field accessors / projections ──────────────────────────────────────────
 
 // bugSummary projects a BugFile into the ticket summary shape the
-// contract pins (§2.1): id/title/status/severity/assignee/url. A
+// contract pins: id/title/status/severity/assignee/url. A
 // `type` key is added when the lister tagged the row by source dir
 // so dev-story can route on `ticket_type`.
 //
 // `severity` is the on-disk frontmatter field per `issues/README.md`
-// §2. The earlier
+// and `docs/stories/bugs.md`. The earlier
 // summary shape projected `priority` instead; that field has been
 // removed entirely — no consumer in this repo branched on
 // `t.priority` after the 2026-05-20 dogfood cycle, and keeping a
@@ -546,6 +543,11 @@ func bugSummary(b *BugFile) map[string]any {
 		"severity": b.frontString("severity"),
 		"assignee": b.frontString("assignee"),
 		"url":      b.frontString("url"),
+		// repro_command — optional bug frontmatter carrying a deterministic
+		// reproduction command. The bugfix story's `reproducing` room runs it
+		// RED-first (non-zero exit = bug reproduces). Absent ⇒ "" ⇒ the story
+		// falls through to the LLM-only reproducer (backward compatible).
+		"repro_command": b.frontString("repro_command"),
 	}
 	if b.Kind != "" {
 		out["type"] = b.Kind

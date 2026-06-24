@@ -1,0 +1,55 @@
+# prd_overlap_no_matches — the prior-art gate, clean (greenfield) path.
+#
+# The scout found NO overlap, so `confirm` is NOT bounced by the guard —
+# it advances to clarifying and records prd_overlap_decision: "new".
+#
+# initial_state: search seeds the scout result directly (bypassing on_enter),
+# the same technique the golden design_overlap_* fixtures use.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: search
+initial_world:
+  workdir:    "."
+  judge_mode: "human"
+  idea:       "A CLI for X that helps developers do Y."
+  # No prior art — the expected greenfield answer.
+  prd_existing_state:
+    overlaps: []
+    roadmap_fit: "Greenfield — no existing PRD covers this."
+
+host_handlers:
+  # Stubs for clarifying's on_enter analyst decide (advanced to by confirm).
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+  # confirm mints the per-PRD workspace via scripts/prd_slug.py (host.run).
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "a-cli-for-x", workspace: ".artifacts/prd/a-cli-for-x" }
+
+turns:
+  # No overlap → confirm proceeds cleanly, recording the decision and minting
+  # the per-PRD workspace.
+  - intent: { name: confirm, slots: {} }
+    expect_state: clarifying
+    expect_world:
+      prd_overlap_decision: "new"
+      prd_change_target:    ""
+      prd_slug:             "a-cli-for-x"
+      prd_workspace:        ".artifacts/prd/a-cli-for-x"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "mint_workspace" }
+
+expect_no_errors: true

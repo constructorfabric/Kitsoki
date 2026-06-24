@@ -1,0 +1,50 @@
+# Gate fails and the $ ceiling is breached → @exit:exhausted (cost_budget). The
+# cost guard wins over the iteration ceiling. session_cost_usd (0.60 — the
+# reserved engine-maintained spend, seeded to simulate prior cost; foldAgentCost
+# ACCUMULATES, so the stub maker's zero-cost call leaves it intact) >=
+# cost_budget_usd (0.50), so the loop stops on the first iteration even though the
+# iteration budget (10) is nowhere near hit.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+initial_world:
+  session_cost_usd: 0.60
+
+host_handlers:
+  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:           { data: { ok: false, exit_code: 1, stdout: "FAIL" } }
+  host.agent.task:   { data: { submitted: { summary: "expensive change" } } }
+  host.artifacts_dir: { data: { ok: true } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal:             "Make the unit tests pass"
+        gate_command:     "go test ./..."
+        gate_mode:        "script"
+        iteration_budget: 10
+        cost_budget:      0.50
+    expect_state: configuring
+  - intent: { name: launch, slots: {} }
+    expect_state: __exit__exhausted
+    expect_world:
+      terminal_reason: "cost_budget"
+      iteration:       1
+    expect_host_calls:
+      - handler: host.run
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-1 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-1 }
+        times: 1
+      - handler: host.run
+        args: { call: gate-1 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

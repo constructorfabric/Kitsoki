@@ -29,7 +29,7 @@ type CachedVerdict struct {
 // AppDef intent surface for the version of the app the row was written
 // under. The pair together is what [Cache.InvalidateOtherHashes] uses to
 // purge stale rows belonging to a single app without touching rows from
-// other apps that happen to share storage (Phase 6).
+// other apps that happen to share the same on-disk store.
 type Key struct {
 	App       string
 	AppHash   string
@@ -40,11 +40,11 @@ type Key struct {
 // SynonymKey identifies a single declared synonym pattern for hit-tracking.
 //
 // One row per (AppHash, Intent, Pattern, Kind). Kind is one of
-// "bare", "example", "template", or "enum_value" matching the YAML
-// surface in §4. "example" covers implicit synonyms derived from
-// Intent.Examples — the author wrote them as menu prompts, but the
-// matcher still treats them as synonym sources and the §7.6 inspect
-// surfaces want their hits counted.
+// "bare", "example", "template", or "enum_value", matching the synonym
+// surface documented in docs/architecture/semantic-routing.md. "example"
+// covers implicit synonyms derived from Intent.Examples — the author wrote
+// them as menu prompts, but the matcher still treats them as synonym
+// sources and the routing-inspect views want their hits counted.
 type SynonymKey struct {
 	AppHash string
 	Intent  string

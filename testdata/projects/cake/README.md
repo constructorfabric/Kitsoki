@@ -26,8 +26,8 @@ The full demo project is fixture-only: the submodule pins are
 placeholders so the flow fixtures' stubs (which never invoke the real
 git CLI) can run anywhere on disk. A future "manual repro" mode that
 walks the same flows against real frontend / backend submodules + a
-running stack is on the roadmap; today the fixtures stand on their
-own.
+running stack would need a `host.git submodule_update` op + git on
+PATH — deferred; today the fixtures stand on their own.
 
 ## Running the fixtures
 

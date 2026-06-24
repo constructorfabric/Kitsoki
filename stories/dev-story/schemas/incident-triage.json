@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "incident_triage",
+  "description": "The on-call triage verdict for a production alert: a severity, a one-line summary, and a recommended next action the incident loop routes on.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "severity": {
+      "type": "string",
+      "enum": ["sev1", "sev2", "sev3"],
+      "description": "sev1 = customer-facing outage / data loss, page now; sev2 = degraded but contained; sev3 = minor / cosmetic, can wait."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One crisp line stating what is broken and the likely blast radius."
+    },
+    "recommendation": {
+      "type": "string",
+      "enum": ["mitigate", "escalate", "monitor"],
+      "description": "mitigate = a known fix can be applied now; escalate = page the owning team / on-call; monitor = watch, no action yet."
+    },
+    "suspected_cause": {
+      "type": "string",
+      "description": "The single most likely cause, grounded in the alert text. Empty when unknown."
+    },
+    "mitigation": {
+      "type": "string",
+      "description": "When recommendation is mitigate: the concrete action to take (e.g. 'roll back deploy abc123', 'restart the queue worker'). Empty otherwise."
+    }
+  },
+  "required": ["severity", "summary", "recommendation"]
+}

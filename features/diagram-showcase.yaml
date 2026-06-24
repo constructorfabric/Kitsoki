@@ -1,0 +1,138 @@
+# yaml-language-server: $schema=feature.schema.json
+id: diagram-showcase
+kind: feature
+title: The state diagram, four ways
+tagline: Metro stepper, ego-graph, path & horizon, and the full machine.
+summary: "The StateDiagram's four route-centric views on a live run: the metro stepper with the traveled leg and amber current station, the 1-hop ego-graph, the path-and-horizon breadcrumb with live chips, and the full static machine."
+promo:
+  order: 50
+demo:
+  spec: tests/playwright/diagram-showcase.spec.ts
+  artifactDir: diagram-showcase
+  videoBase: diagram-showcase-demo
+  posterStep: dsg-intro-home
+  story: stories/dev-story
+  flow: stories/dev-story/flows/design_happy_path.yaml
+tour:
+  export: DIAGRAM_SHOWCASE_TOUR_STEPS
+  steps:
+    - id: dsg-intro-home
+      route: home
+      title: Start at the story library
+      body: Every run begins here, in the story library — each card is a deterministic story graph kitsoki runs the same way every time. We'll showcase the state diagram on the kitsoki-dev design pipeline.
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 5000
+    - id: dsg-intro-story
+      route: home
+      target: story-card
+      title: The design pipeline
+      body: This story walks a design from intake through searching, brief, drafting, and published. As the run moves between rooms, the state diagram redraws your route live from the trace.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: story-card
+      dwellMs: 5000
+    - id: dsg-intro-start
+      route: home
+      target: new-session-btn
+      title: Spin up a run
+      body: Click New session to create a fresh, independently-traced run of the pipeline.
+      placement: right
+      kind: action
+      advance: route-match
+      advanceRoute: interactive
+      waitForTarget: new-session-btn
+      dwellMs: 3500
+    - id: dsg-metro-overview
+      route: any
+      target: diagram-metro
+      title: The state diagram is your route
+      body: A “metro stepper” centred on where the run is — derived entirely from the trace.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: diagram-metro
+      dwellMs: 6000
+    - id: dsg-metro-traveled
+      route: any
+      target: diagram-metro-station
+      title: Where you've been
+      body: The bright leg is ground truth from the trace — each stop labelled with the intent that got you there (via go_idea, via discuss …).
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: diagram-metro-station
+      dwellMs: 5000
+    - id: dsg-metro-current
+      route: any
+      target: diagram-current-station
+      title: Where you are
+      body: The amber station is the current room with its declared phase banner; the pills are the live moves available right now.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: diagram-current-station
+      dwellMs: 5000
+    - id: dsg-metro-horizon
+      route: any
+      target: diagram-horizon-pill
+      title: Click a next-move to see where it leads
+      body: Each pill highlights its target room across the views and the timeline.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: diagram-horizon-pill
+      dwellMs: 4000
+    - id: dsg-metro-road-ahead
+      route: any
+      target: diagram-road-ahead
+      title: Where you can go
+      body: The muted, dashed road ahead is projection from the static graph — declared, not yet travelled.
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: diagram-road-ahead
+      dwellMs: 5000
+    - id: dsg-ego
+      route: any
+      target: diagram-ego
+      title: The same neighbourhood as a node graph
+      body: Came-from → you-are-here → the rooms each live move leads to, with directed elbow connectors.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: diagram-ego
+      dwellMs: 6000
+    - id: dsg-path
+      route: any
+      target: diagram-path-horizon
+      title: Or as a breadcrumb + live chips
+      body: Provenance on top (room + via-intent), the current room as a hero card, the live exits as chips.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: diagram-path-horizon
+      dwellMs: 6000
+    - id: dsg-full
+      route: any
+      target: diagram-tabs
+      title: The whole machine is always one click away
+      body: “Full” flips to the entire static graph — every phase and room — and back to your route.
+      placement: bottom
+      kind: explain
+      advance: next
+      waitForTarget: diagram-tabs
+      dwellMs: 5500
+    - id: dsg-done
+      route: any
+      target: diagram-metro
+      title: Path & Horizon
+      body: Provenance, live moves, and projection — one feature, four views, all from the trace. Hit '?' anytime to replay this tour.
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: diagram-metro
+      dwellMs: 6000

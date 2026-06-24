@@ -61,12 +61,12 @@ func TestJiraTransport_PostEncodesAndAuths(t *testing.T) {
 	require.NoError(t, err)
 
 	id, err := jt.Post(context.Background(),
-		transport.SessionKey{Transport: "jira", Thread: "PROJ-12345"},
+		transport.SessionKey{Transport: "jira", Thread: "PLTFRM-12345"},
 		transport.Message{Title: "Reproduction complete", Body: "All steps documented."},
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "42", id)
-	assert.Equal(t, "/rest/api/2/issue/PROJ-12345/comment", gotPath)
+	assert.Equal(t, "/rest/api/2/issue/PLTFRM-12345/comment", gotPath)
 	assert.Equal(t, "application/json", gotCT)
 
 	// Authorization: Basic base64(user:token)

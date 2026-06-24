@@ -6,8 +6,8 @@
 // invalid payloads come back as isError: true with a human-readable error
 // list, and the LLM corrects and re-calls until validation succeeds.
 //
-// Auto-attached by host.oracle.ask_with_mcp when the effect declares a
-// `schema:` arg without an `mcp_servers:` block (see oracle_ask_with_mcp.go).
+// Auto-attached by host.agent.ask_with_mcp when the effect declares a
+// `schema:` arg without an `mcp_servers:` block (see agent_ask_with_mcp.go).
 //
 // Optional `--post-cmd` plumbing layers a semantic verifier on top of the
 // schema check: after schema-pass, the validator spawns the configured
@@ -109,7 +109,7 @@ with that name). The tool validates each call's arguments and returns
 a human-readable error list (with isError: true) on failure so the
 calling LLM can correct and call again within the same conversation.
 
-This is the typed-output primitive used by host.oracle.ask_with_mcp.
+This is the typed-output primitive used by host.agent.ask_with_mcp.
 Authors who set a "schema:" arg get the validator auto-attached; this
 subcommand also lets external MCP clients (Claude Desktop, Claude
 Code) wire it up directly via --mcp-config.
@@ -117,7 +117,7 @@ Code) wire it up directly via --mcp-config.
 Two invocation forms:
 
   # 1. Path-based: validate against a schema file on disk. This is the
-  # form auto-attached by host.oracle.ask_with_mcp when an effect
+  # form auto-attached by host.agent.ask_with_mcp when an effect
   # declares schema: <path>.
   kitsoki mcp-validator --schema stories/oregon-trail/mcp/illness.json
 
@@ -243,7 +243,7 @@ The schema must be a JSON Schema object whose top-level "type" is
 			"Receives --submitted-json <tmp> plus any --post-cmd-arg key=value entries as --key value. "+
 			"Exit 0 = accept; non-zero = LLM-visible reject with stderr returned (capped at 2000 chars).")
 	cmd.Flags().StringArrayVar(&postCmdArgs, "post-cmd-arg", nil,
-		"repeatable key=value forwarded to --post-cmd as --key value (e.g. ticket=PROJ-89912)")
+		"repeatable key=value forwarded to --post-cmd as --key value (e.g. ticket=PLTFRM-89912)")
 	cmd.Flags().StringVar(&postCmdCwd, "post-cmd-cwd", "",
 		"working directory for the --post-cmd subprocess (default: kitsoki's cwd)")
 	cmd.Flags().IntVar(&maxRetries, "max-retries", 5,
@@ -252,7 +252,7 @@ The schema must be a JSON Schema object whose top-level "type" is
 	cmd.Flags().StringVar(&stateFilePath, "state-file", "",
 		"persist session counters (attempts/successful_submits/last_error) to this JSON file. "+
 			"At startup the file is read to seed counters; after every submit it is rewritten "+
-			"atomically. Used by host.oracle.ask_with_mcp to keep one logical validator session "+
+			"atomically. Used by host.agent.ask_with_mcp to keep one logical validator session "+
 			"across multiple `claude --resume` re-engagements. Empty = volatile in-memory only.")
 	cmd.Flags().BoolVar(&validateOnce, "validate-once", false,
 		"read one JSON payload from stdin, validate it against the resolved schema, and "+

@@ -1,5 +1,5 @@
 # Child story for testing prompt-path rebase across imports.
-# The work_executing on_enter invokes host.oracle.ask with a
+# The work_executing on_enter invokes host.agent.ask with a
 # relative `prompt:` path; the parent's load should rewrite that
 # to an absolute path rooted at this child directory so the
 # runtime's resolvePromptPath (which joins against $KITSOKI_APP_DIR
@@ -9,7 +9,7 @@ app:
   version: 0.1.0
 
 hosts:
-  - host.oracle.ask
+  - host.agent.ask
 
 world:
   result: { type: string, default: "" }
@@ -37,7 +37,7 @@ states:
     description: "Working."
     view: "Working."
     on_enter:
-      - invoke: host.oracle.ask
+      - invoke: host.agent.ask
         with:
           prompt: prompts/work.md
           schema: schemas/result.json

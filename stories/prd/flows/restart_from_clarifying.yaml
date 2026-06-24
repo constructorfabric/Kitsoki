@@ -1,0 +1,59 @@
+# restart_from_clarifying — the DESTRUCTIVE back-path from the brief.
+#
+# The deliberate contrast to clarify_from_brief.yaml: where `clarify`
+# PRESERVES clarification_log and only clears this round's working answers,
+# `restart_from clarifying` WIPES the accumulated record and re-questions
+# from scratch (clarification_log, answers, counters, refine_feedback,
+# clarifying_cycle, references_cycle all reset). This assertion is what
+# keeps the two back-paths from collapsing into one.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: brief
+initial_world:
+  idea:        "A CLI for X"
+  workdir:     "."
+  output_path: ".artifacts/prd.md"
+  judge_mode:  "human"
+  # A populated record that the destructive restart must clear.
+  clarification_log:     "── Round 2 ──\nQuestions: {...}\nAnswers: Q1: devs\n\n── Round 1 ──\n...\n\n"
+  clarification_answers: "Q1: devs\n"
+  answered_count:        1
+  answered_ids:          "|1|"
+  clarifying_cycle:      2
+  references_cycle:      1
+  refine_feedback:       "stale steering"
+
+host_handlers:
+  # The brief room opens the editable brief in the editor on entry.
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  # Re-entering clarifying re-fires the analyst; brief's on_enter may fire
+  # defensively on initial entry.
+  # references on_enter runs the optional semantic pre-seed; empty hits = no embeddings.
+  host.agent.search:
+    data: { hits: [] }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/prd_brief.md", message_id: "prd_brief#1" }
+
+turns:
+  - intent: { name: restart_from, slots: { stage: clarifying } }
+    expect_state: clarifying
+    expect_world:
+      # EVERYTHING wiped — the destructive counterpart to clarify, which
+      # would have left clarification_log + clarifying_cycle intact.
+      clarification_log:     ""
+      clarification_answers: ""
+      answered_count:        0
+      answered_ids:          ""
+      refine_feedback:       ""
+      clarifying_cycle:      0
+      references_cycle:      0
+
+expect_no_errors: true

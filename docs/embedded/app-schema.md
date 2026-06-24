@@ -34,7 +34,7 @@ host_interfaces: { <name>: <HostInterfaceDef> }  # optional — named capability
   the story-imports surface — aliased composition with private worlds,
   projected world_in/world_out, named exits, intent re-export, and
   rebindable host_interfaces. Full reference and worked examples in
-  [`docs/imports.md`](../imports.md).
+  [`docs/stories/imports.md`](../stories/imports.md).
 
 ## `AppMeta`
 
@@ -71,7 +71,7 @@ Fields:
 states:
   foyer:
     type:            atomic | compound | parallel    # default: atomic
-    mode:            <string>                        # e.g. "conversational" → Oracle Room
+    mode:            <string>                        # e.g. "conversational" → Agent Room
     description:     <string>                        # shown in location indicator
     view:            |-                              # Go template over {{ world.* }}
       You are in the foyer. Counter = {{ world.counter }}.
@@ -88,6 +88,7 @@ states:
     relevant_world:  [ <world-key>, ... ]            # pinned in TUI location indicator
     relevant_slots:  [ <slot-name>, ... ]
     timeout:         <TimeoutDef>                    # optional auto-transition
+    agent_off_ramp: <OffRampDef>                    # optional no-match door (see below)
 ```
 
 Rules:
@@ -121,7 +122,7 @@ view:
 ```
 
 The typed form is preferred (story-style guidance:
-[`docs/story-style.md`](../story-style.md)) because each element
+[`docs/stories/story-style.md`](../stories/story-style.md)) because each element
 renders in isolation — a single broken `{{ ... }}` cannot zero the
 whole view.
 
@@ -146,10 +147,60 @@ view:
 | `code:`     | `<string>`                                                | Layout-preserved content (tables, ASCII art, includes).  |
 | `template:` | `<string>` (pongo2 body)                                  | Raw pongo escape hatch.                                  |
 | `choice:`   | `{ mode, prompt, items / fields, ... }` (see below)       | Interactive picker / multi-select / mad-lib form.        |
+| `media:`    | `{ handle, caption?, kind? }` (see below)                 | Display a recorded media artifact; TUI pointer / web inline. |
 
 Every element accepts an optional element-level `when:` guard (expr-lang)
 evaluated against `world.*` / `slots.*`. Items in a `list:` accept their
-own `when:`. Examples: see [`docs/story-style.md`](../story-style.md) §2.
+own `when:`. Examples: see [`docs/stories/story-style.md`](../stories/story-style.md) §2.
+
+## `media:` — media artifact display
+
+A `media:` element references a media artifact recorded by a prior step.
+It is display-only (no input, no dispatch). The TUI renders a labeled
+pointer block showing the artifact kind icon, handle, and resolved path.
+The web UI renders it inline (`<video>`, `<img>`, PDF/HTML embed) via the
+`GET /artifact/{id}` route.
+
+```yaml
+view:
+  - media:
+      handle:  "{{ world.walkthrough_handle }}"   # required — artifact id from host.artifacts_dir
+      caption: "Walkthrough recording"             # optional one-line label
+      kind:    video                               # optional hint: video/image/pdf/html/slideshow
+```
+
+| Field     | Required | Notes                                                                                        |
+|-----------|----------|----------------------------------------------------------------------------------------------|
+| `handle`  | yes      | Artifact id/handle bound into world by `host.artifacts_dir` (`bind: { my_handle: handle }`). May be a pongo2 template. |
+| `caption` | no       | One-line label shown beneath the artifact. Defaults to `handle` when absent.                 |
+| `kind`    | no       | Selects the pointer icon in the TUI and the embed strategy in the web UI. Values: `video`, `image`, `pdf`, `html`, `slideshow`. Unknown/absent kinds use a generic attachment icon. |
+
+The optional element-level `when:` guard (expr-lang) suppresses the element
+when false, e.g. `when: "world.walkthrough_handle != ''"`.
+
+**How to emit an artifact and reference it:**
+
+1. Run a render step (e.g. `host.slidey.render` or `host.run` calling ffmpeg).
+2. Register the output file with `host.artifacts_dir` using the `src_path` /
+   `kind` fields — this records an `artifact.emitted` trace event and returns a
+   stable `handle`. Bind the handle into world:
+
+   ```yaml
+   - invoke: host.artifacts_dir
+     with:
+       src_path: "{{ world.output_path }}"
+       kind:     video
+       label:    "Session walkthrough"
+       thread:   walkthrough
+     bind: { walkthrough_handle: handle }
+   ```
+
+3. Reference the handle in a `media:` element (see example above).
+
+For the `artifact.emitted` trace event shape see
+[`docs/tracing/trace-format.md` §Artifact event kind](../tracing/trace-format.md).
+For the full `host.artifacts_dir` media-emit arg reference see
+[`docs/architecture/hosts.md` §host.artifacts_dir](../architecture/hosts.md#hostartifacts_dir).
 
 ## `choice:` — interactive picker / multi / form
 
@@ -385,15 +436,15 @@ prefix the loader uses for other view-element errors.
   one intent per selected item."
 - **`form.<other_field>` is NOT live in `expr:`.** Readonly fields
   see `world.*` / `slots.*` at widget-open time only — sibling buffer
-  changes don't re-trigger the eval. See [`docs/choice-widget.md`](../choice-widget.md)
+  changes don't re-trigger the eval. See [`docs/stories/choice-widget.md`](../stories/choice-widget.md)
   §3.3 for the worked example and precompute-into-world workaround.
 - **`when:` on items / fields is renderer-side, not behavioural.**
   A guard-false item is hidden but the underlying `on:` arc still
   fires if the intent is dispatched some other way (flow test, menu).
   For true gating, also guard the transition `when:`.
 
-Author-facing cookbook: [`docs/choice-widget.md`](../choice-widget.md).
-Story-style guidance: [`docs/story-style.md`](../story-style.md) §3.6.
+Author-facing cookbook: [`docs/stories/choice-widget.md`](../stories/choice-widget.md).
+Story-style guidance: [`docs/stories/story-style.md`](../stories/story-style.md) §3.6.
 
 ## `Transition`
 
@@ -442,9 +493,11 @@ Fields (any subset):
 | `increment`   | Integer delta on numeric world variables                             |
 | `say`         | Append narrative line (Go template over world/slots)                 |
 | `invoke`      | Call a host handler; must appear in top-level `hosts:` list          |
+| `id`          | Author-assigned call-site address; threaded into args as `call` so flow stubs (`by_call:`) and cassettes (`match: { call: … }`) can tell two same-handler invokes apart |
 | `with`        | Arguments for `invoke`                                               |
 | `bind`        | `{ world_key: result_key }` — copy host result into world            |
 | `on_error`    | Transition target if host invoke errors; sets `$host_error`          |
+| `once`        | `true` → skip the `invoke` on re-entry when every `bind:` target is already set (non-empty); makes on_enter host calls idempotent across `/reload`, self-transitions, and `on_error:`. Requires a non-empty `bind:`. Clear the bind target to re-run. |
 | `emit`        | Broadcast named event to parallel regions                            |
 | `background`  | `true` → dispatch `invoke` as a background job (see §Background jobs) |
 | `on_complete` | Effect list fired when the background job terminates (see §Background jobs) |
@@ -454,7 +507,7 @@ Conventional order within a single effect: `set` → `increment` → `say` →
 
 ## Background jobs
 
-> Detailed reference: [docs/background-jobs/](../background-jobs/README.md)
+> Detailed reference: [docs/stories/background-jobs/](../stories/background-jobs/README.md)
 
 Background jobs let a state machine fire a long-running shell command or LLM
 call without blocking the current turn. The job runs in a goroutine; when it
@@ -746,7 +799,7 @@ Each entry is either:
 
 Both shapes feed the same `*semroute.Matcher` and emit a `Verdict`
 the orchestrator routes via `TrySemantic`. See
-[`../../docs/semantic-routing.md`](../../docs/semantic-routing.md)
+[`../../docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md)
 for the full reference (slot parser types, calibration workflow,
 cache behaviour).
 
@@ -776,7 +829,7 @@ phrasings. Each key must appear in `values`. The enum parser tries
 three tiers in order — direct stem match, synonym word-bag
 containment, then Damerau-Levenshtein-1 fuzzy — so `"banker"`,
 `"rich guy"`, `"money man"`, and the typo `"bankr"` all resolve to
-`banker`. See [`../../docs/semantic-routing.md`](../../docs/semantic-routing.md)
+`banker`. See [`../../docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md)
 for the slot-parser tier order.
 
 ## `OffPathDef`
@@ -789,6 +842,52 @@ off_path:
   banner:   "(help mode)"
   return:   main              # state to re-enter after exiting off-path
 ```
+
+## `OffRampDef` (`agent_off_ramp:`)
+
+Per-state **no-match door**. When a free-text utterance routes to no declared
+intent in a room that sets `agent_off_ramp`, the orchestrator hands the
+original text to an agent converse turn (the same voice `off_path:` reaches)
+instead of bouncing it back as a rejection — **without advancing the state
+machine or mutating world**. The menu still renders; the resting state is
+unchanged. The TurnResult `mode` is `offpath`. Contrast with `off_path:`: that
+is an automatic room-scoped door triggered by a *typed string* that *does*
+change state; the off-ramp fires on a *no-match* and *never* changes state.
+
+Opt-in per room; two author forms (the struct mirrors the subset of
+`OffPathDef` that styles the voice — `trigger`/`return` are off-path-only and
+have no analogue here):
+
+```yaml
+agent_off_ramp: true                                          # bare scalar — use the off-path voice
+agent_off_ramp: { agent: discovery-guide, banner: "(thinking)" }  # struct form
+```
+
+| Field     | Required | Notes                                                                                       |
+|-----------|----------|---------------------------------------------------------------------------------------------|
+| `agent`   | no       | Names an entry in top-level `agents:` whose system prompt + model style the converse call. Validated at load against the `agents:` map (mirrors `off_path.agent`). |
+| `persona` | no       | Inline system-prompt-style instruction for the off-ramp voice. When both `persona` and `agent` are set, `persona` wins. |
+| `banner`  | no       | One-line label shown when the off-ramp engages.                                             |
+
+Load-time invariants (a violating `agent_off_ramp` fails the load):
+
+- **Rejected on `terminal: true`** — a terminal state has no resting menu to return to.
+- **Rejected on `mode: conversational`** — an Agent Room already routes all free text; an off-ramp would be redundant.
+- A named `agent:` must exist in the top-level `agents:` map.
+- The struct is strict — off-path-only keys (e.g. `trigger:`, `return:`) are rejected.
+
+A nil/absent `agent_off_ramp` (or `agent_off_ramp: false`) means no off-ramp —
+the default — and rejections behave exactly as before. See
+[`docs/stories/architecture.md`](../stories/architecture.md) §9 and
+[`docs/stories/state-machine.md`](../stories/state-machine.md) §11 for the full
+design, and [`stories/off-ramp-demo/`](../../stories/off-ramp-demo/) for a
+runnable example.
+
+> **Rendering note (web):** for the free-text floor to render on a menu room,
+> the off-ramp room's `view:` must be a **flat** typed-element list, not the
+> `extends:` + `blocks:` chrome form — the inheritance pipeline strips the
+> typed-view choice metadata the web `InputBar` needs to show the always-present
+> text box. See `stories/off-ramp-demo/rooms/desk.yaml`.
 
 ## `TimeoutDef`
 
@@ -905,7 +1004,7 @@ top-level Load, every `iface.<name>.<op>` is rewritten to
 `<binding>.<op>` → `<binding>` when no per-op handler is registered.
 
 Full reference, including the multi-layer composition surface, is in
-[`docs/imports.md`](../imports.md).
+[`docs/stories/imports.md`](../stories/imports.md).
 
 ## Validation (what the loader enforces)
 
@@ -991,5 +1090,5 @@ states:
 ## Bigger examples in-tree
 
 - `testdata/apps/cloak/app.yaml`     — classic IF game; guards, enums, default branches
-- `testdata/apps/dev-story/app.yaml` — multi-room dev workflow; hosts, proposals, Oracle Room, background jobs
+- `testdata/apps/dev-story/app.yaml` — multi-room dev workflow; hosts, proposals, Agent Room, background jobs
 - `testdata/apps/proposal_smoke/app.yaml` — minimal proposal-pattern example

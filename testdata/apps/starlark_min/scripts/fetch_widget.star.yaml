@@ -1,0 +1,6 @@
+# Interface declaration for fetch_widget.star. Authoritative over the script's
+# inputs/outputs — validated at load time (parse) and at run time (Run).
+inputs:
+  widget_id: { type: string, required: true }
+outputs:
+  widget_name: { type: string }

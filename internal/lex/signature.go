@@ -7,9 +7,22 @@ import (
 	"strconv"
 )
 
-// Signature returns a deterministic 16-hex-character (64-bit prefix of
-// SHA-1) signature of the content tokens of s. The algorithm matches
-// §3 of the semantic-routing proposal:
+// Sha1BytePrefix is the number of leading SHA-1 digest bytes Signature
+// hashes into. 8 bytes is a 64-bit prefix: wide enough that turncache key
+// collisions between distinct content-token sets are negligible, narrow
+// enough to keep keys short. HexSignatureLength is the resulting hex
+// width (two hex characters per byte) and is the only non-empty length
+// Signature ever returns.
+const (
+	Sha1BytePrefix     = 8
+	HexSignatureLength = Sha1BytePrefix * 2 // 16 hex chars = 64 bits
+)
+
+// Signature returns a deterministic, [HexSignatureLength]-character hex
+// signature (the [Sha1BytePrefix]-byte prefix of SHA-1) over the content
+// tokens of s. Its purpose is a stable turncache key that is invariant to
+// word order, stopwords, and spelled-vs-digit numerals, so semantically
+// equivalent phrasings hit the same cache slot. The algorithm:
 //
 //  1. Tokenize(s, extraStops)
 //  2. Drop stopwords, keep Token.Norm of the survivors.
@@ -17,11 +30,12 @@ import (
 //     word spelled cardinal (via SpelledNumber), replace the entry with
 //     the decimal string of the integer value. "six" → "6".
 //  4. Sort + dedupe the resulting strings.
-//  5. Return hex(sha1(strings.Join(content, " ")))[:16].
+//  5. Return hex(sha1(strings.Join(content, " ")))[:Sha1BytePrefix].
 //
 // Empty input — and input that produces no content tokens — returns the
 // empty string. This is the stable sentinel callers use to skip the
-// turncache when there's nothing to key on.
+// turncache when there's nothing to key on. Safe for concurrent use: the
+// function holds no state.
 func Signature(s string, extraStops []string) string {
 	tokens := Tokenize(s, extraStops)
 	if len(tokens) == 0 {
@@ -53,7 +67,7 @@ func Signature(s string, extraStops []string) string {
 	content = dedupeSorted(content)
 
 	sum := sha1.Sum([]byte(stringsJoinNorms(content)))
-	return hex.EncodeToString(sum[:8]) // 8 bytes = 16 hex chars = 64 bits
+	return hex.EncodeToString(sum[:Sha1BytePrefix])
 }
 
 // dedupeSorted returns ss with consecutive duplicates removed. ss is

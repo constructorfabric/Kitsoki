@@ -1,8 +1,9 @@
 # implementation — small-task pipeline
 
-Wave 3 / Phase 6 of the dev-story / bugfix unify design. A
-lighter-weight sibling to `stories/bugfix/` for tickets of type
-`task` — no reproduction, no separate security-review pass. Five
+The implementation pipeline from the [bug-fix case
+study](../../docs/case-studies/bug-fix.md). A lighter-weight sibling to
+`stories/bugfix/` for tickets of
+type `task` — no reproduction, no separate security-review pass. Five
 visible rooms plus a `handoff` that drills into the `pr-refinement`
 import:
 
@@ -10,9 +11,9 @@ import:
 idle → review_task → write_code → test → review → handoff (→ pr-refinement)
 ```
 
-Each `_awaiting_reply` checkpoint follows the canonical checkpoint
-shape from the dev-story implementation contract: post + inbox +
-LLM-judge + emit_intent. `world.judge_mode` selects who answers
+Each `_awaiting_reply` checkpoint follows the canonical §6 shape from
+`docs/proposals/notes/dev-story-implementation-contract.md`: post +
+inbox + LLM-judge + emit_intent. `world.judge_mode` selects who answers
 without forking the state graph.
 
 ## Standalone
@@ -52,5 +53,7 @@ code-write room rather than the local checkpoint.
 
 ## See also
 
+- [`docs/case-studies/bug-fix.md`](../../docs/case-studies/bug-fix.md)
+- [`docs/proposals/notes/dev-story-implementation-contract.md`](../../docs/proposals/notes/dev-story-implementation-contract.md)
 - [`stories/bugfix/`](../bugfix/) — the heavier sibling with reproduction.
 - [`stories/pr-refinement/`](../pr-refinement/) — the shared tail.

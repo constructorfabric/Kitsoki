@@ -1,5 +1,5 @@
 # Robbery — a reusable sub-story exemplifying the imports/extension
-# pattern (see docs/imports.md). A masked rider demands tribute
+# pattern (see docs/stories/imports.md). A masked rider demands tribute
 # from the party. The player chooses to pay, fight, or flee; each path
 # has a named exit the importer maps to whatever follow-up state fits
 # the host game.
@@ -11,7 +11,7 @@
 # the parent's exit mapping. The host game can also rebind the
 # `narrator` host_interface so encounter prose flows through whichever
 # voice / channel the host already uses (host.transport.post for a
-# diary, host.oracle.ask for a per-call LLM, plain host.run for a
+# diary, host.agent.ask for a per-call LLM, plain host.run for a
 # headless echo).
 app:
   id: robbery

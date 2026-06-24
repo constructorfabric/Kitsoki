@@ -1,0 +1,40 @@
+# quit_mid_loop — review → quit → @exit:abandoned; partial iterations preserved.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: review
+initial_world:
+  workspace: ".artifacts/mockup-video/test"
+  medium:    "deck"
+  brief:
+    feature: "The /review video feedback panel"
+    scenarios: ["open panel"]
+    medium: "deck"
+    notes: ""
+  source: { kind: "slidey", paths: ["d.json"], spec_path: "d.json", summary: "deck" }
+  video_handle: "mockup-video#2"
+  chapters_handle: "mockup-chapters#2"
+  feedback_batch: { items: [] }
+  iterations: { items: [ { video_handle: "mockup-video#1", feedback_addressed: ["scene:scenario-1"], instruction: "first pass" } ] }
+  cycle: 1
+  refine_budget: 6
+
+host_handlers:
+  host.run:
+    by_call:
+      drain_feedback:
+        data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
+
+turns:
+  - intent: { name: quit, slots: {} }
+    expect_terminal: true
+    expect_world:
+      abandon_reason: "abandoned_at_review"
+      # Partial progress is preserved — the one completed iteration survives.
+      iterations:
+        items:
+          - video_handle: "mockup-video#1"
+            feedback_addressed: ["scene:scenario-1"]
+            instruction: "first pass"
+
+expect_no_errors: true

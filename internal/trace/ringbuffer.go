@@ -15,11 +15,10 @@ import (
 // Concurrent calls to Handle are safe. The buffer wraps around — when
 // the cap is reached, the oldest record is dropped on the next append.
 //
-// Phase A.7 wires this into BuildTraceLogger so the engine always has
-// a record of recent session activity even when --trace flags are
-// unset. The meta-mode TUI dumps Snapshot() to a per-session temp file
-// on every Send so the story-author agent can Read it as the canonical
-// "what happened in this session" history.
+// The TUI wires this as the always-on in-memory trace for the meta-mode
+// agent. When an EventSink trace path is available the TUI hands the agent
+// the JSONL file directly; when the ring is wired as a fallback it dumps
+// Snapshot() to a per-session temp file on every Send.
 type RingBuffer struct {
 	// state is the canonical shared buffer + mutex. WithAttrs /
 	// WithGroup clones reuse the same *ringState so every event lands

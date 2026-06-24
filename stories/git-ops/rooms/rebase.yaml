@@ -1,0 +1,135 @@
+# rebase — git rebase against the integration branch (local ref only).
+#
+# Pre-rebase: auto-create backup tag if >1 commit ahead.
+# On ok: record merge-base SHA, set rebase_done=true → branch_ops.
+# On conflict: try rerere auto-resolution first; only escalate to the conflict
+#   room for hunks rerere can't replay (see "rerere auto-resolution" below).
+#
+# rerere (reuse recorded resolution) is THE no-LLM lever for parallel rebases:
+# N feature branches rebasing past the same upstream commit hit the SAME conflict,
+# so the first resolution (human or the conflict room's agent) is recorded once
+# and replayed deterministically for every later branch — no operator, no LLM.
+# Enabled + autoupdated by `make setup` (scripts/setup.sh → configure_git).
+
+states:
+
+  rebase:
+    description: "Rebase current branch onto integration branch (local ref)."
+    relevant_world: [current_branch, integration_branch, commits_ahead, rebase_base_sha, pre_rebase_tag]
+    view:
+      - kv:
+          pairs:
+            Branch:       '{{ world.current_branch|default:"(unknown)" }}'
+            Integration:  '{{ world.integration_branch }}'
+            Ahead:        '{{ world.commits_ahead }} commits'
+            "Backup tag": '{{ world.pre_rebase_tag|default:"(none)" }}'
+      - prose: "Rebase output: {{ world.last_op_output }}"
+        when: "world.last_op_ok == false"
+      - prose: "Conflicts detected — routing to conflict resolver."
+        when: "world.last_op_outcome == 'conflict'"
+      - prose: "Rebase complete. Backup tag: {{ world.pre_rebase_tag }}."
+        when: "world.last_op_ok == true && world.last_op_outcome == 'ok'"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on_enter:
+      # Single script: run rebase, determine outcome, bind route.
+      # route="on_branch" (success), "rebase_conflict" (conflict).
+      # emit_intent re-evaluated post-bind against bound route.
+      # Machine pre-bind: route="look" (default) → no-op.
+      - invoke: host.run
+        id: rebase_exec
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              INTEGRATION="{{ world.integration_branch }}"
+              BRANCH=$(git rev-parse --abbrev-ref HEAD)
+              AHEAD=$(git rev-list --count "${INTEGRATION}..HEAD" 2>/dev/null || echo 0)
+              TAG=""
+              if [ "$AHEAD" -gt 1 ]; then
+                TAG="${BRANCH}-pre-rebase-backup"
+                git tag -f "$TAG" HEAD 2>/dev/null || true
+              fi
+              # || EXIT=$? OUTSIDE the $() — a `|| true` INSIDE the
+              # substitution would force EXIT=0 even on a conflicting rebase,
+              # mis-routing it to on_branch. set -e is not tripped because the
+              # failing assignment is the left side of a || list.
+              EXIT=0
+              OUTPUT=$(git rebase "$INTEGRATION" --no-autostash 2>&1) || EXIT=$?
+              # ── rerere auto-resolution ──────────────────────────────────────
+              # When the rebase stops on a conflict, replay any previously-recorded
+              # resolutions (git rerere) and drive the rebase to completion WITHOUT
+              # the operator/LLM. The conflict room is reserved for hunks rerere has
+              # never seen. Loop: a multi-commit rebase can stop once per commit.
+              rebase_in_progress() {
+                [ -d "$(git rev-parse --git-path rebase-merge 2>/dev/null)" ] || \
+                [ -d "$(git rev-parse --git-path rebase-apply 2>/dev/null)" ]
+              }
+              if [ "$EXIT" -ne 0 ] && rebase_in_progress; then
+                GUARD=0
+                while rebase_in_progress && [ "$GUARD" -lt 100 ]; do
+                  GUARD=$((GUARD + 1))
+                  git rerere 2>/dev/null || true
+                  # rerere.autoupdate stages cleanly-replayed files; without it
+                  # rerere only fixes the working tree, so stage any unmerged file
+                  # that no longer carries conflict markers (<<<<<<< / >>>>>>>
+                  # bracket every real conflict; a resolved file has neither).
+                  for f in $(git diff --diff-filter=U --name-only 2>/dev/null); do
+                    [ -f "$f" ] || continue
+                    grep -qE '^(<<<<<<<|>>>>>>>)' "$f" 2>/dev/null || git add -- "$f" 2>/dev/null || true
+                  done
+                  # A conflict rerere could NOT resolve remains → escalate.
+                  if git diff --diff-filter=U --name-only 2>/dev/null | grep -q .; then
+                    break
+                  fi
+                  # Every conflict at this stop is resolved → continue (non-interactive).
+                  GIT_EDITOR=true git rebase --continue >/dev/null 2>&1 || true
+                done
+                # Fully replayed iff the rebase is no longer in progress.
+                if ! rebase_in_progress; then
+                  EXIT=0
+                  OUTPUT="conflicts auto-resolved from rerere cache"
+                fi
+              fi
+              MERGE_BASE=$(git merge-base HEAD "$INTEGRATION" 2>/dev/null || echo "")
+              if [ $EXIT -eq 0 ]; then
+                jq -n --arg tag "$TAG" --arg out "$OUTPUT" --arg mb "$MERGE_BASE" \
+                  '{pre_rebase_tag:$tag,last_op_output:$out,rebase_base_sha:$mb,rebase_done:true,conflict_origin:"",route:"on_branch"}'
+              else
+                jq -n --arg tag "$TAG" --arg out "$OUTPUT" --arg mb "$MERGE_BASE" \
+                  '{pre_rebase_tag:$tag,last_op_output:$out,rebase_base_sha:$mb,rebase_done:false,conflict_origin:"rebase",route:"rebase_conflict"}'
+              fi
+          cwd: "{{ world.working_dir }}"
+        bind:
+          pre_rebase_tag:  "stdout_json.pre_rebase_tag"
+          last_op_output:  "stdout_json.last_op_output"
+          rebase_base_sha: "stdout_json.rebase_base_sha"
+          rebase_done:     "stdout_json.rebase_done"
+          conflict_origin: "stdout_json.conflict_origin"
+        on_error: branch_ops
+      # Static emit targets so isDecisionGate=false → staged mode doesn't block.
+      # Guards are FALSE with default world (rebase_done=false, conflict_origin="").
+      # DispatchPostBindEmits fires correct intent after bind.
+      - when: "world.rebase_done == true"
+        emit_intent: on_branch
+      - when: "world.conflict_origin == 'rebase'"
+        emit_intent: rebase_conflict
+    on:
+      on_branch:
+        - target: branch_ops
+      rebase_conflict:
+        - target: conflict
+          effects:
+            - set:
+                conflict_files:           ""
+                conflict_verdict:         {}
+                conflict_intent_guidance: ""
+      look:
+        - target: .

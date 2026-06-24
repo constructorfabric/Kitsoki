@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "docs_fix_artifact",
+  "description": "Artifact produced by the fixing room: a record of the doc edits the docs_writer agent applied to the working tree (uncommitted) in response to the stale_docs listing carried by the verdict.",
+  "type":    "object",
+  "required": ["applied", "summary", "files_changed"],
+  "properties": {
+    "applied": {
+      "type": "boolean",
+      "description": "True if every stale_docs entry was addressed by at least one edit; false if the agent gave up on one or more entries (blockers[] must then be populated)."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "description": "One-paragraph narrative of what was changed and why — should cite each touched doc."
+    },
+    "files_changed": {
+      "type": "array",
+      "minItems": 0,
+      "description": "Every doc file the agent edited or created in the working tree, repo-relative. May be empty only when applied=false and blockers explain why.",
+      "items": {
+        "type": "object",
+        "required": ["path", "change"],
+        "properties": {
+          "path":   { "type": "string", "description": "Repo-relative doc path." },
+          "change": { "type": "string", "description": "One sentence on what was changed in this file." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "unresolved": {
+      "type": "array",
+      "description": "stale_docs entries (by path + lines) that were NOT addressed. Empty when applied=true.",
+      "items": {
+        "type": "object",
+        "required": ["path", "lines", "reason"],
+        "properties": {
+          "path":   { "type": "string" },
+          "lines":  { "type": "string" },
+          "reason": { "type": "string", "description": "Why the agent skipped this entry (ambiguous fix, missing source, conflicting guidance, etc)." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "description": "Populated when applied=false. Each entry describes one reason the run could not complete.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,29 @@
+# Deterministic (no-LLM) replay of the real slidey cards-timing-drift bug-fix,
+# happy-path walk, through the slidey-bugfix instance. Agent artifacts, fix diff,
+# and the node --test log are replayed verbatim from the recorded real run via
+# the cassette.
+test_kind: flow
+app: ../app.yaml
+host_cassette: ../cassettes/tour.cassette.yaml
+initial_state: bf.idle
+initial_world:
+  workdir: ".worktrees/bf-slidey-128"
+  workspace_id: "bf-slidey-128"
+  feature_branch: "fix/cards-item-timing-drift"
+  ticket_id: "slidey-128"
+  bf_autostart_attempted: true
+  # This flow enters mid-import at bf.idle, bypassing the compound OnEnter that
+  # runs the slidey-bugfix world_in projection — so seed bf's projected keys
+  # directly. open-PR keeps the demo on the PR-ready close-out tail.
+  bf__bugfix_exit: "open-PR"
+turns:
+  - intent: { name: bf__start,  slots: {} }   # bf.idle -> bf.reproducing
+  - intent: { name: bf__accept, slots: {} }   # -> bf.proposing
+  - intent: { name: bf__accept, slots: {} }   # -> bf.implementing
+  - intent: { name: bf__accept, slots: {} }   # -> bf.testing
+  - intent: { name: bf__accept, slots: {} }   # -> bf.reviewing
+  - intent: { name: bf__accept, slots: {} }   # -> bf.validating
+  - intent: { name: bf__accept, slots: {} }   # -> bf.done
+  - intent: { name: bf__accept, slots: {} }   # -> shipped (exit:done close-out)
+    then:
+      - expect_state: shipped

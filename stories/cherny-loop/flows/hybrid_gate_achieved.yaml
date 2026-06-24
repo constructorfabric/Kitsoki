@@ -1,0 +1,90 @@
+# hybrid_gate_achieved — the planner can choose "mostly deterministic, small
+# prompt tail": a script gate must pass AND the focused review must pass.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.agent.decide:
+    by_call:
+      gate-plan:
+        data:
+          submitted:
+            gate_mode: hybrid
+            gate_command: "go test ./internal/storyqa && test -f docs/stories/story-qa.md"
+            artifact: "docs/stories/story-qa.md"
+            prompt_focus: "Judge whether the guide is persuasive to a skeptical lead engineer."
+            reason: "The tests prove the examples compile, but persuasion still needs review."
+      gate-0:
+        data:
+          submitted:
+            pass: false
+            reason: "The guide lacks the skeptical-lead framing."
+            fixes: ["explain why the gate gives better evidence than a plain CLI loop"]
+      gate-1:
+        data:
+          submitted:
+            pass: true
+            reason: "The guide now connects flow fixtures, host-call evidence, and replay to the skeptical concern."
+            fixes: []
+  host.run:
+    by_call:
+      gate-0: { data: { ok: false, exit_code: 1, stdout: "FAIL: storyqa example stale" } }
+      gate-1: { data: { ok: true,  exit_code: 0, stdout: "ok  internal/storyqa  0.02s" } }
+  host.agent.task:
+    by_call:
+      maker-1:
+        data:
+          submitted:
+            summary: "Updated the guide and fixed the stale example"
+  host.artifacts_dir: { data: { ok: true } }
+  # iface.vcs.commit → host.git: commit the maker's work before @exit:achieved.
+  host.git: { data: { ok: true, sha: "abc1234" } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal: "Make the story QA guide tested and persuasive"
+        artifact: "docs/stories/story-qa.md"
+    expect_state: configuring
+    expect_world:
+      gate_mode: "hybrid"
+      gate_command: "go test ./internal/storyqa && test -f docs/stories/story-qa.md"
+      gate_plan_reason: "The tests prove the examples compile, but persuasion still needs review."
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: gate-plan }
+        times: 1
+  - intent: { name: launch, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      gate_mode:       "hybrid"
+      gate_command:    "go test ./internal/storyqa && test -f docs/stories/story-qa.md"
+      goal_achieved:   true
+      terminal_reason: "achieved"
+      iteration:       1
+    expect_host_calls:
+      - handler: host.run
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-1 }
+        times: 1
+      - handler: host.artifacts_dir
+        args: { thread: iteration-1 }
+        times: 1
+      - handler: host.run
+        args: { call: gate-1 }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: gate-1 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

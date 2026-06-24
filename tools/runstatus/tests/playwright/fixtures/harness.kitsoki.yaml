@@ -1,0 +1,26 @@
+# Deterministic demo fixture for the harness picker — the three providers the
+# demo showcases, each with the model (and, where supported, effort) selectors.
+# The flow posture never forks a backend, so the ${VAR} is satisfied by a dummy
+# SYNTHETIC_API_KEY the spec sets; no real key is used. Shape matches
+# docs/architecture/harness-profiles.md.
+default_profile: claude-native
+harness_profiles:
+  claude-native:
+    backend: claude
+    model: sonnet
+    models: [opus, sonnet, haiku]   # claude accepts the short model names
+    effort: medium
+    efforts: [low, medium, high]    # claude supports --effort
+  synthetic-claude:
+    backend: claude
+    model: hf:zai-org/GLM-5.2
+    # Offer a specific always-on model alongside the aliases (in a real config
+    # models_endpoint pulls the full live list).
+    models: ["hf:zai-org/GLM-5.2", "hf:Qwen/Qwen3.6-27B"]
+    env:
+      ANTHROPIC_BASE_URL: https://api.synthetic.new/anthropic
+      ANTHROPIC_AUTH_TOKEN: "${SYNTHETIC_API_KEY}"
+  codex-native:
+    backend: codex
+    model: gpt-5-codex
+    models: [gpt-5-codex, gpt-5]

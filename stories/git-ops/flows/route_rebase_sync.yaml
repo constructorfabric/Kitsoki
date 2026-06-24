@@ -1,0 +1,49 @@
+# route_rebase_sync — utterance "sync with main" → routes to rebase → branch_ops (ok).
+# Tests that the rebase synonym routes to the rebase operation.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  commits_ahead:      2
+  commits_behind:     3
+  rebase_done:        false
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      2
+            commits_behind:     3
+            has_uncommitted:    false
+            no_common_ancestor: false
+      rebase_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            pre_rebase_tag:  ""
+            last_op_output:  "Successfully rebased."
+            rebase_base_sha: ""
+            rebase_done:     true
+            conflict_origin: ""
+
+turns:
+  # rebase intent → rebase room → on_enter: rebase ok → branch_ops (rebase_done=true)
+  - intent: { name: rebase, slots: {} }
+    expect_state: branch_ops
+    expect_world:
+      rebase_done: true
+
+expect_no_errors: true

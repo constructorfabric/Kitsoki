@@ -4,16 +4,17 @@
 # split). on_enter binds the artifact; `accept` posts to transport AND
 # advances to the next phase — one keystroke per checkpoint.
 #
-# Non-oracle host calls (git, local, append_to_file, inbox.add) are
-# served by replay:any episodes in the cassette. Oracle calls
-# (host.oracle.task, host.oracle.ask, host.oracle.decide) are recorded
+# Non-agent host calls (git, local, append_to_file, inbox.add) are
+# served by replay:any episodes in the cassette. Agent calls
+# (host.agent.task, host.agent.ask, host.agent.decide) are recorded
 # once against the real Claude CLI and replayed forever with full
-# oracle: metadata blocks so runstatus snapshots carry oracle trace events.
+# agent: metadata blocks so runstatus snapshots carry agent trace events.
 
 test_kind: flow
 app: ../app.yaml
 initial_state: idle
 initial_world:
+  bugfix_exit: "open-PR"   # legacy PR-handoff tail (slice 4 default is direct-ship)
   ticket_id:        "TKT-001"
   ticket_title:    "TUI hangs on ESC"
   ticket_url:      "issues/bugs/2026-05-14-tui-hangs-on-esc.md"
@@ -30,9 +31,9 @@ host_cassette: ../cassettes/happy_human.cassette.yaml
 
 # host_bindings: bind the app's ifaces to their real default handlers.
 # This causes the testrunner to call host.RegisterBuiltins so that the
-# real host.oracle.* handlers are available as cassette-miss fallbacks
+# real host.agent.* handlers are available as cassette-miss fallbacks
 # during KITSOKI_CASSETTE_RECORD=new_episodes recording runs. The
-# cassette's replay:any stubs still intercept non-oracle calls first,
+# cassette's replay:any stubs still intercept non-agent calls first,
 # so no real git/ci/transport side-effects occur during replay.
 host_bindings:
   vcs:       host.git
@@ -42,7 +43,7 @@ host_bindings:
 
 turns:
 
-  # Idle → reproducing. on_enter runs host.oracle.task and binds
+  # Idle → reproducing. on_enter runs host.agent.task and binds
   # the whole submitted: payload into world.reproduction_artifact.
   - intent: { name: start, slots: {} }
     expect_state: reproducing

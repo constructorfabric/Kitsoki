@@ -5,8 +5,9 @@
 //   - validateRouting() loader-side errors.
 //   - mergeInto() collision behaviour for synonym-bearing intents.
 //
-// Fixtures live under testdata/routing_*.yaml.  The cases below cover
-// every YAML branch the loader has to traverse.
+// Fixtures live under testdata/routing_*.yaml. The routing surface is
+// documented in docs/architecture/semantic-routing.md; the cases
+// below cover every YAML branch the loader has to traverse.
 package app_test
 
 import (
@@ -95,8 +96,8 @@ func TestRouting_SynonymsRoundTrip(t *testing.T) {
 
 // TestRouting_DuplicateSynonymsAcceptedSilently pins the current
 // behaviour: a duplicate entry in `intent.synonyms` is preserved
-// verbatim by the loader. The proposal §4.1 leaves dedupe to the
-// semroute compile step (open question — see report).
+// verbatim by the loader. Dedupe is left to the
+// semroute compile step.
 func TestRouting_DuplicateSynonymsAcceptedSilently(t *testing.T) {
 	t.Parallel()
 	def := loadFixture(t, "routing_dup_synonyms.yaml")
@@ -163,7 +164,7 @@ func TestRouting_NoRoutingBlock(t *testing.T) {
 	def := loadFixture(t, "routing_no_block.yaml")
 	require.Nil(t, def.Routing, "missing routing: block must leave Routing nil so callers fall back to defaults")
 
-	// Pin the default values: any drift here means the proposal §6
+	// Pin the default values: any drift here means the routing
 	// defaults are silently changing.
 	d := app.DefaultRoutingConfig()
 	require.True(t, d.Enabled, "DefaultRoutingConfig.Enabled")
@@ -175,6 +176,7 @@ func TestRouting_NoRoutingBlock(t *testing.T) {
 	require.InDelta(t, 0.10, d.CacheTrimFraction, 1e-9, "DefaultRoutingConfig.CacheTrimFraction")
 	require.Equal(t, 3, d.RevalidateStrikes, "DefaultRoutingConfig.RevalidateStrikes")
 	require.False(t, d.ConfidenceDecay, "DefaultRoutingConfig.ConfidenceDecay")
+	require.False(t, d.ExtractLLMOnNoMatch, "DefaultRoutingConfig.ExtractLLMOnNoMatch must default off (opt-in)")
 }
 
 // TestRouting_EmptyBlockGetsDefaults pins the documented behaviour for
@@ -245,6 +247,7 @@ func TestRouting_FullBlockRoundTrip(t *testing.T) {
 		{"CacheTrimFraction", 0.25, r.CacheTrimFraction},
 		{"RevalidateStrikes", 5, r.RevalidateStrikes},
 		{"ConfidenceDecay", true, r.ConfidenceDecay},
+		{"ExtractLLMOnNoMatch", true, r.ExtractLLMOnNoMatch},
 	}
 	for _, tc := range tests {
 		tc := tc

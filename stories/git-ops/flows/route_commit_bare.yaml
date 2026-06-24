@@ -1,0 +1,45 @@
+# route_commit_bare — utterance "commit" → routes to commit room.
+# Tests bare imperative synonym routing.
+# commit_message pre-seeded so agent is not called.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  has_uncommitted:    true
+  commits_ahead:      1
+  staged_diff_stat:   " internal/foo.go | 3 +++\n 1 file changed"
+  commit_message:     "feat: add foo"
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      1
+            commits_behind:     0
+            has_uncommitted:    true
+            no_common_ancestor: false
+      diff_stat:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    " internal/foo.go | 3 +++\n 1 file changed"
+
+turns:
+  - intent: { name: commit, slots: {} }
+    expect_state: commit
+    expect_world:
+      commit_message: "feat: add foo"
+
+expect_no_errors: true

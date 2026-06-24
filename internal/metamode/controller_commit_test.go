@@ -8,7 +8,7 @@ package metamode
 //
 // Setup shape per test:
 //   - t.TempDir() + `git init` + an initial commit on app.yaml.
-//   - newTestController(t) with a stub Oracle that mutates a file
+//   - newTestController(t) with a stub Agent that mutates a file
 //     inside the story dir during Ask (simulating claude's Edit tool).
 //   - c.Send(...) with TurnContext{AppFile: appFile} so sendLocked's
 //     pre/post tree snapshot detects the edit.
@@ -122,7 +122,7 @@ func headParent(t *testing.T, repo string) string {
 // TestController_Send_DirectEdit_CommitsAutomatically is the core
 // regression test for the modern direct-edit path: when the agent
 // edits a file in the story tree (via Edit/Write tools — here
-// simulated by the oracle stub touching the file), sendLocked must
+// simulated by the agent stub touching the file), sendLocked must
 // automatically run a git commit before returning. Pre-fix, the
 // changed files just sat in the working tree as uncommitted changes.
 func TestController_Send_DirectEdit_CommitsAutomatically(t *testing.T) {
@@ -130,7 +130,7 @@ func TestController_Send_DirectEdit_CommitsAutomatically(t *testing.T) {
 	initialHead := headSHA(t, dir)
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		// Simulate the agent rewriting the manifest to a still-valid form.
 		require.NoError(t, os.WriteFile(appFile, validManifestWithDescription("first"), 0o644))
 		return AskOutput{Reply: "rewrote app.yaml"}, nil
@@ -166,7 +166,7 @@ func TestController_Send_DirectEdit_SecondTurnAmends(t *testing.T) {
 
 	c, _, _ := newTestController(t)
 	turn := 0
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		turn++
 		switch turn {
 		case 1:
@@ -213,7 +213,7 @@ func TestController_Send_DirectEdit_NoChangesNoCommit(t *testing.T) {
 	initialHead := headSHA(t, dir)
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		// No file edits — pure conversation.
 		return AskOutput{Reply: "let me know if you want me to change anything."}, nil
 	})
@@ -243,7 +243,7 @@ func TestController_Send_DirectEdit_NoGitRepoSkipsCleanly(t *testing.T) {
 	require.NoError(t, os.WriteFile(appFile, []byte(minValidManifest), 0o644))
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		require.NoError(t, os.WriteFile(appFile, validManifestWithDescription("edited-no-repo"), 0o644))
 		return AskOutput{Reply: "edited"}, nil
 	})
@@ -276,17 +276,16 @@ func TestController_Send_DirectEdit_NoGitRepoSkipsCleanly(t *testing.T) {
 // SendResult.CommitError so the operator knows to fix the file before
 // it gets pinned.
 //
-// The test simulates the exact production shape: oracle stub edits
+// The test simulates the exact production shape: agent stub edits
 // app.yaml to a YAML that parses but references an undeclared intent
 // from an on: block. Result: ChangedFiles still surfaces the edit
 // (reload can fire and the operator sees the broken state), but
 // CommitSHA is empty and CommitError describes the load failure.
 func TestController_Send_DirectEdit_BrokenYAMLBlocksCommit(t *testing.T) {
 	dir, appFile := initStoryRepo(t)
-	initialHead := headSHA(t, dir)
 
 	// Seed the valid manifest in place of initStoryRepo's seed so the
-	// initial-commit pre-state is well-formed; the oracle stub will
+	// initial-commit pre-state is well-formed; the agent stub will
 	// then break it during the turn. The seed already matches
 	// minValidManifest, so this rewrite is a no-op content-wise but
 	// keeps the test self-documenting about the precondition.
@@ -300,10 +299,10 @@ func TestController_Send_DirectEdit_BrokenYAMLBlocksCommit(t *testing.T) {
 	}
 	runGit("add", "app.yaml")
 	runGit("commit", "--amend", "--no-edit")
-	initialHead = headSHA(t, dir)
+	initialHead := headSHA(t, dir)
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		// Break the manifest the same way the production trace did:
 		// add an `on:` arc referencing an undeclared intent.
 		brokenApp := `app: { id: t }
@@ -360,7 +359,7 @@ func TestController_Send_DirectEdit_PreCommitHookFailureSurfaces(t *testing.T) {
 		[]byte("#!/bin/sh\necho 'rejected'\nexit 1\n"), 0o755))
 
 	c, _, _ := newTestController(t)
-	c.Oracle = oracleFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
+	c.Agent = agentFunc(func(ctx context.Context, in AskInput) (AskOutput, error) {
 		require.NoError(t, os.WriteFile(appFile, validManifestWithDescription("hook-blocked"), 0o644))
 		return AskOutput{Reply: "edited"}, nil
 	})

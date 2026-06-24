@@ -8,12 +8,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
-	"kitsoki/internal/chats"
 	"kitsoki/internal/tmux"
 )
 
@@ -102,28 +100,3 @@ Output is a JSON summary of the rows actually removed.`,
 	return cmd
 }
 
-// runStartupGC is a best-effort GC pass invoked by other CLI verbs
-// at startup (per proposal §6.6: "called from every CLI invocation
-// as a cheap startup step"). It silently swallows errors — the
-// surface command does its own work regardless. Currently unused
-// pending integration in main(); kept here so future bootstrap code
-// has a single call site.
-func runStartupGC(ctx context.Context, cs *chats.Store) {
-	tmuxClient, err := tmux.New(tmux.DefaultSocketPath())
-	if err != nil {
-		return
-	}
-	alive, err := tmuxClient.ListSessions(ctx)
-	if err != nil {
-		return
-	}
-	set := make(map[string]struct{}, len(alive))
-	for _, n := range alive {
-		set[n] = struct{}{}
-	}
-	probe := func(name string) bool {
-		_, ok := set[name]
-		return ok
-	}
-	_, _ = cs.GCDeadTmux(ctx, probe)
-}

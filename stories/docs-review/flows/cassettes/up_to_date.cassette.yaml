@@ -1,0 +1,54 @@
+# Cassette for happy_up_to_date.yaml — same three-call shape, but the
+# agent returns decision=up_to_date.
+
+kind: host_cassette
+app_id: docs-review
+generated_at: 2026-05-28T00:00:00Z
+match_on: [handler]
+
+episodes:
+  - id: preflight_run
+    match:
+      handler: host.run
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |
+          {"sha":"facefeeddeadbeef","recent_log":"aaa1111 chore: bump deps","recent_changes":" go.sum | 4 ++++"}
+        stdout_json:
+          sha: "facefeeddeadbeef"
+          commit_count: "1"
+          recent_log: "aaa1111 chore: bump deps"
+          recent_changes: " go.sum | 4 ++++"
+          working_tree_diff: ""
+    replay: any
+
+  - id: agent_decide
+    match:
+      handler: host.agent.decide
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        submitted:
+          decision: "up_to_date"
+          summary:  "Only dependency bumps in the recent diff (aaa1111); no doc-visible changes."
+          confidence: 0.94
+          commits:
+            - sha: "aaa1111"
+              subject: "chore: bump deps"
+              change: "go.sum-only update; no surface or behavior change"
+          stale_docs: []
+          recommended_actions: []
+    replay: any
+
+  - id: artifacts_dir_write
+    match:
+      handler: host.artifacts_dir
+    response:
+      data:
+        ok: true
+        path: "/tmp/.artifacts/docs-review-facefeeddeadbeef.md"
+        message_id: "docs-review-facefeeddeadbeef#0"
+    replay: any

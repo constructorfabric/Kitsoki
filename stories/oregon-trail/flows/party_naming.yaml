@@ -15,10 +15,10 @@
 #      fires. "Western" lands "Hank,Jesse,Mary,Ezra,Sarah" → split into
 #      the five per-seat keys.
 #
-# The narrated branch of generate_names (host.oracle.ask with
+# The narrated branch of generate_names (host.agent.ask with
 # prompts/name_party.md) is intentionally NOT covered here — see
 # narrated_smoke.yaml for the round-trip pattern; a follow-up fixture
-# can layer a stubbed host.oracle.ask + narration:true on this state.
+# can layer a stubbed host.agent.ask + narration:true on this state.
 
 test_kind: flow
 app: ../app.yaml

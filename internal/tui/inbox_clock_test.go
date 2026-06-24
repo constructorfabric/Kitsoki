@@ -8,6 +8,8 @@ package tui_test
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"kitsoki/internal/app"
 	"kitsoki/internal/clock"
 	"kitsoki/internal/harness"
+	"kitsoki/internal/host"
 	"kitsoki/internal/jobs"
 	"kitsoki/internal/machine"
 	"kitsoki/internal/orchestrator"
@@ -136,4 +139,79 @@ func TestInboxClockInjection_SyntheticPollMsg(t *testing.T) {
 	// We don't execute it (that would need a real DB read), just confirm
 	// it's non-nil, meaning the machinery is wired.
 	require.NotNil(t, cmd, "handling inboxPollMsg should schedule a follow-up Cmd")
+}
+
+func TestInboxClockInjection_SyntheticPollSyncsGitHubOnThrottle(t *testing.T) {
+	fakeClk := clock.NewFake(time.Unix(0, 0))
+	m, js := buildModelWithFakeClock(t, fakeClk)
+
+	calls := []string{}
+	restore := host.SetExecRunnerForTest(func(_ context.Context, _ string, name string, args ...string) (string, string, int, error) {
+		key := name + " " + strings.Join(args, " ")
+		calls = append(calls, key)
+		switch key {
+		case "gh --version":
+			return "gh version 2.x\n", "", 0, nil
+		case "gh issue list --state open --assignee @me --limit 100 --json number,title,assignees,url":
+			return `[{"number":7,"title":"Assigned issue","url":"https://github.com/acme/repo/issues/7","assignees":[{"login":"brad"}]}]`, "", 0, nil
+		case "gh pr list --state open --review-requested @me --limit 100 --json number,title,author,url":
+			return `[]`, "", 0, nil
+		default:
+			return "", "unexpected command: " + key, 1, nil
+		}
+	})
+	defer restore()
+
+	updated, cmd := m.Update(tuipkg.InboxPollMsg())
+	require.NotNil(t, cmd)
+	msg := inboxRefreshedFromCmd(t, cmd)
+	m = updated
+	m, _ = m.Update(msg)
+	require.Len(t, calls, 3)
+
+	rm, ok := tuipkg.ExtractRootModel(m)
+	require.True(t, ok)
+	ns, err := js.ListNotifications(context.Background(), rm.SessionIDForTest(), 20)
+	require.NoError(t, err)
+	require.Len(t, ns, 1)
+	require.Equal(t, "github:acme/repo/issue/7", ns[0].OriginRef)
+
+	updated, cmd = m.Update(tuipkg.InboxPollMsg())
+	require.NotNil(t, cmd)
+	_ = cmd()
+	m = updated
+	require.Len(t, calls, 3, "second nearby inbox tick should not call gh again")
+
+	fakeClk.Advance(5 * time.Minute)
+	updated, cmd = m.Update(tuipkg.InboxPollMsg())
+	require.NotNil(t, cmd)
+	_ = cmd()
+	m = updated
+	require.Len(t, calls, 6, "tick after throttle interval should poll gh again")
+}
+
+func inboxRefreshedFromCmd(t *testing.T, cmd tea.Cmd) tea.Msg {
+	t.Helper()
+	wantType := reflect.TypeOf(tuipkg.InboxRefreshedMsg(nil))
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, next := range batch {
+			if next == nil {
+				continue
+			}
+			nested := next()
+			if reflect.TypeOf(nested) == wantType {
+				return nested
+			}
+			if _, ok := nested.(tea.BatchMsg); ok {
+				if refreshed := inboxRefreshedFromCmd(t, func() tea.Msg { return nested }); refreshed != nil {
+					return refreshed
+				}
+				continue
+			}
+		}
+		t.Fatalf("expected inboxRefreshed in batch, got %T", msg)
+	}
+	require.IsType(t, tuipkg.InboxRefreshedMsg(nil), msg)
+	return msg
 }

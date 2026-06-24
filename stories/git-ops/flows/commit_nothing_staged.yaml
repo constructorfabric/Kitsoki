@@ -1,0 +1,52 @@
+# commit_nothing_staged — commit room when nothing is staged → back to hub, agent NOT prioritized.
+# diff_stat script returns route="nothing_staged" → emit routes back to branch_ops.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: branch_ops
+initial_world:
+  integration_branch: main
+  current_branch:     feat/x
+  on_integration:     false
+  working_dir:        "."
+  staged_diff_stat:   ""
+  commit_message:     ""
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_branch:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             feat/x
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            no_common_ancestor: false
+      diff_stat:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            staged_diff_stat: ""
+            route:            "nothing_staged"
+            squash_mode:      false
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        type:    feat
+        scope:   null
+        summary: "no changes"
+        body:    null
+        message: "feat: no changes"
+
+turns:
+  - intent: { name: commit, slots: {} }
+    expect_state: branch_ops
+
+expect_no_errors: true

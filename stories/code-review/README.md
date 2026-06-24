@@ -1,7 +1,9 @@
 # code-review — review a teammate's open PR
 
-Wave 3 / Phase 6 of the dev-story / bugfix unify design. The
-**reviewing-a-teammate** flavor — not a self-loop on your own PR. Triggered from the dev-story inbox when an external
+The code-review pipeline from the [bug-fix case
+study](../../docs/case-studies/bug-fix.md). The **reviewing-a-teammate**
+flavor — not a self-loop on
+your own PR. Triggered from the dev-story inbox when an external
 "PR awaiting your review" notification arrives.
 
 ```
@@ -61,6 +63,8 @@ import's `world_in:` and enters at `entry: idle`.
 
 ## See also
 
+- [`docs/case-studies/bug-fix.md`](../../docs/case-studies/bug-fix.md)
+- [`docs/proposals/notes/dev-story-implementation-contract.md`](../../docs/proposals/notes/dev-story-implementation-contract.md)
 - [`stories/implementation/`](../implementation/) — the implementation
   pipeline that handoffs to `pr-refinement`.
 - [`stories/pr-refinement/`](../pr-refinement/) — author-side PR

@@ -21,9 +21,9 @@ states:
           pairs:
             Ticket:                "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary:               '{{ world.task_summary_artifact.summary_title|default:"(pending)" }}'
-            "Acceptance criteria": '{{ world.task_summary_artifact.acceptance_criteria|default:"(pending)" }}'
+            "Acceptance criteria": '{{ world.task_summary_artifact.acceptance_criteria|join:", "|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.task_summary_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.task_summary_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -41,7 +41,7 @@ states:
     relevant_world: [ticket_id, ticket_title, ticket_body, task_summary_artifact, cycle]
     on_enter:
       # Fetch the ticket. The default host.local_files.ticket binding
-      # is the prefix-fallback handler; a downstream parent rebinds
+      # is the prefix-fallback handler; cyber-repo's parent rebinds
       # iface.ticket → host.jira. We bind the body so the LLM has
       # something to chew on.
       - invoke: iface.ticket.get
@@ -53,7 +53,11 @@ states:
           ticket_url:   url
         on_error: idle
       # Produce the structured task summary.
-      - invoke: host.oracle.decide
+      # once: skip the regenerate when task_summary_artifact is already
+      # bound (reload / self-re-entry safe). Every arc that re-enters
+      # review_task_executing for a FRESH run clears the bind below.
+      - invoke: host.agent.decide
+        once: true
         with:
           prompt: prompts/review_task_executing.md
           schema: schemas/task_summary_artifact.json
@@ -76,6 +80,8 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback }}"
                 cycle: 0
+                # Clear the once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:
@@ -90,11 +96,14 @@ states:
       - kv:
           pairs:
             Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
-            Verdict:    '{{ world.llm_verdict.verdict|default:"(no LLM verdict)" }}'
-            Confidence: '{{ world.llm_verdict.confidence|default:"(n/a)" }}'
-            Reason:     '{{ world.llm_verdict.reason|default:"(none)" }}'
+      - when: "(world.llm_verdict.verdict ?? '') != ''"
+        kv:
+          pairs:
+            Verdict:    '{{ world.llm_verdict.verdict }}'
+            Confidence: '{{ world.llm_verdict.confidence|floatformat:2 }}'
+            Reason:     '{{ world.llm_verdict.reason }}'
       - heading: "Artifact"
-      - code: '{{ world.task_summary_artifact.summary_markdown|default:"(pending — oracle has not returned yet)" }}'
+      - code: '{{ world.task_summary_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -132,7 +141,7 @@ states:
           state:   review_task_awaiting_reply
           body:    "{{ world.task_summary_artifact.summary_markdown }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
-        invoke: host.oracle.decide
+        invoke: host.agent.decide
         with:
           prompt: prompts/judge_review_task.md
           schema: schemas/judge_verdict.json
@@ -158,18 +167,25 @@ states:
                 last_reply_author: "{{ slots.author ?? 'human' }}"
                 refine_feedback:   ""
                 cycle:             0
+                # Advancing to write_code_executing for a fresh run — clear
+                # its once: cache so the code artifact regenerates.
+                code_artifact:     {}
       refine:
         - target: review_task_executing
           effects:
             - set:
                 refine_feedback: "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 cycle:           "{{ world.cycle + 1 }}"
+                # Clear the once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       restart_from:
         - target: review_task_executing
           effects:
             - set:
                 restart_from_stage: "{{ slots.stage ?? 'review_task' }}"
                 cycle:              0
+                # Clear the once: cache so the task summary regenerates.
+                task_summary_artifact: {}
       quit:
         - target: "@exit:abandoned"
       look:

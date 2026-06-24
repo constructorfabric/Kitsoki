@@ -1,0 +1,51 @@
+# HTTP cassette for the enrich_user.star script (kind: http_cassette).
+#
+# This cassette was RECORDED against the real jsonplaceholder API
+# (record_mode: all) and then trimmed to the response headers the example
+# cares about — a raw VCR-style recording captures every header (Date, Cf-Ray,
+# rate-limit tokens, …); keep only what the script needs so the example stays
+# readable. To re-record from scratch:
+#
+#     KITSOKI_HTTP_CASSETTE_RECORD=all \
+#       go test ./internal/testrunner/ -run TestStarlarkEnrichExample -count=1
+#
+# This is a SEPARATE cassette kind from the agent host_cassette: host_cassette
+# replaces a whole handler, whereas this lets the REAL host.starlark.run handler
+# run and only replays the network it reaches through ctx.http. The testrunner
+# loads it via the fixture's `starlark_http_cassette:` field, builds a replay
+# client, and injects it on the context — so no socket is ever opened.
+#
+# Each episode records the request (matched per the cassette's match_on, default
+# [method, url]) and the canned response. The single episode pins the GET the
+# script makes for user #1.
+kind: http_cassette
+record_mode: none
+exchanges:
+  - request:
+      method: GET
+      url: https://jsonplaceholder.typicode.com/users/1
+    response:
+      status: 200
+      headers:
+        Content-Type: application/json; charset=utf-8
+      body: |
+        {
+          "id": 1,
+          "name": "Leanne Graham",
+          "username": "Bret",
+          "email": "Sincere@april.biz",
+          "address": {
+            "street": "Kulas Light",
+            "suite": "Apt. 556",
+            "city": "Gwenborough",
+            "zipcode": "92998-3874",
+            "geo": { "lat": "-37.3159", "lng": "81.1496" }
+          },
+          "phone": "1-770-736-8031 x56442",
+          "website": "hildegard.org",
+          "company": {
+            "name": "Romaguera-Crona",
+            "catchPhrase": "Multi-layered client-server neural-net",
+            "bs": "harness real-time e-markets"
+          }
+        }
