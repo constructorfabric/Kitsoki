@@ -30,6 +30,25 @@ states:
             - label: "look"
     on:
       start:
+        # The web compose box dispatches typed text as `start` with the text in
+        # `feedback`. If that text is an "edit <deck>" instruction, divert to the
+        # edit-existing path (resolve_deck strips the verb + resolves the name).
+        - when: "hasPrefix(lower(trim(slots.feedback ?? '')), 'edit') || hasPrefix(lower(trim(slots.feedback ?? '')), 'revise ') || hasPrefix(lower(trim(slots.feedback ?? '')), 'open ')"
+          target: drafting
+          effects:
+            - invoke: host.starlark.run
+              id: resolve_deck
+              with:
+                script: scripts/resolve_deck.star
+                inputs:
+                  spec_path: "{{ slots.feedback }}"
+                  decks_dir: "{{ world.decks_dir }}"
+              bind:
+                source_deck: source_deck
+            - set:
+                draft_feedback: ""   # the verb-laden text was a deck selector, not edit direction
+                deck: {}
+                render_retries: 0
         - target: drafting
           effects:
             - set:

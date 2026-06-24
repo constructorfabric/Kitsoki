@@ -18,6 +18,16 @@
 
 def main(ctx):
     raw = (ctx.inputs.get("spec_path") or "").strip()
+
+    # The web compose box funnels typed text into an intent slot with the verb
+    # still attached (e.g. "edit kitsoki-pitch"). Strip a leading edit verb so a
+    # bare deck name survives. The trailing space requirement keeps real
+    # filenames like "editorial-notes" intact.
+    for verb in ["edit_existing ", "edit existing ", "edit ", "revise ", "open "]:
+        if raw.lower().startswith(verb):
+            raw = raw[len(verb):].strip()
+            break
+
     decks_dir = (ctx.inputs.get("decks_dir") or ctx.world.get("decks_dir") or "docs/decks").rstrip("/")
     summary = ctx.inputs.get("summary") or "Existing slidey deck"
 
