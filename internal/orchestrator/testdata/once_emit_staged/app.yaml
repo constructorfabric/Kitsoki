@@ -45,10 +45,12 @@ intents:
     description: "Internal: route to branch_ops (emitted by idle on_enter)."
     examples: []
     priority: 95
+    hidden: true
   on_main:
     description: "Internal: route to main_ops (emitted by idle on_enter)."
     examples: []
     priority: 95
+    hidden: true
   look:
     description: "Refresh / stay here."
     examples: ["look", "refresh"]

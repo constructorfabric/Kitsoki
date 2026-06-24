@@ -1027,11 +1027,21 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 	// a `decider: human` pin), stop BEFORE firing this state's emits —
 	// drop them, rest here, and record why. One-shot mode (and `decider:
 	// llm` pins) skip this and advance as before.
-	// depth>0 guard: the origin state (depth=0) is the state *dispatching*
-	// the emits, not a state the chain has arrived at. Post-bind emits are
-	// deterministic consequences of a host call's binding and must not be
-	// blocked at the origin state regardless of staged mode.
-	if depth > 0 && m.isStagedGate(ctx, curState, w, staged) {
+	//
+	// Origin-state (depth==0) exception, scoped to internal auto-routes: the
+	// origin is the state *dispatching* these emits (e.g. a router room's
+	// post-bind `emit_intent: "{{ world.route }}"`), not a state the chain has
+	// arrived at. A post-bind emit that resolves to a `hidden:` intent —
+	// on_branch/on_main and friends, which no operator ever types — is
+	// deterministic routing off a host-bound fact, so it must fire even in
+	// staged mode (issue #15: once: on_enter host.run bind+emit was dropped).
+	// But a post-bind emit to a FIRST-CLASS operator action (e.g. cherny-loop
+	// baseline's `proceed`, shown alongside reconfigure/accept) IS a decision a
+	// human owes, so the origin gate still stands. Distinguishing on the
+	// emitted intent's `hidden:` flag is what lets git-ops idle auto-route while
+	// importer-gate's baseline gates. depth>0 (arrived-at) states always gate.
+	if (depth > 0 || !m.allEmitsHiddenRoutes(curState, emits)) &&
+		m.isStagedGate(ctx, curState, w, staged) {
 		m.logger.DebugContext(ctx, trace.EvIntentEmitted,
 			slog.String("state", curState),
 			slog.String("kind", "staged_gate_stop"),
@@ -1831,6 +1841,30 @@ func (m *machineImpl) DispatchPostBindEmits(ctx context.Context, state app.State
 		return state, w, nil, "", nil, derr
 	}
 	return app.StatePath(finalState), finalWorld, hostCalls, sayText, events, nil
+}
+
+// allEmitsHiddenRoutes reports whether EVERY emit in `emits` resolves to an
+// intent declared `hidden:` — an internal auto-route (a router room's
+// `emit_intent: "{{ world.route }}"` → on_branch/on_main, never operator-typed)
+// rather than a first-class operator action. Such a post-bind emit is a
+// deterministic consequence of a host-bound fact, so the staged gate must let
+// it fire even at the origin state; a single non-hidden emit (e.g. cherny-loop
+// baseline's `proceed`) means a real decision is pending and the gate stands.
+// Aliases are resolved first so the lookup works across an import boundary
+// (e.g. `proceed` → `maker__proceed`). An empty list or an unresolvable name is
+// treated as NOT a pure route (false), so the gate is preserved by default.
+func (m *machineImpl) allEmitsHiddenRoutes(state string, emits []emittedIntent) bool {
+	if len(emits) == 0 {
+		return false
+	}
+	for _, e := range emits {
+		name := m.resolveEmittedIntentName(state, e.Name)
+		def, ok := m.lookupIntent(app.StatePath(state), name)
+		if !ok || !def.Hidden {
+			return false
+		}
+	}
+	return true
 }
 
 // isDecisionGate reports whether `state` represents a genuine branch the

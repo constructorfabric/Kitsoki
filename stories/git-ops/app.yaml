@@ -115,10 +115,12 @@ intents:
     description: "Route to main_ops (fired by idle on_enter)."
     examples: []
     priority: 95
+    hidden: true
   on_branch:
     description: "Route to branch_ops (fired by idle on_enter)."
     examples: []
     priority: 95
+    hidden: true
   rebase_conflict:
     description: "Internal routing: rebase produced conflicts."
     examples: []
