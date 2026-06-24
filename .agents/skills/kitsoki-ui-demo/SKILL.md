@@ -829,10 +829,19 @@ loop keeps working without rendering video.
 ### 3. Render + gate
 
 ```bash
+npm --prefix /Users/brad/code/slidey run build:render   # MANDATORY after any slidey UI/component change
 node /Users/brad/code/slidey/src/index.js <deck>.json <out>.mp4   # → MP4 + <out>.mp4.chapters.json
 ```
 (or `host.slidey.render` from a story — same engine; see
-`docs/architecture/hosts.md#hostslideyrender`). Gate the composite with a spec
+`docs/architecture/hosts.md#hostslideyrender`).
+> **Slidey embed-staging trap (same class as the kitsoki go:embed one).** `slidey
+> src/index.js` renders off the **pre-built** `dist-render/render.html` bundle — it
+> does NOT recompile `web/` source per render. So a slidey component change
+> (persona avatars, scene layout, a new field) is **invisible to a baked video
+> until you `npm run build:render`**. Symptom: a deck change that's correct in the
+> JSON renders as the *old* behavior (e.g. a persona `avatar:` SVG shows the glyph
+> initials fallback instead of the image). If a render contradicts the deck, rebuild
+> the bundle before debugging anything else. Gate the composite with a spec
 that asserts the deck is **rrweb-embedded** (every `video` scene has `rrweb`, none
 has `src`), the section slides are present, the output duration exceeds the **sum
 of the clip durations** (proves both acts are in), the chapter sidecar is
