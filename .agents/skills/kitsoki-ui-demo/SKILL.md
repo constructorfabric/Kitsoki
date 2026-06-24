@@ -1,6 +1,6 @@
 ---
 name: kitsoki-ui-demo
-description: 'Produce a deterministic, no-LLM demo / tour video of the kitsoki web UI (plus per-scene screenshots and a shareable MP4 / GIF / contact sheet) by driving a real `kitsoki web` server through Playwright. Use when asked to make, record, refresh, or author a tour demo video, feature-spotlight tour, walkthrough video, demo, or screen-capture of the kitsoki browser UI — whether a tour of one feature (golden example: agent-actions), the generic onboarding tour, or a full-product walkthrough. Triggers on phrasings like "make a tour demo video", "record a demo of <feature>", "feature tour video", "walkthrough video".'
+description: 'Produce a deterministic, no-LLM demo / tour video of the kitsoki web UI (plus per-scene screenshots and a shareable MP4 / GIF / contact sheet) by driving a real `kitsoki web` server through Playwright. Use when asked to make, record, refresh, or author a tour demo video, feature-spotlight tour, walkthrough video, demo, or screen-capture of the kitsoki browser UI — whether a tour of one feature (golden example: agent-actions), the generic onboarding tour, or a full-product walkthrough. Also covers turning a REAL LLM-driven dogfood session into a deterministic demo: generating the no-LLM flow fixture + host cassette from a recorded trace via `kitsoki trace to-flow` (no hand-authoring, no LLM re-interpretation). Triggers on phrasings like "make a tour demo video", "record a demo of <feature>", "feature tour video", "walkthrough video", "turn this dogfood trace/session into a demo video".'
 ---
 
 # Kitsoki UI demo videos
@@ -44,6 +44,64 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > for `<canvas>`/`<video>`/WebGL surfaces) and the **rrweb capture → replay-render**
 > mode (capture the DOM stream once, re-render server-free + offline, frame-exact)
 > — see **[rrweb capture → replay-render](#rrweb-capture--replay-render-deterministic-server-free-mode)**.
+
+## Start from a real dogfood trace (generate the flow + cassette — don't hand-author)
+
+A demo's no-LLM `--flow` fixture + `--host-cassette` do **not** have to be written
+by hand. If the scenario you want to film already happened as a **real,
+LLM-driven session** (a dogfood run, a bugfix pipeline, a live drive), convert
+its recorded trace into the replay artifacts deterministically — no LLM
+re-interpretation, no transcription by hand:
+
+```bash
+# 1. Find the recorded session trace (JSONL). Live/record sessions write one to:
+#      ~/.kitsoki/sessions/<app>/<session-id>.jsonl
+#    or capture a fresh one via the MCP `session.trace` tool / `--trace-out`.
+
+# 2. Convert the trace → a flow fixture (+ sibling host cassette) — a pure transform:
+kitsoki trace to-flow <trace.jsonl> \
+  --app ../app.yaml \
+  --out stories/<story>/flows/<scenario>.yaml
+#   → writes <scenario>.yaml and (when the trace had host calls)
+#     <scenario>.cassette.yaml beside it, referenced via host_cassette:.
+
+# 3. Verify it replays no-LLM and capture a fresh trace:
+kitsoki test flows stories/<story>/app.yaml --flows stories/<story>/flows/<scenario>.yaml \
+  --trace-out .artifacts/<scenario>/replay.jsonl
+```
+
+The generated flow is exactly what the recording pipeline already consumes — point
+`kitsoki web --flow stories/<story>/flows/<scenario>.yaml` (or a `*-video.spec.ts`
+spec's `--flow` arg) at it and record as below. Two properties make this a clean
+fit for demos:
+
+- **Each `machine.transition` → one turn** (resolved intent name + slots,
+  verbatim, in order). The LLM/semantic routing decision is *not* re-run on
+  replay — the resolved intent is re-driven directly, so it's deterministic and
+  free.
+- **`display_input:` preserves the operator's real free-text words** (from the
+  trace's `turn.input`), so a conversation demo's user bubbles — and the strings
+  you type into the composer — are the operator's actual utterance, not a
+  synthetic `[intent] <name>`. This is what makes a trace-derived conversation
+  video followable (see [Demoing human usage](#demoing-human-usage--the-conversation-must-be-followable)).
+
+**Caveats, all by design** (full discussion + the trace→fixture mapping table:
+[`docs/tracing/trace-format.md` §11](../../tracing/trace-format.md#11-kitsoki-trace-to-flow--trace--replayable-flow-fixture)):
+
+- The converter emits **no `expect_state` / `expect_world`** (story-drift
+  tolerance). Add expectations by hand only if you want to pin a known-drift-free
+  path.
+- Per-call-varying agent/host responses replay correctly because each recorded
+  call becomes one **ordered** cassette episode (not `replay:any`) — the i-th call
+  consumes the i-th episode.
+- If the *current* story routes a turn into a room that didn't exist when the
+  trace was recorded, that room's `on_enter` may need a host call the cassette
+  has no episode for → a hard cassette miss / `on_error` bounce. That's honest
+  drift, not a tooling fault: re-record the trace against the current story.
+
+Once the flow + cassette exist, everything below (spec, pacing, MP4) is unchanged
+— the source of the fixture (hand-authored vs trace-derived) is invisible to the
+recorder.
 
 ## Prerequisites (once)
 
@@ -656,7 +714,107 @@ Route mapping: `/` → `"home"`, `/s/:id/chat` → `"interactive"`,
 live overlay, so only anchor to elements that exist there (e.g. `view-mode-tabs`,
 `trace-event-row`, `confidence-bar`).
 
-## Cross-site / multi-act demos (driving a site other than kitsoki)
+## Compositing into a slidey deck (rrweb-embedded — the preferred multi-act path)
+
+**Don't ship a wall of MP4s.** When a demo is several acts — multiple kitsoki
+surfaces, or kitsoki **plus** an external page — the deliverable should be **one
+narrated [slidey](../../../../../slidey) deck** that brackets the act clips with
+title / persona / section / CTA slides, not a bare ffmpeg concat of `.mp4`s. And
+the act clips should be embedded as **rrweb DOM-session logs**, not transcoded
+MP4: rrweb is compact JSON (not pixels), stays a clean app capture (no baked-in
+overlays), is frame-deterministic and re-renderable offline, carries its own
+chapter markers, and gives the slidey **web viewer** a live, scrubbable,
+chapter-aware player. The MP4-concat path below is the **legacy fallback** — use
+it only for a surface rrweb can't capture (`<canvas>`/`<video>`/WebGL).
+
+> **Worked references — copy these, don't start blank:**
+> the **@kitsoki GitHub-loop** demo (deck
+> `docs/proposals/demo-assets/kitsoki-github/deck/kitsoki-github.deck.json`,
+> 11 scenes, two rrweb acts) and the richer **dev-story-hybrid** deck
+> (`.artifacts/slidey-hybrid/dev-story-hybrid.json` — title → personas(cast) →
+> use-cases → embedded rrweb `video` per phase → CTA). Read both; the deck is
+> just JSON. The full scene menu lives in the **slidey-authoring** skill
+> (`/Users/brad/code/slidey/.claude/skills/slidey-authoring/SKILL.md` §"Media
+> embedding").
+
+### 1. Produce an rrweb clip per act
+
+There are **two capture engines**; pick by surface. Both emit a `*.rrweb.json`
+log whose scenes are marked with in-log `slidey.chapter` custom events, so the
+deck's `"chapters": "auto"` derives lower-thirds with **no sidecar**.
+
+- **Static / app-agnostic surface (a `file://` fixture, any plain page) → slidey's
+  own tour engine.** It drives a time-based storyboard and stamps `slidey.chapter`
+  events natively:
+  ```bash
+  node /Users/brad/code/slidey/src/index.js capture <act.tour.json> \
+    <deck-dir>/clips/<act>.rrweb.json --format rrweb
+  ```
+  The `tour.json` is `{ target:{url|launch,addr}, startPath, viewport, curtain,
+  pace, steps:[{id,label,caption,waitFor,target,dwellMs,kind,advance,before[]}] }`.
+  **Gotcha:** for a `file://` target use `"startPath": "#"`, never `"/"` — a `/`
+  appends a trailing slash (`…page.html/` → `ERR_FILE_NOT_FOUND`). Mirror an
+  existing `src/tour/*-manifest.ts`'s step ids/labels/dwellMs so the deck and the
+  live overlay can't drift. (Worked: `act1-github.tour.json` walking the static
+  `gh-thread.html` GitHub-thread fixture.)
+- **A kitsoki SPA drive that needs the composer / intent routing / tour overlay →
+  the kitsoki rrweb capture harness** (slidey's tour engine has no vocabulary for
+  `typeAndSend` prose→slot-intent routing, the `__kitsokiSubmitIntent` verb seam,
+  or `__startTourWithSteps`). Fork the act's `*-video.spec.ts` drive and add
+  `installCapture`/`dumpCapture`/`writeEvents` from
+  `_helpers/rrweb-replay.ts` — exactly as `slidey-pm-idea-rrweb-capture.spec.ts`
+  does — driving a **real no-LLM `kitsoki web` replay** server. Stamp the chapter
+  markers yourself at each step boundary so the clip is self-describing:
+  ```ts
+  await page.evaluate(([id, title]) =>
+    window.rrweb.record.addCustomEvent("slidey.chapter", { id, title }),
+    [step.id, step.title]);
+  ```
+  Write the clip straight to `<deck-dir>/clips/<act>.rrweb.json`. (Worked:
+  `github-demo-act2-rrweb-capture.spec.ts` → `act2-webviewer.rrweb.json`.)
+  The **canvas/video boundary still applies** (see the rrweb section above): a
+  tour with a `<canvas>`/`<video>`/WebGL tile can't rrweb-capture and stays on the
+  MP4 path — embed it via `"src"` instead of `"rrweb"`.
+
+> **The `WEB_CHAT_PACE=0` trap.** A fast-validate run **overwrites the clip with a
+> collapsed-timing flash**. Always re-run the capture at watch speed (the default)
+> to restore the shippable clip after any PACE=0 validation.
+
+### 2. Embed each clip as a `video` scene
+
+```jsonc
+{ "type": "video", "mode": "embedded",       // inset in a slide with deck chrome
+  "rrweb": "clips/<act>.rrweb.json",          // ← the log, NOT an MP4 "src"
+  "chapters": "auto",                          // lower-thirds from the in-log markers
+  "eyebrow": "1 · The GitHub side", "title": "Mention → ack → run link",
+  "caption": "…", "narration": "…" }           // narration may be a string or {at|chapter,text}[]
+```
+`rrweb` paths resolve **relative to the deck file**. The baked render
+seek-rasterizes each log via `Replayer.goto(t)` — real motion, deterministic,
+**but slow** (minutes for a multi-act deck; budget for it / run in the
+background). PNG/PDF export still shows a poster frame, so the layout-iteration
+loop keeps working without rendering video.
+
+### 3. Render + gate
+
+```bash
+node /Users/brad/code/slidey/src/index.js <deck>.json <out>.mp4   # → MP4 + <out>.mp4.chapters.json
+```
+(or `host.slidey.render` from a story — same engine; see
+`docs/architecture/hosts.md#hostslideyrender`). Gate the composite with a spec
+that asserts the deck is **rrweb-embedded** (every `video` scene has `rrweb`, none
+has `src`), the section slides are present, the output duration exceeds the **sum
+of the clip durations** (proves both acts are in), the chapter sidecar is
+non-empty, and each embedded video window is **non-blank** (frame-size floor —
+catches a clip that failed to replay). Worked: `github-demo-composite.spec.ts`.
+Then QA the rendered deck with `kitsoki-ui-qa` like any other video (sample
+≥2fps for rrweb, per the rrweb section).
+
+## Cross-site / multi-act demos via ffmpeg concat (legacy fallback)
+
+> Prefer the **slidey rrweb-embedded deck** above. Reach for ffmpeg concat only
+> when an act can't be rrweb-captured (`<canvas>`/`<video>`/WebGL) or you need a
+> bare clip splice with no deck chrome.
 
 A demo can span **several surfaces** — multiple kitsoki acts, or kitsoki **plus
 an external site** — recorded separately and composited with ffmpeg. The worked
@@ -779,7 +937,13 @@ make mcp-qa           # vision QA gate (GATED: local claude CLI)
 - **Golden feature-tour spec + manifest:**
   `tools/runstatus/tests/playwright/agent-actions-video.spec.ts` +
   `tools/runstatus/src/tour/agent-actions-manifest.ts`
-- **Cross-site / multi-act demo:** `gh-issue-review-video.spec.ts` +
+- **Slidey rrweb-embedded composite (preferred multi-act deliverable):**
+  `docs/proposals/demo-assets/kitsoki-github/deck/kitsoki-github.deck.json` +
+  `deck/clips/*.rrweb.json` + `deck/tours/act1-github.tour.json` +
+  `tools/runstatus/tests/playwright/github-demo-{act2-rrweb-capture,composite}.spec.ts`;
+  richer reference `.artifacts/slidey-hybrid/dev-story-hybrid.json`; scene menu in
+  the `slidey-authoring` skill
+- **Cross-site / multi-act demo (legacy ffmpeg concat):** `gh-issue-review-video.spec.ts` +
   `src/tour/gh-issue-review-manifest.ts` + `fixtures/gh-issue-review.html`;
   composited by `scripts/record-gh-issues-demo.sh` + `scripts/concat-videos.sh`
 - **rrweb capture → replay-render (deterministic, server-free):**
@@ -802,6 +966,10 @@ make mcp-qa           # vision QA gate (GATED: local claude CLI)
 - Shared helpers (video→MP4, server, pacing): `tests/playwright/_helpers/server.ts`
 - Playwright config + globalSetup: `tools/runstatus/playwright.config.ts`,
   `tools/runstatus/tests/playwright/_helpers/`
+- **Trace → flow/cassette generator (start a demo from a real dogfood session):**
+  `kitsoki trace to-flow` — CLI in `cmd/kitsoki/trace.go` (`traceToFlowCmd`),
+  transform in `internal/testrunner/fromtrace.go` (`ConvertTraceToFlow`),
+  authoritative docs in `docs/tracing/trace-format.md` §11
 - No-LLM posture + UI surfaces: `docs/web/README.md`
 - File:// snapshot artifacts (static, no server): `_helpers/artifact.ts`
 
