@@ -1,0 +1,248 @@
+<!doctype html>
+<!--
+  Static, deterministic replica of the @kitsoki GitHub loop on
+  constructorfabric/Kitsoki — the GitHub side of the kitsoki-github-agent demo
+  (Act 1). One tall single-scroll page with 8 anchored blocks (data-testid hooks),
+  one per storyboard scene: a bug-labelled issue with an @kitsoki mention, the
+  kitsoki ack comment carrying a …/run/<job-id> link, a feature-labelled issue,
+  a PR with red CI, a merge-conflict rebase, a reviewer-comment implement+resolve,
+  a low-confidence guidance request, and a single rolling status comment edited to
+  "done" (single-voice, no comment flood).
+
+  It is a FIXTURE, not live GitHub: the cross-site demo must stay deterministic and
+  free (no network, no auth, no real issue churn) — the posture every kitsoki demo
+  uses. The github-demo-issuepr spec drives this over file:// and narrates it with
+  the portable caption + spotlight helpers (the kitsoki tour overlay can't run on a
+  non-kitsoki page). The worked ticket is slidey-128 grid-cards narration-drift, so
+  kitsoki improving slidey is narrated on slidey's own repo — the cleanest dogfood.
+  See .agents/skills/kitsoki-ui-demo/SKILL.md and the gh-issue-review.html sibling.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>slidey-128: grid-cards narration drifts off-screen · constructorfabric/Kitsoki</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #ffffff; color: #1f2328;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  }
+  a { color: #0969da; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .ghhead {
+    background: #f6f8fa; border-bottom: 1px solid #d1d9e0;
+    padding: 10px 24px; display: flex; align-items: center; gap: 10px; font-size: 13px;
+  }
+  .ghhead .mark { width: 26px; height: 26px; }
+  .repo { font-size: 16px; }
+  .repo .owner { color: #0969da; } .repo .sep { color: #59636e; margin: 0 3px; }
+  .repo .name { color: #0969da; font-weight: 600; }
+  .wrap { max-width: 1216px; margin: 0 auto; padding: 24px 24px 64px; }
+  .titlebar { border-bottom: 1px solid #d1d9e0; padding-bottom: 16px; margin: 40px 0 16px; }
+  .titlebar:first-of-type { margin-top: 0; }
+  h1 { font-size: 28px; font-weight: 400; margin: 0 0 8px; line-height: 1.25; }
+  h1 .num { color: #59636e; font-weight: 300; }
+  .state { display: inline-flex; align-items: center; gap: 6px; border-radius: 2em;
+    padding: 5px 13px; font-size: 13px; font-weight: 500; color: #fff; }
+  .state.open   { background: #1a7f37; }
+  .state.merged { background: #8250df; }
+  .state.draft  { background: #59636e; }
+  .byline { color: #59636e; font-size: 14px; }
+  .byline b { color: #1f2328; }
+  .comment { border: 1px solid #d1d9e0; border-radius: 6px; margin-bottom: 14px; }
+  .comment .chead {
+    background: #f6f8fa; border-bottom: 1px solid #d1d9e0; padding: 8px 16px;
+    border-radius: 6px 6px 0 0; font-size: 13px; color: #59636e; display: flex; align-items: center; gap: 8px;
+  }
+  .comment .chead b { color: #1f2328; }
+  .ava { width: 22px; height: 22px; border-radius: 50%; }
+  .cbody { padding: 16px; }
+  .cbody h3 { font-size: 15px; margin: 18px 0 6px; }
+  .cbody h3:first-child { margin-top: 0; }
+  .cbody p { margin: 0 0 12px; }
+  .cbody p:last-child { margin-bottom: 0; }
+  .mention { color: #0969da; font-weight: 600; }
+  pre {
+    background: #f6f8fa; border-radius: 6px; padding: 14px 16px; overflow: auto;
+    font: 12.5px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; color: #1f2328; margin: 0 0 12px;
+  }
+  pre .fence { color: #59636e; }
+  pre .k { color: #0550ae; }
+  .runlink { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .muted { color: #59636e; }
+  .label { display: inline-flex; align-items: center; border-radius: 2em; padding: 2px 10px;
+    font-size: 12px; font-weight: 500; margin: 0 6px 6px 0; border: 1px solid transparent; }
+  .l-bug     { background: #d73a4a; color: #fff; }
+  .l-feature { background: #a2eeef; color: #044a52; }
+  .l-p2      { background: #fbca04; color: #1f2328; }
+  .l-comp    { background: #d4c5f9; color: #3b1f7a; }
+  .l-target  { background: #0e8a16; color: #fff; }
+  .kitsoki .chead { background: #ddf4ff; border-bottom-color: #b6e3ff; }
+  .timeline-note { color: #59636e; font-size: 13px; margin: 4px 0 16px; display: flex; align-items: center; gap: 8px; }
+  .timeline-note::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #8250df; }
+  .ci { border: 1px solid #d1d9e0; border-radius: 6px; margin: 4px 0 14px; }
+  .ci .ci-row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #eaeef2; font-size: 13px; }
+  .ci .ci-row:last-child { border-bottom: 0; }
+  .ci-x { color: #d1242f; font-weight: 700; }
+  .ci-ok { color: #1a7f37; font-weight: 700; }
+  .ci-name { font-weight: 600; }
+  .conflict-banner {
+    border: 1px solid #d4a72c; background: #fff8c5; border-radius: 6px;
+    padding: 12px 16px; margin: 4px 0 14px; font-size: 13px; display: flex; align-items: center; gap: 8px;
+  }
+  .conflict-banner .warn { color: #9a6700; font-weight: 700; }
+  .resolved-chip { display: inline-flex; align-items: center; border-radius: 2em; padding: 2px 10px;
+    font-size: 12px; font-weight: 600; background: #8250df; color: #fff; margin-left: 8px; }
+  .comment.resolved { opacity: 0.62; }
+  .comment.resolved .cbody p { text-decoration: line-through; text-decoration-color: #8c959f; }
+  .edited { color: #59636e; font-size: 12px; font-style: italic; }
+</style>
+</head>
+<body>
+  <div class="ghhead">
+    <svg class="mark" viewBox="0 0 16 16" fill="#1f2328" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path></svg>
+    <span class="repo"><span class="owner">constructorfabric</span><span class="sep">/</span><span class="name">Kitsoki</span></span>
+  </div>
+
+  <div class="wrap">
+
+    <!-- ============ SCENE 1: bug-labelled issue + @kitsoki mention ============ -->
+    <div class="titlebar">
+      <h1>slidey-128: grid-cards narration drifts off-screen <span class="num">#128</span></h1>
+      <span class="state open">Open</span>
+      <span class="byline"><b>brad</b> opened this issue · <span class="label l-bug">bug</span> · 3 comments</span>
+    </div>
+
+    <div class="comment" data-testid="gh-issue-bug">
+      <div class="chead">
+        <img class="ava" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect width='22' height='22' rx='11' fill='%238250df'/%3E%3Ctext x='11' y='15' font-size='11' fill='white' text-anchor='middle' font-family='sans-serif'%3EB%3C/text%3E%3C/svg%3E" alt="" />
+        <b>brad</b> commented
+      </div>
+      <div class="cbody">
+        <h3>What's wrong</h3>
+        <p>On the grid-cards scene, the narration caption renders below the last card row and gets clipped off-screen at 1080p. Repro in <code>examples/grid-cards.slidey.json</code>.</p>
+        <p><span class="mention">@kitsoki</span> can you take this one? It's a bug, labelled and ready.</p>
+      </div>
+    </div>
+
+    <!-- ============ SCENE 2: kitsoki ack comment + …/run/<job-id> link ============ -->
+    <div class="comment kitsoki" data-testid="gh-ack-comment">
+      <div class="chead">
+        <img class="ava" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect width='22' height='22' rx='11' fill='%230969da'/%3E%3Ctext x='11' y='15' font-size='11' fill='white' text-anchor='middle' font-family='sans-serif'%3EK%3C/text%3E%3C/svg%3E" alt="" />
+        <b>kitsoki</b> commented · <code>bot</code>
+      </div>
+      <div class="cbody">
+        <p>On it. Picked up the <span class="label l-bug">bug</span> mention and dispatched the <code>slidey-bugfix</code> story.</p>
+        <p class="muted">One mention, one job, one link — follow it live:<br>
+          <a class="runlink" href="https://kitsoki.dev/run/job-7f3a91c2">https://kitsoki.dev/run/<b>job-7f3a91c2</b></a>
+        </p>
+      </div>
+    </div>
+
+    <div class="timeline-note">
+      <span><b>kitsoki</b> self-assigned this and added <span class="label l-p2">P2</span> <span class="label l-comp">comp:render</span> <span class="label l-target">target:slidey</span> · just now</span>
+    </div>
+
+    <!-- ============ SCENE 3: feature-labelled issue → running PRD/design ============ -->
+    <div class="titlebar">
+      <h1>slidey: per-scene transition presets <span class="num">#131</span></h1>
+      <span class="state open">Open</span>
+      <span class="byline"><b>brad</b> opened this issue · <span class="label l-feature">feature</span></span>
+    </div>
+
+    <div class="comment kitsoki" data-testid="gh-issue-feature">
+      <div class="chead">
+        <img class="ava" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect width='22' height='22' rx='11' fill='%230969da'/%3E%3Ctext x='11' y='15' font-size='11' fill='white' text-anchor='middle' font-family='sans-serif'%3EK%3C/text%3E%3C/svg%3E" alt="" />
+        <b>kitsoki</b> commented · <code>bot</code>
+      </div>
+      <div class="cbody">
+        <p>This one is <span class="label l-feature">feature</span>-labelled, so I routed it to the design track instead of a straight bugfix.</p>
+        <p class="muted"><b>Status:</b> running PRD → design · <code>slidey-dev-prd-design</code> · <a class="runlink" href="https://kitsoki.dev/run/job-a18b240e">…/run/job-a18b240e</a></p>
+      </div>
+    </div>
+
+    <!-- ============ SCENE 4: PR with red CI → watching CI / pushing fix ============ -->
+    <div class="titlebar">
+      <h1>fix(render): hold grid-cards narration above the fold <span class="num">#129</span></h1>
+      <span class="state open">Open</span>
+      <span class="byline"><b>kitsoki</b> wants to merge 1 commit into <code>main</code> from <code>kitsoki/slidey-128-narration</code></span>
+    </div>
+
+    <div class="comment kitsoki" data-testid="gh-pr-ci-fix">
+      <div class="chead">
+        <img class="ava" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect width='22' height='22' rx='11' fill='%230969da'/%3E%3Ctext x='11' y='15' font-size='11' fill='white' text-anchor='middle' font-family='sans-serif'%3EK%3C/text%3E%3C/svg%3E" alt="" />
+        <b>kitsoki</b> commented · <code>bot</code>
+      </div>
+      <div class="cbody">
+        <div class="ci">
+          <div class="ci-row"><span class="ci-x">✕</span><span class="ci-name">render-tests</span><span class="muted">— Failing after 42s · 1 assertion failed</span></div>
+          <div class="ci-row"><span class="ci-ok">✓</span><span class="ci-name">lint</span><span class="muted">— Passing</span></div>
+        </div>
+        <p><b>Status:</b> watching CI — <code>render-tests</code> went red, reading the failure and pushing a fix to the same branch.</p>
+      </div>
+    </div>
+
+    <!-- ============ SCENE 5: merge-conflict → rebased onto target ============ -->
+    <div class="comment kitsoki" data-testid="gh-pr-rebase">
+      <div class="chead">
+        <img class="ava" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect width='22' height='22' rx='11' fill='%230969da'/%3E%3Ctext x='11' y='15' font-size='11' fill='white' text-anchor='middle' font-family='sans-serif'%3EK%3C/text%3E%3C/svg%3E" alt="" />
+        <b>kitsoki</b> commented · <code>bot</code>
+      </div>
+      <div class="cbody">
+        <div class="conflict-banner">
+          <span class="warn">⚠ This branch has conflicts that must be resolved</span>
+          <span class="muted">— <code>src/scenes/grid-cards.js</code></span>
+        </div>
+        <p><b>Status:</b> rebased onto <code>main</code> — replayed the fix on top of the conflicting change, conflict resolved, branch is mergeable again.</p>
+      </div>
+    </div>
+
+    <!-- ============ SCENE 6: reviewer comment → implemented + resolve parent ============ -->
+    <div class="comment resolved" data-testid="gh-review-resolve">
+      <div class="chead">
+        <img class="ava" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect width='22' height='22' rx='11' fill='%23cf222e'/%3E%3Ctext x='11' y='15' font-size='11' fill='white' text-anchor='middle' font-family='sans-serif'%3ER%3C/text%3E%3C/svg%3E" alt="" />
+        <b>reviewer</b> commented · <span class="resolved-chip">Resolved</span>
+      </div>
+      <div class="cbody">
+        <p>Can the narration clamp use the theme's safe-area inset instead of a hard 48px? Otherwise it'll clip on the wide preset.</p>
+      </div>
+    </div>
+
+    <div class="comment kitsoki">
+      <div class="chead">
+        <img class="ava" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect width='22' height='22' rx='11' fill='%230969da'/%3E%3Ctext x='11' y='15' font-size='11' fill='white' text-anchor='middle' font-family='sans-serif'%3EK%3C/text%3E%3C/svg%3E" alt="" />
+        <b>kitsoki</b> commented · <code>bot</code>
+      </div>
+      <div class="cbody">
+        <p>Implemented the requested change — clamp now reads <code>theme.safeArea.bottom</code>, pushed to the branch. Marking the thread resolved.</p>
+      </div>
+    </div>
+
+    <!-- ============ SCENE 7: low-confidence guidance request ============ -->
+    <div class="comment kitsoki" data-testid="gh-guidance-request">
+      <div class="chead">
+        <img class="ava" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect width='22' height='22' rx='11' fill='%230969da'/%3E%3Ctext x='11' y='15' font-size='11' fill='white' text-anchor='middle' font-family='sans-serif'%3EK%3C/text%3E%3C/svg%3E" alt="" />
+        <b>kitsoki</b> commented · <code>bot · guidance request</code>
+      </div>
+      <div class="cbody">
+        <p>⚖️ <b>Low confidence — asking before I proceed.</b> The safe-area inset is undefined for the <code>retro</code> theme. I can (a) fall back to the global 48px, or (b) skip the clamp on themes without an inset.</p>
+        <p class="muted">If in doubt, ask. Holding the run until someone replies on this thread.</p>
+      </div>
+    </div>
+
+    <!-- ============ SCENE 8: rolling single-voice status comment → done ============ -->
+    <div class="comment kitsoki" data-testid="gh-status-done">
+      <div class="chead">
+        <img class="ava" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect width='22' height='22' rx='11' fill='%230969da'/%3E%3Ctext x='11' y='15' font-size='11' fill='white' text-anchor='middle' font-family='sans-serif'%3EK%3C/text%3E%3C/svg%3E" alt="" />
+        <b>kitsoki</b> · <b>status</b> <span class="edited">· edited 6 times</span>
+      </div>
+      <div class="cbody">
+        <p><b>done</b> ✅ — narration holds above the fold, safe-area clamp landed, CI green, branch rebased and mergeable. Closing on merge.</p>
+        <p class="muted">This is one rolling comment edited in place — no comment flood. Single voice, one job: <a class="runlink" href="https://kitsoki.dev/run/job-7f3a91c2">…/run/job-7f3a91c2</a></p>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

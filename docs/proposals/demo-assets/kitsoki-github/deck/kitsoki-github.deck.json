@@ -1,0 +1,61 @@
+{
+  "_comment": "Composite deck for the @kitsoki GitHub-loop demo (epic kitsoki-github-agent, demo slice #6). One slidey presentation deck bracketing the two recorded act clips with title/section slides. The two `video` scenes embed the DEFAULT-PACE shippable MP4s recorded by github-demo-issuepr.spec.ts (Act 1, the GitHub side) and github-demo-webviewer.spec.ts (Act 2, the kitsoki side); each act clip ships a sibling <act>.mp4.chapters.json so `chapters: auto` derives deck-styled lower-thirds with no conversion. Render with host.slidey.render(spec_path, format: mp4) (or the slidey CLI) -> narrated MP4 + .chapters.json sidecar. `src` paths resolve relative to THIS deck JSON, so ../baked/<act>.mp4 are the staged act clips. meta.mode:pitch is REQUIRED (without it every frame renders blank). meta.resolution matches the 1600x900 Playwright capture viewport so video scenes letterbox-clean under fit:contain.",
+  "meta": {
+    "mode": "pitch",
+    "resolution": { "width": 1600, "height": 900 },
+    "narration": {
+      "voice": "en-AU-NatashaNeural",
+      "pronunciations": { "kitsoki": "kit-SOH-kee", "GitHub": "GIT-hub" }
+    }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "@kitsoki on GitHub",
+      "title": "One loop, two sides",
+      "subtitle": "A mention becomes a job becomes a PR — no App, no webhook, no LLM",
+      "narration": "Watch the @ kitsoki GitHub loop, end to end."
+    },
+    {
+      "type": "title",
+      "eyebrow": "Act one",
+      "title": "The GitHub side",
+      "subtitle": "Issues and PRs, driven by @ kitsoki",
+      "narration": "First, the GitHub side."
+    },
+    {
+      "type": "video",
+      "src": "../baked/act1-github.mp4",
+      "mode": "fullscreen",
+      "fit": "contain",
+      "chapters": "auto",
+      "narration": [
+        { "at": 0, "text": "A user mentions kitsoki on a bug-labelled issue." }
+      ]
+    },
+    {
+      "type": "title",
+      "eyebrow": "Act two",
+      "title": "The kitsoki side",
+      "subtitle": "The web viewer and the operator drive",
+      "narration": "Now, the kitsoki side."
+    },
+    {
+      "type": "video",
+      "src": "../baked/act2-webviewer.mp4",
+      "mode": "fullscreen",
+      "fit": "contain",
+      "chapters": "auto",
+      "narration": [
+        { "at": 0, "text": "Click the run link and the live trace streams." }
+      ]
+    },
+    {
+      "type": "title",
+      "eyebrow": "One loop",
+      "title": "Mention to merge",
+      "subtitle": "GitHub thread and kitsoki UI, the same job",
+      "narration": "One mention, one job, one linkable run."
+    }
+  ]
+}

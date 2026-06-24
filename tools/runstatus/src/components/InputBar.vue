@@ -552,12 +552,23 @@ function preferredTextName(list: IntentInfo[]): string {
 }
 watch(
   [textIntents, () => props.defaultIntent],
-  ([list]) => {
+  ([list], prev) => {
     if (!list.length) {
       selectedTextName.value = "";
       return;
     }
-    if (!list.some((i) => i.name === selectedTextName.value)) {
+    const prevDefault = prev?.[1];
+    const defaultChanged = props.defaultIntent !== prevDefault;
+    // Re-prefer the room's sink when the CURRENT selection is no longer offered,
+    // OR when the room changed its free-text sink (default_intent). The latter
+    // is load-bearing across a room transition: an intent like `core__work`
+    // (the landing workbench sink) can remain a *valid* text-intent in the next
+    // room (it is globally inherited), so a "still valid" check alone would
+    // keep the stale selection and route a typed reply to the wrong intent —
+    // e.g. typing a PRD idea at core.prd.idle fired core__work and bounced
+    // back to landing instead of routing to core__prd__discuss. Honoring a
+    // changed default_intent re-pins the composer to the new room's sink.
+    if (defaultChanged || !list.some((i) => i.name === selectedTextName.value)) {
       selectedTextName.value = preferredTextName(list);
     }
   },
