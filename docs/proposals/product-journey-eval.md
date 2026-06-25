@@ -1,6 +1,6 @@
 # Epic: Product journey end-to-end eval
 
-**Status:** Draft v1. Runner + catalog + evidence artifacts are implemented on `product-journey` and postgresql/kubernetes remain planned perspective lanes.
+**Status:** v1 trimmed. Runner, catalog, evidence artifacts, and local product-site guidance are implemented; PostgreSQL and Kubernetes remain planned perspective lanes.
 **Kind:**   epic
 **Slices:** 4 (3/4 shipped)
 
@@ -12,7 +12,7 @@ We need to prove Kitsoki is useful *before* a maintainer starts integrating it b
 
 The end-state is: from one command, a deterministic journey controller can
 
-- serve a production build of the Kitsoki product site/docs locally,
+- stage and serve a production build of the Kitsoki product site/docs locally,
 - run a skeptical explorer flow on a real project (onboarding + design + fixes),
 - collect deterministic outcomes (hidden-oracle grade, suite results) and deterministic usability signal,
 - write evidence-backed findings for every bug discovered in web/TUI/docs/VS Code surfaces,
@@ -49,8 +49,7 @@ The first implementable milestone is `gears-rust`, with the following perspectiv
 
 ## Cross-cutting open questions
 
-1. **Deck-first vs run-first cadence.** *Lean:* deck and log update are generated from actual checks to keep artifacts credible, while the deck can remain an editable source-of-truth in source control.
-2. **Perspective granularity.** *Lean:* each perspective initially tracks project-level readiness (`planned`, `runner-ready`, `stalled`) before adding separate metrics.
+1. **Perspective granularity.** *Lean:* each perspective initially tracks project-level readiness (`planned`, `runner-ready`, `stalled`) before adding separate metrics.
 
 ## Non-goals
 
@@ -66,3 +65,4 @@ The first implementable milestone is `gears-rust`, with the following perspectiv
 - [x] Add PostgreSQL and Kubernetes perspective rows with status + planned checks.
 - [x] Add `.context/product-journey-runlog.md` and append run entries when checks execute.
 - [x] Add `docs/decks/product-journey-eval.slidey.json` and keep it sync-able from run logs.
+- [x] Document the local production build requirement for the Kitsoki product site and QA runner.

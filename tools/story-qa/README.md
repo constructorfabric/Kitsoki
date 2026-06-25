@@ -21,9 +21,10 @@ The runner writes a transient report to `.context/story-qa-run.md`.
 
 ## Local product site
 
-Run the Kitsoki product site locally so the QA agent always points at a
-deterministic, host-local surface:
+Stage the Kitsoki product site as a local production build so the QA agent
+always points at a deterministic, host-local surface:
 
 ```sh
+make web
 GOCACHE=$(mktemp -d) go run ./cmd/kitsoki web --addr 127.0.0.1:7777
 ```

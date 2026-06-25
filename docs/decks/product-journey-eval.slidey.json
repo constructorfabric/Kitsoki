@@ -128,7 +128,7 @@
             "type": "narrative",
             "eyebrow": "Execution discipline",
             "lede": "Next moves",
-            "body": "With this baseline stable, run `make web` (or a local `go run ./cmd/kitsoki web`) for A/B experiments, then switch `--project` to PostgreSQL and Kubernetes as those perspectives move to runner-ready with manifest-backed check/grade contracts.",
+            "body": "With this baseline stable, stage the local production bundle with `make web` and serve it via `go run ./cmd/kitsoki web --addr 127.0.0.1:7777` for A/B experiments, then switch `--project` to PostgreSQL and Kubernetes as those perspectives move to runner-ready with manifest-backed check/grade contracts.",
             "narration": "Evidence-first approach: every check emits to `.context` and every pilot step is represented in the deck.",
             "hold": 2000
         },

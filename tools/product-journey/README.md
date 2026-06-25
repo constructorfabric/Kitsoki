@@ -34,14 +34,16 @@ GEARS_RUST_REPO=~/code/gears-rust make gears-bakeoff
 
 ### Local product site for deterministic A/B testing
 
-For all journey runs, use a local product web process so no remote state is shared:
+For all journey runs, use a local production build of the product site so no remote state is shared:
 
 ```sh
+make web
 GOCACHE=$(mktemp -d) go run ./cmd/kitsoki web --addr 127.0.0.1:7777
 ```
 
-This points the journey to a reproducible local endpoint (`http://127.0.0.1:7777`)
-for every run against docs, onboarding, and bugfix surfaces.
+This stages the production bundle locally and then serves it from a reproducible
+local endpoint (`http://127.0.0.1:7777`) for every run against docs,
+onboarding, and bugfix surfaces.
 
 ## Files
 
