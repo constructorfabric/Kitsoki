@@ -103,9 +103,14 @@ maker, an owner-marker collision) and waiting forever with no signal.
 - **Pre-flight CLEAN** (per case): `git worktree remove --force .worktrees/bf-<id>`
   AND `git branch -D fix/<id>` AND `git worktree prune`. Removing only the
   worktree leaves the branch for `workspace.create` to reattach — a poisoned run.
-- **Monitor via the FILESYSTEM, not the MCP.** Read-only studio calls block
-  behind a concurrent live turn (filed bug), so don't poll `studio.handles` to
-  check on a run. Peek the worktree `git log` and the trace JSONL mtime instead.
+- **Monitor via the FILESYSTEM, not the MCP.** You can't check a running job
+  with a second `session.status` — the MCP client serialises tool calls per
+  connection and sessions are per-process (see `studio.handles` ticket; it's a
+  client/topology limit, NOT a server bug — the server is provably concurrent).
+  Use the trace instead: **`kitsoki trace status <trace.jsonl>`** (or `--json`)
+  prints `{state, turn, status, last_error, cost, idle-time}` and flags
+  **⚠ STALLED** when a non-terminal run has gone idle — the one-shot, cross-process
+  way to check on a live drive. Also peek the worktree `git log`.
 - **Heartbeat watchdog** — launch it in the background ALONGSIDE the dogfood,
   pointed at the run's trace; when it exits STALLED, `TaskStop` the stuck agent
   and report (don't wait):
