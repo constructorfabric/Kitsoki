@@ -189,7 +189,8 @@ scripts/run-gh-agent-live-poc.sh \
 The script deploys current code unless `--skip-deploy` is set, creates the bug,
 feature, and guidance issues, comments on the supplied PR, waits for the VM
 `gh_jobs` rows, writes `.context/live-poc-*.md`, builds capture plans, optionally
-records the clips, and optionally builds the live deck.
+records the clips, and builds plus verifies the live deck when
+`--developer-arc-media` is supplied.
 
 After all four live case clips and the developer-arc media exist, build the
 Slidey deck scaffold from the evidence and media:
