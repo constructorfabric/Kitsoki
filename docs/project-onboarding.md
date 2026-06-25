@@ -28,8 +28,8 @@ travels with every clone and every collaborator.
 | Path | What | Why |
 |---|---|---|
 | `.kitsoki.yaml` | `story_dirs: [./stories]` + `default_story` | so `kitsoki` discovers your instance |
-| `.kitsoki/project-profile.yaml` | declarative profile (stack, commands, conventions) | the discovered description of your project |
-| `stories/<id>-dev/app.yaml` | a dev-story **instance** that imports `@kitsoki/dev-story` | your runnable engineer's-day hub |
+| `.kitsoki/project-profile.yaml` | declarative profile (stack, commands, conventions, dev-story profile, onboarding baseline) | the discovered description of your project and the source for the implicit dev-story root |
+| `stories/<id>-dev/app.yaml` | a materialized dev-story **instance** that imports `@kitsoki/dev-story` | an editable snapshot for web discovery and project-local story extensions |
 | `stories/<id>-dev/README.md` | how to run the instance | — |
 | `.mcp.json` | registers the **kitsoki studio MCP** server | so Claude Code / Cursor / any MCP client can drive kitsoki here |
 | `.agents/skills/<name>/` · `.agents/agents/<name>.md` | the kitsoki skill + subagent **toolkit** (source of truth) | the Codex-standard location |
@@ -116,8 +116,21 @@ for a machine-readable report.
 instance:
 
 ```sh
-kitsoki run stories/<id>-dev/app.yaml      # the engineer's-day workbench
+kitsoki run                                # profile-driven implicit dev-story root
+kitsoki run stories/<id>-dev/app.yaml      # materialized snapshot, useful once edited
 ```
+
+The implicit root reads `.kitsoki/project-profile.yaml`: command gates,
+host-interface bindings, PRD/design placement, and ticket policy come from that
+single profile. The materialized `stories/<id>-dev/app.yaml` is still checked in
+so teams can extend it deliberately, but the profile is the reusable convention
+source.
+
+For reusable onboarding tests, keep `onboarding.baseline_commit` pinned to the
+commit before Kitsoki files were introduced and `first_onboarding_commit` pinned
+to the first onboarding commit. Flow/cassette tests can replay from the baseline
+with no LLM; real-LLM recording runs should be explicit and gated by the
+profile's `recording_policy`.
 
 **Drive kitsoki from your coding agent.** With `.mcp.json` registered, an MCP
 client (Claude Code, Cursor, Claude Desktop) attached to this repo gets the

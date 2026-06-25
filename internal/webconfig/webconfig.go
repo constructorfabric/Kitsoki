@@ -85,6 +85,13 @@ type WebConfig struct {
 	// fail-fast in Load via resolveRoot, mirroring harness profiles. See
 	// docs/stories/imports.md "The blank root that grows".
 	Root *RootConfig `yaml:"root,omitempty"`
+
+	// ProjectProfile names the declarative project profile to fold into the
+	// implicit dev-story root. Empty means the conventional
+	// .kitsoki/project-profile.yaml beside this config, when that file exists.
+	// The profile supplies community/project conventions; root.overrides remains
+	// the explicit escape hatch and wins on conflicts.
+	ProjectProfile string `yaml:"project_profile,omitempty"`
 }
 
 // InterceptConfig is the operator's binding for the pre-LLM intercept gate. It
@@ -307,6 +314,9 @@ func Load(path string) (WebConfig, error) {
 	if hadLocal {
 		cfg = mergeConfig(base, local)
 	}
+	if err := cfg.resolveProjectProfile(path); err != nil {
+		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
+	}
 	if err := cfg.resolveHarnessProfiles(); err != nil {
 		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
 	}
@@ -365,6 +375,9 @@ func mergeConfig(base, local WebConfig) WebConfig {
 	if local.DefaultProfile != "" {
 		out.DefaultProfile = local.DefaultProfile
 	}
+	if local.ProjectProfile != "" {
+		out.ProjectProfile = local.ProjectProfile
+	}
 	// The intercept binding is a single coherent block, so the local file
 	// replaces it whole (matching the per-profile "restate, don't field-merge"
 	// rule above) rather than field-merging into the base binding.
@@ -380,6 +393,215 @@ func mergeConfig(base, local WebConfig) WebConfig {
 			merged[k] = v
 		}
 		out.HarnessProfiles = merged
+	}
+	return out
+}
+
+// projectProfile is the minimal project-profile/v1 surface the implicit-root
+// loader consumes. The full profile is intentionally broader; unknown fields
+// remain owned by onboarding/docs/tooling.
+type projectProfile struct {
+	Schema          string                 `yaml:"schema"`
+	Commands        map[string]string      `yaml:"commands"`
+	Repo            projectProfileRepo     `yaml:"repo"`
+	Kitsoki         projectProfileKitsoki  `yaml:"kitsoki"`
+	DevStoryProfile projectDevStoryProfile `yaml:"dev_story_profile"`
+}
+
+type projectProfileRepo struct {
+	Root string `yaml:"root"`
+}
+
+type projectProfileKitsoki struct {
+	Instance  projectProfileInstance `yaml:"instance"`
+	JudgeMode string                 `yaml:"judge_mode"`
+}
+
+type projectProfileInstance struct {
+	Bindings map[string]string `yaml:"bindings"`
+}
+
+type projectDevStoryProfile struct {
+	Docs   projectProfileDocs   `yaml:"docs"`
+	Bugfix projectProfileBugfix `yaml:"bugfix"`
+}
+
+type projectProfileDocs struct {
+	PublishDurablePath string `yaml:"publish_durable_path"`
+	PRDDocFilename     string `yaml:"prd_doc_filename"`
+	DesignTemplateDir  string `yaml:"design_template_dir"`
+	DesignDurablePath  string `yaml:"design_durable_path"`
+	DesignDocFilename  string `yaml:"design_doc_filename"`
+	DesignTicketDir    string `yaml:"design_ticket_dir"`
+	TicketRepo         string `yaml:"ticket_repo"`
+}
+
+type projectProfileBugfix struct {
+	BuildCmd string `yaml:"build_cmd"`
+	TestCmd  string `yaml:"test_cmd"`
+}
+
+// resolveProjectProfile folds .kitsoki/project-profile.yaml into Root before
+// root validation. Explicit root.overrides in .kitsoki.yaml are the highest
+// precedence layer, so a project can use the profile for shared conventions and
+// still override one key without duplicating the whole profile.
+func (cfg *WebConfig) resolveProjectProfile(configPath string) error {
+	profilePath := cfg.ProjectProfile
+	if profilePath == "" {
+		profilePath = filepath.Join(".kitsoki", "project-profile.yaml")
+	}
+	if !filepath.IsAbs(profilePath) {
+		profilePath = filepath.Join(filepath.Dir(configPath), profilePath)
+	}
+	b, err := os.ReadFile(profilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("project_profile: read %s: %w", profilePath, err)
+	}
+	var profile projectProfile
+	if err := yaml.Unmarshal(b, &profile); err != nil {
+		return fmt.Errorf("project_profile: parse %s: %w", profilePath, err)
+	}
+	if profile.Schema != "" && profile.Schema != "project-profile/v1" {
+		return fmt.Errorf("project_profile: %s has schema %q, want project-profile/v1", profilePath, profile.Schema)
+	}
+
+	profileRoot := profileRootConfig(profile)
+	if profileRoot == nil {
+		return nil
+	}
+	cfg.Root = mergeRootConfig(profileRoot, cfg.Root)
+	return nil
+}
+
+func profileRootConfig(profile projectProfile) *RootConfig {
+	overrides := &RootOverrides{}
+	if len(profile.Kitsoki.Instance.Bindings) > 0 {
+		overrides.Bindings = copyStringMap(profile.Kitsoki.Instance.Bindings)
+	}
+	world := map[string]any{}
+	if root := strings.TrimSpace(profile.Repo.Root); root != "" {
+		world["workdir"] = root
+		world["repo_root"] = root
+	} else {
+		world["workdir"] = "."
+		world["repo_root"] = "."
+	}
+	if profile.Kitsoki.JudgeMode != "" {
+		world["judge_mode"] = profile.Kitsoki.JudgeMode
+	}
+	docs := profile.DevStoryProfile.Docs
+	setStringWorld(world, "publish_durable_path", docs.PublishDurablePath)
+	setStringWorld(world, "prd_doc_filename", docs.PRDDocFilename)
+	setStringWorld(world, "design_template_dir", docs.DesignTemplateDir)
+	setStringWorld(world, "design_durable_path", docs.DesignDurablePath)
+	setStringWorld(world, "design_doc_filename", docs.DesignDocFilename)
+	setStringWorld(world, "design_ticket_dir", docs.DesignTicketDir)
+	setStringWorld(world, "ticket_repo", docs.TicketRepo)
+	buildCmd := profile.DevStoryProfile.Bugfix.BuildCmd
+	if buildCmd == "" {
+		buildCmd = profile.Commands["build"]
+	}
+	testCmd := profile.DevStoryProfile.Bugfix.TestCmd
+	if testCmd == "" {
+		testCmd = profile.Commands["test"]
+	}
+	setStringWorld(world, "build_cmd", buildCmd)
+	setStringWorld(world, "test_cmd", testCmd)
+	if len(world) > 0 {
+		overrides.World = world
+	}
+	if len(overrides.Bindings) == 0 && len(overrides.World) == 0 {
+		return nil
+	}
+	return &RootConfig{Import: app.RootStoryName, Overrides: overrides}
+}
+
+func mergeRootConfig(base, override *RootConfig) *RootConfig {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	out := &RootConfig{Import: base.Import, Overrides: &RootOverrides{}}
+	if override.Import != "" {
+		out.Import = override.Import
+	}
+	if base.Overrides != nil {
+		out.Overrides.Bindings = copyStringMap(base.Overrides.Bindings)
+		out.Overrides.World = copyAnyMap(base.Overrides.World)
+		out.Overrides.Synonyms = copyStringSliceMap(base.Overrides.Synonyms)
+	}
+	if override.Overrides != nil {
+		if len(override.Overrides.Bindings) > 0 {
+			if out.Overrides.Bindings == nil {
+				out.Overrides.Bindings = map[string]string{}
+			}
+			for k, v := range override.Overrides.Bindings {
+				out.Overrides.Bindings[k] = v
+			}
+		}
+		if len(override.Overrides.World) > 0 {
+			if out.Overrides.World == nil {
+				out.Overrides.World = map[string]any{}
+			}
+			for k, v := range override.Overrides.World {
+				out.Overrides.World[k] = v
+			}
+		}
+		if len(override.Overrides.Synonyms) > 0 {
+			if out.Overrides.Synonyms == nil {
+				out.Overrides.Synonyms = map[string][]string{}
+			}
+			for k, v := range override.Overrides.Synonyms {
+				out.Overrides.Synonyms[k] = append([]string(nil), v...)
+			}
+		}
+	}
+	if out.Import == "" {
+		out.Import = app.RootStoryName
+	}
+	return out
+}
+
+func setStringWorld(world map[string]any, key, value string) {
+	if value != "" {
+		world[key] = value
+	}
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func copyAnyMap(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func copyStringSliceMap(in map[string][]string) map[string][]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(in))
+	for k, v := range in {
+		out[k] = append([]string(nil), v...)
 	}
 	return out
 }

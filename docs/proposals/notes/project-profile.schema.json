@@ -291,6 +291,37 @@
       }
     },
 
+    "dev_story_profile": {
+      "type": "object",
+      "description": "Reusable dev-story convention knobs. Community/base stories define the keys; org/project profiles choose values.",
+      "additionalProperties": false,
+      "properties": {
+        "docs": {
+          "type": "object",
+          "description": "PRD/design document placement, template, and follow-up ticket policy.",
+          "additionalProperties": false,
+          "properties": {
+            "publish_durable_path": { "type": "string" },
+            "prd_doc_filename": { "type": "string" },
+            "design_template_dir": { "type": "string" },
+            "design_durable_path": { "type": "string" },
+            "design_doc_filename": { "type": "string" },
+            "design_ticket_dir": { "type": "string" },
+            "ticket_repo": { "type": "string" }
+          }
+        },
+        "bugfix": {
+          "type": "object",
+          "description": "Project toolchain gates projected into the bugfix import.",
+          "additionalProperties": false,
+          "properties": {
+            "build_cmd": { "type": "string" },
+            "test_cmd": { "type": "string" }
+          }
+        }
+      }
+    },
+
     "mining": {
       "type": "object",
       "description": "The session-mining evidence the profile was fine-tuned from (recency sample over the project's transcripts). Distinct from stories/dev-story-mining/, which enriches dev-story's own gates; here it tunes THIS project's profile.",
@@ -312,6 +343,33 @@
               "recommendation": { "type": "string", "contentMediaType": "text/markdown" }
             }
           }
+        }
+      }
+    },
+
+    "onboarding": {
+      "type": "object",
+      "description": "Reusable onboarding-test anchors. Baseline commits let deterministic flow/cassette tests and gated live recordings replay init from a known pre-init state.",
+      "additionalProperties": false,
+      "properties": {
+        "baseline_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$",
+          "description": "Git commit before Kitsoki onboarding files were introduced."
+        },
+        "first_onboarding_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$",
+          "description": "First commit produced by onboarding, useful for diff oracles."
+        },
+        "deterministic_flow": {
+          "type": "string",
+          "description": "Flow fixture used to replay onboarding without a real LLM."
+        },
+        "recording_policy": {
+          "enum": ["no-llm-only", "gated-live-allowed"],
+          "default": "no-llm-only",
+          "description": "Whether this profile is approved for explicit, operator-triggered live recording runs."
         }
       }
     },

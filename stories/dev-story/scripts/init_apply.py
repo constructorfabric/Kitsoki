@@ -493,6 +493,7 @@ def config_yaml(project_id: str) -> str:
   - ./stories
 
 default_story: stories/{project_id}-dev/app.yaml
+project_profile: .kitsoki/project-profile.yaml
 """
 
 

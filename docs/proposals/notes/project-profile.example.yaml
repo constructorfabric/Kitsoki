@@ -153,6 +153,16 @@ kitsoki:
   judge_mode: human
   autonomy: supervised
 
+dev_story_profile:
+  docs:
+    publish_durable_path: docs/prd
+    design_template_dir: docs/proposals/templates
+    design_durable_path: docs/proposals
+    design_ticket_dir: issues/features
+  bugfix:
+    build_cmd: "make build"
+    test_cmd: "make test"
+
 mining:
   job: intents-20260615
   sample: recency
@@ -170,6 +180,12 @@ mining:
       count: 6
       status: gap
       recommendation: "No room gates the partition; reuse the work-decomposition manifest lint."
+
+onboarding:
+  baseline_commit: "0000000"
+  first_onboarding_commit: "0000000"
+  deterministic_flow: "stories/dev-story/flows/init_kitsoki_project.yaml"
+  recording_policy: no-llm-only
 
 setup_plan:
   writes:

@@ -160,8 +160,10 @@ shape:
 | `golden_path` | the UI (or api/cli) clickthrough init proves, + regenerable `evidence` |
 | `conventions` | kitsoki / project / hybrid; per-dir `.context`/`.artifacts`/`.worktrees`; the managed `.gitignore` block |
 | `rules[]` | project rules (discovered from AGENTS.md/CLAUDE.md/.cursorrules, mined, or operator-stated) |
-| `kitsoki` | the dev-story **instance binding** (ticket/vcs/ci/workspace/transport) + External-target `external_profile` + judge_mode/autonomy |
+| `kitsoki` | the dev-story **instance binding** (ticket/vcs/ci/workspace/transport) + judge_mode/autonomy |
+| `dev_story_profile` | reusable dev-story knobs: docs placement/templates/ticket policy plus bugfix build/test gates |
 | `mining` | the fine-tuning evidence (job, sample, themes with already-modeled/enrich/gap) |
+| `onboarding` | pre-init baseline commit + first onboarding commit for deterministic replay and gated live recording runs |
 | `setup_plan` | **the propose-then-confirm contract**: `writes[]`, `dirs_create[]`, `gitignore_additions[]`, `verifications[]` — nothing runs until confirm |
 | `readiness` | verify results; the dry-run report carries `status: not-run` |
 
@@ -235,10 +237,11 @@ no-write outcome.)
 ### `init_apply` — write the safe scaffolding (gated behind confirm)
 - **`on_enter`:** `host.run scripts/apply_profile.py` renders
   `stories/<id>-dev/app.yaml` from `kitsoki.instance.bindings` (+
-  `external_profile`), merges `.kitsoki.yaml` (`story_dirs`, default profile),
-  creates the convention dirs, appends the managed `.gitignore` block, and writes
-  the profile to `.kitsoki/project-profile.yaml`. Idempotent; stamps
-  `generated.at`. Binds `init_apply_result`.
+  `dev_story_profile`), merges `.kitsoki.yaml` (`story_dirs`,
+  `project_profile`, default profile), creates the convention dirs, appends the
+  managed `.gitignore` block, and writes the profile to
+  `.kitsoki/project-profile.yaml`. Idempotent; stamps `generated.at`. Binds
+  `init_apply_result`.
 
 ### `init_verify` — prove the loop (gated behind confirm)
 - **`on_enter`:** runs each `setup_plan.verifications[]` via `host.run`,
@@ -270,6 +273,10 @@ The regression contract. All agent/mining/verify host calls are cassette-backed.
 - `init_verify_failure` — a `required` verification fails; `init_done` reports
   the failure (gates on profile-written, not on green): gate on deliverable
   existence, surface the failure, never false-pass.
+- sister-project onboarding starts from each profile's
+  `onboarding.baseline_commit`; live recording runs are allowed only when
+  explicitly requested and the profile says `recording_policy:
+  gated-live-allowed`.
 
 ## Verification
 

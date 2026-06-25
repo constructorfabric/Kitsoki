@@ -142,6 +142,72 @@ func TestMaterializeCmd_RoundTripAndRefuseOverwrite(t *testing.T) {
 	}
 }
 
+func TestMaterializeCmd_UsesProjectProfile(t *testing.T) {
+	root := testRepoRoot(t)
+	matRoot, err := os.MkdirTemp(root, "mat-profile-")
+	if err != nil {
+		t.Fatalf("mkdtemp: %v", err)
+	}
+	defer os.RemoveAll(matRoot)
+	if err := os.MkdirAll(filepath.Join(matRoot, ".kitsoki"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(matRoot, ".kitsoki.yaml")
+	cfg := "project_profile: .kitsoki/project-profile.yaml\n"
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	profile := `schema: project-profile/v1
+repo:
+  root: "."
+commands:
+  build: "npm run build"
+  test: "npm test"
+kitsoki:
+  instance:
+    bindings:
+      ticket: host.local_files.ticket
+      vcs: host.git
+      ci: host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+  judge_mode: human
+dev_story_profile:
+  docs:
+    publish_durable_path: docs/prd
+    design_template_dir: docs/proposals/templates
+    design_durable_path: docs/proposals
+    design_ticket_dir: ""
+  bugfix:
+    build_cmd: "npm run build"
+`
+	if err := os.WriteFile(filepath.Join(matRoot, ".kitsoki", "project-profile.yaml"), []byte(profile), 0o644); err != nil {
+		t.Fatalf("write profile: %v", err)
+	}
+
+	outPath, err := runMaterialize(matRoot, cfgPath, "profile-proj")
+	if err != nil {
+		t.Fatalf("materialize with profile: %v", err)
+	}
+	b, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read materialized file: %v", err)
+	}
+	body := string(b)
+	for _, want := range []string{
+		"build_cmd:",
+		`default: npm run build`,
+		"test_cmd:",
+		`default: npm test`,
+		"design_template_dir:",
+		"docs/proposals/templates",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("materialized profile app missing %q:\n%s", want, body)
+		}
+	}
+}
+
 // TestMaterializeCmd_AbortOnInvalidRoot proves materialize never writes a file
 // when synthesis fails (a bad root: block): no partial is left behind.
 func TestMaterializeCmd_AbortOnInvalidRoot(t *testing.T) {
