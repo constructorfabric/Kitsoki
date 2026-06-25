@@ -168,6 +168,17 @@ KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN=.artifacts/github-agent-live/capture-plan-bug
 pnpm -C tools/runstatus exec playwright test github-agent-live-capture --project=chromium
 ```
 
+After all four live case clips and the developer-arc media exist, build the
+Slidey deck scaffold from the evidence and media:
+
+```
+scripts/build-gh-agent-live-deck.mjs \
+  --developer-arc-media <path-to-slidey-developer-arc-mp4-or-rrweb>
+```
+
+The command is strict by default: it fails if required evidence notes, live URLs,
+case clips, or developer-arc media are missing.
+
 ## g. Production
 
 Identical under the **`constructorfabric`** org: create/install the same App
