@@ -7,8 +7,8 @@ test_kind: flow
 app: ../app.yaml
 initial_state: landing
 initial_world:
-  workdir: "/Users/brad/code/gears-rust"
-  repo_root: "/Users/brad/code/gears-rust"
+  workdir: "/tmp/kitsoki-init-fixtures/acme-rust"
+  repo_root: "/tmp/kitsoki-init-fixtures/acme-rust"
 
 host_handlers:
   host.run:
@@ -17,11 +17,11 @@ host_handlers:
         data:
           ok: true
           exit_code: 0
-          stdout: '{"target_path":"/Users/brad/code/gears-rust","project_id":"gears-rust","project_title":"Gears Rust","stack":"rust project","dev_command":"make dev","test_command":"make test","build_command":"make build","conventions":"hybrid","tracker":"none"}'
+          stdout: '{"target_path":"/tmp/kitsoki-init-fixtures/acme-rust","project_id":"acme-rust","project_title":"Acme Rust","stack":"rust project","dev_command":"make dev","test_command":"make test","build_command":"make build","conventions":"hybrid","tracker":"none"}'
           stdout_json:
-            target_path: "/Users/brad/code/gears-rust"
-            project_id: "gears-rust"
-            project_title: "Gears Rust"
+            target_path: "/tmp/kitsoki-init-fixtures/acme-rust"
+            project_id: "acme-rust"
+            project_title: "Acme Rust"
             stack: "rust project"
             dev_command: "make dev"
             test_command: "make test"
@@ -32,40 +32,40 @@ host_handlers:
         data:
           ok: true
           exit_code: 0
-          stdout: '{"status":"applied","config_path":"/Users/brad/code/gears-rust/.kitsoki.yaml","profile_path":"/Users/brad/code/gears-rust/.kitsoki/project-profile.yaml","instance_path":"/Users/brad/code/gears-rust/stories/gears-rust-dev/app.yaml","gitignore_path":"/Users/brad/code/gears-rust/.gitignore","writes":["/Users/brad/code/gears-rust/.kitsoki.yaml","/Users/brad/code/gears-rust/.kitsoki/project-profile.yaml","/Users/brad/code/gears-rust/stories/gears-rust-dev/app.yaml","/Users/brad/code/gears-rust/stories/gears-rust-dev/README.md"]}'
+          stdout: '{"status":"applied","config_path":"/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml","profile_path":"/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml","instance_path":"/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/app.yaml","gitignore_path":"/tmp/kitsoki-init-fixtures/acme-rust/.gitignore","writes":["/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml","/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml","/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/app.yaml","/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/README.md"]}'
           stdout_json:
             status: "applied"
-            config_path: "/Users/brad/code/gears-rust/.kitsoki.yaml"
-            profile_path: "/Users/brad/code/gears-rust/.kitsoki/project-profile.yaml"
-            instance_path: "/Users/brad/code/gears-rust/stories/gears-rust-dev/app.yaml"
-            gitignore_path: "/Users/brad/code/gears-rust/.gitignore"
+            config_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+            profile_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+            instance_path: "/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/app.yaml"
+            gitignore_path: "/tmp/kitsoki-init-fixtures/acme-rust/.gitignore"
             writes:
-              - "/Users/brad/code/gears-rust/.kitsoki.yaml"
-              - "/Users/brad/code/gears-rust/.kitsoki/project-profile.yaml"
-              - "/Users/brad/code/gears-rust/stories/gears-rust-dev/app.yaml"
-              - "/Users/brad/code/gears-rust/stories/gears-rust-dev/README.md"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/app.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/README.md"
       install_tools:
         data:
           ok: true
           exit_code: 0
-          stdout: '{"target":"/Users/brad/code/gears-rust","skills":["kitsoki-story-authoring"],"agents":["kitsoki-mcp-driver.md"],"mcp_path":"/Users/brad/code/gears-rust/.mcp.json","mcp_written":true}'
+          stdout: '{"target":"/tmp/kitsoki-init-fixtures/acme-rust","skills":["kitsoki-story-authoring"],"agents":["kitsoki-mcp-driver.md"],"mcp_path":"/tmp/kitsoki-init-fixtures/acme-rust/.mcp.json","mcp_written":true}'
           stdout_json:
-            target: "/Users/brad/code/gears-rust"
+            target: "/tmp/kitsoki-init-fixtures/acme-rust"
             skills:
               - "kitsoki-story-authoring"
             agents:
               - "kitsoki-mcp-driver.md"
-            mcp_path: "/Users/brad/code/gears-rust/.mcp.json"
+            mcp_path: "/tmp/kitsoki-init-fixtures/acme-rust/.mcp.json"
             mcp_written: true
 
 turns:
-  - intent: { name: work, slots: { request: "onboard ~/code/gears-rust" } }
+  - intent: { name: work, slots: { request: "onboard ~/code/acme-rust" } }
     expect_state: init_discover
     expect_world:
-      init_request: "onboard ~/code/gears-rust"
-      init_target_path: "/Users/brad/code/gears-rust"
-      init_project_id: "gears-rust"
-      init_project_title: "Gears Rust"
+      init_request: "onboard ~/code/acme-rust"
+      init_target_path: "/tmp/kitsoki-init-fixtures/acme-rust"
+      init_project_id: "acme-rust"
+      init_project_title: "Acme Rust"
       init_stack: "rust project"
       init_dev_command: "make dev"
       init_test_command: "make test"
@@ -87,15 +87,15 @@ turns:
       init_profile_status: "applying"
       init_apply_result:
         status: "applied"
-        config_path: "/Users/brad/code/gears-rust/.kitsoki.yaml"
-        profile_path: "/Users/brad/code/gears-rust/.kitsoki/project-profile.yaml"
-        instance_path: "/Users/brad/code/gears-rust/stories/gears-rust-dev/app.yaml"
-        gitignore_path: "/Users/brad/code/gears-rust/.gitignore"
+        config_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+        profile_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+        instance_path: "/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/app.yaml"
+        gitignore_path: "/tmp/kitsoki-init-fixtures/acme-rust/.gitignore"
         writes:
-          - "/Users/brad/code/gears-rust/.kitsoki.yaml"
-          - "/Users/brad/code/gears-rust/.kitsoki/project-profile.yaml"
-          - "/Users/brad/code/gears-rust/stories/gears-rust-dev/app.yaml"
-          - "/Users/brad/code/gears-rust/stories/gears-rust-dev/README.md"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/app.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/README.md"
       init_tools_ok: true
     expect_view_matches: "studio MCP"
 
@@ -105,15 +105,15 @@ turns:
       init_profile_status: "applied"
       init_apply_result:
         status: "applied"
-        config_path: "/Users/brad/code/gears-rust/.kitsoki.yaml"
-        profile_path: "/Users/brad/code/gears-rust/.kitsoki/project-profile.yaml"
-        instance_path: "/Users/brad/code/gears-rust/stories/gears-rust-dev/app.yaml"
-        gitignore_path: "/Users/brad/code/gears-rust/.gitignore"
+        config_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+        profile_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+        instance_path: "/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/app.yaml"
+        gitignore_path: "/tmp/kitsoki-init-fixtures/acme-rust/.gitignore"
         writes:
-          - "/Users/brad/code/gears-rust/.kitsoki.yaml"
-          - "/Users/brad/code/gears-rust/.kitsoki/project-profile.yaml"
-          - "/Users/brad/code/gears-rust/stories/gears-rust-dev/app.yaml"
-          - "/Users/brad/code/gears-rust/stories/gears-rust-dev/README.md"
-    expect_view_matches: "gears-rust-dev"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/app.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/stories/acme-rust-dev/README.md"
+    expect_view_matches: "acme-rust-dev"
 
 expect_no_errors: true

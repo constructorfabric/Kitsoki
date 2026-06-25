@@ -146,13 +146,34 @@ def stack_kind(data: dict) -> str:
     return "generic"
 
 
+def enrich_project_shape(data: dict, root: Path) -> None:
+    data["has_makefile"] = (root / "Makefile").exists()
+    cargo = root / "Cargo.toml"
+    data["has_cargo"] = cargo.exists()
+    data["is_monorepo"] = False
+    if cargo.exists():
+        try:
+            text = cargo.read_text(encoding="utf-8")
+            data["is_monorepo"] = "[workspace]" in text or "\n[workspace." in text
+        except OSError:
+            data["is_monorepo"] = False
+
+
+def package_managers(data: dict, kind: str) -> str:
+    managers: list[str] = []
+    if kind == "rust" or data.get("has_cargo"):
+        managers.append("cargo")
+    elif kind == "go":
+        managers.append("go")
+    elif kind == "node":
+        managers.append("npm")
+    if data.get("has_makefile"):
+        managers.append("make")
+    return "[" + ", ".join(managers) + "]" if managers else "[]"
+
+
 def generic_profile_yaml(data: dict) -> str:
     kind = stack_kind(data)
-    package_managers = {
-        "rust": "[cargo, make]",
-        "go": "[go]",
-        "node": "[npm]",
-    }.get(kind, "[]")
     languages = {
         "rust": "[rust]",
         "go": "[go]",
@@ -177,12 +198,12 @@ repo:
   vcs: git
   default_branch: main
   remote: ""
-  monorepo: true
+  monorepo: {str(bool(data.get("is_monorepo"))).lower()}
 
 stack:
   kind: {q(kind)}
   languages: {languages}
-  package_managers: {package_managers}
+  package_managers: {package_managers(data, kind)}
 
 testing:
   mechanisms:
@@ -545,6 +566,7 @@ def main() -> int:
         "tracker": sys.argv[9] if len(sys.argv) > 9 else "none",
     }
     root = Path(data["target_path"])
+    enrich_project_shape(data, root)
     makefile = root / "Makefile"
     if makefile.exists() and not data.get("check_command"):
         try:
