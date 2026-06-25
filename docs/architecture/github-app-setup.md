@@ -189,7 +189,7 @@ scripts/run-gh-agent-live-poc.sh \
 The script deploys current code unless `--skip-deploy` is set, creates the bug,
 feature, and guidance issues, comments on the supplied PR, waits for the VM
 `gh_jobs` rows, writes `.context/live-poc-*.md`, builds capture plans, optionally
-records the clips, and builds plus verifies the live deck when
+records the clips, and builds, exports, and verifies the live deck when
 `--developer-arc-media` is supplied.
 
 After all four live case clips and the developer-arc media exist, build the
@@ -203,6 +203,12 @@ scripts/build-gh-agent-live-deck.mjs \
 The command is strict by default: it fails if required evidence notes, live URLs,
 case clips, or developer-arc media are missing.
 
+Export the generated deck spec to the self-contained HTML artifact:
+
+```
+scripts/export-gh-agent-live-deck-html.sh
+```
+
 Finally, verify the whole proof bundle before sharing the deck:
 
 ```
@@ -212,7 +218,8 @@ scripts/verify-gh-agent-live-poc.mjs \
 
 The verifier is read-only and strict by default. It checks the four `.context`
 evidence notes, `/api/run` JSON, read-only `gh_jobs` rows, capture plans, MP4
-clips, chapter sidecars, developer-arc media, and generated Slidey deck.
+clips, chapter sidecars, developer-arc media, generated Slidey deck, and
+self-contained HTML export.
 
 ## g. Production
 

@@ -48,6 +48,7 @@ const CASES = [
 const DEFAULT_EVIDENCE_DIR = ".context";
 const DEFAULT_MEDIA_ROOT = ".artifacts/github-agent-live";
 const DEFAULT_DECK = ".artifacts/github-agent-live/live-github-agent.deck.json";
+const DEFAULT_HTML = ".artifacts/github-agent-live/live-github-agent.html";
 
 function usage() {
   console.error(`usage: scripts/verify-gh-agent-live-poc.mjs [options]
@@ -56,11 +57,13 @@ Options:
   --evidence-dir <dir>           default ${DEFAULT_EVIDENCE_DIR}
   --media-root <dir>             default ${DEFAULT_MEDIA_ROOT}
   --deck <deck.json>             default ${DEFAULT_DECK}
+  --html <deck.html>             default ${DEFAULT_HTML}
   --developer-arc-media <path>   required unless already referenced by deck
   --json-out <path>              write machine-readable report
   --allow-missing-db             do not require the gh_jobs row block
   --allow-missing-media          do not require clips, chapters, or developer media
   --allow-missing-deck           do not require the generated Slidey deck
+  --allow-missing-html           do not require the exported self-contained HTML deck
   --allow-nonlive-urls           skip live URL host validation (tests only)
   -h, --help                     show this help
 
@@ -72,7 +75,8 @@ Strict final proof inputs:
   <media-root>/capture-plan-<case>.json
   <media-root>/<case>/<video>.mp4
   <media-root>/<case>/<video>.mp4.chapters.json
-  <deck>`);
+  <deck>
+  <html>`);
 }
 
 function parseArgs(argv) {
@@ -80,11 +84,13 @@ function parseArgs(argv) {
     evidenceDir: DEFAULT_EVIDENCE_DIR,
     mediaRoot: DEFAULT_MEDIA_ROOT,
     deck: DEFAULT_DECK,
+    html: DEFAULT_HTML,
     developerArcMedia: "",
     jsonOut: "",
     allowMissingDB: false,
     allowMissingMedia: false,
     allowMissingDeck: false,
+    allowMissingHTML: false,
     allowNonliveUrls: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -98,6 +104,9 @@ function parseArgs(argv) {
         break;
       case "--deck":
         args.deck = argv[++i];
+        break;
+      case "--html":
+        args.html = argv[++i];
         break;
       case "--developer-arc-media":
         args.developerArcMedia = argv[++i];
@@ -113,6 +122,9 @@ function parseArgs(argv) {
         break;
       case "--allow-missing-deck":
         args.allowMissingDeck = true;
+        break;
+      case "--allow-missing-html":
+        args.allowMissingHTML = true;
         break;
       case "--allow-nonlive-urls":
         args.allowNonliveUrls = true;
@@ -171,6 +183,7 @@ function makeReport() {
     warnings: [],
     cases: {},
     deck: null,
+    html: null,
     media: {},
     fail(message) {
       this.ok = false;
@@ -408,6 +421,28 @@ function checkDeck(args, report) {
   }
 }
 
+function checkHTML(args, report) {
+  if (!fs.existsSync(args.html)) {
+    if (!args.allowMissingHTML) report.fail(`missing exported HTML deck ${args.html}`);
+    return;
+  }
+  const stat = fs.statSync(args.html);
+  const html = fs.readFileSync(args.html, "utf8");
+  report.html = { path: args.html, bytes: stat.size };
+  if (stat.size < 1024) {
+    report.fail(`exported HTML deck is too small to be a self-contained bundle: ${args.html}`);
+  }
+  if (!/<!doctype|<html/i.test(html)) {
+    report.fail(`exported HTML deck does not look like HTML: ${args.html}`);
+  }
+  if (!html.includes("@kitsoki") || !html.includes("GitHub")) {
+    report.fail("exported HTML deck is missing the @kitsoki GitHub title text");
+  }
+  if (/gh-thread\.html|no App, no webhook|mention to merge/.test(html)) {
+    report.fail("exported HTML deck contains stale fixture/live-claim text");
+  }
+}
+
 function main() {
   let args;
   try {
@@ -431,6 +466,7 @@ function main() {
     report.fail(`missing developer-arc media ${args.developerArcMedia}`);
   }
   checkDeck(args, report);
+  checkHTML(args, report);
 
   if (args.jsonOut) {
     fs.mkdirSync(path.dirname(args.jsonOut), { recursive: true });

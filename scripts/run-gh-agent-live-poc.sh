@@ -39,7 +39,7 @@ Options:
   --pr-url <url>             required in live mode for the PR-status case
   --skip-deploy              do not call scripts/deploy-gh-agent.sh --yes
   --capture                  after evidence, record each case with Playwright
-  --developer-arc-media <p>  after captures, build and verify the live Slidey deck
+  --developer-arc-media <p>  after captures, build, export, and verify the live Slidey deck
   -h, --help                 show this help
 
 Environment:
@@ -324,9 +324,11 @@ fi
 
 if [ -n "$DEVELOPER_ARC_MEDIA" ]; then
 	run_or_print scripts/build-gh-agent-live-deck.mjs --developer-arc-media "$DEVELOPER_ARC_MEDIA"
+	run_or_print scripts/export-gh-agent-live-deck-html.sh
 	run_or_print scripts/verify-gh-agent-live-poc.mjs --developer-arc-media "$DEVELOPER_ARC_MEDIA"
 else
 	print_cmd scripts/build-gh-agent-live-deck.mjs --developer-arc-media "<path-to-slidey-developer-arc-mp4-or-rrweb>"
+	print_cmd scripts/export-gh-agent-live-deck-html.sh
 	print_cmd scripts/verify-gh-agent-live-poc.mjs --developer-arc-media "<path-to-slidey-developer-arc-mp4-or-rrweb>"
 fi
 
