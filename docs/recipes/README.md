@@ -22,6 +22,7 @@ and [`../tracing/`](../tracing/README.md).
 | [Background job](background-job.md) | Run long work off the turn and notify on completion |
 | [Studio MCP async smoke](studio-mcp-async-smoke.md) | Prove background completion, inbox teleport, and chat-work reacquisition over studio MCP |
 | [Studio MCP GitHub inbox smoke](studio-mcp-github-inbox-smoke.md) | Prove GitHub issue/PR intake and reacquisition over studio MCP |
+| [Studio MCP dogfood](studio-mcp-dogfood.md) | Drive Kitsoki through its own MCP surface from Claude, Codex, or another agent |
 | [Project prompt overlay](prompt-overlay-example/README.md) | Specialize a generic story's prompts for a project without forking it |
 
 ## Larger worked examples
