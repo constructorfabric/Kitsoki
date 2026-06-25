@@ -69,14 +69,22 @@ component: <short tag, e.g. tui, runtime, loader>
 kitsoki_rev: <short SHA at filing>
 trace_ref: ""                       # may be empty for hand-filed seeds
 external: {}                        # external tracker links (Jira id, GH issue)
-repro_command: ""                   # optional: a deterministic command that
+repro_command: ""                   # RECOMMENDED: a deterministic command that
                                     # FAILS (non-zero exit) while the bug is
                                     # live. The bugfix story's `reproducing`
                                     # room runs it RED-first (see
                                     # stories/bugfix/README.md → "repro RED-gate")
                                     # — non-zero exit = bug reproduces → proceed;
                                     # zero exit = cannot reproduce → needs-human.
-                                    # Absent/empty ⇒ LLM-only reproduction.
+                                    # Absent/empty ⇒ the pipeline SYNTHESISES the
+                                    # gate: the reproducer authors a RED test,
+                                    # commits it as the discrete pre-fix
+                                    # reproducer, and derives gate_command from it
+                                    # — so a bare report still ships autonomously
+                                    # (see stories/bugfix/README.md → "synthesised
+                                    # gate"). Supplying repro_command is still
+                                    # preferred: it proves the bug reproduces
+                                    # BEFORE any LLM/maker budget is spent.
 ---
 ```
 

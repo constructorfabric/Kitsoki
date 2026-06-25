@@ -268,6 +268,13 @@ world:
   # (release/* etc.) override via world_in or by setting the key
   # explicitly before transitioning into bf.
   base_branch:      { type: string, default: "main" }
+  # base_commit pins the worktree CUT-POINT to a specific committish (any
+  # branch/tag/SHA `git worktree add` accepts). When empty the worktree is cut
+  # from base_branch. Distinct from base_branch on purpose: base_branch is also
+  # the PR target, whereas base_commit is "reproduce/fix AGAINST this exact
+  # commit" — e.g. a bug's pre-fix baseline SHA in a bake-off cell. Set it (not
+  # base_branch) when driving against a detached baseline.
+  base_commit:      { type: string, default: "" }
   feature_branch:   { type: string, default: "" }
 
   # ── Pipeline control ──────────────────────────────────────────────────
@@ -324,6 +331,14 @@ world:
   # Empty gate_command ⇒ the gate is skipped ⇒ current LLM-only reproducing
   # behaviour (backward compatible). See docs/stories/bugfix.md.
   repro_checked:          { type: bool,   default: false } # the pre-fix repro gate ran in reproducing
+  # repro_committed — latches the synthesised-gate commit. When a ticket carries
+  # NO repro_command (gate_command empty), the reproducing room commits the LLM
+  # reproducer's authored RED test as a DISCRETE pre-fix commit and derives
+  # gate_command from the artifact's repro_command, so the testing room's HEAD~1
+  # RED gate + the ship guard work exactly as they do for a ticket-supplied
+  # repro_command. This is what lets a bare bug report (no repro_command) still
+  # reach @exit:shipped autonomously. See flows/bugfix_synthesizes_gate_and_ships.yaml.
+  repro_committed:        { type: bool,   default: false }
 
   # ── Lost-work guard (clean-tree invariant) ──────────────────────────────
   # The maker rooms mutate the worktree (implementer writes the fix,

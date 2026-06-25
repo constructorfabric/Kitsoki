@@ -46,9 +46,18 @@ Before submitting:
   confirm it FAILS against the current buggy code. A test that already passes
   before any fix is a *characterization* test, not a reproduction — it never
   proves the bug, and the pipeline's regression gate will reject the run. Put
-  the exact command that runs it in `steps`, and quote the failing output in
-  `actual_outcome`. If you cannot make it fail, the bug is not reproduced —
-  say so honestly in `summary_markdown` rather than submitting a green test.
+  the exact command that runs it in `steps` AND in the structured `repro_command`
+  field, and quote the failing output in `actual_outcome`. If you cannot make it
+  fail, the bug is not reproduced — say so honestly in `summary_markdown` rather
+  than submitting a green test.
+- **`repro_command` is load-bearing — it becomes the regression gate.** When the
+  ticket carried no `repro_command` of its own, the pipeline COMMITS your test
+  (the files you list in `repro_test_paths`) as the discrete pre-fix reproducer
+  and re-runs `repro_command` to prove RED-before / GREEN-after. So it must be a
+  single deterministic, self-contained shell command (e.g.
+  `go test ./internal/host/ -run TestX -count=1`), not a multi-step recipe or a
+  command that needs a server/fixture you started by hand. List ONLY the test
+  file(s) in `repro_test_paths` (worktree-relative) — not logs or snapshots.
 - Assert *behaviour*, not a specific implementation. The fix may be written a
   different way than you expect; your test should pass for ANY correct fix, so
   avoid pinning internal symbols, exact error strings, or one mechanism.
@@ -64,6 +73,10 @@ Submit a `reproduction_artifact` (see `schemas/reproducing_artifact.json`):
   how you reproduced it, where the evidence lives, what services are
   implicated.
 - `bug_verified` — true only with an actual reproduction artifact.
+- `repro_command` — the single deterministic command that runs your RED test
+  (RED now, GREEN after a correct fix). Becomes the regression gate.
+- `repro_test_paths` — worktree-relative path(s) of the test file(s) you wrote,
+  committed as the pre-fix reproducer. Tests only.
 - `steps` — ordered, executable.
 - `expected_outcome`, `actual_outcome` — concise factual statements.
 - `evidence_paths` — files written this turn.

@@ -211,6 +211,46 @@ states:
       # operator decides, the artifact gets durably recorded, the
       # session advances. One arc, one keystroke.
       accept:
+        # SYNTHESISED-GATE path (autonomous from a bare bug report): the ticket
+        # carried NO repro_command (gate_command empty) but the reproducer authored
+        # a RED test. Commit that test as the DISCRETE pre-fix reproducer and derive
+        # gate_command from the artifact's repro_command, so the testing room's
+        # HEAD~1 RED gate + the ship guard work IDENTICALLY to a ticket-supplied
+        # gate — no needs-human dead-end just because the report omitted one. The
+        # commit lands BEFORE the fix (implementing commits the fix as the next
+        # tip), so testing's HEAD~1 = this test-without-fix snapshot runs RED. Done
+        # on the accept arc (not on_enter) because the reproducer's bind is only
+        # visible to a LATER turn, not to subsequent on_enter steps in the same
+        # pass. Guarded on gate_command=='' so a ticket repro_command is untouched.
+        - when: |
+            world.gate_command == '' && world.workdir != '' &&
+            !world.repro_committed &&
+            (world.reproduction_artifact.bug_verified ?? false) &&
+            (world.reproduction_artifact.repro_command ?? '') != '' &&
+            len(world.reproduction_artifact.repro_test_paths ?? []) > 0
+          target: proposing
+          effects:
+            - invoke: iface.vcs.commit
+              id: commit_repro_test
+              with:
+                message: "test(repro): RED reproducer for {{ world.ticket_id }}"
+                files:   "{{ world.reproduction_artifact.repro_test_paths }}"
+                cwd:     "{{ world.workdir }}"
+            - invoke: iface.transport.post
+              with:
+                thread:   "{{ world.thread }}"
+                title:    "Reproduction artifact: {{ world.ticket_id }}"
+                body:     "{{ world.reproduction_artifact.summary_markdown }}"
+                phase_id: "reproducing_{{ world.ticket_id }}_{{ world.cycle }}"
+            - set:
+                gate_command:      "{{ world.reproduction_artifact.repro_command }}"
+                landing_gate:      "{{ world.reproduction_artifact.repro_command }}"
+                repro_committed:   true
+                last_reply_author: "{{ slots.author ?? 'human' }}"
+                refine_feedback:   ""
+                cycle:             0
+        # DEFAULT accept (ticket-supplied gate_command, or a reproducer that
+        # produced no committable repro_command — unchanged legacy behaviour).
         - target: proposing
           effects:
             - invoke: iface.transport.post
