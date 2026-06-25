@@ -1,7 +1,7 @@
 {
-  "_comment": "Composite deck for the @kitsoki GitHub-loop demo (epic kitsoki-github-agent, demo slice #6). One slidey pitch deck that interleaves title / personas (cast + use-cases) / section slides around TWO rrweb-embedded `video` scenes — NOT MP4. Modeled on .artifacts/slidey-hybrid/dev-story-hybrid.json. The Act-1 clip (the GitHub side) is captured by slidey's rrweb tour engine over the gh-thread.html fixture (.artifacts/github-rrweb-tours/act1-github.tour.json → clips/act1-github.rrweb.json); the Act-2 clip (the kitsoki side) is captured by the kitsoki rrweb harness driving a real `kitsoki web` replay server (tools/runstatus/tests/playwright/github-demo-act2-rrweb-capture.spec.ts → clips/act2-webviewer.rrweb.json). Both clips carry in-log slidey.chapter custom events, so `chapters:auto` derives deck-styled lower-thirds with no sidecar. `rrweb` paths resolve relative to THIS deck JSON. Baked render seek-rasterizes each clip via Replayer.goto(t). meta.mode:pitch is REQUIRED (without it every frame renders blank). meta.resolution matches the 1600x900 capture viewport so embedded video letterboxes clean. Render: node /Users/brad/code/slidey/src/index.js kitsoki-github.deck.json <out>.mp4 → narrated MP4 + .chapters.json sidecar.",
+  "_comment": "Fixture fallback deck for the @kitsoki GitHub-loop demo. This is NOT the final live GitHub App POC deck: Act 1 uses the static gh-thread.html fixture and Act 2 uses no-LLM kitsoki web replay. Keep it for deterministic regression/storyboard review only. The live POC deck must be built from real bsacrobatix/Kitsoki issues/PRs, real webhook deliveries to kitsoki-test, real App comments, and real /run/<job-id> pages. Render: node /Users/brad/code/slidey/src/index.js kitsoki-github.deck.json <out>.mp4 → narrated MP4 + .chapters.json sidecar.",
   "meta": {
-    "title": "@kitsoki — a GitHub-native agent",
+    "title": "@kitsoki — GitHub agent fixture fallback",
     "mode": "pitch",
     "resolution": {
       "width": 1600,
@@ -19,15 +19,15 @@
         "id": "maintainer",
         "name": "Mara",
         "role": "Maintainer",
-        "intro": "Mentions @kitsoki on an issue or PR and reviews what comes back — no App, no webhook to wire up.",
+        "intro": "Mentions @kitsoki in the fixture storyboard and reviews the expected response shape.",
         "color": "#58a6ff",
         "glyph": "🧑‍💻"
       },
       {
         "id": "kitsoki",
         "name": "kitsoki",
-        "role": "GitHub-native agent",
-        "intro": "Reads the mention, dispatches a story, and works the loop — one rolling status, one linkable run, every step on the record.",
+        "role": "GitHub agent storyboard",
+        "intro": "Shows the expected mention, dispatch, status, and run-link behavior. The live proof comes from the GitHub App POC deck, not this fixture.",
         "color": "#e0a23a",
         "avatar": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJLaXRzb2tpIG1lc2Egc3VuIChzaW1wbGlmaWVkKSI+CiAgPGNpcmNsZSBjeD0iNTAiIGN5PSIzMiIgcj0iMTgiIGZpbGw9IiNlMGEyM2EiLz4KICA8ZyBzdHJva2U9IiNlMGEyM2EiIHN0cm9rZS13aWR0aD0iNiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDxsaW5lIHgxPSI3OCIgeTE9IjMyIiB4Mj0iNzEiIHkyPSIzMiIvPgogICAgPGxpbmUgeDE9IjcwIiB5MT0iMTIiIHgyPSI2NSIgeTI9IjE3Ii8+CiAgICA8bGluZSB4MT0iNTAiIHkxPSI0IiB4Mj0iNTAiIHkyPSIxMSIvPgogICAgPGxpbmUgeDE9IjMwIiB5MT0iMTIiIHgyPSIzNSIgeTI9IjE3Ii8+CiAgICA8bGluZSB4MT0iMjIiIHkxPSIzMiIgeDI9IjI5IiB5Mj0iMzIiLz4KICA8L2c+CiAgPHBhdGggZD0iTTggODQgTDggNzQgTDM2IDc0IEwzNiA1OSBMNjQgNTkgTDY0IDc0IEw5MiA3NCBMOTIgODQgWiIgZmlsbD0iI2E4NDkyYiIvPgogIDxyZWN0IHg9IjgiIHk9Ijg0IiB3aWR0aD0iODQiIGhlaWdodD0iOCIgZmlsbD0iIzdkMmUxYyIvPgo8L3N2Zz4K"
       }
@@ -36,10 +36,10 @@
   "scenes": [
     {
       "type": "title",
-      "eyebrow": "@kitsoki on GitHub",
-      "title": "@kitsoki — a GitHub-native agent",
-      "subtitle": "A mention becomes a job becomes a PR — no App, no webhook, no LLM",
-      "narration": "This is the @ kitsoki GitHub loop, end to end. A mention becomes a job becomes a pull request — with no GitHub App, no webhook, and no model in the loop at replay time."
+      "eyebrow": "Fixture fallback",
+      "title": "@kitsoki — GitHub agent storyboard",
+      "subtitle": "Deterministic fallback footage; not live GitHub App evidence",
+      "narration": "This is the fixture fallback for the @ kitsoki GitHub loop. It is useful for regression and storyboard review, but it is not the live GitHub App proof."
     },
     {
       "type": "personas",
@@ -50,7 +50,7 @@
         "kitsoki"
       ],
       "caption": "Two actors, one thread — every hand-off a comment, every run a linkable, replayable record.",
-      "narration": "Two actors share one GitHub thread: a maintainer who mentions kitsoki, and kitsoki, a GitHub-native agent. Every hand-off is a comment, and every run is a linkable, replayable record."
+      "narration": "Two actors share the storyboard thread: a maintainer who mentions kitsoki, and kitsoki, represented by fixture footage. The live POC must replace this act with real GitHub App evidence."
     },
     {
       "type": "personas",
@@ -60,7 +60,7 @@
         {
           "who": "maintainer",
           "action": "Mentions @kitsoki on a labelled issue or PR",
-          "detail": "the only ingress — no App to install"
+          "detail": "fixture ingress shape"
         },
         {
           "who": "kitsoki",
@@ -69,8 +69,8 @@
         },
         {
           "who": "kitsoki",
-          "action": "Watches CI, pushes fixes, rebases conflicts",
-          "detail": "the PR loop, unsupervised"
+          "action": "Storyboards future PR automation",
+          "detail": "not claimed as live POC behavior"
         },
         {
           "who": "kitsoki",
@@ -80,7 +80,7 @@
         {
           "who": "maintainer",
           "action": "Opens the run link into the kitsoki viewer",
-          "detail": "the live trace, by handle"
+          "detail": "expected run-link shape"
         },
         {
           "who": "maintainer",
@@ -88,14 +88,14 @@
           "detail": "the operator surface"
         }
       ],
-      "narration": "Across the loop, the maintainer mentions kitsoki and later opens and drives the run. kitsoki reads the label, dispatches the right story, works the pull request — watching CI, pushing fixes, rebasing conflicts, implementing reviewer comments — and asks first when it is not sure."
+      "narration": "Across the storyboard, the maintainer mentions kitsoki and later opens the run shape. The live POC currently proves mention ingress, story dispatch, comments, and run pages; full PR autopilot remains future work."
     },
     {
       "type": "title",
-      "eyebrow": "Act one",
-      "title": "The GitHub side",
-      "subtitle": "Issues and PRs, driven by @kitsoki",
-      "narration": "First, the GitHub side — issues and pull requests, driven entirely by an at-mention."
+      "eyebrow": "Fixture act",
+      "title": "GitHub-side storyboard",
+      "subtitle": "Static fixture footage for deterministic regression",
+      "narration": "First, the GitHub-side storyboard. This static fixture must not be used as the primary live POC evidence."
     },
     {
       "type": "personas",
@@ -119,29 +119,29 @@
         },
         {
           "who": "kitsoki",
-          "action": "Watches CI, rebases, implements, or asks",
-          "detail": "the PR loop on one rolling status"
+          "action": "Shows guidance and status shapes",
+          "detail": "PR automation remains future work"
         }
       ],
-      "caption": "Eight beats on a single thread — single-voice status, never a comment flood.",
-      "narration": "On the thread, a bug-labelled mention is the ingress. kitsoki acks with one run link, routes a feature issue to the design track, then works the pull request — all on a single rolling status comment, never a flood."
+      "caption": "Eight fixture beats on a single thread — expected shapes only.",
+      "narration": "On the fixture thread, a bug-labelled mention is the ingress. kitsoki acks with one run link and routes by label. The live POC deck must replace this with real GitHub issue, webhook, App comment, and run-page evidence."
     },
     {
       "type": "video",
       "mode": "embedded",
-      "eyebrow": "Act 1 · the GitHub side",
-      "title": "Mention → dispatch → PR loop",
+      "eyebrow": "Fixture act · GitHub side",
+      "title": "Mention → dispatch storyboard",
       "rrweb": "clips/act1-github.rrweb.json",
       "chapters": "auto",
-      "caption": "A faithful GitHub thread: mention ingress through a status edited to done",
-      "narration": "Here it plays out on the thread: the mention lands, kitsoki acks with a run link, dispatches by label, watches CI and pushes a fix, rebases a conflict, implements a reviewer's change, asks for guidance when unsure, and edits one rolling status to done."
+      "caption": "Static GitHub-looking fixture, retained for regression only",
+      "narration": "Here the fixture plays out the expected thread shape: mention, ack, dispatch, guidance, and rolling status. It is not live GitHub App proof."
     },
     {
       "type": "title",
-      "eyebrow": "Act two",
-      "title": "The kitsoki side",
-      "subtitle": "The web viewer and the operator drive",
-      "narration": "Now, the kitsoki side — the same job, opened in the web viewer and driven from the composer."
+      "eyebrow": "Replay act",
+      "title": "The kitsoki-side replay",
+      "subtitle": "No-LLM replay footage for UI shape",
+      "narration": "Now, the kitsoki-side replay. It shows UI shape under deterministic replay, not a hosted live GitHub job."
     },
     {
       "type": "personas",
@@ -151,7 +151,7 @@
         {
           "who": "maintainer",
           "action": "Opens the run link into the observer",
-          "detail": "the live trace streams"
+          "detail": "replay trace shape"
         },
         {
           "who": "maintainer",
@@ -164,32 +164,32 @@
           "detail": "the operator-drive surface"
         }
       ],
-      "caption": "The run is public and drivable — the trace by handle, the composer as the operator seat.",
-      "narration": "The maintainer opens the run link into the observer and watches the live trace stream. Then they type prose straight into the composer; the recording routes it to the slot-bearing intents, and the state badge advances as each turn lands."
+      "caption": "Replay viewer shape — not the hosted live run page.",
+      "narration": "The maintainer opens the replay viewer shape and watches the trace stream. This deterministic footage remains useful, but the live POC deck must show the hosted run page at kitsoki-test."
     },
     {
       "type": "video",
       "mode": "embedded",
-      "eyebrow": "Act 2 · the kitsoki side",
-      "title": "Live trace → operator drive",
+      "eyebrow": "Replay act · kitsoki side",
+      "title": "Replay trace → operator surface",
       "rrweb": "clips/act2-webviewer.rrweb.json",
       "chapters": "auto",
-      "caption": "Real kitsoki web, no-LLM replay: live trace, composer prose, advancing state",
-      "narration": "This is a real kitsoki web server in no-LLM replay: the observer streams the live trace, the operator types the idea into the composer, and the run advances state by state — the same job from the GitHub thread, now under the operator's hand."
+      "caption": "Real kitsoki web in no-LLM replay; not a live GitHub job.",
+      "narration": "This is a real kitsoki web server in no-LLM replay: the observer streams a replay trace and the operator surface advances. It is not the same job as a live GitHub thread."
     },
     {
       "type": "title",
-      "eyebrow": "One loop",
-      "title": "Mention to merge",
-      "subtitle": "GitHub thread and kitsoki UI, the same job",
-      "narration": "One mention, one job, one linkable run — the GitHub thread and the kitsoki UI are two views of the same loop, from mention to merge."
+      "eyebrow": "Fallback only",
+      "title": "Storyboard before live proof",
+      "subtitle": "Replace with real GitHub App evidence for the final POC deck",
+      "narration": "This fallback deck records the intended shape. The final POC deck must use real GitHub App webhook evidence, real App comments, and real hosted run pages."
     },
     {
       "type": "cta",
-      "narration": "And the whole film is a no-LLM, byte-deterministic replay: the runtime is a state machine, and the model is just a traceable callee.",
+      "narration": "Use this fallback for deterministic regression only. The polished GitHub act must come from live captured evidence.",
       "wordmark": "kitsoki",
-      "tagline": "A mention becomes a job becomes a PR — every step on the record",
-      "url": "the runtime is a state machine; the model is a traceable callee"
+      "tagline": "Fixture fallback — live GitHub App proof still required",
+      "url": "use live evidence for the final deck"
     }
   ]
 }
