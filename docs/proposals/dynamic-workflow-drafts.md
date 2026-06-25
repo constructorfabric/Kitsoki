@@ -30,7 +30,7 @@ The generated YAML remains canonical story YAML. Dynamic-specific data is metada
 
 | Kind | Name | Shape | Notes |
 |---|---|---|---|
-| manifest | `dynamic.workflow.json` | `{id, created_at, source, prompt, story_path, status}` | Sidecar outside story YAML, written beside the scratch package. |
+| manifest | `dynamic.workflow.json` | `{id, created_at, source_task, generator_surface, model_profile, draft_path, validation_report_hash, allowed_host_capabilities, trace_path, session_handle, promotion_eligibility, status}` | JSON sidecar outside story YAML, written beside the scratch package. |
 | world key | `dynamic_workflow_id` | string | Optional seed for generated sessions so traces and artifacts share one id. |
 | validation | `dynamic_draft` | story load plus dynamic invariants | Must pass before launch. |
 
@@ -43,7 +43,8 @@ The validator should layer on top of `app.Load`:
 3. Apply dynamic-only invariants:
    - every generated host invocation has an `id` suitable for fixture/cassette export;
    - every LLM/agent call declares its schema or output contract;
-   - mutating/external calls are visible in metadata and require explicit launch posture;
+   - mutating/external calls are visible in metadata and launch blocks them until
+     the operator supplies an explicit `allowed_host_capabilities` allow-list;
    - no file path escapes the draft package unless a host contract allows it;
    - promotion metadata is absent until the operator promotes it.
 4. Emit a draft validation report used by MCP/CLI/web/TUI alike.
@@ -91,10 +92,16 @@ No existing story migrates. Scratch packages are generated into `.artifacts/` an
 
 Use only deterministic tests: package writer unit tests, `story.validate` on generated apps, and `story.test` with generated flow fixtures. No live LLM is needed for validator coverage.
 
-## Open Questions
+## Decisions
 
-1. Should dynamic-specific metadata live in a JSON sidecar or YAML frontmatter? *Lean: JSON sidecar because the story YAML should stay canonical.*
-2. Should unsafe host calls be blocked at validation or launch? *Lean: validation warns, launch blocks until posture is explicit.*
+1. Dynamic-specific metadata lives in `dynamic.workflow.json`, a JSON sidecar
+   beside the scratch story package. Story YAML stays canonical so generated
+   drafts continue to load through ordinary story tooling without frontmatter
+   rules.
+2. Unsafe host calls are reported by validation and blocked at launch. A draft
+   may validate with warnings that enumerate mutating/external capabilities, but
+   launch requires an explicit allowed-capabilities set recorded in the
+   manifest.
 
 ## Non-goals
 

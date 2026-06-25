@@ -10,14 +10,21 @@ The operator should not have to know whether the current entrypoint is MCP, CLI,
 
 ## What Changes
 
-Add a dynamic workflow authoring lane with a shared backend function and thin surface adapters:
+Add dynamic workflow authoring surfaces over one shared service:
 
-- **Studio MCP:** `workflow.create` or a `session.drive` route in dev-story that writes a draft package, validates it, and optionally launches it.
-- **CLI:** `kitsoki workflow create "..."` and `kitsoki workflow run <draft-id>`.
-- **TUI:** a dev-story room reached naturally from landing, with review and launch choices.
-- **Web:** a runstatus action/modal that starts the same flow and navigates to the returned session URL.
+- **Studio MCP:** first-class `workflow.create`, `workflow.validate`,
+  `workflow.launch`, `workflow.status`, and `workflow.export` tools backed by
+  the service.
+- **CLI:** `kitsoki workflow create "..."`, `kitsoki workflow validate <id>`,
+  `kitsoki workflow run <id>`, `kitsoki workflow status <id>`, and
+  `kitsoki workflow export <id>`.
+- **TUI:** a dev-story room reached naturally from landing, with review and
+  launch choices, calling the same service.
+- **Web:** a runstatus action/modal that calls the same service and navigates to
+  the returned session URL.
 
-The first version can live as a dev-story room backed by host calls, then expose the same host function through MCP/CLI.
+V1 ships MCP and CLI first. TUI and web are adapters added after the service
+contract, receipt shape, and launch posture are stable.
 
 ## Impact
 
@@ -68,7 +75,11 @@ All surfaces should return a common receipt:
 {
   "workflow_id": "dwf_...",
   "draft_dir": ".artifacts/dynamic-workflows/dwf_.../story",
+  "manifest_path": ".artifacts/dynamic-workflows/dwf_.../dynamic.workflow.json",
+  "validation_report_hash": "sha256:...",
   "validation": { "ok": true, "warnings": [] },
+  "allowed_host_capabilities": ["host.git.status"],
+  "promotion_eligibility": "eligible",
   "session": { "id": "...", "trace": "...", "url": "http://127.0.0.1:.../runs/..." },
   "next_actions": ["open", "revise", "export"]
 }
@@ -84,16 +95,18 @@ If no web server is available, `url` is empty and the receipt includes the comma
 - [ ] 1.2 Expose the service to Studio MCP without duplicating CLI code.
 - [ ] 1.3 Add no-LLM unit tests around the service using fake generator output.
 
-## 2. Dev-story Lane
-- [ ] 2.1 Add rooms for intake, review, validate, launch, and done.
-- [ ] 2.2 Add schemas/prompts for draft generation and warning summaries.
-- [ ] 2.3 Add flow fixtures with mocked agent output and host handlers.
+## 2. MCP and CLI Surfaces
+- [ ] 2.1 Add first-class Studio MCP workflow tools.
+- [ ] 2.2 Add CLI `kitsoki workflow create/validate/run/status/export`
+      commands.
+- [ ] 2.3 Ensure create stops at review by default; only `--run` launches.
 
-## 3. Surface Adapters
-- [ ] 3.1 CLI `kitsoki workflow create/run/status` commands.
-- [ ] 3.2 TUI command/menu path from dev-story landing.
-- [ ] 3.3 Web action that calls the same backend and navigates to the run.
-- [ ] 3.4 MCP tool or documented `session.drive` path.
+## 3. TUI/Web Adapters
+- [ ] 3.1 Add dev-story rooms for intake, review, validate, launch, and done.
+- [ ] 3.2 Add schemas/prompts for draft generation and warning summaries.
+- [ ] 3.3 Add flow fixtures with mocked agent output and host handlers.
+- [ ] 3.4 Add a TUI command/menu path from dev-story landing.
+- [ ] 3.5 Add a web action that calls the same backend and navigates to the run.
 
 ## 4. Docs
 - [ ] 4.1 Document the operator flow and no-LLM test posture.
@@ -107,10 +120,14 @@ If no web server is available, `url` is empty and the receipt includes the comma
 - MCP smoke using replay/flow cassettes only.
 - Web Playwright test with `kitsoki web --flow`, no live LLM.
 
-## Open Questions
+## Decisions
 
-1. Should MCP expose a first-class `workflow.create` tool or drive the dev-story room only? *Lean: first-class tool plus story room, sharing one service.*
-2. Should CLI creation default to launch or stop at review? *Lean: stop at review unless `--run` is passed.*
+1. Studio MCP exposes first-class `workflow.*` tools. A dev-story room may offer
+   a conversational operator path later, but it calls the same service and does
+   not replace the MCP API.
+2. CLI creation stops at review by default. Launch requires either an explicit
+   `kitsoki workflow run <id>` command or a creation-time `--run` flag with the
+   needed host-capability allow-list.
 
 ## Non-goals
 

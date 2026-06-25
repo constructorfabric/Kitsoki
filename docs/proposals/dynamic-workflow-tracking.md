@@ -13,14 +13,18 @@ The operator should get back a URL or receipt they can trust. Kitsoki already ha
 When a validated draft launches, Kitsoki returns a dynamic workflow run receipt:
 
 - workflow id;
+- manifest path and hash;
 - draft package path;
 - session id and handle when applicable;
 - trace path;
 - web runstatus URL when a web server is available;
 - validation report hash;
+- allowed host capabilities used for launch;
 - promotion/export eligibility state.
 
-The receipt is written to `.artifacts/dynamic-workflows/<id>/receipt.json` and emitted in the trace. MCP/CLI/TUI/web all surface the same receipt.
+The receipt is written to `.artifacts/dynamic-workflows/<id>/receipt.json`.
+Trace events carry the receipt path and hash, not a second copy of the whole
+payload. MCP/CLI/TUI/web all surface the same receipt.
 
 ## Impact
 
@@ -33,11 +37,12 @@ The receipt is written to `.artifacts/dynamic-workflows/<id>/receipt.json` and e
 
 | Event | Required fields | Notes |
 |---|---|---|
-| `dynamic.workflow.generated` | `workflow_id`, `draft_dir`, `files`, `prompt_hash` | Emitted after generation. |
-| `dynamic.workflow.validated` | `workflow_id`, `ok`, `errors`, `warnings`, `validator_version` | Deterministic. |
-| `dynamic.workflow.launched` | `workflow_id`, `session_id`, `trace_path`, `story_path` | Links draft to session. |
+| `dynamic.workflow.generated` | `workflow_id`, `draft_dir`, `files`, `prompt_hash`, `manifest_hash` | Emitted after generation. |
+| `dynamic.workflow.validated` | `workflow_id`, `ok`, `errors`, `warnings`, `validator_version`, `validation_report_hash` | Deterministic. |
+| `dynamic.workflow.launch_blocked` | `workflow_id`, `blocked_capabilities`, `validation_report_hash` | Emitted when required host capabilities are not explicitly allowed. |
+| `dynamic.workflow.launched` | `workflow_id`, `session_id`, `trace_path`, `story_path`, `allowed_host_capabilities`, `receipt_hash` | Links draft to session. |
 | `dynamic.workflow.url_assigned` | `workflow_id`, `url`, `server_id` | Emitted only when a browser URL exists. |
-| `dynamic.workflow.exported` | `workflow_id`, `target_dir`, `artifacts` | Promotion/export slice owns details. |
+| `dynamic.workflow.exported` | `workflow_id`, `target_dir`, `artifacts`, `receipt_hash` | Promotion/export slice owns details. |
 
 ## URL Behavior
 
@@ -86,10 +91,16 @@ The tracking layer must not summarize away the run. It records pointers and hash
 
 Use a fake generated draft and no-LLM host cassettes. Verify that trace events are present, receipt paths exist, runstatus can open the session, and CLI/MCP return identical core fields.
 
-## Open Questions
+## Decisions
 
-1. Is the receipt part of the trace, an artifact, or both? *Lean: both, with trace carrying the artifact pointer and hash.*
-2. Should `studio.work` list active dynamic workflows as a distinct item type? *Lean: only when action is required; otherwise ordinary sessions are enough.*
+1. The receipt is both an artifact and a trace pointer. The canonical JSON lives
+   under `.artifacts/dynamic-workflows/<id>/receipt.json`; the trace records its
+   path and hash so evidence remains discoverable without duplicating large
+   payloads in every event.
+2. `studio.work` lists dynamic workflows as distinct work items only when
+   operator action is required, such as blocked launch capabilities, validation
+   failure, or export review. Otherwise the run appears through ordinary session
+   and trace surfaces.
 
 ## Non-goals
 

@@ -124,17 +124,19 @@ stable enough to export fixtures honestly.
    coverage. Promotion should write an export report with missing gates,
    unresolved live decisions, and hand-authored fixture hardening tasks.
 
-## Cross-cutting Open Questions
+## Cross-cutting Decisions
 
-1. Should Studio MCP expose first-class `workflow.*` tools, documented
-   `session.drive` commands in a dev-story room, or both? *Lean: first-class MCP
-   and CLI commands first, with any story room calling the same service.*
-2. What is the minimum safe launch posture for generated host calls? *Lean:
-   validation reports all mutating/external capabilities, and launch requires an
-   explicit allowed-capabilities set stored in the manifest.*
-3. How much can cassette export infer automatically from a trace? *Lean:
-   generate a starter fixture and mark unresolved live decisions rather than
-   synthesizing false determinism.*
+1. Studio MCP and CLI get first-class `workflow.*` surfaces first. Dev-story,
+   TUI, and web may expose conversational or visual entrypoints later, but those
+   entrypoints call the same dynamic workflow service rather than generating or
+   launching drafts themselves.
+2. Validation reports every mutating or external host capability found in the
+   generated story. Launch blocks those capabilities until the operator supplies
+   an explicit allow-list, and the manifest records the allowed set that was in
+   force for the run.
+3. Cassette export is conservative. It may generate starter flow and host
+   cassette files from trace evidence, but unresolved live model decisions become
+   TODOs linked to trace turns rather than fabricated deterministic fixtures.
 
 ## Tasks
 
