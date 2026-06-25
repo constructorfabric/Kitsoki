@@ -39,6 +39,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -184,8 +185,19 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 	// `-C/--cd <DIR>` is accepted by `codex exec` but NOT by `codex exec resume`
 	// (the resume subcommand rejects it: "unexpected argument '-C'"). On a
 	// resume the working root is fixed by the recorded session, so omit it.
+	//
+	// The value MUST be absolute. The runner sets the child process cwd to
+	// inv.WorkingDir (agent_runner.go: cmd.Dir = inv.WorkingDir), so codex
+	// already starts IN workingDir; a RELATIVE `-C workingDir` would then
+	// resolve against that cwd (workingDir/workingDir) → "No such file or
+	// directory (os error 2)" and every attempt fails. An absolute path is
+	// idempotent regardless of the inherited cwd.
 	if strings.TrimSpace(workingDir) != "" && strings.TrimSpace(resumeID) == "" {
-		args = append(args, "-C", workingDir)
+		cd := workingDir
+		if abs, err := filepath.Abs(workingDir); err == nil {
+			cd = abs
+		}
+		args = append(args, "-C", cd)
 	}
 	// Convert each MCP server in the --mcp-config file into codex `-c` overrides.
 	args = append(args, codexMCPConfigArgs(mcpConfig)...)

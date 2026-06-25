@@ -343,6 +343,15 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 		if !hasFlagValue(cb.TranslateInvocation([]string{"-p"}, "p", wd).Args, "-C", wd) {
 			t.Errorf("codex exec (non-resume) must pass -C %s", wd)
 		}
+		// -C MUST be absolute. The runner sets the child cwd to WorkingDir, so a
+		// RELATIVE -C would resolve against that cwd (workingDir/workingDir) →
+		// "No such file or directory" and every attempt fails. Verify a relative
+		// workingDir is made absolute for -C.
+		relArgs := cb.TranslateInvocation([]string{"-p"}, "p", "docs/decks").Args
+		absWD, _ := filepath.Abs("docs/decks")
+		if !hasFlagValue(relArgs, "-C", absWD) {
+			t.Errorf("codex -C must be absolute for a relative workingDir; want -C %s; args=%v", absWD, relArgs)
+		}
 	})
 }
 
