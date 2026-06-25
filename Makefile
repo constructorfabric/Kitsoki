@@ -48,7 +48,7 @@ BASESTORIES_STAMP := internal/basestories/.embed-stamp
 BASESKILLS_DIR    := internal/baseskills/assets
 BASESKILLS_STAMP  := internal/baseskills/.embed-stamp
 
-.PHONY: all setup build install uninstall test test-flows onboard-smoke qs-bakeoff starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories embed-skills e2e-docker \
+.PHONY: all setup build install uninstall test test-flows onboard-smoke onboard-sisters qs-bakeoff starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories embed-skills e2e-docker \
 	fetch-models fetch-llama-server demo-tour demo-tour-fast demo-tour-qa cost-report cost-report-test mining-test \
 	vscode-e2e vscode-e2e-fast vscode-qa vscode-theming-sidebyside vscode-package vscode-install-local
 
@@ -255,6 +255,14 @@ test-flows:
 # tools/onboard-smoke/README.md. Depends on a current install.
 onboard-smoke: install
 	go test -tags onboardsmoke -run TestOnboardPinnedRepo -count=1 -v ./tools/onboard-smoke/
+
+# onboard-sisters is the local, deterministic sister-project replay. It clones
+# ../gears-rust and ../slidey (or KITSOKI_GEARS_RUST_REPO / KITSOKI_SLIDEY_REPO)
+# into temp dirs at their saved pre-init commits, runs the real dev-story init
+# apply script, and proves the generated .kitsoki/stories instance loads. No
+# network, no install, no LLM.
+onboard-sisters:
+	go test -tags onboardsisters -run TestOnboardSisterProjects_FromBaseline -count=1 -v ./tools/onboard-smoke/
 
 # qs-bakeoff is the EXTERNAL-project bake-off scaffold check ("should I use
 # kitsoki for my project?"): clone a pinned mature third-party JS repo

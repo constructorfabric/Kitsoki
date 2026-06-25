@@ -72,7 +72,7 @@ func TestOnboardPinnedRepo(t *testing.T) {
 	// 3. Assert a fully working environment landed on disk.
 	mustExist(t, repo, ".kitsoki.yaml")
 	mustExist(t, repo, ".mcp.json")
-	mustExist(t, repo, filepath.Join("stories", projectID+"-dev", "app.yaml"))
+	mustExist(t, repo, filepath.Join(".kitsoki", "stories", projectID+"-dev", "app.yaml"))
 	mustExist(t, repo, filepath.Join(".claude", "skills", "kitsoki-story-authoring"))
 	mustExist(t, repo, filepath.Join(".claude", "agents", "kitsoki-mcp-driver.md"))
 	mustExist(t, repo, filepath.Join(".agents", "skills", "kitsoki-story-authoring", "SKILL.md"))
@@ -100,7 +100,7 @@ func TestOnboardPinnedRepo(t *testing.T) {
 	// 4. The generated instance loads (imports @kitsoki/dev-story from the
 	//    embedded library) — a fresh session against it must create cleanly.
 	run(t, repo, kitsoki, "session", "create",
-		"--app", filepath.Join("stories", projectID+"-dev", "app.yaml"),
+		"--app", filepath.Join(".kitsoki", "stories", projectID+"-dev", "app.yaml"),
 		"--db", filepath.Join(work, "instance.db"), "--key", "local:smoke")
 
 	t.Logf("onboarded %s@%s → working kitsoki environment", projectID, repoSHA[:12])
