@@ -46,10 +46,12 @@ world:
   drive_status:         { type: string, default: "" }
   drive_trace_path:     { type: string, default: "" }
   drive_model:          { type: string, default: "" }
+  drive_job_id:         { type: string, default: "" }
   implementation_result: { type: object, default: {} }
   implementation_status: { type: string, default: "" }
   implementation_trace_path: { type: string, default: "" }
   implementation_model: { type: string, default: "" }
+  implementation_job_id: { type: string, default: "" }
   verify_result:        { type: object, default: {} }
   verify_status:        { type: string, default: "" }
   punch_results:        { type: object, default: { items: [] } }

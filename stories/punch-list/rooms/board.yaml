@@ -4,7 +4,7 @@ states:
     relevant_world: [punch_items, current_item, processed_count, pending_count]
     view:
       - heading: "Punch-list · board"
-      - prose: "{{ world.count_summary }}"
+      - prose: "{{ world.count_summary|default:'(pending)' }}"
       - prose: "Next item: {{ world.current_item.id|default:'(none)' }} — {{ world.current_item.title|default:'' }}"
       - choice:
           mode: single

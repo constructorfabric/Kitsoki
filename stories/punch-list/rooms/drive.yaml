@@ -1,7 +1,7 @@
 states:
   drive:
     description: "Drive the target story through Studio MCP."
-    relevant_world: [current_item, drive_result]
+    relevant_world: [current_item, drive_result, drive_job_id]
     view:
       - heading: "Punch-list · drive"
       - kv:
@@ -11,6 +11,7 @@ states:
             Mode: '{{ world.current_item.mode }}'
             Trace: '{{ world.drive_result.trace_path|default:"(pending)" }}'
             Status: '{{ world.drive_result.status|default:"driving" }}'
+            Job: '{{ world.drive_job_id|default:"(starting)" }}'
       - prose: "The live driver uses Studio MCP and human phrasing. The result is only a handoff; verification decides pass/fail."
     on_enter:
       - set:
@@ -18,24 +19,42 @@ states:
           drive_status: ""
           drive_trace_path: ""
           drive_model: ""
+          drive_job_id: ""
           drive_evidence_ok: false
       - invoke: host.agent.task
         id: "punch_drive-{{ world.current_item_id }}"
+        background: true
         with:
           agent: driver
           acceptance:
             schema: schemas/drive_result.json
           context:
-            item: "{{ world.current_item }}"
-            instruction: "Drive the target story through Kitsoki Studio MCP. Use harness/profile/model/trace policy exactly. If you cannot prove the model or trace, return status partial with a finding."
+            prompt: prompts/drive_item.md
+            args:
+              item: "{{ world.current_item }}"
         bind:
-          drive_result: submitted
-          drive_status: submitted.status
-          drive_trace_path: submitted.trace_path
-          drive_model: submitted.model
-        on_error: verify
-      - when: "world.drive_status != ''"
-        emit_intent: drive_done
+          drive_job_id: job_id
+        on_complete:
+          - set:
+              drive_result: "{{ world.last_job_result.submitted }}"
+              drive_status: "{{ world.last_job_result.submitted.status }}"
+              drive_trace_path: "{{ world.last_job_result.submitted.trace_path }}"
+              drive_model: "{{ world.last_job_result.submitted.model }}"
+          - when: "world.current_item.require_trace_model == true && (world.last_job_result.submitted.trace_path == '' || world.last_job_result.submitted.model != world.current_item.model)"
+            set:
+              last_error: "Drive did not provide required trace/model evidence for {{ world.current_item.id }} (wanted model {{ world.current_item.model }}, got {{ world.last_job_result.submitted.model }}; trace {{ world.last_job_result.submitted.trace_path }})."
+          - when: "world.current_item.require_trace_model == true && (world.last_job_result.submitted.trace_path == '' || world.last_job_result.submitted.model != world.current_item.model)"
+            target: needs_human
+          - when: "world.last_job_result.submitted.status != 'passed'"
+            set:
+              last_error: "Drive ended {{ world.last_job_result.submitted.status }} for {{ world.current_item.id }}: {{ world.last_job_result.submitted.summary }}"
+          - when: "world.last_job_result.submitted.status != 'passed'"
+            target: needs_human
+          - when: "world.last_job_result.submitted.status == 'passed' && world.current_item.implementation_story != ''"
+            target: implementation
+          - when: "world.last_job_result.submitted.status == 'passed' && world.current_item.implementation_story == ''"
+            target: verify
+        on_error: needs_human
     on:
       drive_done:
         - when: "world.current_item.require_trace_model == true && (world.drive_trace_path == '' || world.drive_model != world.current_item.model)"
@@ -43,8 +62,14 @@ states:
           effects:
             - set:
                 last_error: "Drive did not provide required trace/model evidence for {{ world.current_item.id }} (wanted model {{ world.current_item.model }}, got {{ world.drive_model }}; trace {{ world.drive_trace_path }})."
-        - when: "world.current_item.implementation_story != ''"
+        - when: "world.drive_status != 'passed'"
+          target: needs_human
+          effects:
+            - set:
+                last_error: "Drive ended {{ world.drive_status }} for {{ world.current_item.id }}: {{ world.drive_result.summary }}"
+        - when: "world.drive_status == 'passed' && world.current_item.implementation_story != ''"
           target: implementation
-        - target: verify
+        - when: "world.drive_status == 'passed'"
+          target: verify
       look:
         - target: .

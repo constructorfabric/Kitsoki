@@ -5,7 +5,7 @@ states:
     view:
       - heading: "Punch-list · load"
       - prose: "Manifest: {{ world.manifest_path }}"
-      - prose: "Loaded {{ world.item_count }} item(s)."
+      - prose: "Loaded {{ world.item_count|default:'(pending)' }} item(s)."
         when: "world.load_error == ''"
       - prose: "Load error: {{ world.load_error }}"
         when: "world.load_error != ''"

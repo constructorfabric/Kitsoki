@@ -70,8 +70,10 @@ host_handlers:
   host.agent.task:
     by_call:
       punch_drive-load-bug: &drive_result
+        delay: "20ms"
         data: { ok: true, submitted: { status: passed, story: "stories/kitsoki-dev/app.yaml", trace_path: ".artifacts/top10-dogfood/traces/load-bug.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "story driven through Studio MCP" } }
       punch_implementation-load-bug: &implementation_result
+        delay: "20ms"
         data: { ok: true, submitted: { status: passed, story: "stories/cherny-loop/app.yaml", trace_path: ".artifacts/top10-dogfood/traces/load-bug-impl.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "implementation story exercised" } }
       punch_drive-capability-taxonomy: *drive_result
       punch_implementation-capability-taxonomy: *implementation_result
@@ -102,32 +104,62 @@ turns:
       current_item_id: load-bug
       pending_count: 10
   - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+  - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world: { processed_count: 1, passed_count: 1, current_item_id: capability-taxonomy }
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
   - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world: { processed_count: 2, passed_count: 2, current_item_id: toolbox-enforcement }
   - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+  - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world: { processed_count: 3, passed_count: 3, current_item_id: cassette-conformance }
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
   - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world: { processed_count: 4, passed_count: 4, current_item_id: project-init-hardening }
   - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+  - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world: { processed_count: 5, passed_count: 5, current_item_id: session-mining-productization }
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
   - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world: { processed_count: 6, passed_count: 6, current_item_id: deliver-decomposition-decision }
   - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+  - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world: { processed_count: 7, passed_count: 7, current_item_id: contextual-routing-controls }
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
   - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world: { processed_count: 8, passed_count: 8, current_item_id: multi-hop-routing }
   - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+  - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world: { processed_count: 9, passed_count: 9, current_item_id: story-qa-workflow }
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
   - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world:

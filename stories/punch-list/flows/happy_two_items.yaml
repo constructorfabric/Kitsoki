@@ -113,14 +113,17 @@ host_handlers:
   host.agent.task:
     by_call:
       punch_drive-validate-punch-list:
+        delay: "20ms"
         data:
           ok: true
           submitted: { status: passed, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "loaded and observed" }
       punch_drive-policy-demo:
+        delay: "20ms"
         data:
           ok: true
           submitted: { status: passed, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/policy-demo.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "policy observed" }
       punch_implementation-policy-demo:
+        delay: "20ms"
         data:
           ok: true
           submitted: { status: passed, story: "stories/cherny-loop/app.yaml", trace_path: ".artifacts/punch-list/traces/policy-demo-impl.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "implementation story exercised" }
@@ -134,11 +137,17 @@ turns:
       current_item_id: validate-punch-list
       pending_count: 2
   - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+  - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world:
       processed_count: 1
       passed_count: 1
       current_item_id: policy-demo
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
   - intent: { name: next_item, slots: {} }
     expect_state: board
     expect_world:

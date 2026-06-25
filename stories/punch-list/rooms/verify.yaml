@@ -28,6 +28,8 @@ states:
       - when: "world.verify_status != ''"
         emit_intent: verify_done
     on:
+      next_item:
+        - target: verify
       verify_done:
         - target: board
           effects:
