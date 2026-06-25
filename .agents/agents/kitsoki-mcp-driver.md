@@ -139,6 +139,28 @@ Prefer `session.submit` for deterministic menu navigation; reserve
 in replay it must match a recorded routing decision — so to exercise *new* free
 text, go `live` (or `record:` it).
 
+### Driving `stories/bugfix` (and friends) against a specific baseline
+
+The bugfix/implementation pipelines cut their OWN isolated worktree
+(`.worktrees/bf-<ticket_id>`) and ignore any `workdir` you seed. The worktree is
+cut from `world.base_commit` if set, else `world.base_branch` (default `main`).
+So when the task is "reproduce/fix this bug at its pre-fix baseline" (e.g. a
+bake-off cell):
+
+- **Seed `base_commit` = the baseline committish/SHA** in `initial_world`. Do
+  NOT rely on `base_branch` for the cut-point, and do NOT assume seeding
+  `workdir`/`base_sha`/`base` binds anything — only `base_commit` (then
+  `base_branch`) is read. If you skip it, the tree is cut from `main` (already
+  fixed) and the reproducer honestly reports `not-reproducible`.
+- After `start`, **`session.inspect` and confirm the reproduce phase verified
+  RED** (`bug_verified: yes`, status not `not-reproducible`) before walking on.
+  If it's not-reproducible, check the trace's `workspace.create` event for the
+  base it actually cut from — don't burn the rest of the pipeline.
+- **Seed the whole world on the FIRST `session.new`** (ticket fields, model,
+  `base_commit`, `test_cmd`, …). `initial_world` is consumed only at creation;
+  there is no reseed path. An exploratory unseeded `session.new` on a mandated
+  `trace` squats its lock — recover only with `session.close` then reopen.
+
 ## Seeing (render.*) — read-only, never advances state
 
 Use to inspect a state you reached or an explicit spec; these **cannot mutate**

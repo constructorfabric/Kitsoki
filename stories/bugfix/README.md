@@ -164,7 +164,8 @@ in `app.yaml`'s `world:` block so the child loads standalone for tests.
 | `thread` | string | The transport's thread identifier (file path / Jira key / chat ID). | `""` |
 | `workspace_id` | string | `iface.workspace.sync` arg. | `""` |
 | `workdir` | string | Most `iface.{vcs,ci}.*` calls. | `""` |
-| `base_branch` | string | `iface.vcs.open_pr.base`. | `""` |
+| `base_branch` | string | The PR target (`iface.vcs.open_pr.base`); also the worktree cut-point when `base_commit` is empty. | `main` |
+| `base_commit` | string | Pins the worktree CUT-POINT to a specific committish (branch/tag/**SHA** — anything `git worktree add` accepts). Takes precedence over `base_branch` for the cut. Set this (not `base_branch`) to reproduce/fix against a detached baseline, e.g. a bug's pre-fix SHA in a bake-off cell. | `""` |
 | `feature_branch` | string | `iface.vcs.branch.name`. | `""` |
 | `gate_command` | string | The ticket's `repro_command` (repro RED-gate in `reproducing`; re-used as the regression gate in `testing` + the shared `verify`). Empty ⇒ the `reproducing` room synthesises it from the reproducer's authored test on `accept` (see "The synthesised gate"). | `""` |
 | `bugfix_mode` | string | `full` (walk every room) \| `quick` (Wave 2 shortcut). | `full` |

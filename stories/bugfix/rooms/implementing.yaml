@@ -74,12 +74,15 @@ states:
       # branch; reattaches an orphaned branch when the dir was
       # deleted), so calling it here costs nothing in the happy case
       # and rescues the bounce case.
+      # Idempotent re-create: same cut-point precedence as the idle autostart
+      # (explicit base_commit, else base_branch) so a bounce-recovery rebuild
+      # lands on the same baseline the reproducer used.
       - when: "world.workspace_id != '' && world.feature_branch != ''"
         invoke: iface.workspace.create
         with:
           id:   "{{ world.workspace_id }}"
           name: "{{ world.feature_branch }}"
-          base: "{{ world.base_branch }}"
+          base: "{{ world.base_commit != '' ? world.base_commit : world.base_branch }}"
         on_error: idle
       # The iface.workspace.sync + iface.vcs.commit are the workspace-
       # side write seams (instance bindings: host.git_worktree / host.git
