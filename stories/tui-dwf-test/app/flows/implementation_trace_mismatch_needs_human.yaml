@@ -1,0 +1,70 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  manifest_path: "stories/punch-list/testdata/two_items.yaml"
+
+host_handlers:
+  host.run:
+    by_call:
+      punch_load:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            state_path: ".artifacts/punch-list/two_items.state.json"
+            item_count: "1"
+            error: ""
+            items:
+              - { id: trace-demo, title: "Implementation trace must match", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "stories/cherny-loop/app.yaml", status: pending, verify: [ { kind: command, cmd: "true" } ], trace_path: ".artifacts/punch-list/traces/trace-demo.jsonl", implementation_trace_path: ".artifacts/punch-list/traces/trace-demo-implementation.jsonl" }
+      punch_board-0-:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            items: []
+            results: { items: [] }
+            next_item: { id: trace-demo, title: "Implementation trace must match", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "stories/cherny-loop/app.yaml", require_trace_model: true, verify: [ { kind: command, cmd: "true" } ], trace_path: ".artifacts/punch-list/traces/trace-demo.jsonl", implementation_trace_path: ".artifacts/punch-list/traces/trace-demo-implementation.jsonl" }
+            next_item_id: trace-demo
+            route: dispatch
+            has_pending: true
+            processed_count: 0
+            passed_count: 0
+            partial_count: 0
+            failed_count: 0
+            skipped_count: 0
+            pending_count: 1
+            count_summary: "Processed 0 | Passed 0 | Partial 0 | Failed 0 | Skipped 0 | Pending 1"
+      punch_policy-trace-demo:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            policy_result: { status: ok, message: "profile/model/verifier policy passed" }
+            error: ""
+  host.agent.task:
+    by_call:
+      punch_drive-trace-demo:
+        delay: "20ms"
+        data:
+          ok: true
+          submitted: { status: passed, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/trace-demo.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "drive trace matched" }
+      punch_implementation-trace-demo:
+        delay: "20ms"
+        data:
+          ok: true
+          submitted: { status: passed, story: "stories/cherny-loop/app.yaml", trace_path: ".artifacts/punch-list/traces/wrong-implementation.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "wrong implementation trace" }
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: load
+  - intent: { name: next_item, slots: {} }
+    expect_state: board
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: needs_human
+    expect_world:
+      last_error: "Implementation drive did not provide required trace/model evidence for trace-demo (wanted model gpt-5.5 and trace .artifacts/punch-list/traces/trace-demo-implementation.jsonl, got model gpt-5.5 and trace .artifacts/punch-list/traces/wrong-implementation.jsonl)."
+
+expect_terminal: false
+expect_no_errors: true

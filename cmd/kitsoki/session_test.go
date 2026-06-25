@@ -37,6 +37,7 @@ func rootForTest() *cobra.Command {
 	root.AddCommand(inboxCmd())
 	root.AddCommand(turnCmd())
 	root.AddCommand(chatCmd())
+	root.AddCommand(workflowCmd())
 	return root
 }
 

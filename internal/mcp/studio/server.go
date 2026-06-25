@@ -146,6 +146,9 @@ func NewServer(sess *StudioSession, opts ...ServerOption) *Server {
 	// story.* — the deterministic, LLM-free authoring tools (slice 6).
 	srv.registerStoryTools()
 
+	// workflow.* — dynamic-workflow create/validate/export receipts.
+	srv.registerWorkflowTools()
+
 	// session.* / render.* — drive a live (replay-default) session and see it
 	// (slice 7).
 	srv.registerSessionTools()

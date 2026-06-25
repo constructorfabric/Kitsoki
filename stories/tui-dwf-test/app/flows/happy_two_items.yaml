@@ -1,0 +1,163 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  manifest_path: "stories/punch-list/testdata/two_items.yaml"
+
+host_handlers:
+  host.run:
+    by_call:
+      punch_load:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            state_path: ".artifacts/punch-list/two_items.state.json"
+            item_count: "2"
+            error: ""
+            items:
+              - { id: validate-punch-list, title: "Validate the punch-list story", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "", status: pending, verify: [ { kind: story_validate, story: "stories/punch-list/app.yaml" } ], trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl" }
+              - { id: policy-demo, title: "Exercise the policy check", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "stories/cherny-loop/app.yaml", status: pending, verify: [ { kind: command, cmd: "true" } ], trace_path: ".artifacts/punch-list/traces/policy-demo.jsonl" }
+      punch_board-0-:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            items: []
+            results: { items: [] }
+            next_item: { id: validate-punch-list, title: "Validate the punch-list story", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "", verify: [ { kind: story_validate, story: "stories/punch-list/app.yaml" } ], trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl" }
+            next_item_id: validate-punch-list
+            route: dispatch
+            has_pending: true
+            processed_count: 0
+            passed_count: 0
+            partial_count: 0
+            failed_count: 0
+            skipped_count: 0
+            pending_count: 2
+            count_summary: "Processed 0 | Passed 0 | Partial 0 | Failed 0 | Skipped 0 | Pending 2"
+      punch_policy-validate-punch-list:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            policy_result: { status: ok, message: "profile/model/verifier policy passed" }
+            error: ""
+      punch_verify-validate-punch-list:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            verify_result: { status: passed, summary: "1/1 deterministic checks passed", checks: [ { cmd: "true", exit_code: 0, ok: true } ] }
+      punch_board-0-passed:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            items: []
+            results:
+              items:
+                - { id: validate-punch-list, status: passed, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl", summary: "1/1 deterministic checks passed" }
+            next_item: { id: policy-demo, title: "Exercise the policy check", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "stories/cherny-loop/app.yaml", verify: [ { kind: command, cmd: "true" } ], trace_path: ".artifacts/punch-list/traces/policy-demo.jsonl" }
+            next_item_id: policy-demo
+            route: dispatch
+            has_pending: true
+            processed_count: 1
+            passed_count: 1
+            partial_count: 0
+            failed_count: 0
+            skipped_count: 0
+            pending_count: 1
+            count_summary: "Processed 1 | Passed 1 | Partial 0 | Failed 0 | Skipped 0 | Pending 1"
+      punch_policy-policy-demo:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            policy_result: { status: ok, message: "profile/model/verifier policy passed" }
+            error: ""
+      punch_verify-policy-demo:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            verify_result: { status: passed, summary: "1/1 deterministic checks passed", checks: [ { cmd: "true", exit_code: 0, ok: true } ] }
+      punch_board-1-passed:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            items: []
+            results:
+              items:
+                - { id: validate-punch-list, status: passed, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl", summary: "1/1 deterministic checks passed" }
+                - { id: policy-demo, status: passed, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/policy-demo.jsonl", summary: "1/1 deterministic checks passed" }
+            next_item: {}
+            next_item_id: ""
+            route: done
+            has_pending: false
+            processed_count: 2
+            passed_count: 2
+            partial_count: 0
+            failed_count: 0
+            skipped_count: 0
+            pending_count: 0
+            count_summary: "Processed 2 | Passed 2 | Partial 0 | Failed 0 | Skipped 0 | Pending 0"
+      punch_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/punch-list/report.md"
+            summary: "2 passed, 0 partial, 0 failed, 0 skipped, 0 pending"
+  host.agent.task:
+    by_call:
+      punch_drive-validate-punch-list:
+        delay: "20ms"
+        data:
+          ok: true
+          submitted: { status: passed, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "loaded and observed" }
+      punch_drive-policy-demo:
+        delay: "20ms"
+        data:
+          ok: true
+          submitted: { status: passed, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/policy-demo.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "policy observed" }
+      punch_implementation-policy-demo:
+        delay: "20ms"
+        data:
+          ok: true
+          submitted: { status: passed, story: "stories/cherny-loop/app.yaml", trace_path: ".artifacts/punch-list/traces/policy-demo-impl.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "implementation story exercised" }
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: load
+  - intent: { name: next_item, slots: {} }
+    expect_state: board
+    expect_world:
+      current_item_id: validate-punch-list
+      pending_count: 2
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+  - intent: { name: next_item, slots: {} }
+    expect_state: board
+    expect_world:
+      processed_count: 1
+      passed_count: 1
+      current_item_id: policy-demo
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+  - intent: { name: next_item, slots: {} }
+    expect_state: board
+    expect_world:
+      processed_count: 2
+      passed_count: 2
+      pending_count: 0
+  - intent: { name: next_item, slots: {} }
+    expect_state: report
+    expect_world:
+      report_summary: "2 passed, 0 partial, 0 failed, 0 skipped, 0 pending"
+
+expect_terminal: false
+expect_no_errors: true

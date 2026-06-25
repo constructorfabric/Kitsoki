@@ -83,6 +83,7 @@ import (
 	"time"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/dynamicworkflow"
 	"kitsoki/internal/helpdocs"
 	"kitsoki/internal/host"
 	"kitsoki/internal/jobs"
@@ -209,6 +210,11 @@ type Server struct {
 	// review) INSTEAD of a local issues/bugs/<id>.md file.
 	ticketRepo string
 
+	// workflowRoot is the repo root dynamic workflow drafts should use for
+	// their scratch package and promotion/export defaults. Empty means the
+	// workflow RPC family stays disabled on this surface.
+	workflowRoot string
+
 	// captureStore holds scrubbed HAR snapshots between runstatus.bug.preview
 	// and the confirming runstatus.bug.report so the filed capture is identical
 	// to the one reviewed. Bounded by captureCap + captureTTL, swept on put.
@@ -263,6 +269,7 @@ type serverConfig struct {
 	defaultActor string
 	bugRoot      string
 	ticketRepo   string
+	workflowRoot string
 }
 
 // WithBugRoot sets the repo root under which runstatus.bug.report writes
@@ -281,6 +288,13 @@ func WithBugRoot(dir string) Option {
 // --ticket-repo`. Empty (the default) keeps the local-file behaviour.
 func WithTicketRepo(repo string) Option {
 	return func(c *serverConfig) { c.ticketRepo = strings.TrimSpace(repo) }
+}
+
+// WithWorkflowRoot sets the repo root dynamic workflow RPCs use for draft
+// creation, validation, and export defaults. Empty disables the workflow RPC
+// family on this server.
+func WithWorkflowRoot(dir string) Option {
+	return func(c *serverConfig) { c.workflowRoot = strings.TrimSpace(dir) }
 }
 
 // WithPollInterval overrides the SSE trace-poll interval.
@@ -366,6 +380,7 @@ func newServer(provider SessionProvider, cfg serverConfig) *Server {
 		recorder:     harrec.New(bugRecorderCapacity),
 		bugRoot:      cfg.bugRoot,
 		ticketRepo:   cfg.ticketRepo,
+		workflowRoot: cfg.workflowRoot,
 		captureStore: make(map[string]*capSnap),
 		activeTurns:  make(map[string]*activeTurn),
 	}
@@ -745,6 +760,132 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 			return nil, lifecycleErr(err)
 		}
 		return map[string]any{"session_id": sid}, nil
+
+	// ── Dynamic workflows (shared draft lifecycle) ──────────────────────────
+	case "runstatus.workflow.create":
+		svc := s.workflowService()
+		if svc == nil {
+			return nil, readOnlyErr(method)
+		}
+		goal, _ := params["goal"].(string)
+		if strings.TrimSpace(goal) == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "workflow.create: missing 'goal'"}
+		}
+		slug, _ := params["slug"].(string)
+		receipt, err := svc.Create(ctx, dynamicworkflow.CreateRequest{Goal: goal, Slug: slug})
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return receipt, nil
+
+	case "runstatus.workflow.validate":
+		svc := s.workflowService()
+		if svc == nil {
+			return nil, readOnlyErr(method)
+		}
+		workflowID, _ := params["workflow_id"].(string)
+		if strings.TrimSpace(workflowID) == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "workflow.validate: missing 'workflow_id'"}
+		}
+		receipt, err := svc.ReadReceipt(workflowID)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		receipt.Validation = svc.ValidateDraft(receipt.AppPath, receipt.ManifestPath)
+		if err := dynamicworkflow.WriteReceipt(filepath.Join(svc.OutputDir, receipt.WorkflowID, "receipt.json"), receipt); err != nil {
+			return nil, serverErr(err)
+		}
+		if err := appendWorkflowValidationEvent(receipt); err != nil {
+			return nil, serverErr(err)
+		}
+		return receipt, nil
+
+	case "runstatus.workflow.launch":
+		svc := s.workflowService()
+		if svc == nil {
+			return nil, readOnlyErr(method)
+		}
+		workflowID, _ := params["workflow_id"].(string)
+		if strings.TrimSpace(workflowID) == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "workflow.launch: missing 'workflow_id'"}
+		}
+		receipt, err := svc.Launch(ctx, workflowID)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		sid, err := s.provider.NewSession(ctx, filepath.Join(receipt.AppPath, "app.yaml"))
+		if err != nil {
+			return nil, lifecycleErr(err)
+		}
+		receipt.SessionID = sid
+		receipt.URL = "/s/" + sid
+		if err := dynamicworkflow.WriteReceipt(filepath.Join(svc.OutputDir, receipt.WorkflowID, "receipt.json"), receipt); err != nil {
+			return nil, serverErr(err)
+		}
+		if err := dynamicworkflow.AppendWorkflowEvent(receipt.EventsPath, map[string]any{
+			"kind":            "dynamic.workflow.launched",
+			"workflow_id":     receipt.WorkflowID,
+			"at":              time.Now().UTC(),
+			"app_path":        receipt.AppPath,
+			"manifest_path":   receipt.ManifestPath,
+			"trace_path":      receipt.TracePath,
+			"session_id":      receipt.SessionID,
+			"session_handle":  receipt.SessionHandle,
+			"url":             receipt.URL,
+			"receipt_path":    filepath.Join(svc.OutputDir, receipt.WorkflowID, "receipt.json"),
+			"receipt_hash":    dynamicworkflow.HashFile(filepath.Join(svc.OutputDir, receipt.WorkflowID, "receipt.json")),
+			"validation_path": receipt.ValidationPath,
+			"validation_hash": dynamicworkflow.HashFile(receipt.ValidationPath),
+		}); err != nil {
+			return nil, serverErr(err)
+		}
+		if receipt.URL != "" {
+			if err := dynamicworkflow.AppendWorkflowEvent(receipt.EventsPath, map[string]any{
+				"kind":        "dynamic.workflow.url_assigned",
+				"workflow_id": receipt.WorkflowID,
+				"at":          time.Now().UTC(),
+				"url":         receipt.URL,
+				"server_id":   receipt.SessionID,
+			}); err != nil {
+				return nil, serverErr(err)
+			}
+		}
+		return receipt, nil
+
+	case "runstatus.workflow.status":
+		svc := s.workflowService()
+		if svc == nil {
+			return nil, readOnlyErr(method)
+		}
+		workflowID, _ := params["workflow_id"].(string)
+		if strings.TrimSpace(workflowID) == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "workflow.status: missing 'workflow_id'"}
+		}
+		receipt, err := svc.ReadReceipt(workflowID)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return receipt, nil
+
+	case "runstatus.workflow.export":
+		svc := s.workflowService()
+		if svc == nil {
+			return nil, readOnlyErr(method)
+		}
+		workflowID, _ := params["workflow_id"].(string)
+		if strings.TrimSpace(workflowID) == "" {
+			return nil, &rpcError{Code: codeServerError, Message: "workflow.export: missing 'workflow_id'"}
+		}
+		target, _ := params["target"].(string)
+		allowBase, _ := params["allow_base_story"].(bool)
+		receipt, err := svc.Export(ctx, workflowID, dynamicworkflow.ExportRequest{
+			TargetDir:      target,
+			AllowBaseStory: allowBase,
+		})
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return receipt, nil
 
 	case "runstatus.session.attach":
 		storyPath, _ := params["story_path"].(string)
@@ -1517,6 +1658,18 @@ func (s *Server) resolveMeta(params map[string]any) (MetaDriver, *rpcError) {
 	return entry.Meta, nil
 }
 
+// workflowService resolves the shared dynamic-workflow service for this
+// server. The workflow RPC family is intentionally disabled when no workflow
+// root was configured, so read-only surfaces do not accidentally mint drafts in
+// an arbitrary cwd.
+func (s *Server) workflowService() *dynamicworkflow.Service {
+	if strings.TrimSpace(s.workflowRoot) == "" {
+		return nil
+	}
+	svc := dynamicworkflow.NewService(s.workflowRoot)
+	return svc
+}
+
 // resolve looks up the entry for the session_id param, returning a structured
 // not-found error for an unknown id so a session-routed RPC never nil-derefs.
 // The single-entry adapter resolves any id (including the empty string the
@@ -1567,6 +1720,24 @@ func lifecycleErr(err error) *rpcError {
 		return &rpcError{Code: codeReadOnly, Message: err.Error()}
 	}
 	return serverErr(err)
+}
+
+func appendWorkflowValidationEvent(receipt *dynamicworkflow.Receipt) error {
+	if receipt == nil || receipt.EventsPath == "" {
+		return nil
+	}
+	return dynamicworkflow.AppendWorkflowEvent(receipt.EventsPath, map[string]any{
+		"kind":            "dynamic.workflow.validated",
+		"workflow_id":     receipt.WorkflowID,
+		"at":              time.Now().UTC(),
+		"app_path":        receipt.AppPath,
+		"manifest_path":   receipt.ManifestPath,
+		"validation_path": receipt.ValidationPath,
+		"validation_hash": dynamicworkflow.HashFile(receipt.ValidationPath),
+		"ok":              receipt.Validation.OK,
+		"errors":          receipt.Validation.Errors,
+		"warnings":        receipt.Validation.Warnings,
+	})
 }
 
 func readOnlyErr(method string) *rpcError {

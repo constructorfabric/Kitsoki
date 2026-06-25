@@ -69,6 +69,18 @@
         <span class="meta-launcher__item-hint">{{ m.hint }}</span>
       </button>
 
+      <button
+        class="meta-launcher__item"
+        data-testid="meta-workflow-launcher"
+        title="Open dynamic workflows"
+        @click="openWorkflow"
+      >
+        <span class="meta-launcher__item-label">Dynamic workflows</span>
+        <span class="meta-launcher__item-hint">
+          Create, validate, launch, and export a draft
+        </span>
+      </button>
+
       <div class="meta-launcher__divider" role="separator"></div>
 
       <button
@@ -132,6 +144,7 @@ import { LiveSource } from "../../data/live-source.js";
 import { isEmbedded } from "../../lib/embed.js";
 import { useMetaStore } from "../../stores/meta.js";
 import { useBugReportStore } from "../../stores/bugReport.js";
+import { useWorkflowStore } from "../../stores/workflow.js";
 
 const props = withDefaults(
   defineProps<{
@@ -174,6 +187,7 @@ const isSnapshot =
 const route = useRoute();
 const meta = useMetaStore();
 const bugReport = useBugReportStore();
+const workflow = useWorkflowStore();
 const source = new LiveSource("/");
 
 const dropdownOpen = ref(false);
@@ -231,6 +245,11 @@ async function reportBug(): Promise<void> {
     severity: "med",
     traceRef: sessionId.value || undefined,
   });
+}
+
+function openWorkflow(): void {
+  dropdownOpen.value = false;
+  workflow.openPanel();
 }
 
 // The toast is for capture-in-progress and the post-submit result. While the

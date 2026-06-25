@@ -1,0 +1,154 @@
+# punch-list — run a YAML worklist through Kitsoki stories.
+#
+# The story is generic: it consumes a punch-list/v1 manifest, enforces model /
+# profile policy, delegates live Studio MCP driving to an operator/driver agent,
+# independently verifies each item, records results, and emits a report.
+# Automated flows stub agent calls; deterministic scripts carry load, policy,
+# board, verify, and report behavior without LLM usage.
+
+app:
+  id: punch-list
+  version: 0.1.0
+  title: "Punch-list — run YAML work through Kitsoki"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.agent.task
+
+agents:
+  driver:
+    system_prompt: "You are driving a punch-list item through Kitsoki Studio MCP like a human operator. Use the requested story, harness, profile, model, and explicit trace path. Prefer natural language turns. Record the final state, trace path, model evidence, findings, and any MCP/story friction. Do not self-grade implementation success; the verify room gates it."
+    model: gpt-5.5
+    tools: [Read, Grep, Glob, Bash, Edit, Write]
+    external_side_effect: false
+    bash_profile: { sandboxed_write: ".worktrees" }
+  implementer:
+    system_prompt: "You are running the implementation part of a punch-list item through the requested Kitsoki story. Use the requested profile/model policy and explicit trace. Return only concrete handoff data: status, story, trace_path, worktree, branch, model evidence, and findings. Verification happens separately."
+    model: gpt-5.5
+    tools: [Read, Grep, Glob, Bash, Edit, Write]
+    external_side_effect: false
+    bash_profile: { sandboxed_write: ".worktrees" }
+
+world:
+  manifest_path:        { type: string, default: "" }
+  state_path:           { type: string, default: "" }
+  punch_items:          { type: list,   default: [] }
+  item_count:           { type: string, default: "0" }
+  current_item:         { type: object, default: {} }
+  current_item_id:      { type: string, default: "" }
+  load_error:           { type: string, default: "" }
+  last_error:           { type: string, default: "" }
+  policy_result:        { type: object, default: {} }
+  policy_status:        { type: string, default: "" }
+  drive_result:         { type: object, default: {} }
+  drive_status:         { type: string, default: "" }
+  drive_trace_path:     { type: string, default: "" }
+  drive_model:          { type: string, default: "" }
+  drive_job_id:         { type: string, default: "" }
+  implementation_result: { type: object, default: {} }
+  implementation_status: { type: string, default: "" }
+  implementation_trace_path: { type: string, default: "" }
+  implementation_model: { type: string, default: "" }
+  implementation_job_id: { type: string, default: "" }
+  verify_result:        { type: object, default: {} }
+  verify_status:        { type: string, default: "" }
+  punch_results:        { type: object, default: { items: [] } }
+  report_path:          { type: string, default: "" }
+  report_summary:       { type: string, default: "" }
+  board_route:          { type: string, default: "" }
+  auto_start_next:      { type: bool,   default: false }
+  processed_count:      { type: int,    default: 0 }
+  passed_count:         { type: int,    default: 0 }
+  partial_count:        { type: int,    default: 0 }
+  failed_count:         { type: int,    default: 0 }
+  skipped_count:        { type: int,    default: 0 }
+  pending_count:        { type: int,    default: 0 }
+  count_summary:        { type: string, default: "" }
+  has_pending:          { type: bool,   default: false }
+  _record_status:       { type: string, default: "" }
+  _record_error:        { type: string, default: "" }
+  drive_evidence_ok:    { type: bool,   default: false }
+
+intents:
+  start:
+    description: "Load a punch-list manifest and start processing it."
+    examples: ["start", "begin", "load the punch list", "run this manifest"]
+    synonyms:
+      - "run {manifest_path}"
+      - "run the {manifest_path}"
+      - "let's run the {manifest_path} now"
+      - "load {manifest_path}"
+      - "load the {manifest_path}"
+      - "use {manifest_path}"
+    priority: 90
+    slots:
+      manifest_path: { type: string, required: false }
+  next_item:
+    description: "Process the next pending item, or finish when the list is drained."
+    examples: ["next", "continue", "process the next item"]
+    priority: 80
+  start_first:
+    description: "Load the board and immediately process the first pending item."
+    examples: ["start the first item", "go ahead and start the first item", "run the first item", "begin with the first item"]
+    priority: 85
+  retry:
+    description: "Retry from the board after a needs-human stop."
+    examples: ["retry", "try again", "resume"]
+    priority: 70
+  skip_current:
+    description: "Skip the current item and continue."
+    examples: ["skip", "skip this item"]
+    priority: 65
+  report:
+    description: "Build the current punch-list report."
+    examples: ["report", "summarize", "show the report"]
+    priority: 60
+  policy_ok:
+    description: "(internal) policy allows this item."
+    priority: 1
+  policy_failed:
+    description: "(internal) policy blocks this item."
+    priority: 1
+  drive_done:
+    description: "(internal) target story drive completed."
+    priority: 1
+  implementation_done:
+    description: "(internal) implementation drive completed."
+    priority: 1
+  drive_timeout:
+    description: "(internal) target story drive exceeded the punch-list timeout."
+    priority: 1
+  implementation_timeout:
+    description: "(internal) implementation drive exceeded the punch-list timeout."
+    priority: 1
+  verify_done:
+    description: "(internal) independent verification completed."
+    priority: 1
+  record_done:
+    description: "(internal) item result recorded."
+    priority: 1
+  backlog_drained:
+    description: "(internal) no pending items remain."
+    priority: 1
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "status", "?"]
+    priority: 10
+  quit:
+    description: "Stop the punch-list run."
+    examples: ["quit", "stop", "abort"]
+    priority: 50
+
+exits:
+  done:
+    requires: [report_path]
+  needs-human:
+    requires: [last_error]
+  abandoned: {}
+
+root: idle
+
+include:
+  - rooms/*.yaml

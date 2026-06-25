@@ -1,0 +1,66 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  manifest_path: "stories/punch-list/testdata/two_items.yaml"
+
+host_handlers:
+  host.run:
+    by_call:
+      punch_load:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            state_path: ".artifacts/punch-list/start_first.state.json"
+            item_count: "1"
+            error: ""
+            items:
+              - { id: validate-punch-list, title: "Validate the punch-list story", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "", status: pending, require_trace_model: true, verify: [ { kind: story_validate, story: "stories/punch-list/app.yaml" } ], trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl" }
+      punch_board-0-:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            items: []
+            results: { items: [] }
+            next_item: { id: validate-punch-list, title: "Validate the punch-list story", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "", require_trace_model: true, verify: [ { kind: story_validate, story: "stories/punch-list/app.yaml" } ], trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl" }
+            next_item_id: validate-punch-list
+            route: dispatch
+            has_pending: true
+            processed_count: 0
+            passed_count: 0
+            partial_count: 0
+            failed_count: 0
+            skipped_count: 0
+            pending_count: 1
+            count_summary: "Processed 0 | Passed 0 | Partial 0 | Failed 0 | Skipped 0 | Pending 1"
+      punch_policy-validate-punch-list:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            policy_result: { status: ok, message: "profile/model/verifier policy passed" }
+            error: ""
+  host.agent.task:
+    by_call:
+      punch_drive-validate-punch-list:
+        delay: "20ms"
+        data:
+          ok: true
+          submitted: { status: passed, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl", model: gpt-5.5, profile: codex-native, findings: [], summary: "loaded and observed" }
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: load
+  - intent: { name: start_first, slots: {} }
+    expect_state: drive
+    expect_world:
+      current_item_id: validate-punch-list
+      auto_start_next: false
+  - intent: { name: look, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+
+expect_terminal: false
+expect_no_errors: true

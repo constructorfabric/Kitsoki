@@ -264,6 +264,7 @@ authentication.`,
 			srv := server.NewMulti(registry,
 				server.WithDefaultActor(actor),
 				server.WithBugRoot(resolveWebBugRoot(dirs)),
+				server.WithWorkflowRoot(resolveWebBugRoot(dirs)),
 				server.WithTicketRepo(ticketRepo),
 			)
 			// Attach the cross-session notification relay sink so each new

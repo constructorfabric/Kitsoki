@@ -551,6 +551,60 @@ export class LiveSource implements DataSource {
     });
   }
 
+  workflowCreate(
+    goal: string,
+    slug = ""
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.create",
+      {
+        goal,
+        ...(slug ? { slug } : {}),
+      }
+    );
+  }
+
+  workflowValidate(
+    workflowId: string
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.validate",
+      { workflow_id: workflowId }
+    );
+  }
+
+  workflowLaunch(
+    workflowId: string
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.launch",
+      { workflow_id: workflowId }
+    );
+  }
+
+  workflowStatus(
+    workflowId: string
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.status",
+      { workflow_id: workflowId }
+    );
+  }
+
+  workflowExport(
+    workflowId: string,
+    opts: import("./source.js").WorkflowExportOptions = {}
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.export",
+      {
+        workflow_id: workflowId,
+        ...(opts.target ? { target: opts.target } : {}),
+        ...(opts.allow_base_story ? { allow_base_story: true } : {}),
+      }
+    );
+  }
+
   /**
    * Read an artifact's semantic sidecar via runstatus.artifact.semantic. The
    * server resolves `<name>.semantic.json` next to the media and returns the

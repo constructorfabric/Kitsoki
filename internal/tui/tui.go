@@ -2149,6 +2149,9 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	case "/reload":
 		return m.handleReloadSlash()
 
+	case "/workflow":
+		return handleWorkflowSlash(m, parts[1:])
+
 	default:
 		m.transcript.AppendSystem(fmt.Sprintf("(unknown command: %s)", parts[0]))
 		return m, nil

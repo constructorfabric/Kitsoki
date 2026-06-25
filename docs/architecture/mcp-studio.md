@@ -154,6 +154,28 @@ uses, so the MCP surface can never disagree with them.
 | `story.graph` | `{dir?, room?} → {rooms[] \| detail \| agents[]}` | `graph.RoomList` / `Detail` / `AgentContracts` (the pure functions behind `/editor`) |
 | `story.test` | `{dir?, flows?} → {report}` | `testrunner.RunFlows` (no LLM; honours `--recording`/`--host-cassette`) |
 
+### `workflow.*` — draft, validate, launch, export
+
+`workflow.*` wraps the shared dynamic-workflow service. It creates the draft
+package, validates it, and can open a tracked studio session over the generated
+`punch-list` story.
+
+| Tool | Shape | Wraps |
+|---|---|---|
+| `workflow.create` | `{goal, slug?} → {receipt}` | draft package + manifest + validation receipt |
+| `workflow.validate` | `{workflow_id} → {receipt}` | re-run the deterministic draft validator |
+| `workflow.launch` | `{workflow_id} → {receipt}` | persist launch metadata and open a studio session handle over the draft |
+| `workflow.status` | `{workflow_id} → {receipt}` | read the stored receipt |
+| `workflow.export` | `{workflow_id, target?, allow_base_story?} → {receipt}` | copy the draft to a reusable story package, starter flow/cassette artifacts, and an export report |
+
+The receipt carries the draft path, manifest path, launch basis, trace path,
+the lifecycle event log, and, after `workflow.launch`, the studio `session_id`
+/ handle plus the relative runstatus session route (`/s/<id>`). The trace path
+and launch command are the fallback anchors when no browser origin is
+available. `workflow.export` writes the promoted `README.md`, starter flow
+fixture, optional starter cassette, and `export-report.json` beside the
+promoted story package.
+
 ### `session.*` — drive & introspect
 
 `session.drive` is the **one interpretive seam**: it submits free text through

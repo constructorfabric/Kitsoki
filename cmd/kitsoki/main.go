@@ -147,6 +147,7 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(projectProfileCmd())
 	root.AddCommand(projectToolsCmd())
 	root.AddCommand(validateCmd())
+	root.AddCommand(workflowCmd())
 
 	return root
 }

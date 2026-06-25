@@ -67,15 +67,6 @@ thought.
   reviewed/redacted bundles as the remote boundary, a mandatory privacy
   manifest, chromeless UI, plugin-contributed context, a Slidey narrative report
   deck, and a generic sink contract for the parallel GitHub agent.
-- [`dynamic-workflows.md`](dynamic-workflows.md) — **epic.** Let an operator ask
-  Kitsoki to synthesize a temporary YAML story workflow, validate it before
-  launch, execute it through the normal engine with trace/runstatus visibility,
-  then promote the proven run into a reusable story plus starter flow fixtures
-  and host cassettes. Four slices (0/4): draft package + validator
-  ([`dynamic-workflow-drafts.md`](dynamic-workflow-drafts.md)), authoring
-  surfaces ([`dynamic-workflow-authoring-surfaces.md`](dynamic-workflow-authoring-surfaces.md)),
-  tracking URLs/receipts ([`dynamic-workflow-tracking.md`](dynamic-workflow-tracking.md)),
-  and promotion/export ([`dynamic-workflow-promotion.md`](dynamic-workflow-promotion.md)).
 - [`top10-gpt55-dogfood-ingestion.md`](top10-gpt55-dogfood-ingestion.md)
   — **epic.** Drive the current top-10 backlog through Kitsoki Studio MCP with
   the right story entrypoint per item, real human-like operator turns,

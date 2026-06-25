@@ -14,6 +14,9 @@
          walk from the home screen into a live session without losing its place. -->
     <TourButton />
     <TourOverlay />
+    <!-- Global dynamic-workflow surface: one launcher item, one modal, same
+         shared service as the CLI and MCP surfaces. -->
+    <WorkflowModal />
     <!-- Global inbox surface: badge launcher + panel + transient toast. Mounted
          once at the shell so the inbox follows the operator across every route. -->
     <InboxBadge />
@@ -38,6 +41,7 @@ import MetaButton from "./components/meta/MetaButton.vue";
 import MetaOverlay from "./components/meta/MetaOverlay.vue";
 import TourButton from "./components/tour/TourButton.vue";
 import TourOverlay from "./components/tour/TourOverlay.vue";
+import WorkflowModal from "./components/workflow/WorkflowModal.vue";
 import InboxBadge from "./components/InboxBadge.vue";
 import InboxPanel from "./components/InboxPanel.vue";
 import InboxToast from "./components/InboxToast.vue";

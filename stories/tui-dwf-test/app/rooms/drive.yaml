@@ -1,0 +1,126 @@
+states:
+  drive:
+    description: "Drive the target story through Studio MCP."
+    relevant_world: [current_item, drive_result, drive_job_id]
+    timeout:
+      after: "8m"
+      target: drive_timed_out
+    view:
+      - heading: "Punch-list · drive"
+      - kv:
+          pairs:
+            Item: '{{ world.current_item.id }}'
+            Story: '{{ world.current_item.story }}'
+            Mode: '{{ world.current_item.mode }}'
+            Trace: '{{ world.drive_result.trace_path|default:"(pending)" }}'
+            Status: '{{ world.drive_result.status|default:"driving" }}'
+            Job: '{{ world.drive_job_id|default:"(starting)" }}'
+      - prose: "The live driver uses Studio MCP and human phrasing. The result is only a handoff; verification decides pass/fail."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "skip", intent: skip_current, hint: "record this item as skipped and continue" }
+            - { label: "look", intent: look }
+    on_enter:
+      - set:
+          drive_result: {}
+          drive_status: ""
+          drive_trace_path: ""
+          drive_model: ""
+          drive_job_id: ""
+          drive_evidence_ok: false
+      - invoke: host.agent.task
+        id: "punch_drive-{{ world.current_item_id }}"
+        background: true
+        with:
+          agent: driver
+          acceptance:
+            schema: schemas/drive_result.json
+          context:
+            prompt: prompts/drive_item.md
+            args:
+              item: "{{ world.current_item }}"
+        bind:
+          drive_job_id: job_id
+        on_complete:
+          - set:
+              drive_result: "{{ world.last_job_result.submitted }}"
+              drive_status: "{{ world.last_job_result.submitted.status }}"
+              drive_trace_path: "{{ world.last_job_result.submitted.trace_path }}"
+              drive_model: "{{ world.last_job_result.submitted.model }}"
+          - when: "world.current_item.require_trace_model == true && (world.last_job_result.submitted.trace_path != world.current_item.trace_path || world.last_job_result.submitted.model != world.current_item.model)"
+            set:
+              last_error: "Drive did not provide required trace/model evidence for {{ world.current_item.id }} (wanted model {{ world.current_item.model }} and trace {{ world.current_item.trace_path }}, got model {{ world.last_job_result.submitted.model }} and trace {{ world.last_job_result.submitted.trace_path }})."
+          - when: "world.current_item.require_trace_model == true && (world.last_job_result.submitted.trace_path != world.current_item.trace_path || world.last_job_result.submitted.model != world.current_item.model)"
+            target: needs_human
+          - when: "world.last_job_result.submitted.status != 'passed'"
+            set:
+              last_error: "Drive ended {{ world.last_job_result.submitted.status }} for {{ world.current_item.id }}: {{ world.last_job_result.submitted.summary }}"
+          - when: "world.last_job_result.submitted.status != 'passed'"
+            target: needs_human
+          - when: "world.last_job_result.submitted.status == 'passed' && world.current_item.implementation_story != ''"
+            target: implementation
+          - when: "world.last_job_result.submitted.status == 'passed' && world.current_item.implementation_story == ''"
+            target: verify
+        on_error: needs_human
+    on:
+      skip_current:
+        - target: record
+          effects:
+            - set:
+                drive_result:
+                  status: "skipped"
+                  story: "{{ world.current_item.story }}"
+                  trace_path: "{{ world.current_item.trace_path }}"
+                  model: "{{ world.current_item.model }}"
+                  profile: "{{ world.current_item.profile }}"
+                  findings:
+                    - "Operator skipped the running drive job {{ world.drive_job_id }} before it returned a handoff."
+                  summary: "Operator skipped the running drive before handoff."
+                drive_status: "skipped"
+                drive_trace_path: "{{ world.current_item.trace_path }}"
+                drive_model: "{{ world.current_item.model }}"
+                verify_result: { status: "skipped", summary: "Operator skipped the running drive before handoff." }
+                verify_status: "skipped"
+      drive_done:
+        - when: "world.current_item.require_trace_model == true && (world.drive_trace_path != world.current_item.trace_path || world.drive_model != world.current_item.model)"
+          target: needs_human
+          effects:
+            - set:
+                last_error: "Drive did not provide required trace/model evidence for {{ world.current_item.id }} (wanted model {{ world.current_item.model }} and trace {{ world.current_item.trace_path }}, got model {{ world.drive_model }} and trace {{ world.drive_trace_path }})."
+        - when: "world.drive_status != 'passed'"
+          target: needs_human
+          effects:
+            - set:
+                last_error: "Drive ended {{ world.drive_status }} for {{ world.current_item.id }}: {{ world.drive_result.summary }}"
+        - when: "world.drive_status == 'passed' && world.current_item.implementation_story != ''"
+          target: implementation
+        - when: "world.drive_status == 'passed'"
+          target: verify
+      look:
+        - target: .
+  drive_timed_out:
+    description: "The target story drive exceeded the operator patience budget."
+    view:
+      - heading: "Punch-list · drive timed out"
+      - prose: "The live driver did not return a result before the punch-list timeout."
+    on_enter:
+      - set:
+          drive_result:
+            status: "partial"
+            story: "{{ world.current_item.story }}"
+            trace_path: "{{ world.current_item.trace_path }}"
+            model: "{{ world.current_item.model }}"
+            profile: "{{ world.current_item.profile }}"
+            findings:
+              - "Drive job {{ world.drive_job_id }} exceeded the 8 minute punch-list timeout before returning a handoff."
+            summary: "Timed out waiting for the live driver handoff."
+          drive_status: "partial"
+          drive_trace_path: "{{ world.current_item.trace_path }}"
+          drive_model: "{{ world.current_item.model }}"
+          last_error: "Drive timed out for {{ world.current_item.id }} after 8 minutes without returning a handoff."
+      - emit_intent: drive_timeout
+    on:
+      drive_timeout:
+        - target: needs_human

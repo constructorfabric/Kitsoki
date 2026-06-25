@@ -119,6 +119,10 @@ A single session view lives at `/s/:sessionId`
 `/s/:sessionId/chat`. The live-source client (`data/live-source.ts`) is
 initialised with the route's `session_id` and sends it on every RPC.
 
+The meta menu also includes a **Dynamic workflows** launcher. It opens a modal
+that creates, validates, launches, exports, and refreshes workflow receipts
+through the same runstatus RPCs the CLI and MCP surfaces use.
+
 ---
 
 ## The session view

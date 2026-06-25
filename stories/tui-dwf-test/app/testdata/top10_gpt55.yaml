@@ -1,0 +1,125 @@
+version: punch-list/v1
+defaults:
+  harness: live
+  profile: codex-native
+  model: gpt-5.5
+  trace_root: .artifacts/top10-dogfood/traces
+  require_trace_model: true
+items:
+  - id: load-bug
+    title: Fix imported bf default expression load failure
+    priority: 1
+    story: stories/kitsoki-dev/app.yaml
+    mode: drive
+    prompt: "Start from the dogfood hub and reproduce the imported bf default-expression load failure."
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: "Apply the smallest runtime/story fix for the imported bf default-expression load failure."
+    verify:
+      - kind: story_validate
+        story: stories/kitsoki-dev/app.yaml
+
+  - id: capability-taxonomy
+    title: Design the agent capability effect taxonomy
+    priority: 2
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: "Drive the design pipeline for an agent capability effect taxonomy."
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: "Implement the accepted runtime vocabulary slice with a deterministic loader/agent gate."
+    verify:
+      - kind: story_validate
+        story: stories/dev-story/app.yaml
+
+  - id: toolbox-enforcement
+    title: Wire toolbox and enforcement policy
+    priority: 3
+    story: stories/cherny-loop/app.yaml
+    mode: drive
+    prompt: "Implement toolbox and enforcement wiring with Codex/GPT-5.5 and a focused runtime gate."
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: "Add the enforcement wiring and prove it with targeted host/agent policy checks."
+    verify:
+      - kind: story_validate
+        story: stories/cherny-loop/app.yaml
+
+  - id: cassette-conformance
+    title: Add strict cassette and toolbox conformance linting
+    priority: 4
+    story: stories/cherny-loop/app.yaml
+    mode: drive
+    prompt: "Build strict cassette/toolbox conformance linting and expose the result to eval consumers."
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: "Implement the conformance lint path and wire model-harness-eval evidence."
+    verify:
+      - kind: story_validate
+        story: stories/model-harness-eval/app.yaml
+
+  - id: project-init-hardening
+    title: Harden project-init onboarding
+    priority: 5
+    story: stories/dev-story/app.yaml
+    mode: drive
+    prompt: "Drive project-init onboarding as a new operator and capture the hardening gaps."
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: "Apply the project-init hardening found by the onboarding drive."
+    verify:
+      - kind: story_validate
+        story: stories/dev-story/app.yaml
+
+  - id: session-mining-productization
+    title: Productize session-mining workflow
+    priority: 6
+    story: stories/dev-story-mining/app.yaml
+    mode: drive
+    prompt: "Drive transcript/source selection through the mining workflow and capture product gaps."
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: "Harden the mining workflow and fixtures for the reusable product path."
+    verify:
+      - kind: story_validate
+        story: stories/dev-story-mining/app.yaml
+
+  - id: deliver-decomposition-decision
+    title: Resolve deliver versus work-decomposition
+    priority: 7
+    story: stories/deliver/app.yaml
+    mode: drive
+    prompt: "Drive deliver over an accepted proposal and compare it against the work-decomposition needs."
+    verify:
+      - kind: story_validate
+        story: stories/deliver/app.yaml
+
+  - id: contextual-routing-controls
+    title: Add contextual routing operator controls
+    priority: 8
+    story: stories/routing-demo/app.yaml
+    mode: drive
+    prompt: "Drive ambiguous operator phrases through routing-demo and identify the controls needed in the hub."
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: "Implement the base contextual routing controls and deterministic routing fixtures."
+    verify:
+      - kind: story_validate
+        story: stories/routing-demo/app.yaml
+
+  - id: multi-hop-routing
+    title: Build multi-hop contextual routing
+    priority: 9
+    story: stories/kitsoki-dev/app.yaml
+    mode: drive
+    prompt: "Drive realistic cross-room hub requests and capture the route-plan gaps before implementation."
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: "Implement multi-hop route planning only after the base controls are observable and correct."
+    verify:
+      - kind: story_validate
+        story: stories/kitsoki-dev/app.yaml
+
+  - id: story-qa-workflow
+    title: Productize story-qa skill workflow
+    priority: 10
+    story: stories/dogfood-marathon/app.yaml
+    mode: drive
+    prompt: "Drive a small QA backlog through dogfood-marathon and capture story/runtime/MCP gaps."
+    implementation_story: stories/cherny-loop/app.yaml
+    implementation_prompt: "Turn the QA findings into a reusable story-qa workflow and no-LLM checks."
+    verify:
+      - kind: story_validate
+        story: stories/dogfood-marathon/app.yaml
