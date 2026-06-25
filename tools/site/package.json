@@ -4,9 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "pnpm run stage",
     "dev": "vitepress dev",
+    "prebuild": "pnpm run stage",
     "build": "vitepress build",
     "preview": "vitepress preview",
+    "stage": "pnpm stage:docs && pnpm stage:media",
     "stage:docs": "node scripts/stage-docs.mjs",
     "stage:media": "node scripts/stage-media.mjs",
     "check:leaks": "node scripts/check-leaks.mjs"

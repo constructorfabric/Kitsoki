@@ -33,7 +33,7 @@ function localizedThemeConfig(locale: LocaleCode) {
     },
     nav: [
       { text: info.text.nav.features, link: prefixed(locale, "/features/") },
-      { text: info.text.nav.guide, link: "/guide/getting-started" },
+      { text: info.text.nav.guide, link: "/guide/" },
     ],
     sidebar: {
       [prefixed(locale, "/features/")]: featuresSidebar(locale),
@@ -97,6 +97,18 @@ export default defineConfig({
     // kitsoki prompt templates use ```pongo fences (Pongo2 = Django/Twig-style).
     languageAlias: { pongo: "twig" },
     config(md) {
+      const origFence =
+        md.renderer.rules.fence ??
+        ((tokens, idx, opts, _env, self) => self.renderToken(tokens, idx, opts));
+      md.renderer.rules.fence = (tokens, idx, opts, env, self) => {
+        if (env?.relativePath?.startsWith("guide/")) {
+          const token = tokens[idx];
+          const lang = token.info.trim().split(/\s+/)[0] || "text";
+          return `<pre v-pre class="language-${md.utils.escapeHtml(lang)}"><code>${md.utils.escapeHtml(token.content)}</code></pre>`;
+        }
+        return origFence(tokens, idx, opts, env, self);
+      };
+
       // kitsoki docs are full of Pongo2 `{{ ... }}` / `{% ... %}` markers in
       // INLINE code spans; VitePress only v-pre's fenced blocks by default, so
       // Vue would parse those as interpolations and fail the build. Force

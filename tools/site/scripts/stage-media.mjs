@@ -27,7 +27,7 @@ const indexPath = path.join(siteDir, ".vitepress", "gen", "features-index.json")
 
 const embedded = process.argv.includes("--variant")
   ? process.argv[process.argv.indexOf("--variant") + 1] === "embedded"
-  : false;
+  : process.env.SITE_VARIANT === "embedded";
 
 if (!fs.existsSync(indexPath)) {
   console.error(`stage-media: ${path.relative(repoRoot, indexPath)} missing — run: make site-data`);

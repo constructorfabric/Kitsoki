@@ -498,7 +498,6 @@ site-data:
 
 site: site-data
 	cd $(SITE_DIR) && pnpm install --frozen-lockfile --silent
-	cd $(SITE_DIR) && pnpm stage:docs && pnpm stage:media
 	cd $(SITE_DIR) && SITE_BASE=$(SITE_BASE) pnpm build
 	node $(SITE_DIR)/scripts/check-leaks.mjs $(SITE_DIR)/.vitepress/dist
 	@echo "site built -> $(SITE_DIR)/.vitepress/dist"
@@ -506,7 +505,7 @@ site: site-data
 # site-dev runs the VitePress HMR dev server (docs iterate instantly; media —
 # videos/posters — reflect whatever `make demos` has recorded so far).
 site-dev: site-data
-	cd $(SITE_DIR) && pnpm install --frozen-lockfile --silent && pnpm stage:docs && pnpm stage:media && pnpm dev
+	cd $(SITE_DIR) && pnpm install --frozen-lockfile --silent && pnpm dev
 
 # site-embed builds the EMBEDDED variant (base /help/, posters only — no MP4s
 # in the binary) and stages it into internal/helpdocs/assets/ so the next
@@ -515,7 +514,6 @@ HELPDOCS_ASSETS := internal/helpdocs/assets
 .PHONY: site-embed
 site-embed: site-data
 	cd $(SITE_DIR) && pnpm install --frozen-lockfile --silent
-	cd $(SITE_DIR) && pnpm stage:docs && pnpm stage:media --variant embedded
 	cd $(SITE_DIR) && SITE_BASE=/help/ SITE_VARIANT=embedded pnpm build
 	node $(SITE_DIR)/scripts/check-leaks.mjs $(SITE_DIR)/.vitepress/dist-embedded --embedded
 	find $(HELPDOCS_ASSETS) -mindepth 1 ! -name .gitkeep -delete

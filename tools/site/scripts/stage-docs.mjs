@@ -66,6 +66,61 @@ function rewriteLinks(content, repoFile, siteFile, map) {
   });
 }
 
+function escapeRawHtmlPlaceholders(content) {
+  let fenced = false;
+  return content
+    .split("\n")
+    .map((line) => {
+      if (/^\s*(```|~~~)/.test(line)) {
+        fenced = !fenced;
+        return line;
+      }
+      if (fenced) return line;
+      return line.replace(/</g, "&lt;").replace(/&lt;\/?([A-Za-z][^>\n]{0,80})>/g, (m, inner) => {
+        if (/^[a-z][a-z0-9+.-]*:/i.test(inner)) return m;
+        return m.replace(/>/g, "&gt;");
+      });
+    })
+    .join("\n");
+}
+
+function addVPreFrontmatter(content) {
+  if (!content.startsWith("---\n")) {
+    return `---\nv-pre: true\n---\n\n${content}`;
+  }
+  const end = content.indexOf("\n---", 4);
+  if (end === -1) {
+    return `---\nv-pre: true\n---\n\n${content}`;
+  }
+  const frontmatter = content.slice(4, end);
+  if (/^v-pre:/m.test(frontmatter)) return content;
+  return `---\nv-pre: true\n${frontmatter}${content.slice(end)}`;
+}
+
+function wrapVPreContainer(content) {
+  if (!content.startsWith("---\n")) return `::: v-pre\n${content}\n:::\n`;
+  const end = content.indexOf("\n---", 4);
+  if (end === -1) return `::: v-pre\n${content}\n:::\n`;
+  const closeEnd = end + "\n---".length;
+  const afterClose = content[closeEnd] === "\n" ? closeEnd + 1 : closeEnd;
+  return `${content.slice(0, afterClose)}\n::: v-pre\n${content.slice(afterClose)}\n:::\n`;
+}
+
+function fencedCodeToIndented(content) {
+  const lines = content.split("\n");
+  const out = [];
+  let fenced = false;
+  for (const line of lines) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      out.push("");
+      continue;
+    }
+    out.push(fenced ? `    ${line}` : line);
+  }
+  return out.join("\n");
+}
+
 fs.rmSync(guideDir, { recursive: true, force: true });
 const map = expand();
 let staged = 0;
@@ -73,7 +128,10 @@ for (const [from, to] of map) {
   const content = fs.readFileSync(path.join(repoRoot, from), "utf8");
   const out = path.join(srcDir, to);
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, rewriteLinks(content, from, to, map));
+  fs.writeFileSync(
+    out,
+    wrapVPreContainer(addVPreFrontmatter(fencedCodeToIndented(escapeRawHtmlPlaceholders(rewriteLinks(content, from, to, map))))),
+  );
   staged++;
 }
 console.log(`stage-docs: staged ${staged} doc(s) -> ${path.relative(repoRoot, guideDir)}`);
