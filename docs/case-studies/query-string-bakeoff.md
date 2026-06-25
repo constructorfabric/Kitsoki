@@ -109,6 +109,37 @@ It is excluded from `make test` (the `qsbakeoff` build tag) and skips cleanly if
     --- PASS: .../qs3     (1.95s)   RED@baseline, GREEN@real-fix
 ```
 
+## Results — GPT-5.5 through the pipeline, 3 / 3 solved
+
+A real live run drove the seven-room `bugfix` pipeline against each baseline
+worktree under the **`codex-native` profile (GPT-5.5)** — headless, through the
+studio MCP via [`tools/mcp-drive`](../../tools/mcp-drive/README.md). The fix is
+generated entirely by GPT-5.5 inside the session; the orchestrator only advances
+the pipeline.
+
+| bug | verdict | GPT-5.5's fix (`base.js`) | matches real fix? |
+|-----|---------|---------------------------|-------------------|
+| qs1 | **solved** (oracle + suite green) | drop the `isEncodedArray` heuristic; split only on literal separators (`717c863`, 1+/3−) | ✅ same approach as `ec67fea` |
+| qs2 | **solved** | coerce a single comma value to the declared typed array (`1452aa7`, 12+/1−) | ✅ same as `3e61882` |
+| qs3 | **solved** | decode then split the bracket-separator value (`c29258a`, 11+/3−) | ✅ same as `19c43d4` |
+
+All three pass the hidden oracle **and** the full AVA suite — the pipeline ran
+the suite, saw the pre-existing test a correct fix legitimately breaks, and
+updated it (the `solved` vs `partial` quality lever, realised). GPT-5.5 also
+converged on the **same root-cause fix the maintainers shipped** in every case.
+
+**Cost.** Codex traces carry no per-call price (ChatGPT-subscription auth); token
+usage is ~1.2M in / ~11K out per cell. Metered providers expose authoritative
+cost in the trace (`payload.meta.cost_usd`).
+
+**GLM-5.2: pending.** The synthetic subscription was rate-limited at run time
+(verified by a direct probe — *"exceeded your subscription rate limits"*), so the
+worker calls 429'd at dispatch. Its cells are withheld rather than reported as a
+capability result; they land once the throttle clears.
+
+Durable results: [`tools/bugfix-bakeoff/external/results/`](../../tools/bugfix-bakeoff/external/results).
+Narrated deck: [`docs/decks/query-string-bakeoff.slidey.html`](../decks/query-string-bakeoff.slidey.html).
+
 ## The cost comparison (operator-run)
 
 The scaffold above is free and deterministic. The **cost** number — *what would
