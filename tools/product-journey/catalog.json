@@ -18,18 +18,20 @@
       "label": "postgresql/postgresql",
       "stack": "c",
       "local_repo_env": "POSTGRESQL_REPO",
+      "local_repo_path": "/Users/brad/code/postgresql",
       "run_mode": "planned",
       "status": "planned",
-      "notes": "Perspective check required: onboarding + at least one hidden-oracle-based journey scenario pending."
+      "notes": "Perspective check required: onboarding + at least one hidden-oracle-based journey scenario pending. Local checkout now exists under ~/code."
     },
     {
       "id": "kubernetes",
       "label": "kubernetes/kubernetes",
       "stack": "go",
       "local_repo_env": "KUBERNETES_REPO",
+      "local_repo_path": "/Users/brad/code/kubernetes",
       "run_mode": "planned",
       "status": "planned",
-      "notes": "Perspective check required: project-size and CI-profile constraints not yet modeled in runner catalog."
+      "notes": "Perspective check required: project-size and CI-profile constraints not yet modeled in runner catalog. Local checkout now exists under ~/code."
     }
   ],
   "perspectives": [

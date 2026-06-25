@@ -21,7 +21,7 @@
             "type": "cards",
             "variant": "grid",
             "title": "Pilot state",
-            "narration": "The first milestone is runnable from local checkout: one entrypoint and explicit project catalog.",
+            "narration": "The first milestone is runnable from local checkout: one entrypoint, explicit project catalog, and real local corpora for the planned lanes.",
             "hold": 1700,
             "cards": [
                 {
@@ -41,7 +41,7 @@
                 },
                 {
                     "label": "Perspectives",
-                    "sub": "postgresql and kubernetes added as planned follow-up lanes",
+                    "sub": "postgresql and kubernetes cloned under ~/code and tracked as planned follow-up lanes",
                     "style": "default"
                 }
             ]
@@ -74,14 +74,14 @@
                     "cells": [
                         "postgresql",
                         "planned",
-                        "define manifest + deterministic scoring/oracle contract"
+                        "local checkout exists under ~/code; define manifest + deterministic scoring/oracle contract"
                     ]
                 },
                 {
                     "cells": [
                         "kubernetes",
                         "planned",
-                        "define size/CI constraints + manifest + perspective test harness"
+                        "local checkout exists under ~/code; define size/CI constraints + manifest + perspective test harness"
                     ]
                 }
             ],
@@ -136,8 +136,8 @@
             "type": "narrative",
             "eyebrow": "Current run",
             "lede": "Execution status",
-            "body": "Ran the harness path locally: `python3 tools/product-journey/run.py` plus `--project gears-rust --mode check` with `GEARS_RUST_REPO` set, and the runner now validates gears-rust through a no-local temp clone. PostgreSQL and Kubernetes remain planned because no local corpora exist for them in this checkout. The separate `tools/story-qa/run.py` wrapper now mirrors that same status and writes a transient report under `.context/`.",
-            "narration": "The deck stays reviewable even when some project corpora are not present locally; those gaps are surfaced as explicit plan items instead of silent successes.",
+            "body": "Ran the harness path locally: `python3 tools/product-journey/run.py` plus `--project gears-rust --mode check` with `GEARS_RUST_REPO` set, and the runner now validates gears-rust through a no-local temp clone. PostgreSQL and Kubernetes are now cloned under `~/code`, so the runner and `tools/story-qa/run.py` can report those real local checkouts instead of abstract placeholders; they still remain planned until a corpus/manifest contract exists. The story-qa wrapper writes a transient report under `.context/`.",
+            "narration": "The deck stays reviewable even when some project corpora are not yet instrumented; those gaps are surfaced as explicit plan items instead of silent successes.",
             "hold": 2200
         }
     ]

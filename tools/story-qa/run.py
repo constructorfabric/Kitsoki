@@ -93,7 +93,12 @@ def run(project: str) -> list[str]:
             if output.strip():
                 lines.extend(f"    {line}" for line in output.strip().splitlines())
             continue
-        lines.append(f"  verify: planned (needs a local {pid} checkout/corpus)")
+        local_path = target.get("local_repo_path", "")
+        if local_path and Path(local_path).exists():
+            lines.append(f"  local checkout: {local_path}")
+            lines.append("  verify: available (local checkout present; corpus wiring pending)")
+        else:
+            lines.append(f"  verify: planned (needs a local {pid} checkout/corpus)")
 
     write_report(lines)
     return lines

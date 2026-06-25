@@ -147,8 +147,12 @@ def run_project_check(project):
 
     local_repo_env = project.get("local_repo_env", "")
     local_repo_path = os.environ.get(local_repo_env, "") if local_repo_env else ""
+    if not local_repo_path:
+        local_repo_path = project.get("local_repo_path", "")
     if project.get("local_repo_env"):
         checks.append(f"Local repo env: {local_repo_env}")
+    if local_repo_path:
+        checks.append(f"Local checkout: {local_repo_path}")
 
     run_command = project.get("run_command", default_check_command)
     if "<path>" in run_command:
@@ -177,6 +181,9 @@ def run_project_check(project):
             **verify_report,
             "next": checks,
         }
+
+    if project.get("status") == "planned" and local_repo_path and Path(local_repo_path).exists():
+        checks.append("Local checkout present; corpus/manifests still pending.")
 
     return {
         "status": "ready",
