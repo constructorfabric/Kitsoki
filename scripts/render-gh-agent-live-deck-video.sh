@@ -27,6 +27,9 @@ Options:
 The command runs:
   slidey <deck.json> --validate
   slidey <deck.json> <deck.mp4>
+
+It also requires Slidey's <deck.mp4>.chapters.json sidecar for the final QA and
+proof verifier.
 EOF
 }
 
@@ -96,5 +99,26 @@ if [ ! -s "$OUT" ]; then
 	echo "Slidey render did not create a non-empty MP4 file: $OUT" >&2
 	exit 1
 fi
+
+CHAPTERS="$OUT.chapters.json"
+if [ ! -s "$CHAPTERS" ]; then
+	echo "Slidey render did not create a non-empty chapter sidecar: $CHAPTERS" >&2
+	exit 1
+fi
+node - "$CHAPTERS" <<'NODE'
+const fs = require("fs");
+const file = process.argv[2];
+let parsed;
+try {
+  parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch (err) {
+  console.error(`chapter sidecar is not valid JSON: ${file}: ${err.message}`);
+  process.exit(1);
+}
+if (!Array.isArray(parsed) || parsed.length < 8) {
+  console.error(`chapter sidecar should contain at least 8 chapters: ${file}`);
+  process.exit(1);
+}
+NODE
 
 echo "wrote $OUT"
