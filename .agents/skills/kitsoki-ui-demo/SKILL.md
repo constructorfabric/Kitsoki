@@ -260,6 +260,20 @@ conversation. `kitsoki-ui-qa` now **fails** a demo that breaks any of these
     Wrap EVERY turn in it: `reveal(action, settle, label)`. Fixed `dwell()`s
     between turns + the component's native snap is exactly what makes a demo
     "jumpy" — never record that way.
+  - **Already captured a snapped clip (rrweb)? Re-render it followable, don't
+    re-record.** A conversation clip captured WITHOUT the revealTurn discipline
+    (e.g. a trace-derived dogfood capture) bakes in the component's
+    snap-to-bottom scroll and reads as jumpy/unreadable — even though the
+    `rrweb-pacing-scan` (TIME) passes it, the QA `rrweb-scroll-scan` (SCROLL)
+    flags it `UNFOLLOWABLE`. `slidey rrweb-reveal <in> <out>` fixes it offline,
+    deterministically: it replaces each recorded snap with a hold + eased ramp
+    through the same scroll trajectory (the revealTurn choreography, synthesized
+    from the captured y-values — no browser, no geometry). Run it on the clip(s)
+    a deck embeds; the scroll-scan then reads them followable. It owns SCROLL;
+    `slidey rrweb-repace` owns TIME — run reveal first, repace after if any
+    content reveal is still rushed. This does NOT fix CONTENT defects (an
+    unnatural first utterance, a missing routing chip, questions shown
+    already-answered) — those still need a real re-drive/re-capture.
 - **No overlapping tour labels.** A coachmark/popover/tooltip must never sit on top
   of the chat. Dismiss any onboarding/tour overlay before driving, and keep
   spotlight popovers off the conversation.
