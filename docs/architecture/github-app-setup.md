@@ -159,6 +159,15 @@ scripts/collect-gh-agent-poc-evidence.sh \
   --remote-db
 ```
 
+For demo capture, turn that evidence note into the gated Playwright capture plan:
+
+```
+scripts/build-gh-agent-capture-plan.mjs --case bug-issue
+KITSOKI_GH_AGENT_LIVE_CAPTURE=1 \
+KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN=.artifacts/github-agent-live/capture-plan-bug-issue.json \
+pnpm -C tools/runstatus exec playwright test github-agent-live-capture --project=chromium
+```
+
 ## g. Production
 
 Identical under the **`constructorfabric`** org: create/install the same App
