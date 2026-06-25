@@ -120,6 +120,11 @@ func (srv *Server) registerSessionTools() {
 	}, srv.handleSessionTrace)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "session.close",
+		Description: "Close a driving session and release its trace-path exclusive lock so the same trace path can be reopened. {handle} → {ok, handle}. Without this, a stale live session squats its trace-path flock for the server-process lifetime and bricks any rerun on that path.",
+	}, srv.handleSessionClose)
+
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "render.tui",
 		Description: "Re-render a state as the slice-1 Frame {text, ansi, metadata} at any width. {handle | story_path+state+world?, cols?, rows?}. READ-ONLY: never advances a session.",
 	}, srv.handleRenderTUI)
@@ -904,6 +909,38 @@ func (srv *Server) handleSessionTrace(
 		filtered = filtered[len(filtered)-args.Limit:]
 	}
 	return nil, TraceResult{OK: true, Events: filtered, LastTurn: lastTurn}, nil
+}
+
+// ── session.close ─────────────────────────────────────────────────────────────
+
+// SessionCloseArgs is the input to session.close.
+type SessionCloseArgs struct {
+	Handle string `json:"handle"`
+}
+
+// SessionCloseOK is the session.close result.
+type SessionCloseOK struct {
+	OK     bool   `json:"ok"`
+	Handle string `json:"handle"`
+}
+
+// handleSessionClose closes a driving session, tearing down its runtime and
+// releasing the exclusive trace-path flock so the same trace path can be
+// reopened. Without this seam the lock is held for the whole server-process
+// lifetime and any reopen of the path fails the non-blocking flock.
+func (srv *Server) handleSessionClose(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args SessionCloseArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	if args.Handle == "" {
+		return buildToolError(ErrBadRequest, "session.close: handle is required"), nil, nil
+	}
+	if err := srv.sess.CloseSession(args.Handle); err != nil {
+		code, msg := AsToolError(err)
+		return buildToolError(code, msg), nil, nil
+	}
+	return nil, SessionCloseOK{OK: true, Handle: args.Handle}, nil
 }
 
 // ── render.tui ───────────────────────────────────────────────────────────────
