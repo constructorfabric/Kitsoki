@@ -759,7 +759,185 @@ EXAMPLES:
 	cmd.Flags().String("app", "", "restrict session resolution to this app's subdirectory (e.g. kitsoki-dev)")
 
 	cmd.AddCommand(traceToFlowCmd())
+	cmd.AddCommand(traceStatusCmd())
 	return cmd
+}
+
+// traceStatus is the one-shot snapshot scanTraceStatus distils from a trace.
+type traceStatus struct {
+	State       string    `json:"state"`
+	Turn        int64     `json:"turn"`
+	Events      int       `json:"events"`
+	Status      string    `json:"status,omitempty"`
+	Exit        string    `json:"exit,omitempty"`
+	LastError   string    `json:"last_error,omitempty"`
+	SessionCost float64   `json:"session_cost_usd"`
+	LastTs      time.Time `json:"last_event_ts"`
+}
+
+// scanTraceStatus streams a JSONL trace and distils the CURRENT status: the last
+// event's state/turn/timestamp, and the latest world values (last_error,
+// session_cost_usd, status) folded from `world.update` events. Robust to a
+// partially-written trailing line (a LIVE trace another process is appending to)
+// — an unparseable line is skipped, so this works on an in-flight session.
+func scanTraceStatus(r io.Reader) traceStatus {
+	var st traceStatus
+	worldVals := map[string]any{}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 1<<20), 64<<20) // prompts/diffs make for big lines
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var e store.Event
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			continue // partial last line of a live trace, or a non-event line
+		}
+		st.Events++
+		if int64(e.Turn) > st.Turn {
+			st.Turn = int64(e.Turn)
+		}
+		if e.StatePath != "" {
+			st.State = string(e.StatePath)
+		}
+		if !e.Ts.IsZero() {
+			st.LastTs = e.Ts
+		}
+		// Fold world.update (store.EffectApplied) `set` maps into the running world.
+		if e.Kind == store.EffectApplied && len(e.Payload) > 0 {
+			var p struct {
+				Set map[string]any `json:"set"`
+			}
+			if json.Unmarshal(e.Payload, &p) == nil {
+				for k, v := range p.Set {
+					worldVals[k] = v
+				}
+			}
+		}
+	}
+	if v, ok := worldVals["last_error"].(string); ok {
+		st.LastError = v
+	}
+	if v, ok := worldVals["status"].(string); ok {
+		st.Status = v
+	}
+	if v, ok := worldVals["session_cost_usd"].(float64); ok {
+		st.SessionCost = v
+	}
+	if strings.Contains(st.State, "__exit__") {
+		st.Exit = st.State
+	}
+	return st
+}
+
+// traceStatusCmd implements `kitsoki trace status`: a one-shot, cross-process,
+// no-MCP status read of a (possibly in-flight) session from its trace file. This
+// is the supported way to check on a RUNNING job: the studio MCP serialises tool
+// calls per connection and sessions are per-process, so a second `session.status`
+// call cannot observe a job another connection/process is driving — but its trace
+// is on disk and this reads it directly.
+func traceStatusCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "status [path | session-id-substring]",
+		Short: "One-shot status of a (possibly in-flight) session — state, turn, error, cost, idle time",
+		Long: `Print the current status of a session from its JSONL trace: state, turn,
+exit/status, last_error, cumulative cost, and how long since the last event
+(the idle time — a large idle on a non-terminal state means the run is STUCK).
+
+It reads the trace FILE directly, so unlike a second 'session.status' MCP call it
+works on a LIVE session another connection/process is driving (the MCP server
+serialises calls per connection and sessions are per-process). A partially-written
+trailing line is skipped safely.
+
+Source resolution matches 'kitsoki trace' (newest session / --app / id-substring /
+exact path / -).`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			arg := ""
+			if len(args) == 1 {
+				arg = args[0]
+			}
+			appFilter, _ := cmd.Flags().GetString("app")
+			path, err := resolveTraceArg(store.SessionsDir(), arg, appFilter)
+			if err != nil {
+				return err
+			}
+			var r io.Reader
+			var modTime time.Time
+			if path == "-" {
+				r = os.Stdin
+			} else {
+				f, err := os.Open(path)
+				if err != nil {
+					return fmt.Errorf("open trace file: %w", err)
+				}
+				defer func() { _ = f.Close() }()
+				if fi, statErr := f.Stat(); statErr == nil {
+					modTime = fi.ModTime()
+				}
+				r = f
+			}
+			st := scanTraceStatus(r)
+			asJSON, _ := cmd.Flags().GetBool("json")
+			return printTraceStatus(cmd.OutOrStdout(), path, st, modTime, asJSON, time.Now())
+		},
+	}
+	cmd.Flags().Bool("json", false, "emit machine-readable JSON instead of the human summary")
+	cmd.Flags().String("app", "", "restrict session resolution to this app's subdirectory (e.g. kitsoki-dev)")
+	return cmd
+}
+
+// printTraceStatus renders a traceStatus. `now` is injected for testability. The
+// idle age uses the last event's Ts, falling back to the file mtime.
+func printTraceStatus(w io.Writer, path string, st traceStatus, modTime time.Time, asJSON bool, now time.Time) error {
+	ref := st.LastTs
+	if ref.IsZero() {
+		ref = modTime
+	}
+	idle := time.Duration(0)
+	if !ref.IsZero() {
+		idle = now.Sub(ref)
+		if idle < 0 {
+			idle = 0
+		}
+	}
+	terminal := st.Exit != "" || st.Status == "shipped" || st.Status == "done" ||
+		st.Status == "needs-human" || st.Status == "abandoned" || st.Status == "not-reproducible"
+	if asJSON {
+		out := struct {
+			traceStatus
+			Path        string `json:"path"`
+			IdleSeconds int    `json:"idle_seconds"`
+			Terminal    bool   `json:"terminal"`
+		}{traceStatus: st, Path: path, IdleSeconds: int(idle.Seconds()), Terminal: terminal}
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+	state := st.State
+	if state == "" {
+		state = "(unknown — no state-bearing event yet)"
+	}
+	fmt.Fprintf(w, "session  %s\n", filepath.Base(path))
+	fmt.Fprintf(w, "state    %s  (turn %d)\n", state, st.Turn)
+	if st.Status != "" {
+		fmt.Fprintf(w, "status   %s\n", st.Status)
+	}
+	if st.LastError != "" {
+		fmt.Fprintf(w, "error    %s\n", st.LastError)
+	}
+	if st.SessionCost > 0 {
+		fmt.Fprintf(w, "cost     $%.4f\n", st.SessionCost)
+	}
+	hint := ""
+	if !terminal && idle >= 5*time.Minute {
+		hint = "  ⚠ STALLED — no new events; the run may be stuck"
+	} else if terminal {
+		hint = "  ✓ terminal"
+	}
+	fmt.Fprintf(w, "events   %d  ·  last event %s ago%s\n", st.Events, idle.Round(time.Second), hint)
+	return nil
 }
 
 // traceToFlowCmd implements `kitsoki trace to-flow`: convert a recorded JSONL
