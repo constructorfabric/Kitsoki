@@ -29,7 +29,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -154,6 +156,64 @@ func probeServer(t *testing.T) *Server {
 	return NewServer(NewStudioSession(func(mode HarnessMode, rec, _ string) (harness.Harness, error) {
 		return harness.NewReplay(rec)
 	}))
+}
+
+type blockingHarness struct {
+	cancelled chan struct{}
+	once      sync.Once
+}
+
+func (h *blockingHarness) RunTurn(ctx context.Context, _ harness.TurnInput) (mcpsdk.CallToolParams, error) {
+	<-ctx.Done()
+	h.once.Do(func() { close(h.cancelled) })
+	return mcpsdk.CallToolParams{}, ctx.Err()
+}
+
+func (h *blockingHarness) Close() error { return nil }
+
+func TestStudioOperatorAsk_FallbackCancelsPreParkTimeout(t *testing.T) {
+	h := &blockingHarness{cancelled: make(chan struct{})}
+	srv := NewServer(NewStudioSession(func(mode HarnessMode, _, _ string) (harness.Harness, error) {
+		require.Equal(t, HarnessLive, mode)
+		return h, nil
+	}))
+	dir := t.TempDir()
+	storyPath := filepath.Join(dir, "app.yaml")
+	require.NoError(t, os.WriteFile(storyPath, []byte(`
+app:
+  id: cancellation-probe
+  version: 0.1.0
+intents:
+  done:
+    title: Done
+    examples: ["done"]
+root: idle
+states:
+  idle:
+    view: idle
+    on:
+      done:
+        - target: idle
+`), 0o644))
+	sh, err := srv.sess.OpenDrivingSession(context.Background(), OpenDrivingSessionParams{
+		Mode:      HarnessLive,
+		StoryPath: storyPath,
+		TracePath: filepath.Join(t.TempDir(), "trace.jsonl"),
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	_, _, turnDone, err := sh.Runtime.driveSuspendable(ctx, "route slowly", 100, 30)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.False(t, turnDone)
+	require.Nil(t, sh.Runtime.inFlight, "a pre-park timeout must not leave the handle awaiting an answer")
+
+	select {
+	case <-h.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("driveSuspendable did not cancel the underlying turn after the MCP call timed out")
+	}
 }
 
 // ── 2.2 fallback protocol: drive → awaiting_operator → session.answer → outcome ─

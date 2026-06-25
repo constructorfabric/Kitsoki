@@ -21,6 +21,7 @@ states:
           effects:
             - set:
                 verify_result: { status: "skipped", summary: "{{ world.last_error }}" }
+                verify_status: "skipped"
       quit:
         - target: "@exit:needs-human"
       look:

@@ -4,7 +4,7 @@ states:
     relevant_world: [manifest_path, punch_items, load_error]
     view:
       - heading: "Punch-list · load"
-      - prose: "Manifest: {{ world.manifest_path }}"
+      - prose: "Manifest: {{ world.manifest_path ?? '(pending)' }}"
       - prose: "Loaded {{ world.item_count|default:'(pending)' }} item(s)."
         when: "(world.load_error ?? '') == ''"
       - prose: "Load error: {{ world.load_error ?? '(pending)' }}"
@@ -30,6 +30,7 @@ states:
         bind:
           punch_items: "stdout_json.items"
           item_count: "stdout_json.item_count"
+          manifest_path: "stdout_json.manifest_path"
           state_path: "stdout_json.state_path"
           load_error: "stdout_json.error"
         on_error: needs_human

@@ -1037,6 +1037,12 @@ intents:
     title: "Pick Ticket"
     description: "Pick a ticket from the current results and start working on it."
     examples: ["pick TKT-001", "select 1", "pick 2", "open this ticket"]
+    synonyms:
+      - "pick {n}"
+      - "select {n}"
+      - "choose {n}"
+      - "pick row {n}"
+      - "select row {n}"
     priority: 95
     slots:
       id:

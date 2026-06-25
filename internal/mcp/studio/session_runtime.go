@@ -474,8 +474,12 @@ func (rt *sessionRuntime) driveSuspendable(ctx context.Context, input string, co
 
 	// The turn goroutine owns rt.model mutation; it runs to completion (possibly
 	// across several park/answer cycles) before finish() unblocks a waiter, so no
-	// handler touches rt.model while the goroutine is live.
-	turnCtx := host.WithOperatorPrompter(context.WithoutCancel(ctx), prompter)
+	// handler touches rt.model while the goroutine is live. The turn is detached
+	// from the MCP request only after it parks on an operator question; if the
+	// request times out before any result/question, cancel the hidden turn rather
+	// than leaving it to mutate the session later.
+	turnBase, cancelTurn := context.WithCancel(context.WithoutCancel(ctx))
+	turnCtx := host.WithOperatorPrompter(turnBase, prompter)
 	turnCtx = host.WithKitsokiSessionID(turnCtx, string(rt.sid))
 	go func() {
 		out, frame := rt.drive(turnCtx, input, cols, rows)
@@ -484,8 +488,11 @@ func (rt *sessionRuntime) driveSuspendable(ctx context.Context, input string, co
 
 	r, q, werr := broker.waitNext(ctx)
 	if werr != nil {
-		// The drive ctx was cancelled before a result/question. The turn goroutine
-		// still owns turnCtx (uncancelled) and will fall through on its own timeout.
+		cancelTurn()
+		rt.inFlight = nil
+		// The drive ctx was cancelled before a result/question; cancel the turn
+		// context too so a timed-out MCP call does not keep writing late trace/model
+		// updates behind the client's back.
 		return turnResult{}, nil, false, werr
 	}
 	if q != nil {

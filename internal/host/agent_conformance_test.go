@@ -303,6 +303,16 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 		if !hasFlagValue(inv.Args, "-C", wd) {
 			t.Errorf("codex missing -C %s; args=%v", wd, inv.Args)
 		}
+		readOnly := codexBackend{}.TranslateInvocation([]string{
+			"-p", "--permission-mode", "default", "--disallowedTools", "Write,Edit,Bash,AskUserQuestion",
+		}, "read only", wd)
+		readOnlyArgs := strings.Join(readOnly.Args, " ")
+		if !hasFlagValue(readOnly.Args, "--sandbox", "read-only") {
+			t.Errorf("codex read-only invocation must pass --sandbox read-only; args=%v", readOnly.Args)
+		}
+		if strings.Contains(readOnlyArgs, "--dangerously-bypass-approvals-and-sandbox") {
+			t.Errorf("codex read-only invocation must not bypass approvals/sandbox; args=%v", readOnly.Args)
+		}
 		// MCP config converted to `-c mcp_servers.*` overrides.
 		mustContain(t, got, `mcp_servers.kitsoki-validator.command="/bin/kitsoki"`)
 		mustContain(t, got, `mcp_servers.kitsoki-validator.args=["mcp-validator","--schema","/tmp/s.json"]`)

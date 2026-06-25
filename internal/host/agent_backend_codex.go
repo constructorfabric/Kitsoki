@@ -8,11 +8,13 @@
 //
 //   - the prompt is read from stdin (codex `exec` reads the instructions from
 //     stdin when no positional prompt is given) — same delivery as claude;
-//   - there is no permission flag, and `codex exec` auto-cancels every MCP tool
-//     call unless its approval+sandbox gate is disabled, so we run with
-//     `--dangerously-bypass-approvals-and-sandbox` — the only way the validator
+//   - codex does not accept Claude's allowed/disallowed tool flags. Calls that
+//     carry a mutator deny-list preserve the story's read-only posture via
+//     `--sandbox read-only`; other calls still use
+//     `--dangerously-bypass-approvals-and-sandbox`, the only way the validator
 //     submit tool can execute (verified live; see TranslateInvocation). This is
-//     why `--agent codex` requires a trusted/externally-sandboxed environment;
+//     why write-capable `--agent codex` paths require a trusted/externally
+//     sandboxed environment;
 //   - MCP config is not a file flag: the --mcp-config JSON is read and each
 //     server is converted to codex `-c mcp_servers.<name>.{command,args,env}`
 //     TOML config overrides;
@@ -30,8 +32,9 @@
 //
 // Flags claude understands but codex does not (--permission-mode,
 // --setting-sources, --effort, --exclude-dynamic-system-prompt-sections,
-// --no-session-persistence, --verbose, --allowedTools, --disallowedTools,
-// --output-format) are dropped during translation.
+// --no-session-persistence, --verbose, --allowedTools, --output-format) are
+// dropped during translation. --disallowedTools is interpreted only to select
+// Codex's sandbox for read-only story agents.
 package host
 
 import (
@@ -80,6 +83,7 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 		mcpConfig    string
 		sessionID    string // --session-id (first call) — codex has no equivalent
 		resumeID     string // --resume <id> → `exec resume <id>`
+		readOnly     bool
 	)
 
 	// Split a "--flag=value" element into ("--flag","value"); leave others.
@@ -114,9 +118,14 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 			// "impossible" (validator submit never ran). codex registers the
 			// validator MCP via the `-c mcp_servers.*` overrides below instead.
 		case "--permission-mode", "--setting-sources", "--effort",
-			"--allowedTools", "--disallowedTools":
+			"--allowedTools":
 			// Dropped along with their value. (Tool-scoping is a parity gap;
 			// codex runs with the bypass flag set below.)
+		case "--disallowedTools":
+			// Codex has no direct equivalent, but a read-only story agent reaches
+			// here with Write/Edit/Bash disallowed. Preserve that posture by
+			// selecting codex's read-only sandbox instead of bypassing all gates.
+			readOnly = readOnly || codexDisallowsMutators(val)
 		case "--output-format":
 			// Always normalized to codex's --json below.
 		case "--session-id":
@@ -158,9 +167,10 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 	if id := strings.TrimSpace(resumeID); id != "" {
 		args = append(args, "resume", id)
 	}
-	args = append(args,
-		"--json",
-		"--skip-git-repo-check",
+	args = append(args, "--json", "--skip-git-repo-check")
+	if readOnly {
+		args = append(args, "--sandbox", "read-only")
+	} else {
 		// `codex exec` auto-cancels EVERY MCP tool call ("user cancelled MCP
 		// tool call") in non-interactive mode — verified live (2026-06-11)
 		// against codex-cli 0.139.0 across approval_policy="never", every
@@ -169,11 +179,11 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 		// validator `submit` tool actually execute is to disable codex's
 		// approval+sandbox gate. Since the MCP-submit path is load-bearing for
 		// parity (schema validation + nudge/abandonment recovery + post_cmd
-		// verifiers), we run codex with the bypass flag. This is safe ONLY when
-		// kitsoki runs codex in a trusted/externally-sandboxed context; the
-		// operator opts in by selecting `--agent codex`.
-		"--dangerously-bypass-approvals-and-sandbox",
-	)
+		// verifiers), we run codex with the bypass flag for non-read-only calls.
+		// Read-only story agents preserve their declared posture with
+		// `--sandbox read-only` above.
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+	}
 
 	// Forward the model ONLY when it is not a claude model id (reuse the shared
 	// helper). Stories/router specify claude model names; passing those to codex
@@ -213,6 +223,16 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 	}
 
 	return Invocation{Args: args, Stdin: prompt, WorkingDir: workingDir}
+}
+
+func codexDisallowsMutators(csv string) bool {
+	for _, raw := range strings.Split(csv, ",") {
+		switch strings.TrimSpace(raw) {
+		case "Write", "Edit", "Bash":
+			return true
+		}
+	}
+	return false
 }
 
 // codexMCPConfigArgs reads a claude-shaped --mcp-config JSON file
