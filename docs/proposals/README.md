@@ -183,10 +183,9 @@ thought.
   `external_side_effect` remains the real vocabulary. Decomposed into three
   runtime slices + a conformance check:
   - [`effect-taxonomy.md`](effect-taxonomy.md) (runtime) — the classification
-    substrate: `effect`/`deterministic` plus operator/spend/delegate facets on
-    host calls, MCP tools, **and** agents, replacing `external_side_effect`; a
-    load-time hard-fail for a read-only call holding a mutator. (Modelled on
-    Acronis DTS's `deterministic_behavior` enum.)
+    substrate: `effect`/`deterministic` on host calls **and** agents, replacing
+    `external_side_effect`; a load-time hard-fail for a read-only call holding a
+    mutator. (Modelled on Acronis DTS's `deterministic_behavior` enum.)
   - [`toolbox-and-enforcement.md`](toolbox-and-enforcement.md) (runtime) —
     named `toolboxes:` + `tools_add:`; one effect-derived tool-layer policy for
     all four agent kinds, collapsing the `mutationTools` deny, the converse
