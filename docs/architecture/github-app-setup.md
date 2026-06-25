@@ -128,15 +128,19 @@ The script performs:
 ```
 GOOS=linux GOARCH=amd64 GOCACHE=/private/tmp/kitsoki-gocache \
   go build -o /private/tmp/kitsoki-ghagent ./cmd/kitsoki
-scp /private/tmp/kitsoki-ghagent root@206.189.84.218:/usr/local/bin/kitsoki
+scp /private/tmp/kitsoki-ghagent root@206.189.84.218:/tmp/kitsoki-ghagent.<pid>
+ssh root@206.189.84.218 "sha256sum /tmp/kitsoki-ghagent.<pid> | awk '{print \$1}'"
+ssh root@206.189.84.218 "install -m 755 /tmp/kitsoki-ghagent.<pid> /usr/local/bin/kitsoki && rm -f /tmp/kitsoki-ghagent.<pid>"
 ssh root@206.189.84.218 "sha256sum /usr/local/bin/kitsoki | awk '{print \$1}'"
 ssh root@206.189.84.218 'chmod 755 /usr/local/bin/kitsoki && systemctl restart kitsoki-gh-agent'
 curl -fsS https://kitsoki-test.slothattax.me/healthz
 ```
 
-The deploy helper compares the local linux/amd64 build sha256 with the remote
-binary sha256 before restarting the service, so the live POC can prove the VM is
-running the binary just built from the current checkout.
+The deploy helper uploads to a temporary path, compares the local linux/amd64
+build sha256 with the remote upload sha256, installs it into `/usr/local/bin`,
+then verifies the installed binary sha256 before restarting the service. The live
+POC can prove the VM is running the binary just built from the current checkout
+without relying on direct overwrite of the running executable.
 
 Useful read-only smoke checks:
 

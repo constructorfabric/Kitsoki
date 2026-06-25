@@ -12,6 +12,7 @@ cd "$ROOT"
 
 REMOTE="${KITSOKI_GH_AGENT_REMOTE:-root@206.189.84.218}"
 REMOTE_BIN="${KITSOKI_GH_AGENT_REMOTE_BIN:-/usr/local/bin/kitsoki}"
+REMOTE_TMP="${KITSOKI_GH_AGENT_REMOTE_TMP:-/tmp/kitsoki-ghagent.$$}"
 SERVICE="${KITSOKI_GH_AGENT_SERVICE:-kitsoki-gh-agent}"
 PUBLIC_BASE_URL="${KITSOKI_GH_AGENT_PUBLIC_BASE_URL:-https://kitsoki-test.slothattax.me}"
 OUT="${KITSOKI_GH_AGENT_BUILD_OUT:-/private/tmp/kitsoki-ghagent}"
@@ -28,7 +29,8 @@ if [ "$#" -ne 0 ]; then
 fi
 
 build_cmd=(go build -o "$OUT" ./cmd/kitsoki)
-scp_cmd=(scp "$OUT" "$REMOTE:$REMOTE_BIN")
+scp_cmd=(scp "$OUT" "$REMOTE:$REMOTE_TMP")
+install_cmd=(ssh "$REMOTE" "install -m 755 '$REMOTE_TMP' '$REMOTE_BIN' && rm -f '$REMOTE_TMP'")
 ssh_cmd=(ssh "$REMOTE" "chmod 755 '$REMOTE_BIN' && systemctl restart '$SERVICE'")
 health_cmd=(curl -fsS "$PUBLIC_BASE_URL/healthz")
 
@@ -52,6 +54,7 @@ cat <<EOF
 deploy-gh-agent:
   build:  GOOS=linux GOARCH=amd64 GOCACHE=$GOCACHE $(print_cmd "${build_cmd[@]}")
   copy:   $(print_cmd "${scp_cmd[@]}")
+  install:$(print_cmd "${install_cmd[@]}")
   start:  $(print_cmd "${ssh_cmd[@]}")
   verify: local sha256 == remote sha256 via $(print_cmd "${remote_checksum_cmd[@]}")
   health: $(print_cmd "${health_cmd[@]}")
@@ -68,6 +71,13 @@ fi
 GOOS=linux GOARCH=amd64 GOCACHE="$GOCACHE" "${build_cmd[@]}"
 local_sha="$(checksum_file "$OUT")"
 "${scp_cmd[@]}"
+remote_tmp_sha="$(ssh "$REMOTE" "sha256sum '$REMOTE_TMP' | awk '{print \$1}'")"
+if [ "$local_sha" != "$remote_tmp_sha" ]; then
+	echo "remote upload checksum mismatch: local=$local_sha remote_tmp=$remote_tmp_sha" >&2
+	ssh "$REMOTE" "rm -f '$REMOTE_TMP'" >/dev/null 2>&1 || true
+	exit 1
+fi
+"${install_cmd[@]}"
 remote_sha="$("${remote_checksum_cmd[@]}")"
 if [ "$local_sha" != "$remote_sha" ]; then
 	echo "remote binary checksum mismatch: local=$local_sha remote=$remote_sha" >&2
