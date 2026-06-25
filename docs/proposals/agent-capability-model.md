@@ -54,7 +54,9 @@ layers, each feeding the next:
 ```
 TOOLBOX        a named, reusable capability grant — the tools an agent may use
    │ join over tools (most-privileged tool wins)
-EFFECT CLASS   pure | read | write | external   (+ orthogonal `deterministic` bit)   ← the declared contract
+EFFECT CONTRACT
+   effect: pure | read | write | external
+   + deterministic/operator/spend/delegate facets   ← the declared contract
    │ derives one uniform enforcement policy
 ENFORCEMENT    tool-layer allowlist + mutator-deny (pure/read)  →  OS sandbox (write/external)
    │ audited offline from the trace by
@@ -64,10 +66,11 @@ CONTRACT EVAL  schema conformance + "stayed inside its toolbox / honored its eff
 - The **toolbox** is the single thing that restricts an agent: a named set
   of tools, referenced by any agent, with an inline override
   (`tools_add:`) for specialization.
-- The toolbox's tool-join yields the **effect class** — the deterministic
-  classification (`pure|read|write|external` + `deterministic`) that replaces
-  the overloaded boolean and that every consumer (converse posture, replay
-  mode, future cache) reads.
+- The toolbox's tool-join yields the **effect contract** — the deterministic
+  classification (`pure|read|write|external` + `deterministic`) plus the
+  operator/spend/delegate facets that replace the overloaded boolean and that
+  every consumer (converse posture, replay mode, future cache, operator-ask,
+  budget lint, delegated work visibility) reads.
 - **Enforcement is derived from the effect class and applied uniformly** to
   all four agent kinds: the tool-layer allowlist + mutator-deny for
   `pure`/`read`, and the OS sandbox (the kernel boundary `working_dir` never
@@ -85,7 +88,8 @@ held. The three ad-hoc mechanisms collapse into one.
 - **Spans:** runtime (3 slices) + tracing (the conformance check folded into
   the standalone `agent-contract-eval.md`).
 - **Net surface:** one new vocabulary block (`toolboxes:` + `effect:` /
-  `deterministic:` / `toolbox:` / `tools_add:`), the deprecation of
+  `deterministic:` / `operator:` / `spend:` / `delegate:` / `toolbox:` /
+  `tools_add:`), the deprecation of
   `external_side_effect`, a builtin host-call classification table, one
   uniform tool-policy path replacing three, an opt-in OS `sandbox:` enforcer,
   and a new offline conformance lint. Behavior-preserving for every existing
@@ -100,7 +104,7 @@ held. The three ad-hoc mechanisms collapse into one.
 
 | # | Slice | Kind | Scope (one line) | Depends on | Status | File |
 |---|---|---|---|---|---|---|
-| 1 | effect taxonomy | runtime | `effect: pure\|read\|write\|external` + `deterministic`; classify host calls **and** agents; replace the overloaded boolean | — | Draft | [`effect-taxonomy.md`](effect-taxonomy.md) |
+| 1 | effect taxonomy | runtime | `effect: pure\|read\|write\|external` + `deterministic` + operator/spend/delegate facets; classify host calls, MCP tools, **and** agents; replace the overloaded boolean | — | Draft | [`effect-taxonomy.md`](effect-taxonomy.md) |
 | 2 | toolbox + uniform enforcement | runtime | named `toolboxes:` + `tools_add:`; one effect-derived tool-layer policy for **all four** agent kinds, replacing the three ad-hoc mechanisms | 1 | Draft | [`toolbox-and-enforcement.md`](toolbox-and-enforcement.md) |
 | 3 | OS sandbox | runtime | `sandbox:` confines the `write`/`external` tiers at the kernel (bwrap/Landlock); engine validates + persists the workspace diff | 1, 2 | Draft | [`task-fs-sandbox.md`](task-fs-sandbox.md) |
 | — | effect/toolbox conformance | tracing | offline check that a recorded call's tool uses never exceeded its toolbox/effect (a new Layer-1 sibling) | 1 | Draft | [`agent-contract-eval.md`](agent-contract-eval.md) (§Conformance) |
@@ -129,8 +133,10 @@ layer; slice 3 makes the same boundary kernel-hard against `python -c
 
 1. **Two axes, not one enum.** `effect` (class) and `deterministic` (bool)
    stay separate because a tool-less `agent.extract` touches nothing (`pure`)
-   yet is non-deterministic — they can't merge. Owned by slice 1; every other
-   slice defers. (Mirrors Acronis DTS's separate `is_idempotent` axis.)
+   yet is non-deterministic — they can't merge. Operator asks, spend, and
+   delegation are also separate facets because each cuts across the mutation
+   ladder. Owned by slice 1; every other slice defers. (Mirrors Acronis DTS's
+   separate `is_idempotent` axis.)
 2. **The effect ladder names** — `pure | read | write | external` — are fixed
    in slice 1. Slices 2 and 3 reference them, never redefine them. `write` is
    exactly the class the OS sandbox jails; `read`/`pure` is exactly the class
