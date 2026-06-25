@@ -69,3 +69,79 @@ export function installEmbedViewListener(
   target.addEventListener("message", handler);
   return () => target.removeEventListener("message", handler);
 }
+
+// ── Element picking (embed:annotate / embed:pick) ─────────────────────────────
+//
+// The richer half of the protocol: the host turns on annotation mode on an
+// embedded artifact, and the producer — which owns its own live surface — posts
+// back a PRECISE anchor when the operator points at an element:
+//
+//   host → producer:  { type: 'embed:annotate', enabled: boolean }
+//   producer → host:  { type: 'embed:pick', producer, scope, ref, label, bbox }
+//
+// `ref` is the opaque element id (e.g. "9/image") the host round-trips into the
+// refine; `scope` is the view it belongs to; `bbox` is an optional on-screen
+// rect. The host interprets none of it — it just hands `ref`/`scope` to the
+// producer's own resolver/gate.
+
+export interface EmbedPickMessage {
+  producer?: string;
+  /** The view the picked element belongs to (e.g. a scene index). */
+  scope?: string;
+  /** The opaque element id the host round-trips into a refine. */
+  ref: string;
+  /** Human label for the picked element. */
+  label?: string;
+  /** The element's on-screen rect [x,y,w,h], when the producer supplies it. */
+  bbox?: [number, number, number, number];
+}
+
+/** parseEmbedPick returns the EmbedPickMessage on a postMessage event, or null. */
+export function parseEmbedPick(data: unknown): EmbedPickMessage | null {
+  if (!data || typeof data !== "object") return null;
+  const m = data as Record<string, unknown>;
+  if (m.type !== "embed:pick") return null;
+  if (typeof m.ref !== "string" || m.ref === "") return null;
+  const scope = typeof m.scope === "number" ? String(m.scope) : m.scope;
+  const bbox = Array.isArray(m.bbox) && m.bbox.length === 4 && m.bbox.every((n) => typeof n === "number")
+    ? (m.bbox as [number, number, number, number])
+    : undefined;
+  return {
+    producer: typeof m.producer === "string" ? m.producer : undefined,
+    scope: typeof scope === "string" ? scope : undefined,
+    ref: m.ref,
+    label: typeof m.label === "string" ? m.label : undefined,
+    bbox,
+  };
+}
+
+/** installEmbedPickListener subscribes to embed:pick messages. Mirror of the
+ *  view listener; returns a teardown. */
+export function installEmbedPickListener(
+  onPick: (pick: EmbedPickMessage) => void,
+  target: Pick<Window, "addEventListener" | "removeEventListener"> | undefined =
+    typeof window !== "undefined" ? window : undefined,
+): () => void {
+  if (!target) return () => {};
+  const handler = (ev: Event) => {
+    const pick = parseEmbedPick((ev as MessageEvent).data);
+    if (pick) onPick(pick);
+  };
+  target.addEventListener("message", handler);
+  return () => target.removeEventListener("message", handler);
+}
+
+/** sendAnnotateMode posts the host→producer enable/disable message into an
+ *  embedded artifact's window (the iframe's contentWindow). No-op when the
+ *  target window is absent (the iframe hasn't loaded yet). */
+export function sendAnnotateMode(
+  targetWindow: Pick<Window, "postMessage"> | null | undefined,
+  enabled: boolean,
+): void {
+  if (!targetWindow) return;
+  try {
+    targetWindow.postMessage({ type: "embed:annotate", enabled }, "*");
+  } catch {
+    /* cross-origin restriction — ignore */
+  }
+}

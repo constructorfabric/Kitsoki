@@ -4,7 +4,13 @@
  * refine targets the slide the operator is looking at.
  */
 import { describe, it, expect, vi } from "vitest";
-import { parseEmbedView, installEmbedViewListener } from "../../src/lib/embedView.js";
+import {
+  parseEmbedView,
+  installEmbedViewListener,
+  parseEmbedPick,
+  installEmbedPickListener,
+  sendAnnotateMode,
+} from "../../src/lib/embedView.js";
 
 describe("parseEmbedView", () => {
   it("parses a well-formed embed:view message", () => {
@@ -47,5 +53,45 @@ describe("installEmbedViewListener", () => {
 
   it("is a no-op without a target window", () => {
     expect(() => installEmbedViewListener(() => {}, undefined)()).not.toThrow();
+  });
+});
+
+describe("parseEmbedPick", () => {
+  it("parses a well-formed embed:pick with bbox", () => {
+    expect(
+      parseEmbedPick({ type: "embed:pick", producer: "slidey", scope: "9", ref: "9/src", label: "image", bbox: [1, 2, 3, 4] }),
+    ).toEqual({ producer: "slidey", scope: "9", ref: "9/src", label: "image", bbox: [1, 2, 3, 4] });
+  });
+
+  it("requires a ref and drops a malformed bbox", () => {
+    expect(parseEmbedPick({ type: "embed:pick", scope: "9" })).toBeNull();
+    expect(parseEmbedPick({ type: "embed:pick", ref: "9/src", bbox: [1, 2, 3] })?.bbox).toBeUndefined();
+    expect(parseEmbedPick({ type: "embed:view", ref: "x" })).toBeNull();
+  });
+});
+
+describe("installEmbedPickListener", () => {
+  it("invokes onPick for embed:pick messages", () => {
+    const listeners: Record<string, (ev: Event) => void> = {};
+    const target = {
+      addEventListener: vi.fn((t: string, h: (ev: Event) => void) => (listeners[t] = h)),
+      removeEventListener: vi.fn(),
+    };
+    const refs: string[] = [];
+    installEmbedPickListener((p) => refs.push(p.ref), target as never);
+    listeners.message({ data: { type: "embed:pick", ref: "9/src", scope: "9" } } as MessageEvent);
+    listeners.message({ data: { type: "noise" } } as MessageEvent);
+    expect(refs).toEqual(["9/src"]);
+  });
+});
+
+describe("sendAnnotateMode", () => {
+  it("posts the host→producer enable message into the target window", () => {
+    const post = vi.fn();
+    sendAnnotateMode({ postMessage: post }, true);
+    expect(post).toHaveBeenCalledWith({ type: "embed:annotate", enabled: true }, "*");
+  });
+  it("is a no-op without a target window", () => {
+    expect(() => sendAnnotateMode(null, true)).not.toThrow();
   });
 });

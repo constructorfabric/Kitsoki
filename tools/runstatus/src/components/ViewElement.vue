@@ -173,13 +173,21 @@ async function openAnnotate(): Promise<void> {
   const engineKind = (el.value.MediaKind ?? "").toLowerCase();
   let kind: MediaKind =
     ENGINE_MEDIA_KIND[engineKind] ?? kindFromMime(mediaMime.value);
-  try {
-    if (_ds.semanticMap) {
-      const env = await _ds.semanticMap(_sessionId.value, mediaHandle.value);
-      if (env && env.elements.length > 0) kind = "slidey";
+  // A slideshow is a multi-scene deck that speaks the embed protocol on its own
+  // live surface — always annotate it via the `slidey` (live-embed) substrate so
+  // the operator points at real elements on the slide (no static poster/sidecar
+  // needed). Other kinds may still promote to slidey when a sidecar exists.
+  if (engineKind === "slideshow") {
+    kind = "slidey";
+  } else {
+    try {
+      if (_ds.semanticMap) {
+        const env = await _ds.semanticMap(_sessionId.value, mediaHandle.value);
+        if (env && env.elements.length > 0) kind = "slidey";
+      }
+    } catch {
+      /* no sidecar / probe failed — keep the MIME-mapped kind */
     }
-  } catch {
-    /* no sidecar / probe failed — keep the MIME-mapped kind */
   }
   annotateKind.value = kind;
   annotateOpen.value = true;
