@@ -15,6 +15,13 @@
 #   inputs:  spec_path (string), summary (string?), decks_dir (string?)
 #   world:   decks_dir (object) — fallback when the input is empty
 #   outputs: source_deck (object) -> {spec_path, summary}
+#            deck        (object) -> {spec_path, summary}  (promoted draft = the
+#                        existing spec, so the existing-deck path renders it IN
+#                        PLACE without an authoring agent pass)
+#            workspace   (string) -> the deck's own directory, so render + refine
+#                        resolve the deck's sibling assets (it works in the web
+#                        viewer, so it must work when loaded — no copy to a
+#                        bare workspace that strips the assets).
 
 def main(ctx):
     raw = (ctx.inputs.get("spec_path") or "").strip()
@@ -53,4 +60,16 @@ def main(ctx):
         # Nothing on disk — keep the preferred candidate so the error is legible.
         resolved = candidates[0]
 
-    return {"source_deck": {"spec_path": resolved, "summary": summary}}
+    # The deck's own directory is the workspace, so render + refine resolve its
+    # sibling assets (e.g. assets/cat-wrangling.png) exactly as the web viewer
+    # does. Fall back to "." when the resolved path is bare.
+    slash = resolved.rfind("/")
+    workspace = resolved[:slash] if slash > 0 else "."
+
+    return {
+        "source_deck": {"spec_path": resolved, "summary": summary},
+        # Promote the existing spec straight to the draft slot so the
+        # existing-deck path renders it IN PLACE with no authoring agent.
+        "deck": {"spec_path": resolved, "summary": summary},
+        "workspace": workspace,
+    }

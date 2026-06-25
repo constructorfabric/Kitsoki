@@ -5,3 +5,5 @@ inputs:
 
 outputs:
   source_deck: { type: object }
+  deck:        { type: object }
+  workspace:   { type: string }
