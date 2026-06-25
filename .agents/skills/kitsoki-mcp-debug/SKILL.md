@@ -105,5 +105,27 @@ those areas. Keep verification focused and report the sandbox blocker.
 - image/render behavior: start with `render.tui` before `render.tui_png` or
   `render.web`; `render.web` may degrade when no browser-capable host is wired.
 
+## Monitoring / checking a RUNNING session
+
+You **cannot** check on a job another connection/process is driving via a second
+`session.status`/`studio.handles` call:
+- the MCP CLIENT serialises tool calls per stdio connection (a second call waits
+  behind the in-flight `session.drive`), and
+- kitsoki sessions are **per-process** — a different `kitsoki mcp` process can't
+  see another's handles.
+
+The studio SERVER is NOT the bottleneck — it's provably concurrent (guard test
+`internal/mcp/studio/session_concurrent_readonly_test.go`; ticket
+`2026-06-25T121622Z-…` is wontfix). So don't go hunting for a server-side lock.
+
+Instead read the trace from disk: **`kitsoki trace status <trace|id> [--json]`** —
+one-shot, cross-process, prints `{state, turn, status, last_error, cost, idle}`
+and flags ⚠ STALLED. This is the supported way to watch a live MCP-driven run.
+
+**Model selection is a `session.new {profile}` parameter, not a story edit:** a
+profile that pins a model (e.g. `codex-native` → gpt-5.5, `synthetic-claude` →
+GLM) SUPERSEDES the story agent-def `model:` (`internal/host/agents.go`). The bare
+`codex` profile pins nothing and falls back to the agent-def — that's the trap.
+
 Before committing, run `git diff --check` and confirm only intended files are
 staged. Leave unrelated untracked files alone.

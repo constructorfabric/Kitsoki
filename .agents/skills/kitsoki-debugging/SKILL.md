@@ -132,7 +132,28 @@ is stateless and you thread `--world` yourself between calls.
 
 ## Discover and inspect existing sessions
 
-Every `kitsoki run` or `session` invocation writes a JSONL trace to `~/.kitsoki/sessions/<app>/` automatically — no `KITSOKI_TRACE_FILE` flag needed. This means any session the user ran can be discovered and inspected later:
+Every `kitsoki run` or `session` invocation writes a JSONL trace to `~/.kitsoki/sessions/<app>/` automatically — no `KITSOKI_TRACE_FILE` flag needed. This means any session the user ran can be discovered and inspected later.
+
+**Start with `kitsoki trace status` — the one-shot "where is it / is it stuck / why".** Before any raw `grep`/`jq`, get the headline:
+
+```sh
+kitsoki trace status                      # newest session: state, turn, status, last_error, cost, idle
+kitsoki trace status --app kitsoki-dev    # newest for an app
+kitsoki trace status <id-substring>       # a specific session
+kitsoki trace status <path> --json        # machine-readable (for scripts/watchdogs)
+```
+
+It reads the trace FILE, so it works on a **LIVE / in-flight** session another process is driving (you can't check a running job with a second `session.status` — the MCP client serialises calls per connection and sessions are per-process; the studio server itself IS concurrent). It flags **⚠ STALLED** when a non-terminal run has gone idle (the stuck-run signal) and **✓ terminal** at an exit, and surfaces `last_error` directly — usually the whole diagnosis in one line.
+
+**Triaging a dogfood / bugfix run that didn't ship (`needs-human` / `not-reproducible`):**
+
+| `last_error` / symptom | Likely cause | Where to look |
+|---|---|---|
+| "regression gate was never RED on the pre-fix snapshot" | the reproducer's RED test never landed as a DISCRETE pre-fix commit (synthesised-gate path) → testing's HEAD~1 gate found nothing RED | worktree `git log`: is there a `test(repro): …` commit BEFORE the fix commit? If the test is squashed INTO the fix, that's the bug. See `internal/bugfixsynth/synthesis_realgit_test.go`. |
+| ran on the wrong model (Sonnet, not the one you asked for) | the harness PROFILE pins the model and SUPERSEDES the agent-def; a bare `codex` profile pins nothing → falls back to the agent-def | re-run with `session.new {profile: codex-native}` (gpt-5.5) / `synthetic-claude` (GLM) — never edit the story `model:`. |
+| `not-reproducible` on a real bug | the worktree was cut from a branch that ALREADY has the fix (stale-branch reattach) | CLEAN pre-flight: `git worktree remove --force` AND `git branch -D fix/<id>`. |
+| `world.session_cost_usd: 0` under codex/gpt | known: the codex backend doesn't surface cost into world (filed bug), not a run failure | ignore for triage. |
+| idle for many minutes, non-terminal | the run is STUCK (a blocked maker / collision), not working | `git log` of the worktree + the trace tail; kill + clean + re-run. See `dogfood-marathon`. |
 
 ```sh
 # List all discovered sessions by app
