@@ -117,6 +117,7 @@ turns: []
 		"gh_origin_ref": "github:o/r/pr/77",
 		"repo":          "o/r",
 		"pr_id":         "77",
+		"pr_url":        "https://github.com/o/r/pull/77",
 		"thread":        "github:o/r/pr/77",
 	} {
 		if got := initialWorld[k]; got != want {
@@ -422,11 +423,12 @@ func TestDispatch_PRBeat(t *testing.T) {
 	store := newGHJobStore(t)
 	rec := &recordingComments{commentID: "https://github.com/o/r/pull/77#issuecomment-9"}
 	d := &Dispatcher{
-		Jobs:     store,
-		Routes:   DefaultLabelStoryMap(),
-		Comments: &CommentStore{Exec: rec.handler, Repo: "o/r"},
-		WorkerID: "worker-pr",
-		SpawnFn:  RunStorySession,
+		Jobs:          store,
+		Routes:        DefaultLabelStoryMap(),
+		Comments:      &CommentStore{Exec: rec.handler, Repo: "o/r"},
+		WorkerID:      "worker-pr",
+		PublicBaseURL: "https://kitsoki-test.slothattax.me",
+		SpawnFn:       RunStorySession,
 	}
 
 	job, err := d.Dispatch(ctx, mentions[0], nil)
@@ -442,11 +444,32 @@ func TestDispatch_PRBeat(t *testing.T) {
 	if job.ObjectNumber != "77" {
 		t.Errorf("pr job ObjectNumber = %q, want dynamic PR number", job.ObjectNumber)
 	}
+	if !strings.HasPrefix(job.RunURL, "https://kitsoki-test.slothattax.me/run/") {
+		t.Fatalf("RunURL = %q, want public run URL", job.RunURL)
+	}
 	rec.mu.Lock()
-	n := len(rec.bodies)
+	ops := append([]string(nil), rec.ops...)
+	bodies := append([]string(nil), rec.bodies...)
 	rec.mu.Unlock()
-	if n < 1 {
+	if len(bodies) < 2 {
 		t.Errorf("pr beat posted no status comment")
+	}
+	if !containsString(ops, "comment_edit") {
+		t.Fatalf("pr final status should edit the first comment, ops=%v", ops)
+	}
+	last := bodies[len(bodies)-1]
+	meta := host.GHParseMetadata(last)
+	if meta == nil {
+		t.Fatalf("pr final comment missing metadata:\n%s", last)
+	}
+	if meta["story"] != StoryPRBeat {
+		t.Fatalf("meta story = %v, want %s", meta["story"], StoryPRBeat)
+	}
+	if meta["run_url"] != job.RunURL {
+		t.Fatalf("meta run_url = %v, want %s", meta["run_url"], job.RunURL)
+	}
+	if meta["origin_ref"] != "github:o/r/pr/77" {
+		t.Fatalf("meta origin_ref = %v", meta["origin_ref"])
 	}
 }
 

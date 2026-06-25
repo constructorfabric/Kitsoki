@@ -282,6 +282,7 @@ func jobFlowWorld(job *jobs.GHJob) map[string]string {
 	switch job.ObjectKind {
 	case "pr":
 		out["pr_id"] = job.ObjectNumber
+		out["pr_url"] = githubObjectURL(job)
 	case "issue":
 		out["ticket_id"] = job.ObjectNumber
 		out["ticket_url"] = githubObjectURL(job)
