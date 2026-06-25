@@ -64,7 +64,13 @@ thought.
   — **epic.** Drive the current top-10 backlog through Kitsoki Studio MCP with
   the right story entrypoint per item, real human-like operator turns,
   trace-backed findings, and a strict implementation policy: live implementation
-  sessions use `profile: codex-native` / `gpt-5.5`, not Claude.
+  sessions use `profile: codex-native` / `gpt-5.5`, not Claude. This now
+  consumes the generic [`punch-list.md`](punch-list.md) story rather than a
+  top-10-specific runner.
+- [`punch-list.md`](punch-list.md) — **story.** A generic YAML-driven worklist
+  runner: load a `punch-list/v1` manifest, run each item through its declared
+  Kitsoki story entrypoint via Studio MCP, enforce profile/model policy, run
+  independent verification, collect findings, and produce a report.
 - [`session-mining-backend-generalization.md`](session-mining-backend-generalization.md)
   — **epic.** Generalize session mining from Claude Code-shaped ingestion into a
   backend-normal corpus for Claude Code, Codex, kitsoki traces, and imported

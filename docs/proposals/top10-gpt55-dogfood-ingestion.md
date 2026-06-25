@@ -10,35 +10,27 @@ The current top-10 backlog mixes runtime substrate, story/productization work,
 and process hardening. If we implement it directly from chat, we lose the main
 reason kitsoki exists: the work should be driven through kitsoki Studio MCP,
 using real operator turns, traces, cassettes, and friction findings. This epic
-turns each item into a dogfood run with the right story entrypoint and a strict
-model policy: **implementation attempts use GPT-5.5 through `codex-native`, not
-Claude**.
+turns the top-10 into a **`punch-list/v1` manifest** consumed by the generic
+[`punch-list.md`](punch-list.md) story, with the right story entrypoint per item
+and a strict model policy: **implementation attempts use GPT-5.5 through
+`codex-native`, not Claude**.
 
 ## What changes
 
-For each backlog item we will:
+This proposal no longer creates a one-off `top-10` story. Instead:
 
-1. Start from the appropriate kitsoki story entrypoint.
-2. Drive it through Studio MCP like a real operator, following the
-   `kitsoki-mcp-driver` discipline: `studio.ping`, inspect handles, create a
-   traced session, drive free text when testing interpretation, submit intents
-   when testing deterministic navigation, inspect traces when surprised, and
-   file MCP gaps instead of working around missing studio capabilities.
-3. Use `harness: live` only for the human-like dogfood turn that needs a real
-   model, then capture/convert the useful behavior into no-LLM fixtures.
-4. Force implementation sessions to `profile: codex-native` with model
-   `gpt-5.5`; never use `claude-native`, `synthetic-claude`, or story-local
-   `model: claude-*` defaults for implementation attempts.
-5. Independently verify the result with deterministic tests or gates. The
-   implementing agent's self-report is never the verdict.
-6. Record every story/runtime/MCP friction point as a finding, then harden the
-   story or file an MCP issue if the studio surface could not express the run.
+1. Author a `punch-list/v1` manifest for the ten items.
+2. Run that YAML through `stories/punch-list/`.
+3. Let `punch-list` enforce the Studio MCP driving discipline, profile/model
+   policy, verification, findings capture, and reporting.
+4. Keep this epic as the top-10 manifest and sequencing plan; delete it when the
+   list has either shipped or been split into narrower current proposals.
 
 ## Impact
 
 - **Spans:** story, runtime, tracing, TUI, and process.
-- **Net surface:** one dogfood plan over the top-10 backlog, plus per-item
-  traces, findings, and follow-up proposal/story updates.
+- **Net surface:** one top-10 `punch-list/v1` manifest, plus per-item traces,
+  findings, and follow-up proposal/story updates.
 - **Docs on ship:** shipped item details migrate to `docs/architecture/`,
   `docs/stories/`, `docs/tracing/`, or `docs/tui/`; this proposal is deleted
   when all items either ship or are split into narrower current proposals.
@@ -79,6 +71,36 @@ Disallowed:
 - accepting a story-local `model: claude-*` default without trace proof that
   `codex-native` overrode it.
 - automated tests that call a real LLM.
+
+## Punch-List Manifest Sketch
+
+```yaml
+version: punch-list/v1
+defaults:
+  harness: live
+  profile: codex-native
+  model: gpt-5.5
+  trace_root: .artifacts/top10-dogfood/traces
+  require_trace_model: true
+items:
+  - id: load-bug
+    title: Fix imported bf default expression load failure
+    story: stories/kitsoki-dev/app.yaml
+    mode: drive
+    prompt: "Start from the dogfood hub and reproduce the project-init/bf load failure."
+    implementation_story: stories/cherny-loop/app.yaml
+    gate_command: "go test ./internal/app ./internal/orchestrator"
+    verify:
+      - kind: story_validate
+        story: stories/kitsoki-dev
+      - kind: command
+        cmd: "go test ./internal/app ./internal/orchestrator"
+```
+
+The full manifest lives with the implementation under
+`stories/punch-list/examples/top10-gpt55.yaml` or `.artifacts/top10-dogfood/`
+while dogfooding, then migrates to durable docs only if it remains useful as an
+example.
 
 ## Story Entrypoint Matrix
 
@@ -149,19 +171,19 @@ Each item should leave:
 ## Tasks
 
 ```
-## 1. Prepare the dogfood runner
-- [ ] 1.1 Verify Studio MCP `studio.ping` and available handles.
-- [ ] 1.2 Verify `codex-native` profile resolves to `gpt-5.5`.
-- [ ] 1.3 Add a run ledger under `.artifacts/top10-dogfood/` for traces,
+## 1. Prepare the punch-list runner
+- [ ] 1.1 Implement or dogfood `stories/punch-list/` from `punch-list.md`.
+- [ ] 1.2 Verify Studio MCP `studio.ping` and available handles.
+- [ ] 1.3 Verify `codex-native` profile resolves to `gpt-5.5`.
+- [ ] 1.4 Add a run ledger under `.artifacts/top10-dogfood/` for traces,
           findings, and per-item summaries.
 
 ## 2. First pass: prove entrypoints and friction
-- [ ] 2.1 Drive #1 through `stories/kitsoki-dev/app.yaml`; capture the load bug.
-- [ ] 2.2 Drive #5 project-init through `stories/dev-story/app.yaml` once #1 is fixed.
-- [ ] 2.3 Drive #8 and #9 routing phrases through `stories/kitsoki-dev/app.yaml`.
-- [ ] 2.4 Drive #7 through `stories/deliver/app.yaml` with an accepted proposal.
-- [ ] 2.5 Drive #6 through `stories/dev-story-mining/app.yaml`.
-- [ ] 2.6 Drive #10 through `stories/dogfood-marathon/app.yaml`.
+- [ ] 2.1 Author the top-10 `punch-list/v1` manifest.
+- [ ] 2.2 Run #1 through punch-list; capture the load bug.
+- [ ] 2.3 Run #5 project-init through punch-list once #1 is fixed.
+- [ ] 2.4 Run #8 and #9 routing phrases through punch-list.
+- [ ] 2.5 Run #7, #6, and #10 through punch-list.
 
 ## 3. Implementation slices
 - [ ] 3.1 Implement #2 with `stories/cherny-loop/app.yaml`, profile `codex-native`.
@@ -187,8 +209,10 @@ Each item should leave:
    discipline. *Lean: for this epic, use it as reference text and drive MCP from
    Codex; later add `kitsoki-mcp-driver-codex` if dispatched agents need the same
    discipline without Claude.*
-3. **Do we drive each item one at a time or as a marathon?** *Lean: one at a
-   time until #1, #2, and #8 are stable; then use `dogfood-marathon` for batches.*
+3. **Does punch-list replace dogfood-marathon?** No. `punch-list` is a generic
+   YAML-driven operator worklist. `dogfood-marathon` remains the bug/backlog
+   benchmark/report story with triage and cost rollups. *Lean: punch-list can
+   call dogfood-marathon for an item, but should not absorb its domain logic.*
 
 ## Non-goals
 
