@@ -80,6 +80,17 @@ async function tryLiftCurtain(page: Page): Promise<void> {
   }
 }
 
+async function tryRearmCurtain(page: Page): Promise<void> {
+  try {
+    await page.evaluate(() => {
+      sessionStorage.removeItem("kd-curtain-lifted");
+      document.getElementById("kd-curtain")?.remove();
+    });
+  } catch (e) {
+    console.warn(`[live-capture] curtain re-arm skipped: ${String(e).slice(0, 240)}`);
+  }
+}
+
 async function tryMakeCaption(page: Page): Promise<(title: string, sub?: string, holdMs?: number) => Promise<void>> {
   try {
     return await makeCaption(page);
@@ -121,17 +132,19 @@ test("capture live GitHub-agent evidence", async () => {
 
     for (const [idx, step] of plan.steps.entries()) {
       diag.mark(`step ${step.id}: goto`);
-      chapters.open(step.id, step.title, SPEC_REF);
+      if (idx > 0) {
+        diag.mark(`step ${step.id}: re-arm curtain`);
+        await tryRearmCurtain(page);
+      }
       await page.goto(step.url, { waitUntil: "domcontentloaded", timeout: 45000 });
       if (step.waitForText) {
         diag.mark(`step ${step.id}: wait ${step.waitForText}`);
         await page.getByText(step.waitForText, { exact: false }).first().waitFor({ timeout: 30000 });
       }
       await dwell(page, SETTLE_MS);
-      if (idx === 0) {
-        diag.mark(`step ${step.id}: lift-curtain`);
-        await tryLiftCurtain(page);
-      }
+      diag.mark(`step ${step.id}: lift-curtain`);
+      await tryLiftCurtain(page);
+      chapters.open(step.id, step.title, SPEC_REF);
       diag.mark(`step ${step.id}: caption`);
       const caption = await tryMakeCaption(page);
       await caption(step.title, step.caption || step.url, step.dwellMs ?? 5000);
