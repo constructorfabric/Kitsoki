@@ -181,7 +181,7 @@ function fencedJSON(markdown, heading) {
 }
 
 function githubOriginRef(sourceURL, objectKind, objectNumber) {
-  const segment = objectKind === "pr" ? "pull" : "issue";
+  const segment = objectKind === "pr" ? "pr" : "issue";
   return `github:bsacrobatix/Kitsoki/${segment}/${objectNumber || sourceURL.split("/").pop()}`;
 }
 
@@ -373,7 +373,8 @@ function checkCaseJSON(report, c, value, ctx) {
   if (value.object_kind !== c.expectedObjectKind) {
     report.fail(`${ctx.where}: object_kind ${value.object_kind} does not match ${c.expectedObjectKind}`);
   }
-  if (value.story !== c.expectedStory) {
+  const story = value.story ?? "";
+  if (story !== c.expectedStory) {
     report.fail(`${ctx.where}: story ${JSON.stringify(value.story)} does not match ${JSON.stringify(c.expectedStory)}`);
   }
   if (value.state !== c.expectedState) {

@@ -127,12 +127,16 @@ run_or_print() {
 
 run_capture_or_print() {
 	local plan="$1"
+	local capture_plan="$plan"
+	if [[ "$capture_plan" != /* ]]; then
+		capture_plan="$ROOT/$capture_plan"
+	fi
 	if [ "$YES" -eq 1 ]; then
 		KITSOKI_GH_AGENT_LIVE_CAPTURE=1 \
-			KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN="$plan" \
+			KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN="$capture_plan" \
 			pnpm -C tools/runstatus exec playwright test github-agent-live-capture --project=chromium
 	else
-		printf 'KITSOKI_GH_AGENT_LIVE_CAPTURE=1 KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN=%q pnpm -C tools/runstatus exec playwright test github-agent-live-capture --project=chromium\n' "$plan"
+		printf 'KITSOKI_GH_AGENT_LIVE_CAPTURE=1 KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN=%q pnpm -C tools/runstatus exec playwright test github-agent-live-capture --project=chromium\n' "$capture_plan"
 	fi
 }
 

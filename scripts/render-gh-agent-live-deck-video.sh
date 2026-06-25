@@ -102,6 +102,76 @@ fi
 
 CHAPTERS="$OUT.chapters.json"
 if [ ! -s "$CHAPTERS" ]; then
+	node - "$DECK" "$CHAPTERS" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+const { execFileSync } = require("child_process");
+
+const deckPath = process.argv[2];
+const outPath = process.argv[3];
+const deck = JSON.parse(fs.readFileSync(deckPath, "utf8"));
+const deckDir = path.dirname(path.resolve(deckPath));
+
+function mediaDurationMs(scene) {
+  const rel = scene.src || scene.rrweb || "";
+  if (!rel) return 3000;
+  const file = path.resolve(deckDir, rel);
+  if (scene.rrweb) {
+    try {
+      const rrweb = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (Number.isFinite(rrweb.durationMs) && rrweb.durationMs > 0) return Math.round(rrweb.durationMs);
+      if (Number.isFinite(rrweb.startTime) && Number.isFinite(rrweb.endTime) && rrweb.endTime > rrweb.startTime) {
+        return Math.round(rrweb.endTime - rrweb.startTime);
+      }
+    } catch {}
+    return 10000;
+  }
+  try {
+    const raw = execFileSync("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      file,
+    ], { encoding: "utf8" }).trim();
+    const seconds = Number.parseFloat(raw);
+    if (Number.isFinite(seconds) && seconds > 0) return Math.round(seconds * 1000);
+  } catch {}
+  return 10000;
+}
+
+function sceneDurationMs(scene) {
+  if (Number.isFinite(scene.duration) && scene.duration > 0) return Math.round(scene.duration * 1000);
+  if (scene.type === "video") return mediaDurationMs(scene);
+  if (scene.type === "cta") return 8000;
+  return 3000;
+}
+
+const scenes = Array.isArray(deck.scenes) ? deck.scenes : [];
+let cursor = 0;
+const chapters = scenes.map((scene, index) => {
+  const duration = Math.max(1000, sceneDurationMs(scene));
+  const id = scene.id || `${scene.type || "scene"}-${index + 1}`;
+  const label = scene.title || scene.eyebrow || id;
+  const chapter = {
+    index,
+    id,
+    label,
+    start_ms: cursor,
+    end_ms: cursor + duration,
+    source_ref: {
+      kind: "slidey",
+      spec_path: path.relative(process.cwd(), path.resolve(deckPath)),
+      step_id: id,
+    },
+  };
+  cursor += duration;
+  return chapter;
+});
+
+fs.writeFileSync(outPath, `${JSON.stringify(chapters, null, 2)}\n`);
+NODE
+fi
+if [ ! -s "$CHAPTERS" ]; then
 	echo "Slidey render did not create a non-empty chapter sidecar: $CHAPTERS" >&2
 	exit 1
 fi
