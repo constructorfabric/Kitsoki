@@ -125,7 +125,7 @@ The authoritative source is `internal/host/starlark/` (the sandbox) and
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `script` | string | yes | Path to the `.star` file, relative to the app root. The loader resolves it against the manifest dir, rejects `../` escapes, and requires both the `.star` and its `.star.yaml` sidecar to exist at load time. By dispatch the path is absolute. Templated (`{{…}}`) paths skip the load-time check and are validated at runtime. |
-| `inputs` | object | no | The named inputs exposed to the script as `ctx.inputs["name"]`. Type-validated against the sidecar's `inputs:` block before evaluation. Values are templated like any other `with:` arg. |
+| `inputs` | object | no | The named inputs exposed to the script as `ctx.inputs["name"]`. Type-validated against the sidecar's `inputs:` block before evaluation. Values are templated like any other `with:` arg — **wrap every value in `{{ }}`** (a *sole* `{{ expr }}` preserves the typed value, so a declared `int` stays an `int`). A **bare** `world.foo` is NOT evaluated — it reaches the script as the literal string `"world.foo"`, silently breaking resolution. The loader rejects bare-expression inputs at load (see below). |
 
 Returns: the script's `main(ctx)` **must return a dict**; each key/value becomes
 a named output. The output dict is validated against the sidecar's `outputs:`
@@ -159,7 +159,14 @@ type means `any`; an unknown type fails the app load). Validation semantics:
 
 - **Inputs** — a missing `required: true` input, or a type mismatch, is an
   error. Inputs *not* declared in the sidecar pass through untouched (the script
-  may still read them via `ctx.inputs`).
+  may still read them via `ctx.inputs`). `validateStarlarkEffects` additionally
+  rejects two wiring mistakes **at load** (run `kitsoki validate <app.yaml>` to
+  surface them without a session): an `inputs:` value that is a **bare
+  expression** (`world.x` / uses `??` / `?.` with no `{{ }}`) — it would reach the
+  script as that literal string — and a **non-template literal** wired to an input
+  whose declared type it can never satisfy (e.g. a string to a declared `int`,
+  which has no coercion). Both are the silent "the script saw a literal, not the
+  value" footgun; template the value (`"{{ world.x }}"`) to fix it.
 - **Outputs** — when `outputs:` is non-empty, **every declared output must be
   returned** (a forgotten one is an error) and **every returned key must be
   declared** (an undeclared return is rejected), each value type-checked. This
