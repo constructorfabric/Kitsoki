@@ -1,8 +1,13 @@
 # Epic: Cross-environment view readability
 
-**Status:** Draft v1. No slices implemented yet.
+**Status:** Partially implemented. Typed-view rendering is widely wired through
+the TUI and web (`ViewElement.vue`, `TurnOutcome.TypedView`, TUI typed resize
+tests, legacy prose reflow tests, media element rendering), but the proposal is
+not complete: there is no `kitsoki view` proofing command, `TypedView` can still
+be nil for some legacy/template paths, and the web still has the fallback
+preformatted string branch for untyped entries.
 **Kind:**   epic
-**Slices:** 4 (0/4 shipped)
+**Slices:** 4 (partial; no slice fully closed)
 
 ## Why
 

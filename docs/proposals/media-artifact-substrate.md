@@ -1,6 +1,10 @@
 # Runtime: Media-artifact substrate
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Implemented as part of `visual-outputs.md`. The runtime media
+artifact substrate, recorded artifact handle, `media` typed-view element, and
+terminal pointer rendering are present. Follow-up is proposal lifecycle cleanup:
+migrate any remaining design rationale to narrative docs and delete this slice
+proposal with its parent.
 **Kind:**   runtime
 **Epic:**   ../visual-outputs.md
 

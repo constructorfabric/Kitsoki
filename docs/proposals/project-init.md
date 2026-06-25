@@ -1,15 +1,19 @@
 # Story: dev-story project init — onboard a project, fine-tune the loop
 
-**Status:** Draft v1. A deterministic dev-story onboarding spine now works:
+**Status:** Partially implemented and currently fragile. A deterministic dev-story onboarding spine works:
 `go_init` and raw `onboard ...` requests run local discovery, render a reviewed
 profile, and apply `.kitsoki.yaml`, `.kitsoki/project-profile.yaml`, and a
 `stories/<id>-dev/` instance only after accept. `flows/init_slidey_dogfood.yaml`
 uses Slidey as the first external dogfood target and stubs discovery/apply with
-no LLM. Mining, profile synthesis, schema validation, readiness verification,
-and the full report loop are still pending. Slidey has also been hand-onboarded
-with a materialized `stories/slidey-dev/` instance and
-`.kitsoki/project-profile.yaml`. The report schema is drafted + proven
-(`notes/project-profile.schema.json`, validated in §Verification).
+no LLM, and `flows/init_tools_failed.yaml` covers loud tool-install failure.
+Direct `story_validate` passes for `stories/dev-story`, but running the init
+flows currently fails while loading imported `bf` states because expressions of
+the form `world.*|default:world.*` are rejected by the expression parser. Mining,
+profile synthesis, schema validation, readiness verification, and the full
+report loop are still pending. Slidey has also been hand-onboarded with a
+materialized `stories/slidey-dev/` instance and `.kitsoki/project-profile.yaml`.
+The report schema is drafted + proven (`notes/project-profile.schema.json`,
+validated in §Verification).
 **Kind:**   story
 **Epic:**   — standalone <!-- becomes an epic if Open question 1 (first-class dev-server lifecycle) is taken — that slice is runtime -->
 
@@ -302,7 +306,7 @@ JSON twin is throwaway under `.artifacts/` (gitignored).
 ## 2. The init phase
 - [x] 2.1 init_discover/init_review/init_apply/init_done rooms + go_init intent
 - [ ] 2.2 Probe each room (kitsoki turn …); lock the graph
-- [ ] 2.3 Flow fixtures pass (done: Slidey mocked happy path + refine; pending: decline, budget_exhausted, verify_failure)
+- [ ] Partial: flow fixtures exist for Slidey mocked happy path/refine and tool-install failure, but currently fail to load because imported `bf` expressions use `|default:`
 - [ ] 2.4 Host cassette for a recorded end-to-end (discover + mine + synthesize + verify), no live LLM
 
 ## 3. Live + document

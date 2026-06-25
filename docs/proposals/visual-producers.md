@@ -1,6 +1,9 @@
 # Runtime: Visual producers (slidey + contact sheet)
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Implemented as part of `visual-outputs.md`. Visual producer host
+calls exist for the shipped media workflow. Follow-up is proposal lifecycle
+cleanup: migrate any remaining design rationale to narrative docs and delete
+this slice proposal with its parent.
 **Kind:**   runtime
 **Epic:**   ../visual-outputs.md
 

@@ -1,6 +1,10 @@
 # Runtime: multi-hop contextual routing
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v1. Nothing implemented yet for multi-hop route plans.
+Contextual routing itself has advanced since this was written: base receipts,
+web rewind plumbing, and intent-class `RewindRoute` are present. The proposed
+`route_plan` verdict/config, plan validation/execution, plan-level trace events,
+background room queue semantics, and plan-aware receipt UI are still absent.
 **Kind:**   runtime
 **Epic:**   - standalone
 **Relation:** extends [`contextual-room-routing.md`](contextual-room-routing.md)

@@ -1,6 +1,11 @@
 # Tracing: agent action transcripts — full per-call tool-use detail in the web UI
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Implemented in the current codebase. The Agent-interface seam,
+Claude stream-json tee, per-call transcript sidecars, `transcript_ref` trace
+pointers, cassette record/replay folding, `runstatus.session.transcript`, static
+snapshot inlining, `AgentActions.vue`, transcript waterfall/rollup/diff UI, and
+trace/cassette docs are present. Follow-up is lifecycle cleanup only: migrate
+any still-useful design rationale to narrative docs and delete this proposal.
 **Kind:**   tracing (with a runtime sub-slice: an Agent-interface capability — see Decomposition)
 **Epic:**   — standalone (sibling of [`trace-introspection.md`](trace-introspection.md); see "Relationship to trace-introspection")
 
@@ -553,33 +558,35 @@ re-executed on replay; it is replayed from the cassette.**
 
 ```
 ## 1. Agent-interface seam (runtime sub-slice)
-- [ ] 1.1 Add Transcript type + optional AskResponse.Transcript field (agent.go)
-- [ ] 1.2 Add TranscriptWriter ctx seam (mirror stream_sink.go)
-- [ ] 1.3 local_llm populates Transcript from its req/resp
+- [x] 1.1 Add Transcript type + optional AskResponse.Transcript field (agent.go)
+- [x] 1.2 Add TranscriptWriter ctx seam (mirror stream_sink.go)
+- [x] 1.3 local_llm populates Transcript from its req/resp
 
 ## 2. Capture & reference
-- [ ] 2.1 Claude path tees ClaudeRun.RawEvents to the sidecar writer (+ capture-time stamps → .timings)
-- [ ] 2.2 Dispatcher writes <call_id>.jsonl + attaches transcript_ref (pointer only)
-- [ ] 2.3 Deterministic filename via call_id; sidecar dir layout
-- [ ] 2.4 Decide loop: accumulate RawEvents across --resume iterations under one call_id; write synthetic _kitsoki nudge/validator-reject boundary events; mirror tool_bypassed banner
+- [x] 2.1 Claude path tees ClaudeRun.RawEvents to the sidecar writer (+ capture-time stamps → .timings)
+- [x] 2.2 Dispatcher writes <call_id>.jsonl + attaches transcript_ref (pointer only)
+- [x] 2.3 Deterministic filename via call_id; sidecar dir layout
+- [x] 2.4 Decide loop: accumulate RawEvents across --resume iterations under one call_id; write synthetic _kitsoki nudge/validator-reject boundary events; mirror tool_bypassed banner
 
 ## 3. Replay fidelity
-- [ ] 3.1 EpisodeAgent gains optional transcript: block (+ !include)
-- [ ] 3.2 Replay writes recorded transcript verbatim; golden byte-identical test
-- [ ] 3.3 record mode (new_episodes) captures live transcript into episode
+- [x] 3.1 EpisodeAgent gains optional transcript: block (+ !include)
+- [x] 3.2 Replay writes recorded transcript verbatim; golden byte-identical test
+- [x] 3.3 record mode (new_episodes) captures live transcript into episode
 
 ## 4. Web consumer
-- [ ] 4.1 runstatus.session.transcript {call_id} RPC + lazy sidecar read
-- [ ] 4.2 source.ts getTranscript on Live + Snapshot sources
-- [ ] 4.3 AgentActions.vue timeline (typed rows, collapsible I/O); AgentDetail affordance
-- [ ] 4.4 artifact.go inlines transcript + timings sidecars for static export
-- [ ] 4.5 Timeline waterfall from .timings; error/retry + running-cost rows
-- [ ] 4.6 Guardrail typing of validator submit; session rollup across a run's call_ids
-- [ ] 4.7 Cassette-vs-live transcript diff (drift detection)
-- [ ] 4.8 (optional) normalize native → OTel-GenAI-shaped model in the consumer
+- [x] 4.1 runstatus.session.transcript {call_id} RPC + lazy sidecar read
+- [x] 4.2 source.ts getTranscript on Live + Snapshot sources
+- [x] 4.3 AgentActions.vue timeline (typed rows, collapsible I/O); AgentDetail affordance
+- [x] 4.4 artifact.go inlines transcript + timings sidecars for static export
+- [x] 4.5 Timeline waterfall from .timings; error/retry + running-cost rows
+- [x] 4.6 Guardrail typing of validator submit; session rollup across a run's call_ids
+- [x] 4.7 Cassette-vs-live transcript diff (drift detection)
+- [x] 4.8 (optional) normalize native → OTel-GenAI-shaped model in the consumer
 
 ## 5. Document
-- [ ] 5.1 docs/tracing/{trace-format,run-status-ui,cassettes}.md; trim/delete this proposal
+- [x] 5.1 docs/tracing/{trace-format,run-status-ui,cassettes}.md
+- [ ] 5.2 Trim/delete this proposal after confirming the shipped docs cover the
+      operator- and author-facing contract
 ```
 
 ## Open questions

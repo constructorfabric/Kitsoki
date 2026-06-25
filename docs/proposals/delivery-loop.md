@@ -1,8 +1,13 @@
 # Epic: Delivery loop — ship-it + fleet
 
-**Status:** v1. Slices 1, 2, 4 implemented; slice 3 (fleet) remaining.
+**Status:** Implemented. Slices 1, 2, 3, and 4 all have code/story surfaces in
+the current tree (`stories/git-ops/`, `stories/ship-it/`, `stories/fleet/`, and
+bugfix convergence work). `stories/fleet` validates and its no-LLM
+`happy_path_two_briefs` flow passes. Follow-up is proposal lifecycle cleanup:
+migrate any remaining design rationale into `docs/stories/` and delete this
+proposal plus shipped child proposals.
 **Kind:**   epic
-**Slices:** 4 (3/4 — #1 git-ops, #2 ship-it, #4 bugfix convergence; #3 fleet open)
+**Slices:** 4 (4/4 shipped)
 
 <!--
   Authoring note: this epic was itself produced by hand-driving the very
@@ -99,8 +104,8 @@ representation") + the QA plan live alongside this proposal in
 
 | # | Slice | Kind | Scope (one line) | Depends on | Status | File |
 |---|---|---|---|---|---|---|
-| 1 | git-ops smoothing | story | Operand-as-slot, stop swallowing failures, force/confirm cleanup, one-shot lost-work-safe rebase-onto-moved-main | — | Draft | [`git-ops-smoothing.md`](git-ops-smoothing.md) |
-| 2 | ship-it loop | story | Import cherny-loop + git-ops + new `verify` room; chain configure→maker→integrate→re-verify→cleanup→shipped\|needs-human | 1 | Draft | [`ship-it.md`](ship-it.md) |
+| 1 | git-ops smoothing | story | Operand-as-slot, stop swallowing failures, force/confirm cleanup, one-shot lost-work-safe rebase-onto-moved-main | — | Shipped (`stories/git-ops/`) | [`git-ops-smoothing.md`](git-ops-smoothing.md) |
+| 2 | ship-it loop | story | Import cherny-loop + git-ops + new `verify` room; chain configure→maker→integrate→re-verify→cleanup→shipped\|needs-human | 1 | Shipped (`stories/ship-it/`) | [`ship-it.md`](ship-it.md) |
 | 3 | fleet fan-out | story | Fan ship-it over a brief list; cap N concurrent; merge-lock serializes integrate/verify | 2 (+ work-decomposition output) | Shipped (`stories/fleet/`) | [`fleet.md`](fleet.md) |
 | 4 | bugfix convergence | story | Bugfix composes ship-it's `integrate+re-verify+cleanup` tail (stops reinventing a weaker one); RED→GREEN regression-gate (test fails pre-fix, passes post-fix); `direct-ship` vs `open-PR` exit | 2 | **Shipped** | narrative in [`stories/bugfix/README.md`](../../stories/bugfix/README.md) |
 
