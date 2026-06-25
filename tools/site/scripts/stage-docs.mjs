@@ -121,6 +121,40 @@ function fencedCodeToIndented(content) {
   return out.join("\n");
 }
 
+function firstHeading(repoPath) {
+  const abs = path.join(repoRoot, repoPath);
+  if (!fs.existsSync(abs)) return path.basename(repoPath, ".md");
+  const match = fs.readFileSync(abs, "utf8").match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : path.basename(repoPath, ".md");
+}
+
+function siteHref(sitePath) {
+  return "/" + sitePath.replace(/\.md$/, ".html").replace(/index\.html$/, "");
+}
+
+function writeDocsLanding() {
+  const lines = [
+    "---",
+    "layout: doc",
+    "---",
+    "",
+    "# Kitsoki docs",
+    "",
+    "The docs published here are generated from the same allowlist that builds the sidebar. Internal proposals and research notes stay in GitHub unless they are explicitly promoted into this public set.",
+    "",
+  ];
+
+  for (const section of sections) {
+    lines.push(`## ${section.title}`, "");
+    for (const entry of section.entries) {
+      lines.push(`- [${firstHeading(entry.from)}](${siteHref(entry.to)})`);
+    }
+    lines.push("");
+  }
+
+  fs.writeFileSync(path.join(guideDir, "index.md"), lines.join("\n"));
+}
+
 fs.rmSync(guideDir, { recursive: true, force: true });
 const map = expand();
 let staged = 0;
@@ -134,4 +168,5 @@ for (const [from, to] of map) {
   );
   staged++;
 }
-console.log(`stage-docs: staged ${staged} doc(s) -> ${path.relative(repoRoot, guideDir)}`);
+writeDocsLanding();
+console.log(`stage-docs: staged ${staged} doc(s) + landing -> ${path.relative(repoRoot, guideDir)}`);

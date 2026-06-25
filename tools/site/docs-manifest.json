@@ -6,7 +6,6 @@
     {
       "title": "Start here",
       "items": [
-        { "from": "docs/README.md", "to": "guide/index.md" },
         { "from": "docs/start-here.md", "to": "guide/start-here.md" },
         { "from": "docs/getting-started.md", "to": "guide/getting-started.md" }
       ]
