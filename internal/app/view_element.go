@@ -136,6 +136,17 @@ type ViewElement struct {
 	// a world slot that holds the path returned by host.artifacts_dir.
 	// When empty, the TUI pointer falls back to displaying MediaHandle.
 	MediaPath string
+	// AnnotateIntent, when set, makes the media element's Annotate affordance
+	// dispatch THIS intent (carrying the composed instruction + the picked
+	// anchor) instead of a generic off-path note. This is the generic,
+	// producer-agnostic seam by which an annotation drives a real state
+	// transition — e.g. a slidey deck routes annotations to its `refine` intent
+	// so the reviser edits the pointed-at scene. Empty ⇒ legacy off-path note.
+	AnnotateIntent string
+	// AnnotateFeedbackSlot names the slot the composed instruction is written to
+	// on AnnotateIntent (default "feedback"). The picked anchor always rides as
+	// the turn's visual bundle.
+	AnnotateFeedbackSlot string
 
 	// ---- Choice fields.
 	// Populated only when Kind == "choice"; otherwise zero. See
@@ -338,10 +349,12 @@ type rawViewElementYAML struct {
 // may supply it as a pongo2 template expression bound from a world slot
 // that holds the path returned by host.artifacts_dir.
 type rawMediaYAML struct {
-	Handle  string `yaml:"handle"`
-	Caption string `yaml:"caption,omitempty"`
-	Kind    string `yaml:"kind,omitempty"`
-	Path    string `yaml:"path,omitempty"`
+	Handle              string `yaml:"handle"`
+	Caption             string `yaml:"caption,omitempty"`
+	Kind                string `yaml:"kind,omitempty"`
+	Path                string `yaml:"path,omitempty"`
+	AnnotateIntent      string `yaml:"annotate_intent,omitempty"`
+	AnnotateFeedbackSlot string `yaml:"annotate_feedback_slot,omitempty"`
 }
 
 // rawBannerYAML decodes the banner element body. Text is the phase name
@@ -509,12 +522,14 @@ func (r rawViewElementYAML) toElement() (ViewElement, error) {
 	if r.Media != nil {
 		set = append(set, "media")
 		out = ViewElement{
-			Kind:         "media",
-			MediaHandle:  r.Media.Handle,
-			MediaCaption: r.Media.Caption,
-			MediaKind:    r.Media.Kind,
-			MediaPath:    r.Media.Path,
-			When:         when,
+			Kind:                 "media",
+			MediaHandle:          r.Media.Handle,
+			MediaCaption:         r.Media.Caption,
+			MediaKind:            r.Media.Kind,
+			MediaPath:            r.Media.Path,
+			AnnotateIntent:       r.Media.AnnotateIntent,
+			AnnotateFeedbackSlot: r.Media.AnnotateFeedbackSlot,
+			When:                 when,
 		}
 	}
 	switch len(set) {

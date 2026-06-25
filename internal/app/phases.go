@@ -486,10 +486,12 @@ func substViewElement(el ViewElement, params map[string]any, next map[string]str
 		When:     substString(el.When, params, next),
 		// Media fields — handle and kind are not param-substituted (they
 		// come from world slots via pongo2 at render time); pass through as-is.
-		MediaHandle:  el.MediaHandle,
-		MediaCaption: substString(el.MediaCaption, params, next),
-		MediaKind:    el.MediaKind,
-		MediaPath:    substString(el.MediaPath, params, next),
+		MediaHandle:          el.MediaHandle,
+		MediaCaption:         substString(el.MediaCaption, params, next),
+		MediaKind:            el.MediaKind,
+		MediaPath:            substString(el.MediaPath, params, next),
+		AnnotateIntent:       el.AnnotateIntent,
+		AnnotateFeedbackSlot: el.AnnotateFeedbackSlot,
 	}
 	if len(el.Items) > 0 {
 		out.Items = make([]ListItem, len(el.Items))

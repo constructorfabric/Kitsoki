@@ -496,12 +496,18 @@ export class LiveSource implements DataSource {
   submit(
     sessionId: string,
     intent: string,
-    slots: Record<string, unknown> = {}
+    slots: Record<string, unknown> = {},
+    anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor
   ): Promise<TurnResult> {
     return this.client.post<TurnResult>("runstatus.session.submit", {
       session_id: sessionId,
       intent,
       slots,
+      // The media-annotation composer dispatches an intent (e.g. a deck's
+      // `refine`) and rides the picked anchor as a top-level param; the server
+      // lifts it into host.WithVisualAmbient so the agent edits the pointed-at
+      // element. Dropped when no anchor (plain intent submits stay identical).
+      ...(serializeAnchorParam(anchor) ? { anchor: serializeAnchorParam(anchor) } : {}),
     });
   }
 

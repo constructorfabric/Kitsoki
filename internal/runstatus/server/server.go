@@ -885,6 +885,16 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		slots, _ := params["slots"].(map[string]any)
 		slots = s.injectAuthor(ctx, params, slots)
 		ctx = s.withOperatorPrompter(ctx, params)
+		// A web/tui surface may attach a visual ambient bundle + picked anchor on
+		// the submit call — the generic media-annotation seam: the Annotate
+		// composer dispatches a real intent (e.g. a slidey deck's `refine`) and
+		// the pointed-at element rides the turn so the agent edits exactly there.
+		// Mirrors offpath's lift; the top-level `anchor` is folded into the visual
+		// map (where visualAmbientFromParams reads it). A no-op when neither rode
+		// the call, so explicit-intent submits stay byte-identical.
+		if ctx2, ok := liftVisualAmbient(ctx, params); ok {
+			ctx = ctx2
+		}
 		out, err := entry.Driver.SubmitDirect(ctx, name, slots)
 		if err != nil {
 			return nil, serverErr(err)
@@ -1616,6 +1626,30 @@ func traceEventsToStoreEvents(tevs []runstatus.TraceEvent) []store.Event {
 		})
 	}
 	return out
+}
+
+// liftVisualAmbient lifts an optional visual bundle + picked anchor off an RPC's
+// params onto the ctx (host.WithVisualAmbient), returning the enriched ctx and
+// true when something was attached. The `anchor` may arrive nested inside the
+// `visual` object OR as a top-level sibling (the media-annotation composer sends
+// it top-level alongside `slots`); a top-level anchor is folded into the visual
+// map so visualAmbientFromParams reads it uniformly. Returns (ctx, false) when
+// neither rode the call so callers keep their byte-identical legacy path.
+func liftVisualAmbient(ctx context.Context, params map[string]any) (context.Context, bool) {
+	vm, _ := params["visual"].(map[string]any)
+	an, hasAnchor := params["anchor"].(map[string]any)
+	if vm == nil && !hasAnchor {
+		return ctx, false
+	}
+	if vm == nil {
+		vm = map[string]any{}
+	}
+	if hasAnchor {
+		if _, nested := vm["anchor"]; !nested {
+			vm["anchor"] = an
+		}
+	}
+	return host.WithVisualAmbient(ctx, visualAmbientFromParams(vm)), true
 }
 
 // visualAmbientFromParams decodes the optional `visual` object on a

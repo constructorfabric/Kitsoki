@@ -32,6 +32,12 @@ states:
           handle:  "{{ world.deck_handle }}"
           kind:    slideshow
           caption: "{{ world.deck.summary }}"
+          # Annotations on the deck drive the refine intent: the composed
+          # instruction lands in `feedback` and the picked anchor rides the turn
+          # as the visual bundle, so the reviser edits the pointed-at scene
+          # (instead of a generic off-path note that never touches the deck).
+          annotate_intent: refine
+          annotate_feedback_slot: feedback
         when: "world.deck_handle != ''"
       - prose: "⚠️  Render failed — there's no deck to show. The renderer reported:\n\n    {{ world.last_error }}\n\nFix the render, then `rerender` to try again (or `refine` to edit the spec first)."
         when: "world.deck_handle == '' && world.last_error != ''"

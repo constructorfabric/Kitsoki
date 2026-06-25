@@ -184,7 +184,8 @@ export interface DataSource {
   submit(
     sessionId: string,
     intent: string,
-    slots?: Record<string, unknown>
+    slots?: Record<string, unknown>,
+    anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor
   ): Promise<TurnResult>;
   /** Free-text turn: hand raw input to the interpreter to pick an intent. */
   sendTurn(sessionId: string, input: string): Promise<TurnResult>;

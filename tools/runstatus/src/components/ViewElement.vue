@@ -122,6 +122,25 @@ const annotateKind = ref<MediaKind | null>(null);
 const annotateBusy = ref(false);
 const annotateSent = ref<string | null>(null);
 const annotateError = ref<string | null>(null);
+/** The anchor the operator just picked, held until they compose an instruction
+ *  and Send. Null when nothing is staged (the picker is live). */
+const pendingAnchor = ref<AnnotationAnchor | null>(null);
+/** The composed instruction for the staged anchor. */
+const instruction = ref("");
+
+/** The intent annotations on this media dispatch (e.g. a deck's `refine`), and
+ *  the slot the instruction rides. Empty intent ⇒ legacy off-path note. */
+const annotateIntent = computed<string>(() => el.value.AnnotateIntent ?? "");
+const annotateFeedbackSlot = computed<string>(
+  () => el.value.AnnotateFeedbackSlot || "feedback"
+);
+
+/** A short human label for the staged anchor. */
+function anchorLabel(anchor: AnnotationAnchor): string {
+  return anchor.target?.kind === "semantic_element"
+    ? anchor.target.label || anchor.target.ref
+    : (anchor.target?.kind ?? "annotation");
+}
 
 /** Open the annotator. Probe the semantic sidecar ONCE: a non-null map means the
  *  media (even an mp4 deck) carries producer-declared elements, so render with
@@ -149,33 +168,63 @@ function closeAnnotate(): void {
   annotateOpen.value = false;
   annotateKind.value = null;
   annotateError.value = null;
+  pendingAnchor.value = null;
+  instruction.value = "";
 }
 
-/** The annotator emitted an anchor — dispatch it as an anchored off-path note so
- *  it leaves the client (serializeAnchor projects it to the wire shape inside
- *  ds.offpath). A short confirmation is shown; the panel stays open for a
- *  follow-up pick. */
-async function onAnchor(anchor: AnnotationAnchor): Promise<void> {
-  // Single-flight: the off-path dispatch holds the session chat lock for the
-  // duration of its agent round-trip. A second emit while one is in flight would
-  // contend with the first ("chat busy: held by pid <self>"), so ignore re-emits
-  // until the current one settles.
+/** The annotator emitted an anchor — STAGE it (don't dispatch yet) so the
+ *  operator can compose an instruction describing what they want changed before
+ *  sending. Picking again before sending replaces the staged anchor. */
+function onAnchor(anchor: AnnotationAnchor): void {
   if (annotateBusy.value) return;
+  pendingAnchor.value = anchor;
+  annotateError.value = null;
+  annotateSent.value = null;
+}
+
+/** Discard the staged anchor and return to picking. */
+function clearPending(): void {
+  pendingAnchor.value = null;
+  instruction.value = "";
+}
+
+/** Send the staged anchor + composed instruction. When the media element
+ *  declares an AnnotateIntent (e.g. a deck's `refine`), dispatch that intent
+ *  with the instruction in its feedback slot and the anchor riding the turn, so
+ *  the agent edits the pointed-at element. Otherwise fall back to a generic
+ *  anchored off-path note. */
+async function sendAnnotation(): Promise<void> {
+  const anchor = pendingAnchor.value;
+  if (!anchor || annotateBusy.value) return;
+  const text = instruction.value.trim();
+  // An intent dispatch needs an instruction (it's the feedback that drives the
+  // edit); a bare off-path note can stand on the anchor alone.
+  if (annotateIntent.value && !text) {
+    annotateError.value = "Describe what you want changed, then Send.";
+    return;
+  }
   annotateBusy.value = true;
   annotateError.value = null;
   annotateSent.value = null;
   try {
-    const label =
-      anchor.target?.kind === "semantic_element"
-        ? anchor.target.label || anchor.target.ref
-        : (anchor.target?.kind ?? "annotation");
-    await _ds.offpath(
-      _sessionId.value,
-      `Annotated ${label} on ${mediaHandle.value}.`,
-      undefined,
-      anchor
-    );
+    const label = anchorLabel(anchor);
+    if (annotateIntent.value) {
+      await _ds.submit(
+        _sessionId.value,
+        annotateIntent.value,
+        { [annotateFeedbackSlot.value]: text },
+        anchor
+      );
+    } else {
+      await _ds.offpath(
+        _sessionId.value,
+        text ? `${text} (re: ${label} on ${mediaHandle.value})` : `Annotated ${label} on ${mediaHandle.value}.`,
+        undefined,
+        anchor
+      );
+    }
     annotateSent.value = label;
+    clearPending();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     // The session chat is single-writer: while a refine/turn is still running
@@ -466,6 +515,47 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
           :poster-handle="mediaHandle"
           @anchor="onAnchor"
         />
+
+        <!-- Composer: once an anchor is picked, the operator describes what they
+             want changed THERE, then Sends. This is what turns a pick into a
+             real edit (the AnnotateIntent runs with this instruction). -->
+        <div
+          v-if="pendingAnchor"
+          class="ve-media-annotate-composer"
+          data-testid="media-annotate-composer"
+        >
+          <span class="ve-media-annotate-pointed">
+            Pointed at: <strong>{{ anchorLabel(pendingAnchor) }}</strong>
+          </span>
+          <textarea
+            v-model="instruction"
+            class="ve-media-annotate-input"
+            data-testid="media-annotate-input"
+            rows="2"
+            :placeholder="annotateIntent
+              ? 'Describe the change you want here…'
+              : 'Add a note about this spot (optional)…'"
+            :disabled="annotateBusy"
+            @keydown.enter.exact.prevent="sendAnnotation"
+          />
+          <div class="ve-media-annotate-actions">
+            <button
+              type="button"
+              class="ve-media-annotate-send"
+              data-testid="media-annotate-send"
+              :disabled="annotateBusy || (annotateIntent !== '' && instruction.trim() === '')"
+              @click="sendAnnotation"
+            >{{ annotateIntent ? "Send & refine" : "Send" }}</button>
+            <button
+              type="button"
+              class="ve-media-annotate-repick"
+              data-testid="media-annotate-repick"
+              :disabled="annotateBusy"
+              @click="clearPending"
+            >Pick a different spot</button>
+          </div>
+        </div>
+
         <p v-if="annotateBusy" class="ve-media-annotate-status">Sending annotation…</p>
         <p v-else-if="annotateSent" class="ve-media-annotate-status ve-media-annotate-ok">
           Annotation sent: {{ annotateSent }}

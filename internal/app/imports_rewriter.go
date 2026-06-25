@@ -603,6 +603,8 @@ func (rw *childRewriter) rewriteViewElement(el ViewElement) ViewElement {
 		out.MediaCaption = rw.rewriteExpr(el.MediaCaption)
 		out.MediaKind = el.MediaKind
 		out.MediaPath = rw.rewriteExpr(el.MediaPath)
+		out.AnnotateIntent = el.AnnotateIntent
+		out.AnnotateFeedbackSlot = el.AnnotateFeedbackSlot
 	}
 	return out
 }
