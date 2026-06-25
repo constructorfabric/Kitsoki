@@ -1,0 +1,70 @@
+# gears-rust bugfix marathon — baseline bug cases
+#
+# Each case is a REAL merged fix in ~/code/gears-rust used as a baseline:
+#   - baseline_sha = the fix's PARENT commit (`<fix>^`), where the bug is PRESENT.
+#   - oracle_test  = the regression test the real fix added (the HIDDEN oracle,
+#                    kept OUT of the candidate tree until independent verify).
+#   - package      = the cargo package that holds the oracle test.
+#   - fix_sha      = the real merged fix (the high-quality baseline PR to compare to).
+#
+# Selection bias: prefer focused, single-package, BEHAVIOURAL fixes with a
+# deterministic regression test. Flaky-timing test fixes are excluded (bad oracle).
+#
+# Status: candidates pool — pinned/confirmed-RED ones are marked `confirmed_red: true`.
+
+cases:
+  - id: bug1
+    fix_sha: a7080261
+    baseline_sha: e3ab3c27   # a7080261^
+    package: cf-gears-toolkit
+    oracle_test: bootstrap::config::tests::test_gh4115_dashed_gear_name_env_override_works
+    title: "gh-4115: normalize underscore→dash for k8s env-var overrides of dashed gear names"
+    test_cmd: "cargo test -p cf-gears-toolkit --features bootstrap --test oracle_gh4115"
+    confirmed_red: true   # 2026-06-25: priority 100 != 50 at e3ab3c27 via public load_layered
+
+  # --- candidate pool (to be pinned + confirmed RED before driving) ---
+  - id: bug2
+    fix_sha: 7845d2e5
+    package: cf-oagw
+    title: "oagw: close Pingora read pipe on streaming body limit breach"
+    confirmed_red: false
+  - id: bug3
+    fix_sha: 9ca475ed
+    package: cf-oagw
+    title: "oagw: chunked transfer encoding for streaming request bodies"
+    confirmed_red: false
+  - id: bug4
+    fix_sha: e21d79ab
+    package: cf-errors
+    title: "errors: support convert for different error types to CanonicalError"
+    confirmed_red: false
+  - id: bug5
+    fix_sha: 8737281d
+    package: cf-resource-group
+    title: "resource-group: drop RG-prefix requirement for allowed_memberships"
+    confirmed_red: false
+  - id: bug6
+    fix_sha: 26ad613f
+    package: cf-account-management
+    title: "account-management: derive effective realm + children-list filter parity"
+    confirmed_red: false
+  - id: bug7
+    fix_sha: f0873f75
+    package: cf-account-management
+    title: "account-management: claim/due predicate fences + IdP-required gates"
+    confirmed_red: false
+  - id: bug8
+    fix_sha: 216a9ccd
+    package: cf-oagw
+    title: "oagw: use gts id for upstream_id in API"
+    confirmed_red: false
+  - id: bug9
+    fix_sha: 5a58a219
+    package: cf-resource-group
+    title: "resource-group: validate allowed_memberships via gts-rust + wildcards"
+    confirmed_red: false
+  - id: bug10
+    fix_sha: c3c96ac7
+    package: cf-modkit-db
+    title: "modkit-db: match PG serialization/deadlock by message not only SQLSTATE"
+    confirmed_red: false
