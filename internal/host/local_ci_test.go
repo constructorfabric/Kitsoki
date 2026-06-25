@@ -91,6 +91,33 @@ func TestLocalCI_RunTests_Override(t *testing.T) {
 	}
 }
 
+// A test_cmd with a leading POSIX env-prefix (`NAME=VALUE cmd`) must be
+// routed through `env`, not fork/exec'd as a binary literally named
+// `NAME=VALUE`.  Regression for the gears-rust bake-off finding where
+// `CARGO_TARGET_DIR=... cargo test` bounced run_tests to idle with
+// "no such file or directory".
+func TestLocalCI_RunTests_EnvPrefixRoutedThroughEnv(t *testing.T) {
+	fr := newFakeRunner()
+	fr.responses["env CARGO_TARGET_DIR=/tmp/t cargo test"] = fakeResp{stdout: "ok"}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.LocalCIHandler(context.Background(), map[string]any{
+		"op":       "run_tests",
+		"test_cmd": "CARGO_TARGET_DIR=/tmp/t cargo test",
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	got := strings.Join(fr.calls, "\n")
+	if !strings.HasPrefix(got, "env CARGO_TARGET_DIR=/tmp/t cargo test") {
+		t.Fatalf("env-prefix not routed through env: %v", fr.calls)
+	}
+}
+
 func TestLocalCI_RunTests_FailureReportsFailedCount(t *testing.T) {
 	fr := newFakeRunner()
 	fr.responses["go test ./..."] = fakeResp{

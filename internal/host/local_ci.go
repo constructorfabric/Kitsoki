@@ -99,6 +99,16 @@ func ciBuild(ctx context.Context, workdir string, args map[string]any) (Result, 
 // splitOverride consults args[key] for a shell-style override.  When
 // present it splits on whitespace and returns (cmd, argv) ready to
 // hand to the runner.  When absent the supplied default is returned.
+//
+// The command is fork/exec'd directly (no shell), so a leading run of
+// `NAME=VALUE` tokens — the POSIX env-prefix form a user reasonably
+// writes, e.g. `CARGO_TARGET_DIR=/tmp/t cargo test` — would otherwise be
+// fork/exec'd as a binary literally named `CARGO_TARGET_DIR=...` and fail
+// `no such file or directory`.  To match the least-surprising shell
+// behaviour without taking on full `sh -c` semantics, when the override
+// begins with one or more env assignments we route the whole thing
+// through `/usr/bin/env`, which applies the assignments then execs the
+// rest — exactly `env NAME=VALUE cmd args`.
 func splitOverride(args map[string]any, key string, def []string) (string, []string) {
 	override, _ := args[key].(string)
 	override = strings.TrimSpace(override)
@@ -109,7 +119,36 @@ func splitOverride(args map[string]any, key string, def []string) (string, []str
 	if len(parts) == 0 {
 		return def[0], def[1:]
 	}
+	if isEnvAssignment(parts[0]) {
+		// `env CARGO_TARGET_DIR=x cargo test ...` — env consumes the
+		// leading NAME=VALUE tokens and execs the remainder.
+		return "env", parts
+	}
 	return parts[0], parts[1:]
+}
+
+// isEnvAssignment reports whether tok is a shell env-prefix assignment
+// (`NAME=VALUE`): a `=` with a non-empty name to its left whose chars are
+// all valid in a C identifier (letters, digits, underscore; not leading
+// digit).  Guards against treating an arg like `--flag=val` as an
+// assignment.
+func isEnvAssignment(tok string) bool {
+	eq := strings.IndexByte(tok, '=')
+	if eq <= 0 {
+		return false
+	}
+	name := tok[:eq]
+	for i, r := range name {
+		isLetter := r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+		isDigit := r >= '0' && r <= '9'
+		if !isLetter && !isDigit {
+			return false
+		}
+		if i == 0 && isDigit {
+			return false
+		}
+	}
+	return true
 }
 
 // countGoTestResults grovels through `go test`'s human output for

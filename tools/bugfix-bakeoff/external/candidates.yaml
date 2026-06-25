@@ -20,3 +20,8 @@ candidates:
     profile: synthetic-claude   # GLM-5.2 via synthetic.new (Anthropic-format)
     provider: synthetic.new
     metered: true               # trace carries payload.meta.cost_usd
+  - key: gpt-5.3-spark
+    short: spark
+    profile: codex-spark        # GPT-5.3-codex-spark — cheap/fast OpenAI Codex tier
+    provider: openai-codex
+    metered: false              # subscription auth → trace carries no cost_usd
