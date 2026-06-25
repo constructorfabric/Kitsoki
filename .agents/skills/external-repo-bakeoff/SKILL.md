@@ -142,7 +142,10 @@ providers; codex/subscription auth carries none → report token usage + note
 match is a strong signal).
 
 **Report + deck:** add a results section to the project case study, and author a
-slidey deck (`docs/decks/<name>-bakeoff.slidey.json` → `slidey bundle … .html`).
+slidey deck — **commit only the `docs/decks/<name>-bakeoff.slidey.json` spec**.
+Do NOT bundle or check in the `.slidey.html`: it's a deterministic render of the
+JSON (preview it with the VS Code extension or `slidey bundle … .html` locally),
+so a committed HTML is just a stale 6 MB duplicate. `*.slidey.html` is gitignored.
 Scene types: `title` / `narrative` / `cards{variant:grid}` / `table{variant:data,
 rows:[{cells:[…]}]}`. Numbers must come from `results/*.json` — pending cells are
 marked pending, never invented. Commit results under
