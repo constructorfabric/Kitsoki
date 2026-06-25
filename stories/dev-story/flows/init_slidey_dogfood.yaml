@@ -41,6 +41,19 @@ host_handlers:
               - "/Users/brad/code/slidey/.kitsoki.yaml"
               - "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
               - "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+      install_tools:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target":"/Users/brad/code/slidey","skills":["kitsoki-story-authoring"],"agents":["kitsoki-mcp-driver.md"],"mcp_path":"/Users/brad/code/slidey/.mcp.json","mcp_written":true}'
+          stdout_json:
+            target: "/Users/brad/code/slidey"
+            skills:
+              - "kitsoki-story-authoring"
+            agents:
+              - "kitsoki-mcp-driver.md"
+            mcp_path: "/Users/brad/code/slidey/.mcp.json"
+            mcp_written: true
 
 turns:
   - intent: { name: go_init, slots: {} }
@@ -108,7 +121,16 @@ turns:
           - "/Users/brad/code/slidey/.kitsoki.yaml"
           - "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
           - "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
-    expect_view_matches: "continue"
+      init_tools_ok: true
+      init_tools_result:
+        target: "/Users/brad/code/slidey"
+        skills:
+          - "kitsoki-story-authoring"
+        agents:
+          - "kitsoki-mcp-driver.md"
+        mcp_path: "/Users/brad/code/slidey/.mcp.json"
+        mcp_written: true
+    expect_view_matches: "studio MCP"
 
   - intent: { name: init_applied, slots: {} }
     expect_state: init_done

@@ -31,7 +31,14 @@ STORY_APPS := $(wildcard stories/*/app.yaml)
 BASESTORIES_DIR   := internal/basestories/stories
 BASESTORIES_STAMP := internal/basestories/.embed-stamp
 
-.PHONY: all setup build install uninstall test test-flows starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories e2e-docker \
+# baseskills mirrors basestories for the agent toolkit: .agents/{skills,agents}
+# is staged into the embed dir so //go:embed ships it and `kitsoki project-tools
+# install` can install skills/agents + the studio MCP into an onboarded project
+# with only the binary present.
+BASESKILLS_DIR    := internal/baseskills/assets
+BASESKILLS_STAMP  := internal/baseskills/.embed-stamp
+
+.PHONY: all setup build install uninstall test test-flows starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories embed-skills e2e-docker \
 	fetch-models fetch-llama-server demo-tour demo-tour-fast demo-tour-qa cost-report cost-report-test mining-test \
 	vscode-e2e vscode-e2e-fast vscode-qa vscode-theming-sidebyside vscode-package vscode-install-local
 
@@ -60,12 +67,13 @@ check-deps:
 		exit 1; \
 	fi
 
-# build / install depend on web + embed-stories so the binary always embeds a
-# current SPA and the current story library.
-build: check-deps web embed-stories
+# build / install depend on web + embed-stories + embed-skills so the binary
+# always embeds a current SPA, the current story library, and the current agent
+# toolkit.
+build: check-deps web embed-stories embed-skills
 	go build -o $(BINARY) $(PKG)
 
-install: check-deps web embed-stories
+install: check-deps web embed-stories embed-skills
 	@mkdir -p $(INSTALLDIR)
 	GOBIN=$(INSTALLDIR) go install $(PKG)
 	@echo "installed $(BINARY) -> $(INSTALLDIR)/$(BINARY)"
@@ -101,6 +109,27 @@ embed-stories:
 		cp -R "$$tmp/stories"/. "$(BASESTORIES_DIR)"/; \
 		touch "$(BASESTORIES_STAMP)"; \
 		echo "staged stories/ -> $(BASESTORIES_DIR)"; \
+	fi
+
+# embed-skills stages .agents/skills + .agents/agents into the baseskills embed
+# dir (as assets/skills + assets/agents) so //go:embed ships the agent toolkit.
+# Same content-compare/one-directional-copy discipline as embed-stories.
+embed-skills:
+	@tmp=$$(mktemp -d "$${TMPDIR:-/tmp}/kitsoki-baseskills.XXXXXX"); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	mkdir -p "$$tmp/assets/skills" "$$tmp/assets/agents"; \
+	cp -R .agents/skills/. "$$tmp/assets/skills"/; \
+	cp -R .agents/agents/. "$$tmp/assets/agents"/; \
+	touch "$$tmp/assets/.gitkeep"; \
+	if [ -d "$(BASESKILLS_DIR)" ] && diff -qr "$$tmp/assets" "$(BASESKILLS_DIR)" >/dev/null; then \
+		touch "$(BASESKILLS_STAMP)"; \
+		echo "agent toolkit already staged in $(BASESKILLS_DIR)"; \
+	else \
+		rm -rf "$(BASESKILLS_DIR)"; \
+		mkdir -p "$(BASESKILLS_DIR)"; \
+		cp -R "$$tmp/assets"/. "$(BASESKILLS_DIR)"/; \
+		touch "$(BASESKILLS_STAMP)"; \
+		echo "staged .agents/{skills,agents} -> $(BASESKILLS_DIR)"; \
 	fi
 
 # web bundles the runstatus SPA and stages it into the embed dir. Incremental:

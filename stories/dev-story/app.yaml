@@ -603,6 +603,9 @@ world:
   init_apply_result:     { type: object, default: {} }
   init_apply_ok:         { type: bool, default: false }
   init_apply_output:     { type: string, default: "" }
+  init_tools_result:     { type: object, default: {} }
+  init_tools_ok:         { type: bool, default: false }
+  init_tools_output:     { type: string, default: "" }
 
   # ── Design pipeline (rooms/design*.yaml) ───────────────────────
   # 4-stage pipeline: intake → search → refine → draft+publish.

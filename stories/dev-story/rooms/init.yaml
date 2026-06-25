@@ -312,6 +312,12 @@ states:
             Profile:  "{{ world.init_apply_result.profile_path|default:'' }}"
             Instance: "{{ world.init_apply_result.instance_path|default:'' }}"
         when: "world.init_apply_result.status == 'applied'"
+      - prose: "Installed the kitsoki agent toolkit (skills + subagents) and registered the studio MCP."
+        when: "world.init_tools_ok"
+      - kv:
+          pairs:
+            MCP: "{{ world.init_tools_result.mcp_path|default:'(pending)' }}"
+        when: "world.init_tools_ok"
       - choice:
           mode: single
           prompt: "Actions"
@@ -354,6 +360,25 @@ states:
           init_apply_output: "stdout"
           init_apply_result: "stdout_json"
         on_error: init_apply_failed
+      # Install the kitsoki agent toolkit (skills + shared subagents) and
+      # register the studio MCP into the target checkout, so an onboarded
+      # project is a fully working kitsoki environment (not just config files).
+      # Best-effort: a tools-install hiccup must not fail the file apply, so
+      # there is no on_error bounce — the result is surfaced read-only below.
+      - invoke: host.run
+        once: true
+        id: install_tools
+        with:
+          cmd: bash
+          args:
+            - "-lc"
+            - 'kitsoki project-tools install --json --target "$1"'
+            - "install_tools"
+            - "{{ world.init_target_path }}"
+        bind:
+          init_tools_ok: "ok"
+          init_tools_output: "stdout"
+          init_tools_result: "stdout_json"
     on:
       init_applied:
         - when: "world.init_apply_result.status == 'applied'"

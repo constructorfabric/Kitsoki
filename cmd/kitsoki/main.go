@@ -144,6 +144,7 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(webCmd())
 	root.AddCommand(tourCmd())
 	root.AddCommand(materializeCmd())
+	root.AddCommand(projectToolsCmd())
 
 	return root
 }

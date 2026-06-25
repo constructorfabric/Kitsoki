@@ -110,3 +110,10 @@ internal/helpdocs/assets/*
 internal/basestories/stories/*
 !internal/basestories/stories/.gitkeep
 internal/basestories/.embed-stamp
+
+# .agents/{skills,agents} staged here so //go:embed can ship the agent toolkit.
+# Only the .gitkeep placeholder is committed so //go:embed matches on a fresh
+# checkout (see internal/baseskills).
+internal/baseskills/assets/*
+!internal/baseskills/assets/.gitkeep
+internal/baseskills/.embed-stamp
