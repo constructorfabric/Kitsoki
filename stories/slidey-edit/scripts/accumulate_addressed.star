@@ -3,9 +3,17 @@
 # record is built deterministically here (the ui-fix discipline).
 #
 # Interface (authoritative in accumulate_addressed.star.yaml):
-#   inputs:  deck_handle (string?), anchor_label (string?), instruction (string?)
-#   world:   addressed (object {items:[...]}), refine_result (object {edited:[...]})
+#   inputs:  deck_handle (string?), anchor_label (string?), instruction (string?),
+#            edited (list?) — the refs the reviser touched this pass
+#   world:   addressed (object {items:[...]})
 #   outputs: addressed (object {items:[...]})
+#
+# `edited` is passed as a machine-resolved INPUT (`{{ world.refine_result.edited }}`),
+# NOT read from ctx.world: this script runs as a TRANSITION effect (the rerender
+# handler), where ctx.world reflects a later snapshot than the per-position
+# machine-resolved inputs — reading refine_result off ctx.world here came back
+# empty even though refine_result was still set when the effect fired. The input is
+# resolved at this effect's position (before the same handler's reset clears it).
 
 def main(ctx):
     bucket = ctx.world.get("addressed") or {"items": []}
@@ -13,8 +21,9 @@ def main(ctx):
         bucket = {"items": []}
     items = list(bucket.get("items", []))
 
-    refine_result = ctx.world.get("refine_result") or {}
-    edited = refine_result.get("edited", []) if type(refine_result) == "dict" else []
+    edited = ctx.inputs.get("edited")
+    if type(edited) != "list":
+        edited = []
 
     entry = {
         "deck_handle":  ctx.inputs.get("deck_handle", ""),

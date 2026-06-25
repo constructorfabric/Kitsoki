@@ -143,6 +143,21 @@ not in kitsoki core.
 > `invoke:` silently skips the invoke. Keep the guard off invoke effects (the
 > scene gate is reached only on the success path, so it needs none).
 
+> **Gotcha (story authors):** `host.starlark.run` does **not** expr-evaluate its
+> `inputs:` — the machine resolves each value first, and only a string wrapping
+> the whole value in `{{ }}` is evaluated (a sole `{{ expr }}` preserves the typed
+> value, so an `int` stays an `int`). A **bare** `world.foo` reaches the script as
+> the literal string `"world.foo"`, which silently breaks resolution — the symptom
+> that "the deck never shows the edits": resolve_scene looks up a deck literally
+> named `world.deck.spec_path` (not found → `scene_index -1` → reviser told to make
+> no change) and the gate gets a string `scene_index` → `expected int, got string`
+> → `on_error` → the rerender never fires. Always template these:
+> `spec_path: "{{ world.deck.spec_path }}"`. The same applies to a value a
+> transition-effect script needs from world — pass it as a resolved input, not via
+> `ctx.world` (which is a stale snapshot inside a transition effect). `kitsoki
+> trace --turn <n>` now prints each host call's resolved inputs + outputs, so an
+> unevaluated input shows verbatim there. Regression: `stories/slidey-edit/flows/refine_resolves_viewed_scene.yaml`.
+
 ## Serving the companions
 
 The web layer resolves an artifact's companions as **siblings of the resolved

@@ -38,10 +38,17 @@ states:
         once: true
         with:
           script: scripts/resolve_scene.star
+          # inputs to host.starlark.run are NOT expr-evaluated by the host — the
+          # machine resolves each value first, and ONLY strings wrapping the whole
+          # value in `{{ }}` are evaluated (a sole `{{ expr }}` preserves the typed
+          # value, so scene_index stays an int). A bare `world.foo` is passed to the
+          # script VERBATIM as the literal string "world.foo" (never the value) —
+          # which silently breaks resolution (deck-not-found, "expected int, got
+          # string"). Always template these. See starlark-enrich's README.
           inputs:
-            spec_path:     "world.deck.spec_path"
-            anchor_ref:    'world.annotation?.anchor?.semantic_element?.ref ?? ""'
-            current_scene: 'str(world.current_scene ?? "")'
+            spec_path:     "{{ world.deck.spec_path }}"
+            anchor_ref:    '{{ world.annotation?.anchor?.semantic_element?.ref ?? "" }}'
+            current_scene: '{{ string(world.current_scene ?? "") }}'
         bind:
           scene_index: scene_index
           scene_label: scene_label
@@ -79,11 +86,14 @@ states:
         once: true
         with:
           script: scripts/gate_edited_scene.star
+          # Templated, not bare expr — a sole `{{ }}` keeps scene_index a typed int
+          # (the sidecar declares it `int`); a bare "world.scene_index" reaches the
+          # script as the literal string and fails type validation. See resolve_scene.
           inputs:
-            scene_index: "world.scene_index"
-            edited:      "world.refine_result.edited"
-            scene_label: 'world.scene_label ?? ""'
-            summary:     'world.refine_result.summary ?? "Applied your edit."'
+            scene_index: "{{ world.scene_index }}"
+            edited:      "{{ world.refine_result.edited }}"
+            scene_label: '{{ world.scene_label ?? "" }}'
+            summary:     '{{ world.refine_result.summary ?? "Applied your edit." }}'
         bind:
           refine_gate: ok
           refine_message: message
@@ -112,10 +122,14 @@ states:
               id: accumulate_addressed
               with:
                 script: scripts/accumulate_addressed.star
+                # Templated, not bare expr — see resolve_scene/gate above. `edited`
+                # rides as a resolved input (not ctx.world.refine_result, which is a
+                # stale snapshot inside this transition effect).
                 inputs:
-                  deck_handle:  "world.deck_handle"
-                  anchor_label: 'world.annotation?.anchor?.label ?? "(unanchored)"'
-                  instruction:  'world.refine_feedback != "" ? world.refine_feedback : (world.annotation?.instruction ?? "")'
+                  deck_handle:  "{{ world.deck_handle }}"
+                  anchor_label: '{{ world.annotation?.anchor?.label ?? "(unanchored)" }}'
+                  instruction:  '{{ world.refine_feedback != "" ? world.refine_feedback : (world.annotation?.instruction ?? "") }}'
+                  edited:       "{{ world.refine_result.edited }}"
               bind:
                 addressed: addressed
             - set:
