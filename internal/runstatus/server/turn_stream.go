@@ -80,6 +80,8 @@ func (s *Server) handleTurnStream(w http.ResponseWriter, r *http.Request) {
 		Input     string         `json:"input"`
 		Intent    string         `json:"intent"`
 		Slots     map[string]any `json:"slots"`
+		Visual    map[string]any `json:"visual"`
+		Anchor    map[string]any `json:"anchor"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
@@ -142,6 +144,22 @@ func (s *Server) handleTurnStream(w http.ResponseWriter, r *http.Request) {
 	unregister := s.registerActiveTurn(body.SessionID, cancelTurn)
 	defer unregister()
 	ctx := host.WithStreamSink(execCtx, &chanStreamSink{ch: ch})
+	// Lift an optional visual bundle / picked anchor (the media-annotation
+	// composer dispatches its intent over the streaming path) so the agent edits
+	// the pointed-at element. Build the params map with only the present keys so
+	// liftVisualAmbient's nil-checks stay accurate.
+	{
+		p := map[string]any{}
+		if body.Visual != nil {
+			p["visual"] = body.Visual
+		}
+		if body.Anchor != nil {
+			p["anchor"] = body.Anchor
+		}
+		if c2, ok := liftVisualAmbient(ctx, p); ok {
+			ctx = c2
+		}
+	}
 
 	type outcome struct {
 		tr  *turnResult

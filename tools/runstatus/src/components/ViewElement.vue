@@ -6,6 +6,13 @@ import { createDataSource } from "../data/source.js";
 import type { AnnotationAnchor, MediaKind } from "../lib/annotationAnchor.js";
 import MarkdownModal from "./MarkdownModal.vue";
 import ArtifactAnnotator from "./ArtifactAnnotator.vue";
+import { useRunStore } from "../stores/run.js";
+
+// The live-run store owns the conversation transcript + turn streaming. Routing
+// an annotation dispatch through it (rather than calling the data source
+// directly) makes the annotation appear as a normal user message in the main
+// chat and streams the agent's edit + re-render back as the reply.
+const _run = useRunStore();
 
 // Current route — used only to recover the active sessionId so a rendered video
 // can link to its /review feedback surface (the room view renders inline in
@@ -209,11 +216,20 @@ async function sendAnnotation(): Promise<void> {
   try {
     const label = anchorLabel(anchor);
     if (annotateIntent.value) {
-      await _ds.submit(
+      // Route through the run store (not _ds directly) so the dispatch shows up
+      // in the MAIN chat as a normal user message — carrying the annotation
+      // (deck frame + anchor) so it reads like an attached marked-up screenshot
+      // — and the agent's edit + re-render stream back as the reply.
+      await _run.submitIntent(
+        _ds,
         _sessionId.value,
         annotateIntent.value,
         { [annotateFeedbackSlot.value]: text },
-        anchor
+        text,
+        {
+          anchor,
+          annotation: { mediaHandle: mediaHandle.value, anchor },
+        }
       );
     } else {
       await _ds.offpath(
@@ -830,11 +846,80 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
 }
 
 .ve-media-annotate-panel {
+  position: relative;
   margin-top: 0.5em;
   padding: 0.6em;
   border: 1px solid var(--k-paper-border, #d8dbe2);
   border-radius: 8px;
   background: var(--k-paper-bg, #f6f7f9);
+}
+
+/* The composer FLOATS over the deck near where the operator pointed, instead of
+   being stacked below the annotator. Anchored to the lower-centre of the stage
+   as a compact card so it reads as "attached to" the annotation. */
+.ve-media-annotate-composer {
+  position: absolute;
+  left: 50%;
+  bottom: 3.25em;
+  transform: translateX(-50%);
+  z-index: 5;
+  width: min(92%, 440px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
+  padding: 0.6em 0.7em;
+  border: 1px solid var(--k-paper-border, #cfd3db);
+  border-radius: 10px;
+  background: var(--k-paper-bg, #ffffff);
+  box-shadow: 0 8px 28px rgba(15, 20, 30, 0.28);
+}
+
+.ve-media-annotate-pointed {
+  font-size: 12px;
+  color: var(--k-fg-muted, #4a5160);
+}
+
+.ve-media-annotate-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  padding: 0.45em 0.55em;
+  border: 1px solid var(--k-paper-border, #cfd3db);
+  border-radius: 7px;
+}
+
+.ve-media-annotate-actions {
+  display: flex;
+  gap: 0.5em;
+  justify-content: flex-end;
+}
+
+.ve-media-annotate-send {
+  background: var(--k-accent, #2f6df0);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35em 0.85em;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ve-media-annotate-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ve-media-annotate-repick {
+  background: transparent;
+  border: 1px solid var(--k-paper-border, #cfd3db);
+  color: var(--k-fg-muted, #6b7280);
+  border-radius: 6px;
+  padding: 0.35em 0.7em;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .ve-media-annotate-head {

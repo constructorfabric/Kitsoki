@@ -70,6 +70,16 @@ export interface TranscriptEntry {
   /** Routing provenance, resolved reactively from events (see chatEntries). */
   routing?: RoutingInfo;
   /**
+   * Set on a USER bubble dispatched from the media-annotation composer: the
+   * artifact the operator pointed at + the picked anchor, so the bubble renders
+   * the annotation (a thumbnail of the deck frame with the region/marker) above
+   * the typed instruction — exactly like attaching a marked-up screenshot.
+   */
+  annotation?: {
+    mediaHandle: string;
+    anchor: import("../lib/annotationAnchor.js").AnnotationAnchor;
+  };
+  /**
    * The contextual-routing receipt, set on an AGENT bubble when the CRR tier
    * resolved this turn. Renders the "routed to … · contextual" receipt chip in
    * the agent bubble; absent for deterministic/semantic/LLM turns.
@@ -542,7 +552,12 @@ export const useRunStore = defineStore("run", () => {
     live: LiveSource,
     sessionId: string,
     method: "turn" | "submit",
-    params: { input?: string; intent?: string; slots?: Record<string, unknown> },
+    params: {
+      input?: string;
+      intent?: string;
+      slots?: Record<string, unknown>;
+      anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor;
+    },
     onRouting?: (routing: RoutingInfo, turn?: number) => void
   ): Promise<{ result: TurnResult; streamedText: string; stream: StreamItem[] }> {
     pendingStream.value = [];
@@ -609,9 +624,17 @@ export const useRunStore = defineStore("run", () => {
     sessionId: string,
     intent: string,
     slots: Record<string, unknown> = {},
-    displayLabel?: string
+    displayLabel?: string,
+    opts?: {
+      anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor;
+      annotation?: TranscriptEntry["annotation"];
+    }
   ): Promise<TurnResult> {
-    transcript.value.push({ role: "user", text: userText(intent, slots, displayLabel) });
+    transcript.value.push({
+      role: "user",
+      text: userText(intent, slots, displayLabel),
+      ...(opts?.annotation ? { annotation: opts.annotation } : {}),
+    });
     let result: TurnResult;
     let capturedStream = "";
     let capturedItems: StreamItem[] | undefined;
@@ -619,12 +642,13 @@ export const useRunStore = defineStore("run", () => {
       const out = await runTurnStream(source as LiveSource, sessionId, "submit", {
         intent,
         slots,
+        ...(opts?.anchor ? { anchor: opts.anchor } : {}),
       });
       result = out.result;
       capturedStream = out.streamedText;
       capturedItems = out.stream;
     } else {
-      result = await source.submit(sessionId, intent, slots);
+      result = await source.submit(sessionId, intent, slots, opts?.anchor);
     }
     if (typeof result.turn_number === "number") {
       await backfillTurnTrace(source, sessionId, result.turn_number);

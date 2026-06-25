@@ -631,12 +631,28 @@ export class LiveSource implements DataSource {
   turnStream(
     sessionId: string,
     method: "turn" | "submit" | "continue" | "offpath",
-    params: { input?: string; intent?: string; slots?: Record<string, unknown> },
+    params: {
+      input?: string;
+      intent?: string;
+      slots?: Record<string, unknown>;
+      anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor;
+    },
     onEvent: (ev: TurnStreamEvent) => void
   ): Promise<TurnResult> {
+    // The media-annotation composer rides a picked anchor over the streaming
+    // submit; project it to the on-wire shape (the server lifts it into
+    // host.WithVisualAmbient). A no-op when no anchor — plain turns are
+    // byte-identical.
+    const { anchor, ...rest } = params;
+    const wireAnchor = serializeAnchorParam(anchor);
     return this.transport.postEventStream<TurnResult>(
       "rpc/turn-stream",
-      { session_id: sessionId, method, ...params },
+      {
+        session_id: sessionId,
+        method,
+        ...rest,
+        ...(wireAnchor ? { anchor: wireAnchor } : {}),
+      },
       {
         onFrame: (frame) => onEvent(frame as unknown as TurnStreamEvent),
         reduce: (frame) => {
