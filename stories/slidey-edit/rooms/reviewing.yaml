@@ -22,6 +22,10 @@ states:
     relevant_world: [deck, deck_handle, annotation, addressed, cycle]
     view:
       - heading: "Slidey deck editor · reviewing"
+      # The reviser's summary of the edit it just made, shown in-body so it reads
+      # as the agent's reply (only after a refine; blank on first entry).
+      - prose: "✏️ {{ world.last_refine_summary }}"
+        when: "world.last_refine_summary != ''"
       - kv:
           pairs:
             Summary:  '{{ world.deck.summary|default:"—" }}'

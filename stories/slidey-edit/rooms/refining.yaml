@@ -55,10 +55,11 @@ states:
       rerender:
         - target: rendering
           effects:
-            # Surface the reviser's one-line summary of what it changed so the
-            # operator gets explicit feedback in the conversation — otherwise a
-            # silent host.agent.task edit just re-renders with no explanation.
-            - say: "✏️ {{ world.refine_result.summary|default:\"Applied your edit.\" }}"
+            # Persist the reviser's one-line summary of what it changed so the
+            # NEXT reviewing view (the agent's reply bubble) shows it in-body —
+            # not as a separate narration line.
+            - set:
+                last_refine_summary: "{{ world.refine_result.summary ?? 'Applied your edit.' }}"
             # Append the iteration record (the deck reviewed + the anchor
             # addressed this pass). expr-lang can't append to a list, so the
             # record is built in starlark (ui-fix pattern).

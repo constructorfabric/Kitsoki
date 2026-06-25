@@ -1,4 +1,4 @@
-import { defineStore } from "pinia";
+import { defineStore, acceptHMRUpdate } from "pinia";
 import { computed, ref } from "vue";
 import type {
   AppDef,
@@ -877,3 +877,11 @@ export const useRunStore = defineStore("run", () => {
     applyTurnResult,
   };
 });
+
+// Preserve the run store (transcript, current view, …) across Vite HMR. Without
+// this, editing this module hot-reloads the store and RESETS its state — the
+// conversation appears to "lose" all but the most recent messages. The accept
+// hook hands the updated store definition to the existing instance instead.
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useRunStore, import.meta.hot));
+}

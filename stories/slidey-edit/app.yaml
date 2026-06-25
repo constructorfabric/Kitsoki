@@ -81,6 +81,7 @@ world:
   annotation:       { type: object, default: {} }   # {anchor:{...}, instruction, frame_handle}
   refine_feedback:  { type: string, default: "" }   # inline instruction override (no anchor change)
   refine_result:    { type: object, default: {} }   # {edited:[...], summary}
+  last_refine_summary: { type: string, default: "" } # reviser's one-line summary of the last edit (shown in reviewing)
   addressed:        { type: object, default: { items: [] } }  # {items:[{anchor_label, instruction, deck_handle}]}
   cycle:            { type: int,    default: 0 }
   refine_budget:    { type: int,    default: 6 }
