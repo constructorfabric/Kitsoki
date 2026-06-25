@@ -13,9 +13,12 @@ Test install: the **`bsacrobatix`** org. Production is identical under
 [`docs/proposals/kitsoki-github-agent.md`](../proposals/kitsoki-github-agent.md)
 shared decision #1 for the auth/permissions decision.
 
-> Round 1 is **poll mode**: it needs no webhook URL and no event
-> subscriptions. The webhook fields below are for round 2 and can be left blank
-> now.
+The live POC runs the hosted webhook service on the test VM:
+
+- Public base URL: `https://kitsoki-test.slothattax.me`
+- Webhook URL: `https://kitsoki-test.slothattax.me/gh-agent/webhook`
+- Systemd service: `kitsoki-gh-agent.service`
+- Durable job DB: `/var/lib/kitsoki-gh-agent/gh-jobs.sqlite`
 
 ## a. Create the App (under `bsacrobatix`)
 
@@ -29,18 +32,16 @@ App**.
   - **Pull requests:** Read & write
   - **Contents:** Read & write  *(rebase/push)*
   - **Checks:** Read-only
-- **Subscribe to events** *(round 2 webhook only — skip for poll mode)*:
+- **Subscribe to events**:
   `Issues`, `Issue comment`, `Pull request`, `Pull request review comment`,
   `Check suite`.
 
-## b. Webhook (round 2 only)
+## b. Webhook
 
-- **Webhook URL:** `https://<your-domain>/gh-agent/webhook`
+- **Webhook URL:** `https://kitsoki-test.slothattax.me/gh-agent/webhook`
 - **Webhook secret:** generate one and save it; it becomes
   `KITSOKI_GH_WEBHOOK_SECRET`. Payloads are HMAC-verified by
   `githubapp.VerifyWebhookSignature` against `X-Hub-Signature-256`.
-
-For **poll mode (round 1)** leave the webhook URL blank and `Active` unchecked.
 
 ## c. Private key + env
 
@@ -79,23 +80,68 @@ After creating the App:
    # → each object's "id" is an installation id
    ```
 
-## e. Run the live poll loop
+## e. Run the hosted webhook service
 
 Flags override the env (`--gh-app-id`, `--gh-app-installation-id`,
 `--gh-app-key-file`); `--github-app` forces App auth on.
 
 ```
-go run ./cmd/kitsoki gh-agent poll \
-  --repo bsacrobatix/kitsoki-sandbox \
+go run ./cmd/kitsoki gh-agent serve \
+  --repo bsacrobatix/Kitsoki \
+  --db /var/lib/kitsoki-gh-agent/gh-jobs.sqlite \
+  --addr 127.0.0.1:8787 \
+  --public-base-url https://kitsoki-test.slothattax.me \
+  --poll-interval 0 \
   --github-app
 ```
 
-This mints an installation token, sets `GH_TOKEN`, lists `@kitsoki` mentions
-via `gh`, and dispatches each to its mapped story. Seed the loop by opening an
-issue in the test repo labelled `bug` whose body mentions **`@kitsoki`** (e.g.
-"`@kitsoki` the foo button crashes on click"); the next poll picks it up.
+This mints an installation token, sets `GH_TOKEN`, serves `/healthz`,
+`/gh-agent/webhook`, `/run/<job-id>`, and `/api/run/<job-id>`, and dispatches
+accepted `@kitsoki` issue/PR comments to the configured no-LLM story route.
 
-## f. Production
+For local single-shot testing, `gh-agent poll` still exists and uses the same
+dispatcher path:
+
+```
+go run ./cmd/kitsoki gh-agent poll \
+  --repo bsacrobatix/Kitsoki \
+  --public-base-url https://kitsoki-test.slothattax.me \
+  --github-app
+```
+
+## f. Deploy the test VM service
+
+From the repo root, run the dry-run first:
+
+```
+scripts/deploy-gh-agent.sh
+```
+
+When the commands look right, deploy and restart the service:
+
+```
+scripts/deploy-gh-agent.sh --yes
+```
+
+The script performs:
+
+```
+GOOS=linux GOARCH=amd64 GOCACHE=/private/tmp/kitsoki-gocache \
+  go build -o /private/tmp/kitsoki-ghagent ./cmd/kitsoki
+scp /private/tmp/kitsoki-ghagent root@206.189.84.218:/usr/local/bin/kitsoki
+ssh root@206.189.84.218 'chmod 755 /usr/local/bin/kitsoki && systemctl restart kitsoki-gh-agent'
+curl -fsS https://kitsoki-test.slothattax.me/healthz
+```
+
+Useful read-only smoke checks:
+
+```
+curl -fsS https://kitsoki-test.slothattax.me/healthz
+ssh root@206.189.84.218 'systemctl is-active kitsoki-gh-agent && systemctl is-active caddy'
+ssh root@206.189.84.218 'sqlite3 /var/lib/kitsoki-gh-agent/gh-jobs.sqlite "select job_id, origin_ref, story, state, run_url, comment_id, err_msg from gh_jobs order by created_at desc limit 10;"'
+```
+
+## g. Production
 
 Identical under the **`constructorfabric`** org: create/install the same App
 there, point the env at that App's ID / installation / key, and run with the
