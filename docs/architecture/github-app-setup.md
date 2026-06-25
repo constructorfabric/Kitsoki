@@ -138,7 +138,25 @@ Useful read-only smoke checks:
 ```
 curl -fsS https://kitsoki-test.slothattax.me/healthz
 ssh root@206.189.84.218 'systemctl is-active kitsoki-gh-agent && systemctl is-active caddy'
-ssh root@206.189.84.218 'sqlite3 /var/lib/kitsoki-gh-agent/gh-jobs.sqlite "select job_id, origin_ref, story, state, run_url, comment_id, err_msg from gh_jobs order by created_at desc limit 10;"'
+ssh root@206.189.84.218 'python3 - <<'"'"'PY'"'"'
+import sqlite3
+conn = sqlite3.connect("file:/var/lib/kitsoki-gh-agent/gh-jobs.sqlite?mode=ro", uri=True)
+for row in conn.execute("select job_id, origin_ref, story, state, run_url, comment_id, err_msg from gh_jobs order by created_at desc limit 10"):
+    print(row)
+PY'
+```
+
+After a live issue or PR mention has a job id, collect reviewable markdown
+evidence under `.context`:
+
+```
+scripts/collect-gh-agent-poc-evidence.sh \
+  --case bug-issue \
+  --job-id <job-id> \
+  --source-url <issue-or-pr-url> \
+  --mention-url <mention-comment-url> \
+  --comment-url <kitsoki-comment-url> \
+  --remote-db
 ```
 
 ## g. Production
