@@ -6,6 +6,7 @@
     {
       "title": "Start here",
       "items": [
+        { "from": "docs/evaluate-kitsoki.md", "to": "guide/evaluate-kitsoki.md" },
         { "from": "docs/start-here.md", "to": "guide/start-here.md" },
         { "from": "docs/getting-started.md", "to": "guide/getting-started.md" }
       ]

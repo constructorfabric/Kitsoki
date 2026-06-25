@@ -5,8 +5,7 @@ title: The kitsoki web UI, in five minutes
 tagline: A story-agnostic guided walkthrough of every core surface.
 summary: "The in-app onboarding tour: from the story library through a live run — chat, intent buttons, the live trace diagram and timeline, meta mode, and the read-only observer. It anchors only to elements every story ships, so it works for any first-time user on any story, and replays anytime from the “?” button."
 promo:
-  order: 0
-  highlight: true
+  order: 40
 docs:
   - docs/web/README.md
 demo:

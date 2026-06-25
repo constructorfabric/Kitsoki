@@ -35,6 +35,11 @@ Kitsoki takes the forgiving entrance of a chat agent and the
 predictability of a CLI, and gets there by **inverting control**
 between the LLM and the runtime.
 
+The competitive claim is deliberately narrow: Kitsoki is for workflows where
+"the model probably does the right thing" is not enough. If a run needs operator
+handoff, policy gates, durable state, replay, cost control, or a defensible audit
+record, the control boundary has to live outside the model.
+
 ---
 
 ## 2. Control inversion
@@ -70,6 +75,13 @@ named intent (or a typed payload, or a finished artifact). It does
 not write the world, it does not pick the next room, it does not fire
 effects, it does not call hosts. Those are the runtime's job, and
 they happen only along edges the author declared.
+
+That is the point a structured-output wrapper cannot reach on its own. Schema
+validation can prove that one response has the right shape. It cannot prove that
+the model was allowed to make only this decision, that the next transition was
+declared before the call, that a rejected submission was handled inside a
+bounded retry loop, or that the same conversation can replay later without a
+live model.
 
 This is "control inversion" in the same sense as dependency injection
 turns over object construction: the thing that used to be on top (the
