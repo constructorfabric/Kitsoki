@@ -1,7 +1,0 @@
-{"type":"thread.started","thread_id":"019efdea-83a3-7673-94af-d4ec7fac392d"}
-{"type":"turn.started"}
-{"type":"item.started","item":{"id":"item_0","type":"mcp_tool_call","server":"validator","tool":"submit","arguments":{"verdict":"pass","intent":"accept","reason":"The artifact reports the targeted regression test for single-character identifiers is present and passing, the full cf-modkit-odata lib test suite passed, and no blockers or critical regressions were identified.","confidence":0.93},"result":null,"error":null,"status":"in_progress"}}
-{"type":"item.completed","item":{"id":"item_0","type":"mcp_tool_call","server":"validator","tool":"submit","arguments":{"verdict":"pass","intent":"accept","reason":"The artifact reports the targeted regression test for single-character identifiers is present and passing, the full cf-modkit-odata lib test suite passed, and no blockers or critical regressions were identified.","confidence":0.93},"result":{"content":[{"type":"text","text":"OK: payload validated against the schema and captured. You may end your turn now; no need to repeat the JSON."}],"structured_content":null},"error":null,"status":"completed"}}
-{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":""}}
-{"type":"turn.completed","usage":{"input_tokens":40919,"cached_input_tokens":18176,"output_tokens":157,"reasoning_output_tokens":81}}
-{"_kitsoki":"validator_accept","outer_iter":0}
