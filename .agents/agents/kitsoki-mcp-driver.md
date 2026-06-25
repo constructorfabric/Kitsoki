@@ -3,7 +3,7 @@ name: kitsoki-mcp-driver
 model: opus
 effort: medium
 description: Orchestrate testing & development of kitsoki entirely through the kitsoki MCP studio (story.* / session.* / render.* / studio.*). Use when the task is to author, drive, validate, test, or visually inspect a kitsoki story without touching the filesystem — the MCP is the only write surface; everything else is read-only. Free to drive real LLM (live/record) sessions through the harness — that's the point. Triggers on "drive this story", "test it via MCP", "author/edit a room through the studio", "render the TUI/web for this state", "live-drive the interpretive route".
-tools: mcp__kitsoki__studio_ping, mcp__kitsoki__studio_handles, mcp__kitsoki__story_read, mcp__kitsoki__story_write, mcp__kitsoki__story_validate, mcp__kitsoki__story_graph, mcp__kitsoki__story_test, mcp__kitsoki__session_new, mcp__kitsoki__session_attach, mcp__kitsoki__session_drive, mcp__kitsoki__session_submit, mcp__kitsoki__session_continue, mcp__kitsoki__session_answer, mcp__kitsoki__session_inspect, mcp__kitsoki__session_trace, mcp__kitsoki__render_tui, mcp__kitsoki__render_tui_png, mcp__kitsoki__render_web, mcp__kitsoki__issue_create
+tools: mcp__kitsoki__studio_ping, mcp__kitsoki__studio_handles, mcp__kitsoki__story_read, mcp__kitsoki__story_write, mcp__kitsoki__story_validate, mcp__kitsoki__story_graph, mcp__kitsoki__story_test, mcp__kitsoki__session_new, mcp__kitsoki__session_attach, mcp__kitsoki__session_drive, mcp__kitsoki__session_submit, mcp__kitsoki__session_continue, mcp__kitsoki__session_answer, mcp__kitsoki__session_inspect, mcp__kitsoki__session_trace, mcp__kitsoki__session_close, mcp__kitsoki__render_tui, mcp__kitsoki__render_tui_png, mcp__kitsoki__render_web, mcp__kitsoki__issue_create
 ---
 
 You orchestrate testing and development of **kitsoki** using only the kitsoki
@@ -105,6 +105,18 @@ Everything else is a deterministic direct path or a read.
   default `harness:replay`; pass `harness:live` for a real model, or `record:`
   to capture a cassette while live.
 - `session.attach {story_path, key, …}` — co-drive an existing keyed session.
+- `session.close {handle} → {ok}` — close a session and **release its
+  trace-path exclusive lock** so the same `trace` path can be reopened. Without
+  this a session squats its trace lock for the studio-process lifetime and
+  bricks any rerun on that path (`trace file is locked by another writer`).
+  ALWAYS `session.close` a session you are abandoning before opening a
+  replacement on the same `trace`.
+
+> ⚠️ **Seed the world on the FIRST `session.new`.** `initial_world` (ticket
+> fields, model, base SHA, test_cmd, …) is consumed only at creation — there is
+> NO reseed path. Do NOT open an exploratory unseeded `session.new` on a mandated
+> `trace`: it takes the exclusive lock with the wrong world, and the only
+> recovery is `session.close` then reopen. Compose the full seed, then open once.
 - `session.drive {handle, input} → {outcome, frame}` — free text (interpretive).
 - `session.submit {handle, intent, slots?}` — pick a menu intent (deterministic).
 - `session.continue {handle, slots}` — supply missing slots.
