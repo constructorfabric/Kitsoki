@@ -192,6 +192,10 @@ feature, and guidance issues, comments on the supplied PR, waits for the VM
 records the clips, and builds, exports, renders, verifies, and prepares QA for
 the live deck when `--developer-arc-media` is supplied.
 
+Live mode fails before any deploy or GitHub mutation if the PR URL is missing,
+is not a pull request URL for the selected repo, if `--developer-arc-media` points
+at a missing file, or if `--capture` is requested without `pnpm` on `PATH`.
+
 After all four live case clips and the developer-arc media exist, build the
 Slidey deck scaffold from the evidence and media:
 

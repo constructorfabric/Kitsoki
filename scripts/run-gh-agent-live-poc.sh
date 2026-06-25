@@ -99,10 +99,6 @@ if [ -z "$REPO" ]; then
 	echo "--repo must not be empty" >&2
 	exit 2
 fi
-if [ "$YES" -eq 1 ] && [ -z "$PR_URL" ]; then
-	echo "--pr-url is required with --yes-live-mutations for the PR-status case" >&2
-	exit 2
-fi
 
 print_cmd() {
 	printf '%q ' "$@"
@@ -130,7 +126,48 @@ run_capture_or_print() {
 
 issue_number_from_url() {
 	local url="$1"
-	printf '%s\n' "$url" | sed -E 's#.*/(issues|pull)/([0-9]+).*#\2#'
+	if [[ "$url" =~ ^https://github\.com/[^/]+/[^/]+/(issues|pull)/([0-9]+)/?$ ]]; then
+		printf '%s\n' "${BASH_REMATCH[2]}"
+		return 0
+	fi
+	echo "could not extract GitHub issue/PR number from URL: $url" >&2
+	return 1
+}
+
+validate_live_preflight() {
+	local url_repo=""
+	local pr_num=""
+
+	if [ "$YES" -ne 1 ]; then
+		return 0
+	fi
+	if [ -z "$PR_URL" ]; then
+		echo "--pr-url is required with --yes-live-mutations for the PR-status case" >&2
+		exit 2
+	fi
+	if [[ "$PR_URL" =~ ^https://github\.com/([^/]+/[^/]+)/pull/([0-9]+)/?$ ]]; then
+		url_repo="${BASH_REMATCH[1]}"
+		pr_num="${BASH_REMATCH[2]}"
+	else
+		echo "--pr-url must be a GitHub pull request URL like https://github.com/$REPO/pull/123" >&2
+		exit 2
+	fi
+	if [ "$url_repo" != "$REPO" ]; then
+		echo "--pr-url repo $url_repo does not match --repo $REPO" >&2
+		exit 2
+	fi
+	if [ -z "$pr_num" ]; then
+		echo "--pr-url is missing a pull request number" >&2
+		exit 2
+	fi
+	if [ -n "$DEVELOPER_ARC_MEDIA" ] && [ ! -f "$DEVELOPER_ARC_MEDIA" ]; then
+		echo "--developer-arc-media does not exist: $DEVELOPER_ARC_MEDIA" >&2
+		exit 2
+	fi
+	if [ "$DO_CAPTURE" -eq 1 ] && ! command -v pnpm >/dev/null 2>&1; then
+		echo "--capture requires pnpm on PATH before live mutations start" >&2
+		exit 2
+	fi
 }
 
 last_non_empty_line() {
@@ -271,6 +308,8 @@ run_pr_case() {
 		print_cmd scripts/build-gh-agent-capture-plan.mjs --case pr-status
 	fi
 }
+
+validate_live_preflight
 
 cat <<EOF
 run-gh-agent-live-poc:
