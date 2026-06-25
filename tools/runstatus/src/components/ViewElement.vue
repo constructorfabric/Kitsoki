@@ -156,6 +156,11 @@ function closeAnnotate(): void {
  *  ds.offpath). A short confirmation is shown; the panel stays open for a
  *  follow-up pick. */
 async function onAnchor(anchor: AnnotationAnchor): Promise<void> {
+  // Single-flight: the off-path dispatch holds the session chat lock for the
+  // duration of its agent round-trip. A second emit while one is in flight would
+  // contend with the first ("chat busy: held by pid <self>"), so ignore re-emits
+  // until the current one settles.
+  if (annotateBusy.value) return;
   annotateBusy.value = true;
   annotateError.value = null;
   annotateSent.value = null;
@@ -172,7 +177,14 @@ async function onAnchor(anchor: AnnotationAnchor): Promise<void> {
     );
     annotateSent.value = label;
   } catch (e) {
-    annotateError.value = e instanceof Error ? e.message : String(e);
+    const msg = e instanceof Error ? e.message : String(e);
+    // The session chat is single-writer: while a refine/turn is still running
+    // its agent holds the chat lock, so a concurrent annotation dispatch comes
+    // back as "chat busy: held by pid …". Surface that as an actionable hint
+    // rather than the raw lock diagnostic.
+    annotateError.value = /chat busy/i.test(msg)
+      ? "The deck is still being refined — wait for the current edit to finish, then send your annotation again."
+      : msg;
   } finally {
     annotateBusy.value = false;
   }
@@ -337,7 +349,10 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
 
   <!-- media: dispatch on MIME family; fall back to a labeled download link. -->
   <div v-else-if="el.Kind === 'media'" class="ve-media" data-testid="media-element">
-    <template v-if="mediaHandle">
+    <!-- While annotating, the ArtifactAnnotator below renders the annotatable
+         substrate for this same handle; suppress the standalone player/iframe so
+         the deck is embedded ONCE (not stacked as a second instance). -->
+    <template v-if="mediaHandle && !annotateOpen">
       <!-- video/* → native player with Range-request support for seeking -->
       <video
         v-if="mediaMime.startsWith('video/')"
