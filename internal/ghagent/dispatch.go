@@ -73,10 +73,20 @@ func (d *Dispatcher) Dispatch(ctx context.Context, mention Mention, labels []str
 			return nil, err
 		}
 		job.State = jobs.GHAwaitingGuidance
+		if runURL := publicRunURL(d.PublicBaseURL, job.JobID); runURL != "" {
+			if err := d.Jobs.SetRunURL(ctx, job.JobID, job.JobID, runURL); err != nil {
+				return nil, err
+			}
+			job.RunURL = runURL
+		}
 		if d.Comments != nil {
-			meta := Meta{JobID: job.JobID, OriginRef: job.OriginRef, State: jobs.GHAwaitingGuidance}
+			meta := Meta{JobID: job.JobID, OriginRef: job.OriginRef, State: jobs.GHAwaitingGuidance, RunURL: job.RunURL}
+			prose := "I need a bit more direction before I can route this. Please add a `bug`, `feature`, or `enhancement` label, or reply with the path you want me to take."
+			if job.RunURL != "" {
+				prose += "\n\nRun page: " + job.RunURL
+			}
 			commentID, err := d.Comments.Post(ctx, mention.Item.Number,
-				"I need a bit more direction before I can route this. Please add a `bug`, `feature`, or `enhancement` label, or reply with the path you want me to take.", meta)
+				prose, meta)
 			if err != nil {
 				return nil, err
 			}

@@ -254,10 +254,11 @@ func TestDispatch_UnclassifiedMentionPostsGuidance(t *testing.T) {
 	store := newGHJobStore(t)
 	rec := &recordingComments{commentID: "https://github.com/o/r/issues/99#issuecomment-2"}
 	d := &Dispatcher{
-		Jobs:     store,
-		Routes:   DefaultLabelStoryMap(),
-		Comments: &CommentStore{Exec: rec.handler, Repo: "o/r"},
-		WorkerID: "worker-guidance",
+		Jobs:          store,
+		Routes:        DefaultLabelStoryMap(),
+		Comments:      &CommentStore{Exec: rec.handler, Repo: "o/r"},
+		WorkerID:      "worker-guidance",
+		PublicBaseURL: "https://kitsoki-test.slothattax.me",
 		SpawnFn: func(ctx context.Context, route Route, j *jobs.GHJob) (RunResult, error) {
 			t.Fatalf("ambiguous mention should park for guidance, not spawn route %+v", route)
 			return RunResult{}, nil
@@ -277,6 +278,9 @@ func TestDispatch_UnclassifiedMentionPostsGuidance(t *testing.T) {
 	if job.CommentID == "" {
 		t.Fatal("guidance comment id was not stored")
 	}
+	if !strings.HasPrefix(job.RunURL, "https://kitsoki-test.slothattax.me/run/") {
+		t.Fatalf("RunURL = %q, want public run URL", job.RunURL)
+	}
 	rec.mu.Lock()
 	ops := append([]string(nil), rec.ops...)
 	bodies := append([]string(nil), rec.bodies...)
@@ -287,6 +291,9 @@ func TestDispatch_UnclassifiedMentionPostsGuidance(t *testing.T) {
 	if len(bodies) != 1 || !strings.Contains(bodies[0], "need a bit more direction") {
 		t.Fatalf("guidance body missing expected prose:\n%v", bodies)
 	}
+	if !strings.Contains(bodies[0], job.RunURL) {
+		t.Fatalf("guidance body missing run URL %q:\n%s", job.RunURL, bodies[0])
+	}
 	meta := host.GHParseMetadata(bodies[0])
 	if meta == nil {
 		t.Fatalf("guidance body missing metadata:\n%s", bodies[0])
@@ -296,6 +303,9 @@ func TestDispatch_UnclassifiedMentionPostsGuidance(t *testing.T) {
 	}
 	if meta["origin_ref"] != "github:o/r/issue/99" {
 		t.Fatalf("meta origin_ref = %v", meta["origin_ref"])
+	}
+	if meta["run_url"] != job.RunURL {
+		t.Fatalf("meta run_url = %v, want %s", meta["run_url"], job.RunURL)
 	}
 }
 
@@ -315,10 +325,11 @@ func TestDispatch_UnlabelledMentionPostsGuidance(t *testing.T) {
 	store := newGHJobStore(t)
 	rec := &recordingComments{commentID: "https://github.com/o/r/issues/100#issuecomment-3"}
 	d := &Dispatcher{
-		Jobs:     store,
-		Routes:   DefaultLabelStoryMap(),
-		Comments: &CommentStore{Exec: rec.handler, Repo: "o/r"},
-		WorkerID: "worker-guidance-unlabelled",
+		Jobs:          store,
+		Routes:        DefaultLabelStoryMap(),
+		Comments:      &CommentStore{Exec: rec.handler, Repo: "o/r"},
+		WorkerID:      "worker-guidance-unlabelled",
+		PublicBaseURL: "https://kitsoki-test.slothattax.me",
 		SpawnFn: func(ctx context.Context, route Route, j *jobs.GHJob) (RunResult, error) {
 			t.Fatalf("unlabelled mention should ask guidance, not spawn route %+v", route)
 			return RunResult{}, nil
@@ -332,11 +343,17 @@ func TestDispatch_UnlabelledMentionPostsGuidance(t *testing.T) {
 	if job.State != jobs.GHAwaitingGuidance {
 		t.Fatalf("State = %q, want %q", job.State, jobs.GHAwaitingGuidance)
 	}
+	if !strings.HasPrefix(job.RunURL, "https://kitsoki-test.slothattax.me/run/") {
+		t.Fatalf("RunURL = %q, want public run URL", job.RunURL)
+	}
 	rec.mu.Lock()
 	bodies := append([]string(nil), rec.bodies...)
 	rec.mu.Unlock()
 	if len(bodies) != 1 || !strings.Contains(bodies[0], "need a bit more direction") {
 		t.Fatalf("guidance body missing expected prose:\n%v", bodies)
+	}
+	if !strings.Contains(bodies[0], job.RunURL) {
+		t.Fatalf("guidance body missing run URL %q:\n%s", job.RunURL, bodies[0])
 	}
 }
 

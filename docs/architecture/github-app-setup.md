@@ -197,6 +197,11 @@ feature, and guidance issues, comments on the supplied PR, waits for the VM
 records the clips, and builds, exports, renders, verifies, and prepares QA for
 the live deck when `--developer-arc-media` is supplied.
 
+The ambiguous guidance case still writes a public run URL before posting its
+guidance comment. The GitHub thread should show both the request for direction
+and a `https://kitsoki-test.slothattax.me/run/<job-id>` link, while the job state
+parks at `awaiting_guidance`.
+
 Live mode fails before any deploy or GitHub mutation if the PR URL is missing,
 is not a pull request URL for the selected repo, if `--developer-arc-media` points
 at a missing file, or if `--capture` is requested without `pnpm` on `PATH`.
