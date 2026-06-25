@@ -110,6 +110,7 @@ func runGHAgentServe(ctx context.Context, store *jobs.GHJobStore, opts ghAgentSe
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = io.WriteString(w, "ok\n")
 	})
+	mux.HandleFunc("/api/run/", ghAgentRunAPIHandler(store))
 	mux.HandleFunc("/run/", ghAgentRunHandler(store))
 	mux.HandleFunc("/gh-agent/webhook", ghAgentWebhookHandler(store, opts))
 
@@ -233,27 +234,109 @@ func ghAgentRunHandler(store *jobs.GHJobStore) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		sourceURL := ghAgentJobSourceURL(job)
+		commentURL := job.CommentID
 		fmt.Fprintf(w, `<!doctype html>
 <html><head><meta charset="utf-8"><title>kitsoki run %s</title>
-<style>body{font:16px/1.45 system-ui,sans-serif;max-width:860px;margin:48px auto;padding:0 24px;color:#17202a}dt{font-weight:700;margin-top:14px}dd{margin:4px 0 0}code{background:#f3f5f7;padding:2px 5px;border-radius:4px}</style></head>
+<style>body{font:16px/1.45 system-ui,sans-serif;max-width:860px;margin:48px auto;padding:0 24px;color:#17202a}dt{font-weight:700;margin-top:14px}dd{margin:4px 0 0}code{background:#f3f5f7;padding:2px 5px;border-radius:4px}.state{display:inline-block;padding:2px 8px;border-radius:999px;background:#ecfdf5;color:#065f46}.failed{background:#fef2f2;color:#991b1b}.muted{color:#5f6b7a}</style></head>
 <body><h1>kitsoki GitHub run</h1><dl>
 <dt>Job</dt><dd><code>%s</code></dd>
 <dt>Origin</dt><dd><code>%s</code></dd>
+<dt>Source</dt><dd>%s</dd>
 <dt>Story</dt><dd><code>%s</code></dd>
-<dt>State</dt><dd><code>%s</code></dd>
+<dt>State</dt><dd><span class="%s">%s</span></dd>
 <dt>Issue / PR</dt><dd>%s #%s</dd>
+<dt>Comment</dt><dd>%s</dd>
+<dt>Error</dt><dd>%s</dd>
 <dt>Updated</dt><dd>%s</dd>
-</dl></body></html>`,
+</dl><p class="muted"><a href="/api/run/%s">JSON</a></p></body></html>`,
 			html.EscapeString(job.JobID),
 			html.EscapeString(job.JobID),
 			html.EscapeString(job.OriginRef),
+			htmlLinkOrCode(sourceURL),
 			html.EscapeString(job.Story),
+			html.EscapeString(ghAgentStateClass(job.State)),
 			html.EscapeString(job.State),
 			html.EscapeString(job.ObjectKind),
 			html.EscapeString(job.ObjectNumber),
+			htmlLinkOrCode(commentURL),
+			html.EscapeString(emptyAsDash(job.ErrMsg)),
 			html.EscapeString(job.UpdatedAt.Format(time.RFC3339)),
+			html.EscapeString(job.JobID),
 		)
 	}
+}
+
+func ghAgentRunAPIHandler(store *jobs.GHJobStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		jobID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/run/"), "/")
+		if jobID == "" {
+			http.NotFound(w, r)
+			return
+		}
+		job, err := store.GetJob(r.Context(), jobID)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"job_id":        job.JobID,
+			"origin_ref":    job.OriginRef,
+			"repo":          job.Repo,
+			"object_kind":   job.ObjectKind,
+			"object_number": job.ObjectNumber,
+			"source_url":    ghAgentJobSourceURL(job),
+			"story":         job.Story,
+			"state":         job.State,
+			"run_id":        job.RunID,
+			"run_url":       job.RunURL,
+			"comment_url":   job.CommentID,
+			"err_msg":       job.ErrMsg,
+			"created_at":    job.CreatedAt.Format(time.RFC3339),
+			"updated_at":    job.UpdatedAt.Format(time.RFC3339),
+		})
+	}
+}
+
+func ghAgentJobSourceURL(job *jobs.GHJob) string {
+	repo := strings.TrimSpace(job.Repo)
+	number := strings.TrimSpace(job.ObjectNumber)
+	if repo == "" || number == "" {
+		return ""
+	}
+	switch strings.TrimSpace(job.ObjectKind) {
+	case "pr":
+		return "https://github.com/" + repo + "/pull/" + number
+	default:
+		return "https://github.com/" + repo + "/issues/" + number
+	}
+}
+
+func ghAgentStateClass(state string) string {
+	if state == jobs.GHFailed {
+		return "state failed"
+	}
+	return "state"
+}
+
+func htmlLinkOrCode(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return `<span class="muted">-</span>`
+	}
+	escaped := html.EscapeString(v)
+	if strings.HasPrefix(v, "https://") || strings.HasPrefix(v, "http://") {
+		return `<a href="` + escaped + `">` + escaped + `</a>`
+	}
+	return `<code>` + escaped + `</code>`
+}
+
+func emptyAsDash(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return "-"
+	}
+	return v
 }
 
 func webhookMention(body []byte, fallbackRepo, trigger string) (ghagent.Mention, []string, bool, error) {
