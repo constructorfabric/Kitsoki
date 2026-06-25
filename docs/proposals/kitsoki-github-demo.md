@@ -24,11 +24,14 @@ an LLM. This slice is that video.
 
 ## What changes
 
-One **tour-driven, no-LLM demo video**, built with `kitsoki-ui-demo` and gated by
+One **tour-driven, no-LLM demo deck**, built with `kitsoki-ui-demo` and gated by
 `kitsoki-ui-qa`, using **slidey itself as the worked case study** — kitsoki
-fixing/advancing slidey while slidey narrates. It is recorded as **three acts**,
-each QA-gated, then **composited into one slidey presentation deck** (rendered via
-`host.slidey.render` → narrated MP4) with title/section slides between acts:
+fixing/advancing slidey while slidey narrates. It is captured as **rrweb-backed
+acts**, each QA-gated, then **composited into one slidey presentation deck**
+(rendered via `host.slidey.render` → narrated QA/share MP4) with title/section
+slides between acts. The deck source embeds rrweb logs, not pre-rendered MP4
+clips; MP4 is only the final rendered review artifact unless an act contains a
+surface rrweb cannot reconstruct (`<canvas>`, `<video>`, WebGL).
 
 1. **GitHub side** — a user `@kitsoki`s an issue (bug-label → bugfix, feature-label
    → PRD/design) and a PR (CI-watch/fix, rebase-on-conflict, comment-driven change,
@@ -88,8 +91,8 @@ so the PR act has a real, already-validated change to walk.
 ## Tour storyboard
 
 Ordered scenes/chapters. Each names what it proves and which slice it
-demonstrates. Acts 1–2 are the recorded clips; the composite interleaves title
-slides (T) between them.
+demonstrates. Acts 1–2 are rrweb-backed captured acts; the composite interleaves
+title slides (T) between them.
 
 **Act 1 — GitHub issue & PR dispatch (the GitHub side).** Surface: the
 `gh-issue-review.html`-style fixture, `file://`, portable captions.
@@ -116,9 +119,11 @@ slides (T) between them.
 | 11 | Operator types directly in the composer; turn lands (state badge advances) | operator-drive surface | #5 |
 | 12 | That drive posts an **ack comment back** onto the GitHub thread (cut to the fixture) | operator action → thread | #5, #1 |
 
-**Act 3 — Composite.** Acts 1 and 2 rendered as two `video` scenes inside one
-slidey deck, bracketed by T0 and section slides ("The GitHub side" / "The kitsoki
-side" / "One loop"), the whole deck narrated.
+**Act 3 — Composite.** Acts 1 and 2 embedded as rrweb-backed `video` scenes inside
+one slidey deck, bracketed by T0 and section slides ("The GitHub side" / "The
+kitsoki side" / "One loop"), the whole deck narrated. Acceptance criterion: every
+deck act scene has `rrweb` and `chapters:"auto"`; no act scene uses `src:"*.mp4"`
+unless it is documenting an explicit rrweb-incompatible surface.
 
 ## Net-new files
 
@@ -134,6 +139,7 @@ docs/proposals/demo-assets/kitsoki-github/   # transient demo assets (per CLAUDE
 ├── baked/                            # artifacts served at the Playwright network edge
 │   ├── slidey-deck.mp4 + .poster.png + .semantic.json
 │   └── screenshots/*.png
+├── clips/                            # rrweb logs embedded by the deck
 ├── recordings/                       # replay recording(s) for the kitsoki web drive
 ├── cassettes/                        # host + gh/git exec cassettes (Act 1 fixtures)
 └── fixtures/
@@ -170,9 +176,10 @@ gated by a QA verdict. No real GitHub, no real LLM (CLAUDE.md / shared decision 
   side (#4, #5). QA gate: `act2` scenarios (trace streams, gallery renders real
   media not a blank, operator turn lands, ack-back visible).
 - **`github-demo-composite.spec.ts`** — renders `deck/kitsoki-github.deck.json` via
-  `host.slidey.render` (format `mp4`) and asserts the output MP4 + its
-  `.chapters.json` sidecar. QA gate: `composite` scenarios (both acts present,
-  section slides between them, default-pace).
+  `host.slidey.render` (format `mp4`) and asserts the deck uses rrweb act scenes,
+  then asserts the output MP4 + its `.chapters.json` sidecar. QA gate:
+  `composite` scenarios (both acts present, section slides between them,
+  default-pace).
 - **Pace + duration gates apply to every recorded act:** `WEB_CHAT_PACE=0` is
   validation-only and emits `<name>.fast.mp4`; the shippable MP4 must clear
   `KITSOKI_MIN_DEMO_SECONDS` and pass `pacing-scan.sh` against its chapter sidecar
@@ -198,7 +205,7 @@ gated by a QA verdict. No real GitHub, no real LLM (CLAUDE.md / shared decision 
 - [ ] 2.4 QA-gate act2: gallery shows real media (blank-scan clean), operator turn lands, ack-back visible
 
 ## 3. Composite
-- [ ] 3.1 Author deck/kitsoki-github.deck.json (T0 + section slides + the two video scenes)
+- [ ] 3.1 Author deck/kitsoki-github.deck.json (T0 + section slides + rrweb-backed video scenes; no MP4/WebM act sources)
 - [ ] 3.2 github-demo-composite.spec.ts: host.slidey.render → MP4 + chapters sidecar
 - [ ] 3.3 QA-gate the composite: both acts + section slides present, default pace (pacing-scan clean)
 
@@ -209,11 +216,11 @@ gated by a QA verdict. No real GitHub, no real LLM (CLAUDE.md / shared decision 
 
 ## Open questions
 
-1. **rrweb vs live screen-record for Act 2.** The artifact gallery may render media
-   tiles (`<video>`/`<canvas>`) that the rrweb path cannot reconstruct. *Lean:*
-   keep Act 2 on the live screen-record path; adopt rrweb only if Act 2 proves to
-   be all-DOM, to gain server-free re-render. Decided when the gallery surface (#5)
-   is concrete.
+1. **rrweb boundary for Act 2.** The artifact gallery may render media tiles
+   (`<video>`/`<canvas>`) that the rrweb path cannot reconstruct. The default is
+   still rrweb-backed deck acts; if a concrete gallery surface crosses the rrweb
+   boundary, isolate that surface as the smallest MP4 `src` exception and document
+   it in the deck/spec. Do not convert the whole composite or all acts to MP4.
 2. **Composite via `host.slidey.render` deck vs `concat-videos.sh`.** The deck path
    gives one narrated artifact with a unified chapter sidecar; the concat path is
    the proven cross-site composite. *Lean:* slidey deck (the epic asks for "one

@@ -12,7 +12,6 @@ import process from "node:process";
 
 const CASES = {
   "bug-issue": {
-    videoName: "03-bug-issue",
     curtainTitle: "Live @kitsoki bug issue POC",
     threadTitle: "Real bug issue thread",
     threadCaption: "The real issue has a bug label, an @kitsoki comment, and an App-authenticated kitsoki response.",
@@ -20,7 +19,6 @@ const CASES = {
     apiTitle: "Bug issue run JSON",
   },
   "feature-issue": {
-    videoName: "04-feature-issue",
     curtainTitle: "Live @kitsoki feature issue POC",
     threadTitle: "Real feature issue thread",
     threadCaption: "The real issue has a feature or enhancement label, an @kitsoki comment, and an App-authenticated kitsoki response.",
@@ -28,7 +26,6 @@ const CASES = {
     apiTitle: "Feature issue run JSON",
   },
   guidance: {
-    videoName: "05-guidance",
     curtainTitle: "Live @kitsoki guidance POC",
     threadTitle: "Real ambiguous issue thread",
     threadCaption: "The ambiguous issue receives a guidance comment instead of an guessed route.",
@@ -36,7 +33,6 @@ const CASES = {
     apiTitle: "Guidance run JSON",
   },
   "pr-status": {
-    videoName: "06-pr-status",
     curtainTitle: "Live @kitsoki PR status POC",
     threadTitle: "Real PR thread",
     threadCaption: "The real pull request receives an @kitsoki mention and an App-authenticated kitsoki response.",
@@ -147,7 +143,6 @@ function buildPlan(caseSlug, markdown, artifactDir) {
 
   return {
     artifactDir,
-    videoName: cfg.videoName,
     curtainTitle: cfg.curtainTitle,
     steps: [
       {

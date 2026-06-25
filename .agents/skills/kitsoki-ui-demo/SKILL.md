@@ -44,6 +44,13 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > for `<canvas>`/`<video>`/WebGL surfaces) and the **rrweb capture → replay-render**
 > mode (capture the DOM stream once, re-render server-free + offline, frame-exact)
 > — see **[rrweb capture → replay-render](#rrweb-capture--replay-render-deterministic-server-free-mode)**.
+>
+> **Composite deck rule:** if the deliverable is a **slidey deck** with embedded
+> acts, the deck source should embed **rrweb logs** (`"rrweb": "clips/<act>.rrweb.json"`)
+> rather than rendered MP4/WebM clips (`"src": "*.mp4"`). MP4 is the rendered QA /
+> sharing output of the whole deck, not the source format for deck acts. Use MP4
+> `src` only for surfaces rrweb cannot reconstruct (`<canvas>`, `<video>`, WebGL)
+> or when the user explicitly requests a raw video splice.
 
 ## Start from a real dogfood trace (generate the flow + cassette — don't hand-author)
 
@@ -726,6 +733,15 @@ overlays), is frame-deterministic and re-renderable offline, carries its own
 chapter markers, and gives the slidey **web viewer** a live, scrubbable,
 chapter-aware player. The MP4-concat path below is the **legacy fallback** — use
 it only for a surface rrweb can't capture (`<canvas>`/`<video>`/WebGL).
+
+**Never "fix" a slow or failing rrweb deck render by swapping the deck scenes to
+MP4 `src`.** That optimizes the wrong thing: it bloats artifacts, bakes pixels
+into the source deck, removes the scrubbable rrweb player from slidey's web view,
+and hides the actual capture/render defect. If rendering hangs, isolate the
+specific rrweb log or Slidey rasterizer issue; keep the deck contract as rrweb.
+For cross-origin or hard-navigation demos, capture each staged page/state as its
+own short rrweb log and embed multiple rrweb scenes rather than concatenating
+screenshots or MP4s.
 
 > **Worked references — copy these, don't start blank:**
 > the **@kitsoki GitHub-loop** demo (deck

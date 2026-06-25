@@ -3,7 +3,7 @@
  * Verify the final live @kitsoki GitHub-agent POC evidence bundle.
  *
  * This is intentionally read-only. It checks the collected markdown evidence,
- * capture plans, recorded clips, chapter sidecars, and generated Slidey deck.
+ * capture plans, recorded rrweb logs, and generated Slidey deck.
  */
 
 import fs from "node:fs";
@@ -13,7 +13,6 @@ import process from "node:process";
 const CASES = [
   {
     slug: "bug-issue",
-    videoName: "03-bug-issue.mp4",
     expectedObjectKind: "issue",
     expectedStory: "stories/bugfix",
     expectedState: "done",
@@ -21,7 +20,6 @@ const CASES = [
   },
   {
     slug: "feature-issue",
-    videoName: "04-feature-issue.mp4",
     expectedObjectKind: "issue",
     expectedStory: "stories/dev-story",
     expectedState: "done",
@@ -29,7 +27,6 @@ const CASES = [
   },
   {
     slug: "guidance",
-    videoName: "05-guidance.mp4",
     expectedObjectKind: "issue",
     expectedStory: "",
     expectedState: "awaiting_guidance",
@@ -37,12 +34,18 @@ const CASES = [
   },
   {
     slug: "pr-status",
-    videoName: "06-pr-status.mp4",
     expectedObjectKind: "pr",
     expectedStory: "pr-beat",
     expectedState: "done",
     sourcePathPart: "/pull/",
   },
+];
+
+const STEPS = [
+  { id: "github-thread", file: "01-github-thread.rrweb.json" },
+  { id: "app-comment", file: "02-app-comment.rrweb.json" },
+  { id: "run-page", file: "03-run-page.rrweb.json" },
+  { id: "run-api", file: "04-run-api.rrweb.json" },
 ];
 
 const DEFAULT_EVIDENCE_DIR = ".context";
@@ -60,10 +63,10 @@ Options:
   --deck <deck.json>             default ${DEFAULT_DECK}
   --html <deck.html>             default ${DEFAULT_HTML}
   --deck-video <deck.mp4>        default ${DEFAULT_DECK_VIDEO}
-  --developer-arc-media <path>   required unless already referenced by deck
+  --developer-arc-media <path>   rrweb log required unless already referenced by deck
   --json-out <path>              write machine-readable report
   --allow-missing-db             do not require the gh_jobs row block
-  --allow-missing-media          do not require clips, chapters, or developer media
+  --allow-missing-media          do not require rrweb logs or developer media
   --allow-missing-deck           do not require the generated Slidey deck
   --allow-missing-html           do not require the exported self-contained HTML deck
   --allow-missing-deck-video     do not require the rendered deck MP4/chapter sidecar
@@ -77,8 +80,10 @@ Strict final proof inputs:
   <evidence-dir>/live-poc-pr-status.md
   each evidence file must include ok health/API/remote-DB checks and HTTP 2xx run-page headers
   <media-root>/capture-plan-<case>.json
-  <media-root>/<case>/<video>.mp4
-  <media-root>/<case>/<video>.mp4.chapters.json
+  <media-root>/<case>/01-github-thread.rrweb.json
+  <media-root>/<case>/02-app-comment.rrweb.json
+  <media-root>/<case>/03-run-page.rrweb.json
+  <media-root>/<case>/04-run-api.rrweb.json
   <deck>
   <html>
   <deck-video>
@@ -410,11 +415,40 @@ function readJSONFile(file, report, label) {
   }
 }
 
+function rrwebEvents(log) {
+  return Array.isArray(log) ? log : Array.isArray(log?.events) ? log.events : [];
+}
+
+function checkRrwebLog(file, stepID, report, label) {
+  if (!fs.existsSync(file)) {
+    return false;
+  }
+  if (fs.statSync(file).size === 0) {
+    report.fail(`${label} file is zero bytes: ${file}`);
+    return true;
+  }
+  const log = readJSONFile(file, report, label);
+  if (!log) return true;
+  const events = rrwebEvents(log);
+  if (events.length < 2) {
+    report.fail(`${label} should contain at least 2 rrweb events, got ${events.length}`);
+  }
+  const hasChapter = events.some(
+    (event) => event?.type === 5 && event?.data?.tag === "slidey.chapter" && event?.data?.payload?.id === stepID,
+  );
+  if (!hasChapter) {
+    report.fail(`${label} is missing slidey.chapter marker for ${stepID}`);
+  }
+  return true;
+}
+
 function checkMedia(args, c, report) {
   const planPath = path.join(args.mediaRoot, `capture-plan-${c.slug}.json`);
-  const videoPath = path.join(args.mediaRoot, c.slug, c.videoName);
-  const chaptersPath = `${videoPath}.chapters.json`;
-  report.media[c.slug] = { planPath, videoPath, chaptersPath };
+  const rrwebFiles = STEPS.map((step) => ({
+    id: step.id,
+    path: path.join(args.mediaRoot, c.slug, step.file),
+  }));
+  report.media[c.slug] = { planPath, rrwebFiles: rrwebFiles.map((step) => step.path) };
   const evidence = report.cases[c.slug] || {};
   const expectedSteps = [
     ["github-thread", evidence.sourceURL],
@@ -452,33 +486,12 @@ function checkMedia(args, c, report) {
     }
   }
 
-  for (const [label, file] of [
-    ["clip", videoPath],
-    ["chapters", chaptersPath],
-  ]) {
-    if (!fs.existsSync(file)) {
-      if (!args.allowMissingMedia) report.fail(`${c.slug}: missing ${label} ${file}`);
-    } else if (fs.statSync(file).size === 0) {
-      report.fail(`${c.slug}: ${label} file is zero bytes: ${file}`);
+  for (const { id, path: rrwebPath } of rrwebFiles) {
+    if (!fs.existsSync(rrwebPath)) {
+      if (!args.allowMissingMedia) report.fail(`${c.slug}: missing rrweb log ${rrwebPath}`);
+      continue;
     }
-  }
-
-  if (fs.existsSync(chaptersPath)) {
-    const chapters = readJSONFile(chaptersPath, report, `${c.slug} chapters`);
-    if (chapters) {
-      if (!Array.isArray(chapters) || chapters.length < expectedSteps.length) {
-        report.fail(
-          `${c.slug}: chapters should contain at least ${expectedSteps.length} entries, got ${
-            Array.isArray(chapters) ? chapters.length : "non-array"
-          }`,
-        );
-      } else {
-        const ids = new Set(chapters.map((chapter) => chapter?.id).filter(Boolean));
-        for (const [id] of expectedSteps) {
-          if (!ids.has(id)) report.fail(`${c.slug}: chapters missing ${id}`);
-        }
-      }
-    }
+    checkRrwebLog(rrwebPath, id, report, `${c.slug} ${id} rrweb`);
   }
 }
 
@@ -514,9 +527,16 @@ function checkDeck(args, report) {
       report.fail(`deck still contains stale fixture/live-claim phrase: ${phrase}`);
     }
   }
+  for (const stale of [".mp4", ".webm"]) {
+    if (allStrings.some((s) => typeof s === "string" && /^(?:\.\/|\.\.\/|\/|[A-Za-z]:)/.test(s) && s.includes(stale))) {
+      report.fail(`deck references rendered video media (${stale}); live proof scenes must embed rrweb logs`);
+    }
+  }
   for (const c of CASES) {
-    if (!haystack.includes(c.videoName)) {
-      report.fail(`deck does not reference ${c.videoName}`);
+    for (const step of STEPS) {
+      if (!haystack.includes(`${c.slug}/${step.file}`)) {
+        report.fail(`deck does not reference ${c.slug}/${step.file}`);
+      }
     }
     const evidence = report.cases[c.slug];
     if (evidence?.sourceURL && !haystack.includes(evidence.sourceURL)) {
@@ -546,9 +566,12 @@ function checkDeck(args, report) {
   }
   const hasDeveloperMedia =
     (args.developerArcMedia && haystack.includes(path.basename(args.developerArcMedia))) ||
-    allStrings.some((s) => /developer|slidey/i.test(s) && /\.(mp4|rrweb\.json)$/i.test(s));
+    allStrings.some((s) => /developer|slidey/i.test(s) && /\.rrweb\.json$/i.test(s));
   if (!hasDeveloperMedia && !args.allowMissingMedia) {
     report.fail("deck does not appear to reference developer-arc media");
+  }
+  if (args.developerArcMedia && !args.developerArcMedia.endsWith(".rrweb.json") && !args.allowMissingMedia) {
+    report.fail(`developer-arc media must be an rrweb log, got ${args.developerArcMedia}`);
   }
   if (!haystack.includes("What remains") || !haystack.includes("Full PR autopilot")) {
     report.fail("deck is missing the explicit remaining-work boundary");

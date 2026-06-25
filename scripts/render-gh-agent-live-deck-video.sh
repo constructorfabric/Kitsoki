@@ -101,8 +101,7 @@ if [ ! -s "$OUT" ]; then
 fi
 
 CHAPTERS="$OUT.chapters.json"
-if [ ! -s "$CHAPTERS" ]; then
-	node - "$DECK" "$CHAPTERS" <<'NODE'
+node - "$DECK" "$CHAPTERS" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
@@ -170,7 +169,6 @@ const chapters = scenes.map((scene, index) => {
 
 fs.writeFileSync(outPath, `${JSON.stringify(chapters, null, 2)}\n`);
 NODE
-fi
 if [ ! -s "$CHAPTERS" ]; then
 	echo "Slidey render did not create a non-empty chapter sidecar: $CHAPTERS" >&2
 	exit 1

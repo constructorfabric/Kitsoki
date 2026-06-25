@@ -19,7 +19,6 @@ const CASES = [
     eyebrow: "Live evidence",
     title: "Bug issue dispatch",
     subtitle: "bug label -> stories/bugfix -> done/run page",
-    videoName: "03-bug-issue.mp4",
     expectedStory: "stories/bugfix",
     expectedState: "done",
     narration:
@@ -31,7 +30,6 @@ const CASES = [
     eyebrow: "Live evidence",
     title: "Feature issue dispatch",
     subtitle: "feature or enhancement label -> stories/dev-story -> run page",
-    videoName: "04-feature-issue.mp4",
     expectedStory: "stories/dev-story",
     expectedState: "done",
     narration:
@@ -43,7 +41,6 @@ const CASES = [
     eyebrow: "Live evidence",
     title: "Guidance request",
     subtitle: "ambiguous mention -> guidance comment -> awaiting_guidance",
-    videoName: "05-guidance.mp4",
     expectedStory: "",
     expectedState: "awaiting_guidance",
     narration:
@@ -55,11 +52,41 @@ const CASES = [
     eyebrow: "Live evidence",
     title: "PR status route",
     subtitle: "PR mention -> pr-beat -> status/run link",
-    videoName: "06-pr-status.mp4",
     expectedStory: "pr-beat",
     expectedState: "done",
     narration:
       "The PR status proof shows the pull request path: the mention routes as a PR, pr-beat reads status through the no-LLM host path, and kitsoki comments back with the run link.",
+  },
+];
+
+const STEPS = [
+  {
+    id: "github-thread",
+    file: "01-github-thread.rrweb.json",
+    title: "Real GitHub thread",
+    caption: (c, evidence) => `${c.subtitle}. Evidence: ${evidence.sourceURL}`,
+    narration: (c) => `${c.title}: real GitHub thread.`,
+  },
+  {
+    id: "app-comment",
+    file: "02-app-comment.rrweb.json",
+    title: "App-authenticated kitsoki comment",
+    caption: (_c, evidence) => `kitsoki comments back with a public run link: ${evidence.runURL}`,
+    narration: () => "App comment with the run link.",
+  },
+  {
+    id: "run-page",
+    file: "03-run-page.rrweb.json",
+    title: "Hosted run page",
+    caption: (_c, evidence) => `Hosted run summary: ${evidence.runURL}`,
+    narration: () => "Hosted run summary.",
+  },
+  {
+    id: "run-api",
+    file: "04-run-api.rrweb.json",
+    title: "Run JSON",
+    caption: (_c, evidence) => `Machine-readable job state: ${evidence.apiURL}`,
+    narration: () => "API job state.",
   },
 ];
 
@@ -74,7 +101,7 @@ Options:
   --out <deck.json>              default ${DEFAULT_OUT}
   --evidence-dir <dir>           default ${DEFAULT_EVIDENCE_DIR}
   --media-root <dir>             default ${DEFAULT_MEDIA_ROOT}
-  --developer-arc-media <path>   MP4 or rrweb clip for Section 7
+  --developer-arc-media <path>   rrweb clip for Section 7
   --allow-missing-media          emit a draft even when clip files are absent
   --allow-nonlive-urls           skip live URL host validation (tests only)
   -h, --help                     show this help
@@ -85,11 +112,12 @@ Inputs:
   <evidence-dir>/live-poc-guidance.md
   <evidence-dir>/live-poc-pr-status.md
 
-Expected case clips:
-  <media-root>/bug-issue/03-bug-issue.mp4
-  <media-root>/feature-issue/04-feature-issue.mp4
-  <media-root>/guidance/05-guidance.mp4
-  <media-root>/pr-status/06-pr-status.mp4`);
+Expected case rrweb logs:
+  <media-root>/bug-issue/01-github-thread.rrweb.json
+  <media-root>/bug-issue/02-app-comment.rrweb.json
+  <media-root>/bug-issue/03-run-page.rrweb.json
+  <media-root>/bug-issue/04-run-api.rrweb.json
+  ...and the same four files for feature-issue, guidance, and pr-status.`);
 }
 
 function parseArgs(argv) {
@@ -247,23 +275,29 @@ function readEvidence(args, c) {
 }
 
 function requireMedia(args, c) {
-  const mediaPath = path.join(args.mediaRoot, c.slug, c.videoName);
-  if (!fs.existsSync(mediaPath) && !args.allowMissingMedia) {
-    throw new Error(`missing ${c.slug} clip: ${mediaPath}`);
+  const files = STEPS.map((step) => ({
+    ...step,
+    path: path.join(args.mediaRoot, c.slug, step.file),
+  }));
+  if (!args.allowMissingMedia) {
+    for (const file of files) {
+      if (!fs.existsSync(file.path)) throw new Error(`missing ${c.slug} rrweb log: ${file.path}`);
+    }
   }
-  return mediaPath;
+  return files;
 }
 
-function mediaScene(deckOut, c, evidence, mediaPath) {
-  return {
+function mediaScenes(deckOut, c, evidence, files) {
+  return files.map((file, idx) => ({
     type: "video",
     mode: "embedded",
     eyebrow: c.eyebrow,
-    title: c.title,
-    src: relativeMediaPath(deckOut, mediaPath),
-    caption: `${c.subtitle}. Evidence: ${evidence.sourceURL} -> ${evidence.runURL}`,
-    narration: c.narration,
-  };
+    title: idx === 0 ? c.title : `${c.title}: ${file.title}`,
+    rrweb: relativeMediaPath(deckOut, file.path),
+    chapters: "auto",
+    caption: file.caption(c, evidence),
+    narration: file.narration(c),
+  }));
 }
 
 function developerArcScene(args, deckOut) {
@@ -283,6 +317,9 @@ function developerArcScene(args, deckOut) {
   if (!fs.existsSync(args.developerArcMedia) && !args.allowMissingMedia) {
     throw new Error(`missing developer arc media: ${args.developerArcMedia}`);
   }
+  if (!args.developerArcMedia.endsWith(".rrweb.json") && !args.allowMissingMedia) {
+    throw new Error(`developer arc media must be an rrweb log, got ${args.developerArcMedia}`);
+  }
   const rel = relativeMediaPath(deckOut, args.developerArcMedia);
   const scene = {
     type: "video",
@@ -292,13 +329,9 @@ function developerArcScene(args, deckOut) {
     caption: "Existing QA-passed Slidey bugfix, feature refine, and PR evidence.",
     narration:
       "This section connects the live GitHub front door to the existing Slidey developer arc evidence: bugfix, feature refinement, and pull request work.",
+    rrweb: rel,
+    chapters: "auto",
   };
-  if (args.developerArcMedia.endsWith(".rrweb.json")) {
-    scene.rrweb = rel;
-    scene.chapters = "auto";
-  } else {
-    scene.src = rel;
-  }
   return scene;
 }
 
@@ -342,7 +375,7 @@ function buildDeck(args) {
       title: c.title,
       subtitle: c.subtitle,
     });
-    scenes.push(mediaScene(args.out, c, evidence.get(c.slug), media.get(c.slug)));
+    scenes.push(...mediaScenes(args.out, c, evidence.get(c.slug), media.get(c.slug)));
   }
 
   scenes.push({
