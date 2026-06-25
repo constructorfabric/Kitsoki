@@ -61,8 +61,28 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact, implement_artifact]
+    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact, implement_artifact, reproduction_artifact, gate_command, repro_committed, commit_repro_sha]
     on_enter:
+      # LATCH the synthesised gate (autonomous from a bare report). The proposing
+      # room committed the reproducer's RED test as a discrete pre-fix commit and
+      # bound its sha to commit_repro_sha (a prior pass — so the sha is visible
+      # here but was NOT visible to a same-pass step there). Latch the gate ONLY
+      # when that commit produced a REAL sha: iface.vcs.commit no-ops gracefully
+      # (ok:true, sha:"") when there is nothing to stage, and a no-op must NOT
+      # latch — else the test would ship WITH the fix, HEAD~1 would have no clean
+      # pre-fix snapshot, and the run would dead-end at needs-human (the regression
+      # the bare-report dogfood exposed). Empty sha ⇒ no synthesis ⇒ the ship guard
+      # catches it loudly, never a false ship. Runs BEFORE the implementer commits
+      # the fix below, so the test commit stays the pre-fix tip. Guarded on
+      # gate_command=='' so a ticket-supplied repro_command is untouched.
+      - when: |
+          world.gate_command == '' && !world.repro_committed &&
+          (world.commit_repro_sha ?? '') != ''
+        set:
+          gate_command:    "{{ world.reproduction_artifact.repro_command }}"
+          landing_gate:    "{{ world.reproduction_artifact.repro_command }}"
+          repro_committed: true
+
       # Self-heal the workspace before we touch it. bf.idle's auto-
       # create only runs when `!bf_autostart_attempted`, so once that
       # flag is pinned (which it is after the first attempt regardless

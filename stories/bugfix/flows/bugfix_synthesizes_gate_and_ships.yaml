@@ -94,14 +94,18 @@ turns:
     expect_state: reproducing
   - intent: { name: accept, slots: {} }
     expect_state: proposing
-    # synthesis fired on the accept arc: the authored test was committed and
-    # gate_command was DERIVED from the artifact's repro_command.
+    # proposing/on_enter committed the reproducer's RED test as a discrete pre-fix
+    # commit and bound its sha (file is settled a turn after the async reproducer).
+    expect_world:
+      commit_repro_sha: "abc"
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    # implementing/on_enter latched the synthesised gate from the (settled) sha
+    # BEFORE committing the fix — so the test commit stays the pre-fix tip.
     expect_world:
       gate_command:    "go test ./internal/host/ -run TestRepro -count=1"
       landing_gate:    "go test ./internal/host/ -run TestRepro -count=1"
       repro_committed: true
-  - intent: { name: accept, slots: {} }
-    expect_state: implementing
   - intent: { name: accept, slots: {} }
     expect_state: testing
     expect_world:

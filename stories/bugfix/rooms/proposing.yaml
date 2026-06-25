@@ -66,8 +66,43 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, propose_fix_artifact, reproduction_artifact, llm_verdict, refine_feedback, cycle]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, propose_fix_artifact, reproduction_artifact, llm_verdict, refine_feedback, cycle, gate_command, repro_committed, commit_repro_sha]
     on_enter:
+      # 0. SYNTHESISE the regression gate from the reproducer (autonomous from a
+      #    bare bug report). When the ticket carried NO repro_command (gate_command
+      #    empty), the reproducer (a prior turn) authored a RED test and emitted a
+      #    structured repro_command + repro_test_paths. Commit that test as a
+      #    DISCRETE pre-fix commit and derive gate_command from it, so testing's
+      #    HEAD~1 RED gate + the ship guard work IDENTICALLY to a ticket-supplied
+      #    gate — no needs-human dead-end just because the report omitted one. The
+      #    commit lands BEFORE the fix (implementing commits the fix as the next
+      #    tip), so testing's HEAD~1 = this test-without-fix snapshot runs RED.
+      #
+      #    Here (proposing/on_enter), NOT on reproducing's accept arc: the reproducer
+      #    is an async agent whose file write only settles a turn later — committing
+      #    on the same-turn auto-accept raced the flush and silently no-op'd. By
+      #    proposing the file is durable. iface.vcs.commit is a SYNC host call so its
+      #    bind (commit_repro_sha) IS visible to step 0b in this same pass.
+      - when: |
+          world.gate_command == '' && world.workdir != '' &&
+          !world.repro_committed &&
+          (world.reproduction_artifact.bug_verified ?? false) &&
+          (world.reproduction_artifact.repro_command ?? '') != '' &&
+          len(world.reproduction_artifact.repro_test_paths ?? []) > 0
+        invoke: iface.vcs.commit
+        id: commit_repro_test
+        with:
+          message: "test(repro): RED reproducer for {{ world.ticket_id }}"
+          files:   "{{ world.reproduction_artifact.repro_test_paths }}"
+          cwd:     "{{ world.workdir }}"
+        bind:
+          commit_repro_sha: sha
+        on_error: idle
+      # The synthesised gate is LATCHED in implementing/on_enter (the next pass):
+      # an on_enter bind (commit_repro_sha) is not visible to a later step in the
+      # SAME pass, so the sha-conditional latch — which must reject a no-op commit
+      # (sha:"") to avoid a false ship — has to read it a turn later.
+
       # `working_dir` pins the agent subprocess to the bugfix worktree
       # so greps/reads against the live tree land on the feature branch,
       # not on main. See implementing.yaml header for the regression.

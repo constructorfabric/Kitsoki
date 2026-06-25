@@ -1,0 +1,96 @@
+# bugfix_synthesis_noop_commit_needs_human — the synthesis must FAIL LOUDLY, not
+# false-ship, when the pre-fix test commit no-ops.
+#
+# Regression guard for the defect the bare-report dogfood exposed: the synthesis
+# commit (iface.vcs.commit of the reproducer's authored test) no-ops gracefully
+# (ok:true, sha:"") when there is nothing to stage — e.g. the async reproducer's
+# file hadn't settled. The pipeline used to latch repro_committed + derive
+# gate_command ANYWAY, so the test shipped WITH the fix, HEAD~1 had no clean
+# pre-fix snapshot, and it dead-ended at needs-human with a confusing
+# "never RED" error. Now the latch is conditioned on a NON-EMPTY commit sha, so a
+# no-op commit ⇒ no synthesis ⇒ gate_command stays empty ⇒ the testing room's
+# never-RED ship guard routes to @exit:needs-human honestly (no false ship).
+#
+# Same shape as bugfix_synthesizes_gate_and_ships, but the commit_repro_test call
+# is stubbed to return sha:"" (the no-op).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-NOREPRO-NOOP"
+  ticket_title:     "Bare ticket whose reproducer test commit no-ops"
+  thread:           "TKT-NOREPRO-NOOP"
+  workspace_id:     "noop-fix"
+  workdir:          ".worktrees/noop-fix"
+  worktree_path:    ".worktrees/noop-fix"
+  feature_branch:   "noop-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "direct-ship"
+  # NO gate_command — synthesis path.
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/noop-fix" } }
+  # The synthesis test commit NO-OPS (sha:"") — nothing was committable. Every
+  # other git call (the implementer's fix commit, etc.) returns a real sha.
+  host.git:
+    by_call:
+      commit_repro_test: { data: { ok: true, sha: "", diff: "" } }
+    default: { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Reproducer authored; fix applied"
+        summary_markdown: "Authored a RED reproducer, but its test file was not committable at the synthesis step (no-op commit). The fix is still applied."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        repro_command:    "go test ./internal/host/ -run TestRepro -count=1"
+        repro_test_paths: ["internal/host/repro_test.go"]
+        files_changed:    ["internal/host/fix.go"]
+  host.agent.ask:
+    data:
+      ok: true
+      submitted: { summary_title: "Fix proposal", summary_markdown: "Create-on-miss.", fix_description: "x", root_cause: "y", affected_files: ["internal/host/fix.go"] }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # gate_command stays empty, so this never runs — but stub it RED in case.
+      regression_gate_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { red: true, checked: true, log: "x" } }
+
+turns:
+  - intent: { name: start,  slots: {} }
+    expect_state: reproducing
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+    # the synthesis commit ran but NO-OP'd → empty sha recorded.
+    expect_world:
+      commit_repro_sha: ""
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    # the latch did NOT fire (empty sha) — gate stays unsynthesised.
+    expect_world:
+      gate_command:    ""
+      repro_committed: false
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    expect_world:
+      regression_red_pre_fix: false
+  # accept from testing: no RED-pre-fix proof → needs-human, NOT a false ship.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status: needs-human
+
+expect_terminal: true
+expect_no_errors: true

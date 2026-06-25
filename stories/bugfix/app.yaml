@@ -339,6 +339,14 @@ world:
   # repro_command. This is what lets a bare bug report (no repro_command) still
   # reach @exit:shipped autonomously. See flows/bugfix_synthesizes_gate_and_ships.yaml.
   repro_committed:        { type: bool,   default: false }
+  # commit_repro_sha — the sha returned by the synthesis commit. The latch +
+  # gate derivation are conditioned on this being NON-EMPTY: iface.vcs.commit
+  # no-ops gracefully (ok:true, sha:"") when there is nothing to stage (e.g. the
+  # async reproducer's file hadn't settled), and a no-op MUST NOT be mistaken for
+  # a real pre-fix commit — else the test ships WITH the fix, HEAD~1 has no clean
+  # pre-fix snapshot, and the run dead-ends at needs-human (the regression the
+  # bare-report dogfood exposed). Empty sha ⇒ no synthesis ⇒ fail loudly downstream.
+  commit_repro_sha:       { type: string, default: "" }
 
   # ── Lost-work guard (clean-tree invariant) ──────────────────────────────
   # The maker rooms mutate the worktree (implementer writes the fix,
