@@ -32,6 +32,13 @@ export default defineConfig({
       // never produce a 504 Gateway Timeout from the Vite dev proxy. The Go
       // backend uses ReadHeaderTimeout only (no WriteTimeout) for the same reason.
       "/rpc": { target: apiBase, changeOrigin: true, timeout: 0, proxyTimeout: 0 },
+      // /artifact/<handle> (+ /artifact/<handle>/poster) serves the rendered
+      // media — slidey decks, posters, video grabs — straight off the Go
+      // backend's artifact substrate. Without this proxy the dev server's SPA
+      // catch-all answers every artifact URL with index.html, so a deck iframe
+      // renders the app (empty), "Open the interactive deck" opens the app in a
+      // new tab, and the annotator loads the app instead of the deck.
+      "/artifact": { target: apiBase, changeOrigin: true, timeout: 0, proxyTimeout: 0 },
     },
   },
   build: {
