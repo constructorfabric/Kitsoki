@@ -456,6 +456,16 @@ world:
   judge_confidence_threshold:  { type: float,  default: 0.8 }
   bugfix_mode:                 { type: string, default: "full" }
   merge_strategy:              { type: string, default: "squash" }
+  # build_cmd / test_cmd — the project's REAL build + test commands, projected
+  # into the bf import so the bugfix testing/validating gates run them instead of
+  # the `go build ./...` / `go test ./...` defaults baked into host.local
+  # (internal/host/local_ci.go). Empty ⇒ the Go defaults (back-compat for a Go
+  # target). An INSTANCE targeting a non-Go repo sets these from its project
+  # profile (e.g. gears-rust-dev → cargo) so an onboarded repo's fixes are gated
+  # by its own toolchain with NO per-session override. See stories/bugfix
+  # (world.build_cmd / world.test_cmd, consumed by validating.yaml / testing.yaml).
+  build_cmd:                   { type: string, default: "" }
+  test_cmd:                    { type: string, default: "" }
 
   # ── Standup / agent / code-review scratch ────────────────────────
   standup_summary:     { type: string, default: "" }
@@ -1386,6 +1396,10 @@ imports:
       base_branch:     "{{ world.base_branch }}"
       feature_branch:  "{{ world.feature_branch }}"
       bugfix_mode:     "{{ world.bugfix_mode }}"
+      # Project the project's real build/test commands into bf so its
+      # testing/validating gates use the right toolchain (empty ⇒ Go defaults).
+      build_cmd:       "{{ world.build_cmd }}"
+      test_cmd:        "{{ world.test_cmd }}"
       # The picked bug's repro_command (bound by ticket_search.pick_ticket).
       # bf's `reproducing` room runs it RED-first; empty ⇒ LLM-only reproducer.
       gate_command:    "{{ world.gate_command }}"
