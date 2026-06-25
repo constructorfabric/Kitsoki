@@ -327,7 +327,7 @@ function buildDeck(args) {
       type: "title",
       eyebrow: "Section 1",
       title: "Live GitHub front door",
-      subtitle: "A real GitHub user mentions @kitsoki on bsacrobatix/Kitsoki",
+      subtitle: `Real bsacrobatix/Kitsoki mentions delivered to ${bug.webhookURL}`,
       narration:
         `The live front door is proven by real GitHub issues and pull requests delivered to ${bug.webhookURL}: bug ${bug.sourceURL}, feature ${feature.sourceURL}, guidance ${guidance.sourceURL}, and PR ${pr.sourceURL}.`,
     },

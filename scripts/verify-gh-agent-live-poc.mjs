@@ -530,6 +530,18 @@ function checkDeck(args, report) {
   if (!haystack.includes("https://kitsoki-test.slothattax.me/gh-agent/webhook")) {
     report.fail("deck does not reference the live GitHub App webhook URL");
   }
+  const sectionOne = Array.isArray(deck.scenes)
+    ? deck.scenes.find((scene) => scene?.title === "Live GitHub front door")
+    : null;
+  const sectionOneVisible = collectStrings({
+    eyebrow: sectionOne?.eyebrow,
+    title: sectionOne?.title,
+    subtitle: sectionOne?.subtitle,
+    caption: sectionOne?.caption,
+  }).join("\n");
+  if (!sectionOneVisible.includes("https://kitsoki-test.slothattax.me/gh-agent/webhook")) {
+    report.fail("deck Section 1 does not visibly reference the live GitHub App webhook URL");
+  }
   const hasDeveloperMedia =
     (args.developerArcMedia && haystack.includes(path.basename(args.developerArcMedia))) ||
     allStrings.some((s) => /developer|slidey/i.test(s) && /\.(mp4|rrweb\.json)$/i.test(s));
