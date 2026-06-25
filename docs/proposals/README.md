@@ -60,6 +60,13 @@ thought.
 
 ## Current proposals
 
+- [`generic-feedback-sdk-slidey-reports.md`](generic-feedback-sdk-slidey-reports.md)
+  — **epic.** Turn Kitsoki's built-in web bug reporting, rrweb capture,
+  spatial oracle, and Slidey media substrate into a framework-neutral browser
+  feedback SDK. The proposal centers privacy-by-design: data avoidance first,
+  reviewed/redacted bundles as the remote boundary, a mandatory privacy
+  manifest, chromeless UI, plugin-contributed context, a Slidey narrative report
+  deck, and a generic sink contract for the parallel GitHub agent.
 - [`dynamic-workflows.md`](dynamic-workflows.md) — **epic.** Let an operator ask
   Kitsoki to synthesize a temporary YAML story workflow, validate it before
   launch, execute it through the normal engine with trace/runstatus visibility,
