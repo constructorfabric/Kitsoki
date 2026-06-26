@@ -1,7 +1,7 @@
 states:
   run_created:
     description: "A product-journey QA run bundle exists; waiting for captured evidence."
-    relevant_world: [project, persona, seed, run_id, run_dir, deck_path, execution_plan_path, driver_plan_path, agent_brief_path, media_manifest_path, scenario_outcomes_path, scenario, evidence_kind, evidence_path, finding_kind, finding_title, review_status, review_summary, validation_status, validation_errors, validation_warnings, status]
+    relevant_world: [project, persona, seed, run_id, run_dir, deck_path, execution_plan_path, driver_plan_path, agent_brief_path, driver_handoff_path, media_manifest_path, scenario_outcomes_path, scenario, evidence_kind, evidence_path, finding_kind, finding_title, review_status, review_summary, validation_status, validation_errors, validation_warnings, status]
     view:
       - banner:
           text: "RUN CREATED"
@@ -17,6 +17,7 @@ states:
             Execution plan: '{{ world.execution_plan_path|default:"(pending)" }}'
             Driver plan: '{{ world.driver_plan_path|default:"(pending)" }}'
             Agent brief: '{{ world.agent_brief_path|default:"(pending)" }}'
+            Driver handoff: '{{ world.driver_handoff_path|default:"(pending)" }}'
             Media manifest: '{{ world.media_manifest_path|default:"(pending)" }}'
             Scenario outcomes: '{{ world.scenario_outcomes_path|default:"(pending)" }}'
             Last evidence: '{{ world.scenario|default:"(none)" }} / {{ world.evidence_kind|default:"" }}'
@@ -42,6 +43,9 @@ states:
             - label: "seed_demo"
               hint: "populate representative evidence and findings for deck review"
               intent: seed_demo
+            - label: "handoff"
+              hint: "refresh the reusable driver-agent handoff artifact without launching live LLM work"
+              intent: handoff
             - label: "review"
               hint: "score whether the bundle is ready for human review"
               intent: review
@@ -94,6 +98,7 @@ states:
                 execution_plan_path: "stdout_json.execution_plan_path"
                 driver_plan_path: "stdout_json.driver_plan_path"
                 agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
               on_error: run_created
@@ -142,6 +147,7 @@ states:
                 execution_plan_path: "stdout_json.execution_plan_path"
                 driver_plan_path: "stdout_json.driver_plan_path"
                 agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
               on_error: run_created
@@ -186,6 +192,7 @@ states:
                 execution_plan_path: "stdout_json.execution_plan_path"
                 driver_plan_path: "stdout_json.driver_plan_path"
                 agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
               on_error: run_created
@@ -216,6 +223,7 @@ states:
                 execution_plan_path: "stdout_json.execution_plan_path"
                 driver_plan_path: "stdout_json.driver_plan_path"
                 agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
               on_error: run_created
@@ -248,11 +256,40 @@ states:
                 execution_plan_path: "stdout_json.execution_plan_path"
                 driver_plan_path: "stdout_json.driver_plan_path"
                 agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
               on_error: run_created
             - set:
                 status: "reviewed"
+      handoff:
+        - target: run_created
+          effects:
+            - set:
+                status: "preparing_handoff"
+            - invoke: host.run
+              id: prepare_product_journey_driver_handoff
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --driver-handoff
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+              on_error: run_created
+            - set:
+                status: "handoff_ready"
       validate:
         - target: run_created
           effects:

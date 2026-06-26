@@ -103,7 +103,8 @@ This writes `.artifacts/product-journey/<run-id>/` with `run.json`,
 `scenario-outcomes.json`, `scenario-outcomes.md`, `evidence.json`,
 `media-manifest.json`, `scenarios.json`, `execution-plan.json`,
 `execution-plan.md`, `driver-plan.json`, `driver-plan.md`, `agent-brief.json`,
-`agent-brief.md`, `review.json`, and `deck.slidey.json`.
+`agent-brief.md`, `driver-handoff.json`, `driver-handoff.md`, `review.json`,
+and `deck.slidey.json`.
 Add `--publish-deck` when the generated deck should replace
 `docs/decks/product-journey-eval.slidey.json` for review.
 
@@ -113,8 +114,10 @@ evidence without implying planned steps are validated. The brief names
 `.agents/agents/product-journey-qa-driver.md` as the reusable live/cassette
 driver for Kitsoki Studio MCP and visual MCP runs. Use `driver-plan.md` for the
 machine-readable harness, visual-surface, action-sequence, and gate contract,
-and `execution-plan.md` for the detailed evidence slots and ready-to-fill
-`--attach-evidence` commands.
+`execution-plan.md` for the detailed evidence slots and ready-to-fill
+`--attach-evidence` commands, and `driver-handoff.md` as the operator handoff
+that names the driver agent, dispatch modes, missing evidence, and final gates
+without launching live LLM work.
 Each scenario also carries a `quality_gate` with `minimum_evidence`,
 `done_when`, and `block_if` rules. Live/cassette drivers should satisfy that
 gate before calling a scenario done, or record a blocker tied to the matching
@@ -200,6 +203,16 @@ The review writes `review.json`, updates `metrics.json`, and adds a readiness
 scene to `deck.slidey.json`. Hard failures mean the bundle is still skeletal;
 warnings identify useful evidence quality improvements, such as missing key
 interaction video.
+
+Prepare the reusable driver handoff without spending live model calls:
+
+```sh
+python3 tools/product-journey/run.py --driver-handoff \
+  --run-dir .artifacts/product-journey/<run-id>
+```
+
+Inside `stories/product-journey-qa/app.yaml`, submit `handoff` from a run to
+refresh the same `driver-handoff.md/json` artifacts.
 
 After review, run the read-only validator before treating the artifacts as a
 stable contract for a live or cassette-backed run:

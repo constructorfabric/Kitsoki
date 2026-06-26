@@ -564,6 +564,8 @@ def build_run_bundle(
             "driver_plan_markdown": "driver-plan.md",
             "agent_brief": "agent-brief.json",
             "agent_brief_markdown": "agent-brief.md",
+            "driver_handoff": "driver-handoff.json",
+            "driver_handoff_markdown": "driver-handoff.md",
             "review": "review.json",
             "deck": "deck.slidey.json",
         },
@@ -605,6 +607,13 @@ def build_run_bundle(
         "checkpoint_ratings": [],
     }
     bugs = {"run_id": run_id, "items": []}
+    review = {
+        "run_id": run_id,
+        "status": "not_reviewed",
+        "summary": "Run has not been reviewed for readiness yet.",
+        "checks": [],
+    }
+    driver_handoff = build_driver_handoff(run_json, metrics, evidence, review)
     journey = render_journey(run_json)
     deck = render_deck(run_json, metrics, evidence=evidence, findings=findings, execution_plan=execution_plan, media_manifest=media_manifest, scenario_outcomes=scenario_outcomes, driver_plan=driver_plan)
 
@@ -624,12 +633,9 @@ def build_run_bundle(
     (run_dir / "driver-plan.md").write_text(render_driver_plan(driver_plan), encoding="utf-8")
     write_json(run_dir / "agent-brief.json", agent_brief)
     (run_dir / "agent-brief.md").write_text(render_agent_brief(agent_brief), encoding="utf-8")
-    write_json(run_dir / "review.json", {
-        "run_id": run_id,
-        "status": "not_reviewed",
-        "summary": "Run has not been reviewed for readiness yet.",
-        "checks": [],
-    })
+    write_json(run_dir / "driver-handoff.json", driver_handoff)
+    (run_dir / "driver-handoff.md").write_text(render_driver_handoff(driver_handoff), encoding="utf-8")
+    write_json(run_dir / "review.json", review)
     write_json(run_dir / "deck.slidey.json", deck)
     if publish_deck is not None:
         publish_deck.parent.mkdir(parents=True, exist_ok=True)
@@ -1450,6 +1456,107 @@ def render_agent_brief(brief: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def build_driver_handoff(run_json: dict, metrics: dict, evidence: dict, review: dict) -> dict:
+    run_dir_arg = f".artifacts/product-journey/{run_json['run_id']}"
+    missing_evidence = [
+        {"scenario": item.get("scenario", ""), "kind": item.get("kind", ""), "hint": evidence_capture_hint(item.get("kind", ""))}
+        for item in evidence.get("items", [])
+        if item.get("status") == "missing"
+    ]
+    return {
+        "run_id": run_json["run_id"],
+        "created_at": now_utc(),
+        "driver_agent": ".agents/agents/product-journey-qa-driver.md",
+        "run_dir": run_dir_arg,
+        "project": run_json["project"],
+        "persona": run_json["persona"],
+        "status": {
+            "review_status": review.get("status", "not_reviewed"),
+            "present_evidence_count": metrics.get("present_evidence_count", 0),
+            "required_evidence_count": metrics.get("required_evidence_count", 0),
+            "missing_evidence_count": len(missing_evidence),
+            "findings_count": metrics.get("findings_count", 0),
+        },
+        "inputs": {
+            "agent_brief": "agent-brief.md",
+            "driver_plan": "driver-plan.md",
+            "execution_plan": "execution-plan.md",
+            "evidence": "evidence.json",
+            "scenario_outcomes": "scenario-outcomes.md",
+            "media_manifest": "media-manifest.json",
+        },
+        "dispatch_modes": [
+            {
+                "mode": "replay",
+                "description": "Use existing cassettes or deterministic fixtures. Safe for no-LLM regression runs.",
+            },
+            {
+                "mode": "record",
+                "description": "Capture a new reusable cassette or visual evidence path with explicit operator approval.",
+            },
+            {
+                "mode": "live",
+                "description": "Use live model behavior only when the operator explicitly authorizes cost-bearing exploration.",
+            },
+        ],
+        "operator_warning": (
+            "This handoff does not automatically launch an LLM. Use it as the reviewable contract for a "
+            "live or cassette-backed driver pass, then attach evidence and run review + validation."
+        ),
+        "suggested_prompt": (
+            f"Drive product journey QA for run_dir={run_dir_arg}. Read agent-brief.md, driver-plan.md, "
+            "and execution-plan.md. Use Kitsoki Studio MCP and visual MCP to capture evidence or blockers, "
+            "record findings, then run review and validation."
+        ),
+        "finalize_commands": [
+            f"python3 tools/product-journey/run.py --review-run --run-dir {run_dir_arg}",
+            f"python3 tools/product-journey/run.py --validate-run --run-dir {run_dir_arg}",
+        ],
+        "missing_evidence": missing_evidence,
+    }
+
+
+def render_driver_handoff(handoff: dict) -> str:
+    lines = [
+        "# Product journey driver handoff",
+        "",
+        f"- Run: `{handoff['run_id']}`",
+        f"- Driver agent: `{handoff['driver_agent']}`",
+        f"- Run dir: `{handoff['run_dir']}`",
+        f"- Project: `{handoff['project']['label']}`",
+        f"- Persona: `{handoff['persona']['label']}`",
+        f"- Review: `{handoff['status']['review_status']}`",
+        f"- Evidence: {handoff['status']['present_evidence_count']} / {handoff['status']['required_evidence_count']}",
+        f"- Findings: {handoff['status']['findings_count']}",
+        "",
+        "## Operator Warning",
+        "",
+        handoff["operator_warning"],
+        "",
+        "## Suggested Driver Prompt",
+        "",
+        handoff["suggested_prompt"],
+        "",
+        "## Inputs",
+        "",
+    ]
+    for label, path in handoff["inputs"].items():
+        lines.append(f"- `{label}`: `{path}`")
+    lines.extend(["", "## Dispatch Modes", ""])
+    for mode in handoff["dispatch_modes"]:
+        lines.append(f"- `{mode['mode']}`: {mode['description']}")
+    lines.extend(["", "## Missing Evidence", ""])
+    if handoff["missing_evidence"]:
+        for item in handoff["missing_evidence"][:25]:
+            lines.append(f"- `{item['scenario']}` / `{item['kind']}`: {item['hint']}")
+    else:
+        lines.append("- (none)")
+    lines.extend(["", "## Finalize", ""])
+    for command in handoff["finalize_commands"]:
+        lines.append(f"```sh\n{command}\n```")
+    return "\n".join(lines) + "\n"
+
+
 def render_execution_plan(plan: dict) -> str:
     lines = [
         "# Product journey execution plan",
@@ -1651,12 +1758,38 @@ def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None)
     agent_brief = build_agent_brief(run_json, evidence, execution_plan)
     write_json(run_dir / "agent-brief.json", agent_brief)
     (run_dir / "agent-brief.md").write_text(render_agent_brief(agent_brief), encoding="utf-8")
+    driver_handoff = build_driver_handoff(run_json, metrics, evidence, review)
+    write_json(run_dir / "driver-handoff.json", driver_handoff)
+    (run_dir / "driver-handoff.md").write_text(render_driver_handoff(driver_handoff), encoding="utf-8")
     (run_dir / "journey.md").write_text(render_journey(run_json), encoding="utf-8")
     deck = render_deck(run_json, metrics, evidence, findings, review, execution_plan, media_manifest, scenario_outcomes, driver_plan)
     write_json(run_dir / "deck.slidey.json", deck)
     if publish_deck is not None:
         publish_deck.parent.mkdir(parents=True, exist_ok=True)
         write_json(publish_deck, deck)
+
+
+def prepare_driver_handoff(run_dir: Path, publish_deck: Optional[Path] = None) -> dict:
+    update_derived_artifacts(run_dir, publish_deck)
+    handoff = read_json(run_dir / "driver-handoff.json")
+    return {
+        "status": "driver_handoff_ready",
+        "run_id": handoff["run_id"],
+        "run_dir": str(run_dir),
+        "driver_agent": handoff["driver_agent"],
+        "driver_handoff_path": str(run_dir / "driver-handoff.md"),
+        "driver_handoff_json_path": str(run_dir / "driver-handoff.json"),
+        "deck_path": str(run_dir / "deck.slidey.json"),
+        "execution_plan_path": str(run_dir / "execution-plan.md"),
+        "driver_plan_path": str(run_dir / "driver-plan.md"),
+        "agent_brief_path": str(run_dir / "agent-brief.md"),
+        "driver_handoff_path": str(run_dir / "driver-handoff.md"),
+        "media_manifest_path": str(run_dir / "media-manifest.json"),
+        "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
+        "suggested_prompt": handoff["suggested_prompt"],
+        "missing_evidence_count": handoff["status"]["missing_evidence_count"],
+        "published_deck_path": str(publish_deck) if publish_deck is not None else "",
+    }
 
 
 def attach_evidence(
@@ -1832,6 +1965,7 @@ def seed_demo_evidence(run_dir: Path, publish_deck: Optional[Path]) -> dict:
         "execution_plan_path": str(run_dir / "execution-plan.md"),
         "driver_plan_path": str(run_dir / "driver-plan.md"),
         "agent_brief_path": str(run_dir / "agent-brief.md"),
+        "driver_handoff_path": str(run_dir / "driver-handoff.md"),
         "media_manifest_path": str(run_dir / "media-manifest.json"),
         "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
         "evidence_added": len(demo_evidence),
@@ -3237,6 +3371,7 @@ def build_dogfood_smoke(
             "execution_plan_path": str(run_dir / "execution-plan.md"),
             "driver_plan_path": str(run_dir / "driver-plan.md"),
             "agent_brief_path": str(run_dir / "agent-brief.md"),
+            "driver_handoff_path": str(run_dir / "driver-handoff.md"),
             "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
             "media_manifest_path": str(run_dir / "media-manifest.json"),
         },
@@ -3769,6 +3904,7 @@ def main() -> None:
     parser.add_argument("--record-blocker", action="store_true", help="Record an explicit blocked scenario as an issue finding")
     parser.add_argument("--seed-demo-evidence", action="store_true", help="Attach deterministic demo evidence and findings to an existing run bundle")
     parser.add_argument("--review-run", action="store_true", help="Review an existing run bundle for readiness")
+    parser.add_argument("--driver-handoff", action="store_true", help="Refresh and print the product-journey QA driver handoff artifact")
     parser.add_argument("--run-dir", default="", help="Existing .artifacts/product-journey/<run-id> directory")
     parser.add_argument("--scenario", default="", help="Scenario id for --attach-evidence")
     parser.add_argument("--evidence-kind", default="", help="Evidence kind for --attach-evidence")
@@ -3982,6 +4118,7 @@ def main() -> None:
         print(f"Execution plan: {reviewed['execution_plan_path']}")
         print(f"Driver plan: {reviewed['driver_plan_path']}")
         print(f"Agent brief: {reviewed['agent_brief_path']}")
+        print(f"Driver handoff: {reviewed['driver_handoff_path']}")
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Reviewed run bundle {run_dir.name}: {reviewed['review_status']}")
@@ -4010,6 +4147,28 @@ def main() -> None:
         append_log(f"Seeded demo evidence for {run_dir.name}")
         return
 
+    if args.driver_handoff:
+        if not args.run_dir:
+            raise SystemExit("--driver-handoff requires --run-dir")
+        publish_deck = DEFAULT_DECK if args.publish_deck else None
+        run_dir = run_dir_from_arg(args.run_dir)
+        handoff = prepare_driver_handoff(run_dir, publish_deck)
+        if args.json_output:
+            print(json.dumps(handoff, sort_keys=True))
+            append_log(f"Prepared driver handoff for {run_dir.name}")
+            return
+        print("Product journey driver handoff ready")
+        print(f"Run: {run_dir}")
+        print(f"Driver agent: {handoff['driver_agent']}")
+        print(f"Handoff: {handoff['driver_handoff_path']}")
+        print(f"Driver plan: {handoff['driver_plan_path']}")
+        print(f"Agent brief: {handoff['agent_brief_path']}")
+        print(f"Missing evidence: {handoff['missing_evidence_count']}")
+        if publish_deck is not None:
+            print(f"Published deck: {publish_deck}")
+        append_log(f"Prepared driver handoff for {run_dir.name}")
+        return
+
     if args.record_blocker:
         missing = []
         for flag, value in {
@@ -4035,6 +4194,7 @@ def main() -> None:
                 "execution_plan_path": str(run_dir / "execution-plan.md"),
                 "driver_plan_path": str(run_dir / "driver-plan.md"),
                 "agent_brief_path": str(run_dir / "agent-brief.md"),
+                "driver_handoff_path": str(run_dir / "driver-handoff.md"),
                 "media_manifest_path": str(run_dir / "media-manifest.json"),
                 "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
@@ -4047,6 +4207,7 @@ def main() -> None:
         print(f"Execution plan: {run_dir / 'execution-plan.md'}")
         print(f"Driver plan: {run_dir / 'driver-plan.md'}")
         print(f"Agent brief: {run_dir / 'agent-brief.md'}")
+        print(f"Driver handoff: {run_dir / 'driver-handoff.md'}")
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Recorded blocker for {run_dir.name}: {args.scenario} / {args.title}")
@@ -4087,6 +4248,7 @@ def main() -> None:
                 "execution_plan_path": str(run_dir / "execution-plan.md"),
                 "driver_plan_path": str(run_dir / "driver-plan.md"),
                 "agent_brief_path": str(run_dir / "agent-brief.md"),
+                "driver_handoff_path": str(run_dir / "driver-handoff.md"),
                 "media_manifest_path": str(run_dir / "media-manifest.json"),
                 "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
@@ -4099,6 +4261,7 @@ def main() -> None:
         print(f"Execution plan: {run_dir / 'execution-plan.md'}")
         print(f"Driver plan: {run_dir / 'driver-plan.md'}")
         print(f"Agent brief: {run_dir / 'agent-brief.md'}")
+        print(f"Driver handoff: {run_dir / 'driver-handoff.md'}")
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Recorded {args.finding_kind} finding for {run_dir.name}: {args.title}")
@@ -4138,6 +4301,7 @@ def main() -> None:
                 "execution_plan_path": str(run_dir / "execution-plan.md"),
                 "driver_plan_path": str(run_dir / "driver-plan.md"),
                 "agent_brief_path": str(run_dir / "agent-brief.md"),
+                "driver_handoff_path": str(run_dir / "driver-handoff.md"),
                 "media_manifest_path": str(run_dir / "media-manifest.json"),
                 "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
@@ -4150,6 +4314,7 @@ def main() -> None:
         print(f"Execution plan: {run_dir / 'execution-plan.md'}")
         print(f"Driver plan: {run_dir / 'driver-plan.md'}")
         print(f"Agent brief: {run_dir / 'agent-brief.md'}")
+        print(f"Driver handoff: {run_dir / 'driver-handoff.md'}")
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Attached evidence {args.scenario}/{args.evidence_kind} to {run_dir.name}")
@@ -4177,6 +4342,7 @@ def main() -> None:
                 "execution_plan_path": str(run_dir / "execution-plan.md"),
                 "driver_plan_path": str(run_dir / "driver-plan.md"),
                 "agent_brief_path": str(run_dir / "agent-brief.md"),
+                "driver_handoff_path": str(run_dir / "driver-handoff.md"),
                 "media_manifest_path": str(run_dir / "media-manifest.json"),
                 "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
@@ -4189,6 +4355,7 @@ def main() -> None:
         print(f"Execution plan: {run_dir / 'execution-plan.md'}")
         print(f"Driver plan: {run_dir / 'driver-plan.md'}")
         print(f"Agent brief: {run_dir / 'agent-brief.md'}")
+        print(f"Driver handoff: {run_dir / 'driver-handoff.md'}")
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Emitted dry-run bundle {run_json['run_id']}")

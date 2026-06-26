@@ -29,6 +29,9 @@ It is intentionally no-LLM:
   external prerequisite.
 - `seed_demo` calls `tools/product-journey/run.py --seed-demo-evidence
   --json-output` to populate a no-LLM review bundle.
+- `handoff` calls `tools/product-journey/run.py --driver-handoff --json-output`
+  to refresh `driver-handoff.md/json` for the reusable QA driver without
+  launching live LLM work.
 - `review` calls `tools/product-journey/run.py --review-run --json-output` to
   write `review.json` and score whether the bundle is ready for human review.
 - `validate` calls `tools/product-journey/run.py --validate-run --json-output`
@@ -43,6 +46,10 @@ Use `agent-brief.md` inside that bundle to drive the live persona session, then
 use `driver-plan.md` for the scenario harness/visual-surface/action contract and
 `execution-plan.md` to copy the generated `--attach-evidence` and
 `--record-blocker` commands.
+Use `driver-handoff.md` when handing the bundle to
+`.agents/agents/product-journey-qa-driver.md`; it names the run directory,
+driver inputs, dispatch modes, missing evidence, and final review/validation
+commands without spending live model calls.
 Captured media is indexed in `media-manifest.json` so the generated Slidey deck
 can expose playback-ready videos and screenshots without scraping prose.
 Scenario-level evidence and finding summaries are written to

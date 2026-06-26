@@ -113,6 +113,7 @@ states:
                 execution_plan_path: "stdout_json.execution_plan_path"
                 driver_plan_path: "stdout_json.driver_plan_path"
                 agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
               on_error: matrix_created

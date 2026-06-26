@@ -130,6 +130,9 @@ surface, required Kitsoki/visual MCP tools, expected evidence, and success
 criteria, while the brief states the persona and operating rules. Use
 `execution-plan.md` in the same bundle to follow the concrete MCP capture
 sequence and copy ready-to-fill `--attach-evidence` commands.
+Use `driver-handoff.md` when handing the run to the reusable driver agent; it
+names the run directory, driver inputs, dispatch modes, missing evidence, and
+final gates without launching a live LLM by itself.
 For a live/cassette dogfood pass, delegate the bundle to
 `.agents/agents/product-journey-qa-driver.md`; that agent is scoped to consume
 the brief, drive Kitsoki Studio MCP and visual MCP, attach evidence, record

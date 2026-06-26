@@ -40,6 +40,7 @@ world:
   execution_plan_path: { type: string, default: "" }
   driver_plan_path: { type: string, default: "" }
   agent_brief_path: { type: string, default: "" }
+  driver_handoff_path: { type: string, default: "" }
   media_manifest_path: { type: string, default: "" }
   scenario_outcomes_path: { type: string, default: "" }
   scenario:       { type: string, default: "" }
@@ -130,6 +131,10 @@ intents:
     description: "Attach deterministic demo evidence and findings to the current run."
     examples: ["seed demo evidence", "dogfood the demo bundle", "populate demo"]
     priority: 78
+  handoff:
+    description: "Prepare the reusable product-journey QA driver handoff artifact."
+    examples: ["prepare driver handoff", "handoff to driver", "show driver prompt"]
+    priority: 77
   review:
     description: "Review the current product-journey bundle for readiness."
     examples: ["review run", "check readiness", "is this bundle reviewable"]
@@ -152,7 +157,7 @@ intents:
     priority: 10
 
 exports:
-  intents: [start, matrix, dogfood_smoke, refresh_targets, rollup, validate_matrix, attach, record, blocker, seed_demo, review, validate, accept, quit, look]
+  intents: [start, matrix, dogfood_smoke, refresh_targets, rollup, validate_matrix, attach, record, blocker, seed_demo, handoff, review, validate, accept, quit, look]
 
 root: idle
 

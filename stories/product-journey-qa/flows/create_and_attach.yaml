@@ -17,6 +17,7 @@ host_handlers:
             execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
             driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
             agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
       emit_product_journey_matrix:
@@ -68,6 +69,7 @@ host_handlers:
             execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
             driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
             agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
       record_product_journey_finding:
@@ -84,6 +86,7 @@ host_handlers:
             execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
             driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
             agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
       record_product_journey_blocker:
@@ -99,6 +102,7 @@ host_handlers:
             execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
             driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
             agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
       seed_product_journey_demo:
@@ -112,6 +116,7 @@ host_handlers:
             execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
             driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
             agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
             evidence_added: 25
@@ -132,12 +137,32 @@ host_handlers:
             execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
             driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
             agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
             passed: 12
             warnings: 1
             failed: 0
             total: 13
+      prepare_product_journey_driver_handoff:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: driver_handoff_ready
+            run_id: run-123
+            run_dir: .artifacts/product-journey/run-123
+            driver_agent: .agents/agents/product-journey-qa-driver.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            driver_handoff_json_path: .artifacts/product-journey/run-123/driver-handoff.json
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+            suggested_prompt: Drive product journey QA for run_dir=.artifacts/product-journey/run-123.
+            missing_evidence_count: 0
       rollup_product_journey_matrix:
         data:
           ok: true
@@ -260,6 +285,7 @@ turns:
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
       driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
       agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
     expect_host_calls:
@@ -283,6 +309,7 @@ turns:
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
       driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
       agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
     expect_host_calls:
@@ -310,6 +337,7 @@ turns:
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
       driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
       agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
     expect_host_calls:
@@ -335,6 +363,7 @@ turns:
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
       driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
       agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
     expect_host_calls:
@@ -349,6 +378,7 @@ turns:
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
       driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
       agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
     expect_host_calls:
@@ -365,11 +395,27 @@ turns:
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
       driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
       agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
     expect_host_calls:
       - handler: host.run
         args: { call: review_product_journey_run }
+
+  - intent: { name: handoff, slots: {} }
+    expect_state: run_created
+    expect_world:
+      status: handoff_ready
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+    expect_host_calls:
+      - handler: host.run
+        args: { call: prepare_product_journey_driver_handoff }
 
   - intent: { name: validate, slots: {} }
     expect_state: run_created
@@ -389,6 +435,7 @@ turns:
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
       driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
       agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
 
