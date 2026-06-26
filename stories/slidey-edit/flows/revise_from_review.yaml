@@ -1,0 +1,98 @@
+# revise_from_review — open an existing deck, then run a full deck rewrite via
+# the new `revise` intent from reviewing.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  decks_dir: "docs/decks"
+  workspace: "stories/slidey-edit/baked"
+  deck: {}
+  source_deck: {}
+  addressed: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      resolve_deck:
+        data:
+          source_deck:
+            spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+            summary: "Existing slidey deck"
+          deck:
+            spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+            summary: "Existing slidey deck"
+          workspace: "docs/decks"
+      seed_annotation:
+        data:
+          annotation:
+            anchor:
+              kind: "semantic_element"
+              semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+              label: "Scene 1 · card 0"
+            instruction: "Add one closing scene describing adoption plans."
+            frame_handle: "slidey-edit#1"
+
+  host.agent.task:
+    by_call:
+      author_deck:
+        data:
+          ok: true
+          submitted:
+            spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+            summary: "Reframed the deck with a closing slide"
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "docs/decks/kitsoki-pitch.slidey.html"
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#2", kind: "slideshow", mime: "text/html" }, path: "docs/decks/kitsoki-pitch.slidey.html", kind: "slideshow", mime: "text/html" }
+
+turns:
+  - intent:
+      name: start
+      slots:
+        feedback: "edit kitsoki-pitch"
+    expect_state: reviewing
+    expect_world:
+      source_deck:
+        spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+        summary: "Existing slidey deck"
+      deck:
+        spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+        summary: "Existing slidey deck"
+      workspace: "docs/decks"
+      deck_handle: "slidey-edit#2"
+
+  - intent:
+      name: revise
+      slots:
+        feedback: "Add a final take-away scene before closing."
+    expect_state: reviewing
+    expect_world:
+      # After revision, the deck should be re-rendered from the authored sibling.
+      # That produces a second deterministic media handle in this flow fixture.
+      deck_handle: "slidey-edit#2"
+      deck:
+        spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+        summary: "Reframed the deck with a closing slide"
+      source_deck:
+        spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+        summary: "Existing slidey deck"
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "author_deck" }
+      - handler: host.slidey.render
+        args: { call: "render_deck" }
+      - handler: host.artifacts_dir
+        args: { call: "emit_deck" }
+
+expect_terminal: false
+expect_no_errors: true

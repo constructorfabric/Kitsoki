@@ -131,6 +131,18 @@ intents:
     priority: 85
 
   # ── reviewing checkpoint ────────────────────────────────────────────────────
+  revise:
+    description: "Reopen the whole deck for structural edits (add/move slides, template/layout swaps, theme/format changes)."
+    examples:
+      - "revise add a closing summary scene"
+      - "revise move scene 3 after scene 1"
+      - "revise switch this deck to a table-heavy layout"
+    priority: 65
+    slots:
+      feedback:
+        type: string
+        required: false
+        description: "Broad deck rewrite direction. Leave blank to open draft mode with no extra direction."
   refine:
     description: "Refine the deck from a location-tied annotation on the rendered frame."
     examples: ["refine", "refine feedback=tighten the callout", "fix what I pointed at"]

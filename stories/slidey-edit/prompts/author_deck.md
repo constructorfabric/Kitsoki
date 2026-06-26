@@ -59,9 +59,18 @@ Supported scene contracts for this story:
   checkmark and `status: "issue"`/`"blocked"` renders a large exclamation mark.
 - `narrative`: `type`, `eyebrow`, `lede`, `body`, optional `narration`.
   Semantic elements: `eyebrow`, `lede`, `body`.
-- Other known slidey scene types such as `stat`, `chart`, and `cta` are allowed
-  when useful, but prefer `title`, `cards`, and `narrative` for predictable
-  annotation targets.
+- Other known slidey scene types (for this story) are also allowed when useful,
+  including `book`, `diagram-svg`, `table`, `thread`, `trace`, `cta`,
+  `personas`, `video`, `evidence`, `stat`, and `personas`.
+  Prefer `title`, `cards`, and `narrative` when you need the most predictable
+  annotation targeting.
+
+Deck-level edits are allowed:
+
+- add, remove, or reorder scenes in `scenes`
+- change deck `meta` (theme, resolution, narration, `title`)
+- swap scene `type` to change layout/format
+- update diagram `panels`/`nodes`/`edges`
 
 The renderer addresses semantic elements with opaque refs of the form
 `<sceneIndex>/<el>` such as `1/card_0`. Do not invent separate `id`, `heading`,

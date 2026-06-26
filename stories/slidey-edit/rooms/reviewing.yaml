@@ -54,6 +54,8 @@ states:
           items:
             - label: "accept"
               hint:  "this deck is good — finish"
+            - label: "revise feedback=…"
+              hint:  "reopen the deck for structural edits (add/move slides, templates, formats)"
             - label: "refine feedback=…"
               hint:  "edit the scene behind the annotation (baked anchor, or your inline note)"
             - label: "rerender"
@@ -100,6 +102,30 @@ states:
             - set:
                 refine_feedback: "{{ slots.feedback ?? '' }}"
                 current_scene: "{{ slots.current_scene ?? '' }}"
+      revise:
+        - target: drafting
+          effects:
+            - set:
+                source_deck: "{{ world.deck }}"
+                draft_feedback: "{{ slots.feedback ?? '' }}"
+                deck: {}
+                # Restart drafting in place and refresh render binds.
+                deck_handle:     ""
+                semantic_handle: ""
+                deck_path:       ""
+                semantic_path:   ""
+                render_retries:  0
+                # Clear stale refine-only context so the next cycle is clean.
+                annotation:      {}
+                current_scene:   ""
+                scene_index:     -1
+                scene:           {}
+                scene_json:      ""
+                scene_label:     ""
+                refine_feedback: ""
+                refine_result:   {}
+                refine_gate:     false
+                refine_message:  ""
       rerender:
         - target: rendering
           effects:
