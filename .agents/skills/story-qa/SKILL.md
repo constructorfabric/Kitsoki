@@ -143,6 +143,8 @@ Evidence paths should be real run-relative files, absolute paths, repo-root
 paths, URLs, or retained MCP references such as `retained://...` and
 `image://...`. The review and validation gates warn when captured local paths do
 not resolve, so placeholder media cannot silently pass as playback proof.
+The generated Slidey deck includes a `Proof gates` scene that summarizes each
+scenario's minimum-evidence coverage and current outcome from the quality gate.
 Use `scenario-outcomes.md` to review evidence coverage and findings per
 scenario before treating a run as representative natural-usage proof.
 

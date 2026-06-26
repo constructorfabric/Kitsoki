@@ -2154,7 +2154,7 @@ def validate_run_bundle(run_dir: Path) -> dict:
             add_validation_issue(issues, "error", "review-check-status", "review.json has unknown check statuses", ", ".join(invalid_check_statuses))
 
     scene_eyebrows = deck_scene_eyebrows(deck)
-    for expected in ["Driver plan", "Video playback", "Scenario outcomes"]:
+    for expected in ["Driver plan", "Video playback", "Scenario outcomes", "Proof gates"]:
         if deck and expected not in scene_eyebrows:
             add_validation_issue(issues, "error", "deck-scene", "deck.slidey.json is missing a required review scene", expected)
     playback_count = media_manifest.get("summary", {}).get("playback_items", 0) if media_manifest else 0
@@ -3034,12 +3034,37 @@ def render_deck(
         ]
     execution_body = "\n".join(execution_lines) if execution_lines else "Execution plan not generated yet."
     driver_lines = []
+    proof_gate_lines = []
     if driver_plan is not None:
         driver_lines = [
             f"{scenario['scenario']}: {scenario['harness']} / {scenario['visual_surface']}"
             for scenario in driver_plan.get("scenarios", [])
         ]
+        evidence_items_for_gates = evidence.get("items", []) if evidence is not None else []
+        captured_evidence = {
+            (item.get("scenario", ""), item.get("kind", item.get("evidence_kind", "")))
+            for item in evidence_items_for_gates
+            if item.get("status") in {"captured", "validated"}
+        }
+        outcomes_by_scenario = {
+            item.get("scenario", ""): item
+            for item in scenario_outcomes.get("items", [])
+        } if scenario_outcomes is not None else {}
+        for scenario in driver_plan.get("scenarios", []):
+            gate = scenario.get("quality_gate", {})
+            minimum = gate.get("minimum_evidence", [])
+            present = [
+                item
+                for item in minimum
+                if (scenario.get("scenario", ""), item) in captured_evidence
+            ]
+            outcome = outcomes_by_scenario.get(scenario.get("scenario", ""), {})
+            proof_gate_lines.append(
+                f"{scenario.get('scenario', '')}: {len(present)}/{len(minimum)} minimum evidence, "
+                f"outcome {outcome.get('outcome', 'not_started')} - {gate.get('done_when', '')}"
+            )
     driver_body = "\n".join(driver_lines) if driver_lines else "Driver plan not generated yet."
+    proof_gates_body = "\n".join(proof_gate_lines) if proof_gate_lines else "Quality gates not generated yet."
     return {
         "meta": {
             "mode": "report",
@@ -3102,6 +3127,13 @@ def render_deck(
                 "title": "Per-scenario status",
                 "body": outcomes_body,
                 "narration": "Each scenario is summarized separately so natural-use gaps remain visible after the bundle-level review passes.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Proof gates",
+                "title": "Minimum scenario proof",
+                "body": proof_gates_body,
+                "narration": "Quality gates show whether each scenario has the minimum evidence needed before a live or cassette-backed journey is considered complete.",
             },
             {
                 "type": "narrative",

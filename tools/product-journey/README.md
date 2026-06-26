@@ -115,7 +115,8 @@ and `execution-plan.md` for the detailed evidence slots and ready-to-fill
 Each scenario also carries a `quality_gate` with `minimum_evidence`,
 `done_when`, and `block_if` rules. Live/cassette drivers should satisfy that
 gate before calling a scenario done, or record a blocker tied to the matching
-condition.
+condition. The generated Slidey deck includes a `Proof gates` scene that rolls
+up each scenario's minimum-evidence coverage and current outcome for review.
 
 Attach evidence captured by a live or cassette-backed MCP run:
 
