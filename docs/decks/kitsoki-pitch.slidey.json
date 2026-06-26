@@ -2235,7 +2235,7 @@
     },
     {
       "type": "diagram-svg",
-      "title": "From runs to training data",
+      "title": "How runs become reusable tests",
       "panels": [
         {
           "label": "",
@@ -2243,8 +2243,8 @@
           "nodes": [
             {
               "id": "runs",
-              "label": "live runs",
-              "sub": "marathons",
+              "label": "real run",
+              "sub": "what happened",
               "lines": [
                 "real repos",
                 "real failures"
@@ -2256,11 +2256,11 @@
             },
             {
               "id": "cases",
-              "label": "task cases",
-              "sub": "RED / GREEN",
+              "label": "replayable case",
+              "sub": "pin the bug",
               "lines": [
-                "baseline",
-                "hidden oracle"
+                "failing baseline",
+                "hidden pass check"
               ],
               "x": 510,
               "y": 185,
@@ -2270,11 +2270,11 @@
             },
             {
               "id": "harness",
-              "label": "harness",
-              "sub": "score + report",
+              "label": "scoreboard",
+              "sub": "try again safely",
               "lines": [
-                "free checks",
-                "gated live cells"
+                "compare attempts",
+                "improve the story"
               ],
               "x": 980,
               "y": 185,
@@ -2294,9 +2294,9 @@
           ]
         }
       ],
-      "caption": "Every useful run becomes an armed case: pinned baseline, hidden oracle, scored result, and a traceable story change.",
+      "caption": "A live run is only useful if we can replay it. We turn each real failure into a test case, score future attempts, and use the results to improve the story.",
       "hold": 240,
-      "narration": "The run is not just anecdote. It becomes a task case with a baseline, oracle, result, and training signal.",
+      "narration": "A live run becomes useful when we can replay it. Each real failure becomes a test case, the harness scores future attempts, and the result improves the story.",
       "instant": true
     },
     {
