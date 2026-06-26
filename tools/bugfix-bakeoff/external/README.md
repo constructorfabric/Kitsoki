@@ -53,7 +53,17 @@ one command. `escalate.sh --project <name> --ladder default` runs each bug up an
 ordered candidate ladder, stopping at the first rung that reaches `solved`
 (`--dry-run` prints the plan free). Effort is a **profile** property — a rung is a
 candidate row pointing at a profile with that (model, effort); see the
-`candidates.yaml` header + the `ladders:` section.
+`candidates.yaml` header + the `ladders:` section. The loop is **resumable**: an
+already-`solved` cell short-circuits the (cost-bearing) drive, so re-running a
+partial ladder never re-spends a solved rung.
+
+`solved` = the hidden oracle is GREEN (and, where a secondary `test_cmd` suite
+runs, that too). For a `suite: false` project (kitsoki/gears-rust) the oracle is
+the only signal, so a correct fix reaches `solved` on the oracle alone — the rule
+lives in `bench.decide_quality`, guarded by the free `bench_grade_test.py` (run by
+`make qs-bakeoff`). Each `bench.py score` cell carries `metrics` (worker
+cost/tokens from the trace) + `model`/`effort`/`provider`, so it feeds
+`aggregate.py` + the deterministic deck directly.
 
 ### Heterogeneous / heavy / private repos (gears-rust)
 
