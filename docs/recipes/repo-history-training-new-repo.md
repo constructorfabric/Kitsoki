@@ -74,7 +74,12 @@ The readiness report lands at:
 
 ```text
 .artifacts/external-bakeoff/readiness/<project>.md
+.artifacts/external-bakeoff/readiness/<project>.json
 ```
+
+The Markdown is for review. The JSON is the machine-readable audit index used by
+full-matrix smoke gates to assert every selected cell has fresh prepared handoff
+metadata before anyone spends on live drives.
 
 It should say:
 

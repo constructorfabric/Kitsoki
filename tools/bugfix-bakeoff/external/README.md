@@ -166,7 +166,8 @@ make history-smoke \
 `make gears-history-smoke` is the preconfigured gears-rust shortcut. If the
 generic smoke fails, fix that blocker before running cost-bearing cells.
 It also writes a review artifact under
-`.artifacts/external-bakeoff/readiness/<project>.md`.
+`.artifacts/external-bakeoff/readiness/<project>.md` and the same readiness
+index as JSON under `.artifacts/external-bakeoff/readiness/<project>.json`.
 The free preparation step writes baseline worktrees under
 `.artifacts/external-bakeoff/cells/` and the delegated Studio MCP prompt under
 `.artifacts/external-bakeoff/drive-prompts/`. It also writes
@@ -189,7 +190,10 @@ GEARS_RUST_REPO=~/code/gears-rust make gears-history-full-smoke
 ```
 
 That uses the same generic smoke over the four armable fixtures
-`bug1,bug4,bug5,bug9`.
+`bug1,bug4,bug5,bug9`. Because it runs with
+`HISTORY_PREPARE_ALL_CELLS=1`, the smoke also asserts from the readiness JSON
+that every selected cell has fresh prepared metadata and that stale/unprepared
+handoffs are zero.
 
 To regenerate that readiness report without rerunning RED/GREEN arming, call the
 harness directly. This is useful after adding scored or pending cell JSON:
