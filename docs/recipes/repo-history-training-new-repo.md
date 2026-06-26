@@ -61,7 +61,8 @@ For public repos that the harness can clone, omit `HISTORY_REPO_DIR`.
 
 This gate is no-cost. It runs harness unit tests, preflight, RED/GREEN oracle
 arming, drive-command rendering, `drive_cell.sh --no-drive` preparation,
-readiness report generation, and `repo-bakeoff` flow validation.
+readiness report generation, prepared-handoff audit, and `repo-bakeoff` flow
+validation.
 By default, the gate prepares the first selected cell; set
 `HISTORY_PREPARE_ALL_CELLS=1` to prepare the whole selected matrix before a
 live run, or `HISTORY_PREPARE_FIRST_CELL=0` to skip preparation. Preparation
@@ -77,9 +78,16 @@ The readiness report lands at:
 .artifacts/external-bakeoff/readiness/<project>.json
 ```
 
-The Markdown is for review. The JSON is the machine-readable audit index used by
-full-matrix smoke gates to assert every selected cell has fresh prepared handoff
-metadata before anyone spends on live drives.
+The prepared-handoff audit lands beside it:
+
+```text
+.artifacts/external-bakeoff/readiness/<project>-handoffs.md
+.artifacts/external-bakeoff/readiness/<project>-handoffs.json
+```
+
+The Markdown is for review. The JSON files are the machine-readable audit indexes
+used by full-matrix smoke gates to assert every selected cell has fresh prepared
+handoff metadata before anyone spends on live drives.
 
 It should say:
 
@@ -93,6 +101,8 @@ It should say:
 - unprepared cells are selected cells without handoff metadata yet; run the
   listed `drive_cell.sh --no-drive` commands if you want every live cell
   inspectable before spend
+- the handoff audit is ready; it rejects missing metadata, weak MCP prompts,
+  hidden oracle leaks, and real-fix commit/source hints
 
 ## 4. Rehearse Blocked-Provider Reporting
 

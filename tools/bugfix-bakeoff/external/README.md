@@ -176,6 +176,11 @@ machine-readable handoff with the worktree, branch, trace, prompt, preflight,
 and future score-result paths. By default, `history-smoke` prepares the first
 selected cell; set `HISTORY_PREPARE_ALL_CELLS=1` to prepare the full selected
 matrix, or `HISTORY_PREPARE_FIRST_CELL=0` to skip preparation.
+Prepared handoffs are audited in the same smoke. The audit writes
+`.artifacts/external-bakeoff/readiness/<project>-handoffs.md` and JSON next to
+the readiness report, then fails if metadata points at missing files, the MCP
+prompt is missing required worktree/profile/bug context, or the prompt leaks
+hidden oracle paths/content or real-fix commit/source hints.
 The readiness report separates missing scored results from handoff prep:
 `Missing cells` still need `drive_cell.sh --score` or an honest `pending`
 record. `Unprepared cells` need `drive_cell.sh --no-drive` if you want their
@@ -214,6 +219,15 @@ missing cells, pending-cell command templates for blocked providers, and the
 next action.
 Pass `--armed` only when the selected fixtures were just verified, for example
 by `make history-smoke` or `bench.py verify`.
+To regenerate only the prepared-handoff audit after a `--no-drive` prep:
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py audit-handoffs \
+  --project gears-rust \
+  --bug bug1 \
+  --candidate opus-4.8 \
+  --markdown .artifacts/external-bakeoff/readiness/gears-rust-handoffs.md
+```
 
 To prove the blocked-provider path without modifying the normal live results
 directory, run the pending smoke. It writes a pending cell to a temporary results

@@ -466,6 +466,193 @@ def collect_prepared(results_dir, project, selected):
     return prepared, stale, prepared_dir
 
 
+def _prompt_for_audit(item):
+    prompt = item.get("prompt", "")
+    if not prompt:
+        return "", ["metadata missing prompt path"]
+    path = Path(prompt)
+    if not path.exists():
+        return "", [f"prompt path missing: {prompt}"]
+    try:
+        return path.read_text(), []
+    except Exception as e:
+        return "", [f"prompt unreadable: {prompt}: {e}"]
+
+
+def audit_prepared_handoff(m, item):
+    """Audit a no-drive handoff without running cargo/npm or calling a model.
+
+    The handoff is what an operator reviews before spending on a live MCP drive.
+    It must be actionable enough to review and leak-safe: task context is allowed,
+    but hidden oracle paths/content and real-fix hints are not.
+    """
+    errors = []
+    warnings = []
+    bug_id = item.get("bug")
+    candidate = item.get("candidate")
+    bugs = {b.get("id"): b for b in m.get("bugs", [])}
+    bug = bugs.get(bug_id)
+    if not bug:
+        errors.append(f"unknown bug in prepared metadata: {bug_id}")
+        bug = {}
+
+    prompt, prompt_errors = _prompt_for_audit(item)
+    errors.extend(prompt_errors)
+    for field in ("project", "bug", "candidate", "profile", "worktree", "branch",
+                  "baseline_sha", "trace", "thread", "preflight", "score_result"):
+        if not item.get(field):
+            errors.append(f"metadata missing {field}")
+    for field in ("worktree", "preflight"):
+        if item.get(field) and not Path(item[field]).exists():
+            errors.append(f"{field} path missing: {item[field]}")
+
+    if prompt:
+        required_fragments = [
+            "Drive ONE kitsoki bug-fix pipeline cell",
+            f'profile: "{item.get("profile", "")}"',
+            f'ticket_id: "{bug_id}"',
+            'workspace_id: ""',
+            f'workdir: "{item.get("worktree", "")}"',
+            "Do not use shell",
+        ]
+        for fragment in required_fragments:
+            if fragment not in prompt:
+                errors.append(f"prompt missing required fragment: {fragment}")
+        title = bug.get("title", "")
+        if title and title not in prompt:
+            warnings.append("prompt does not include bug title")
+        ticket = (bug.get("ticket") or "").strip()
+        if ticket:
+            first_ticket_line = next((line.strip() for line in ticket.splitlines() if line.strip()), "")
+            if first_ticket_line and first_ticket_line not in prompt:
+                warnings.append("prompt does not include ticket detail")
+
+        leak_terms = []
+        for key in ("oracle_test", "fix_sha", "fix_source"):
+            value = str(bug.get(key, "") or "")
+            if value:
+                leak_terms.append((key, value))
+        oracle_cfg = bug.get("oracle", {})
+        for key in ("target", "run", "match"):
+            value = str(oracle_cfg.get(key, "") or "")
+            if value:
+                leak_terms.append((f"oracle.{key}", value))
+        for key, value in leak_terms:
+            if value and value in prompt:
+                errors.append(f"prompt leaks hidden {key}: {value}")
+
+        oracle_path = m.get("_dir", Path(".")) / bug.get("oracle_test", "")
+        if bug.get("oracle_test") and oracle_path.exists():
+            oracle_text = oracle_path.read_text()
+            snippets = [
+                line.strip()
+                for line in oracle_text.splitlines()
+                if len(line.strip()) >= 40 and not line.strip().startswith("//")
+            ][:8]
+            for snippet in snippets:
+                if snippet in prompt:
+                    errors.append("prompt leaks hidden oracle content")
+                    break
+
+    return {
+        "project": item.get("project"),
+        "bug": bug_id,
+        "candidate": candidate,
+        "ok": not errors,
+        "errors": errors,
+        "warnings": warnings,
+        "metadata": item.get("_path", ""),
+        "prompt": item.get("prompt", ""),
+        "worktree": item.get("worktree", ""),
+    }
+
+
+def audit_handoffs(m, results_dir="../../../.artifacts/external-bakeoff/results",
+                   candidate=None, bug_ids=None, markdown=None):
+    plan = build_drive_plan(m, bug_ids=bug_ids, candidate=candidate)
+    selected = {(cmd["bug"], cmd["candidate"]) for cmd in plan["commands"]}
+    prepared, stale, prepared_dir = collect_prepared(results_dir, m["project"]["id"], selected)
+    audits = [audit_prepared_handoff(m, item) for item in prepared]
+    prepared_keys = {(p.get("bug"), p.get("candidate")) for p in prepared}
+    stale_keys = {(p.get("bug"), p.get("candidate")) for p in stale}
+    missing = [
+        {"bug": bug, "candidate": cand}
+        for bug, cand in sorted(selected - prepared_keys - stale_keys)
+    ]
+    errors = []
+    for item in stale:
+        errors.append(f"{item.get('bug')} x {item.get('candidate')}: stale prepared metadata")
+    for item in missing:
+        errors.append(f"{item['bug']} x {item['candidate']}: no prepared metadata")
+    for audit in audits:
+        errors.extend(
+            f"{audit['bug']} x {audit['candidate']}: {e}"
+            for e in audit.get("errors", [])
+        )
+    out = {
+        "ok": not errors,
+        "project": m["project"]["id"],
+        "selected_cells": len(selected),
+        "prepared_cells": len(prepared),
+        "stale_prepared_cells": len(stale),
+        "missing_prepared_cells": len(missing),
+        "prepared_dir": str(prepared_dir),
+        "audits": audits,
+        "stale": stale,
+        "missing": missing,
+        "errors": errors,
+    }
+    if markdown:
+        write_handoff_audit_markdown(out, Path(markdown))
+        out["markdown"] = markdown
+    print(json.dumps(out, indent=2))
+    return 0 if out["ok"] else 1
+
+
+def write_handoff_audit_markdown(report, markdown):
+    markdown.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"# {report['project']} prepared handoff audit",
+        "",
+        f"Status: {'ready' if report.get('ok') else 'blocked'}",
+        f"Selected cells: {report.get('selected_cells', 0)}",
+        f"Prepared cells: {report.get('prepared_cells', 0)}",
+        f"Stale prepared cells: {report.get('stale_prepared_cells', 0)}",
+        f"Missing prepared cells: {report.get('missing_prepared_cells', 0)}",
+        "",
+        "## What This Checks",
+        "",
+        "- Prepared metadata points at existing prompt, worktree, and preflight files.",
+        "- The MCP prompt includes the bug id, user-facing bug context, worktree, profile, and no-shell drive instructions.",
+        "- The MCP prompt does not include hidden oracle paths/content or real-fix commit/source hints.",
+        "",
+        "## Cells",
+        "",
+    ]
+    for audit in report.get("audits", []):
+        lines.append(
+            f"- `{audit.get('bug')}` x `{audit.get('candidate')}`: "
+            f"{'ready' if audit.get('ok') else 'blocked'}; "
+            f"metadata `{audit.get('metadata')}`, prompt `{audit.get('prompt')}`"
+        )
+        for warning in audit.get("warnings", []):
+            lines.append(f"  warning: {warning}")
+        for error in audit.get("errors", []):
+            lines.append(f"  error: {error}")
+    if report.get("stale"):
+        lines.extend(["", "## Stale Metadata", ""])
+        for item in report["stale"]:
+            lines.append(f"- `{item.get('bug')}` x `{item.get('candidate')}`: `{item.get('_path')}`")
+    if report.get("missing"):
+        lines.extend(["", "## Missing Metadata", ""])
+        for item in report["missing"]:
+            lines.append(f"- `{item.get('bug')}` x `{item.get('candidate')}`")
+    if report.get("errors"):
+        lines.extend(["", "## Errors", ""])
+        lines.extend(f"- {e}" for e in report["errors"])
+    markdown.write_text("\n".join(lines) + "\n")
+
+
 def rollup_cells(cells):
     by = {}
     for c in cells:
@@ -1093,6 +1280,15 @@ def main():
                     help="mark selected fixtures as already verified RED@baseline/GREEN@fix")
     rd.add_argument("--candidates", default=str(HERE / "candidates.yaml"),
                     help="candidates.yaml for candidate/profile lookup")
+    ah = sub.add_parser("audit-handoffs")
+    ah.add_argument("--project", required=True)
+    ah.add_argument("--bug", action="append", required=True,
+                    help="bug id to audit; repeat or pass comma-separated ids")
+    ah.add_argument("--candidate", action="append", required=True,
+                    help="candidate key to audit; repeat or pass comma-separated keys")
+    ah.add_argument("--results", default="../../../.artifacts/external-bakeoff/results",
+                    help="results dir whose sibling prepared/ directory holds handoff metadata")
+    ah.add_argument("--markdown", help="optional Markdown handoff audit report")
     pc = sub.add_parser("pending")
     pc.add_argument("--project", required=True)
     pc.add_argument("--bug", required=True)
@@ -1134,6 +1330,9 @@ def main():
                            candidates_path=a.candidates, bug_ids=a.bug,
                            results_dir=a.results, markdown=a.markdown,
                            armed=a.armed))
+    if a.cmd == "audit-handoffs":
+        sys.exit(audit_handoffs(m, results_dir=a.results, candidate=a.candidate,
+                                bug_ids=a.bug, markdown=a.markdown))
     if a.cmd == "pending":
         sys.exit(pending_cell(m, a.bug, a.candidate, a.reason, a.out,
                               candidates_path=a.candidates, treatment=a.treatment))

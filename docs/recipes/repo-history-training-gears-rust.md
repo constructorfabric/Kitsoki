@@ -120,7 +120,12 @@ When it passes, it also writes a review artifact at
 audit index at `.artifacts/external-bakeoff/readiness/gears-rust.json` with
 preflight status, the selected live-cell commands, existing scored/pending
 cells, missing cells, prepared/stale/unprepared handoff counts, pending-cell
-command templates for true provider/profile blockers, and the next action.
+command templates for true provider/profile blockers, and the next action. It
+also writes `.artifacts/external-bakeoff/readiness/gears-rust-handoffs.md` and
+`.artifacts/external-bakeoff/readiness/gears-rust-handoffs.json`, which audit
+the prepared MCP prompts before spend. That audit fails if the prompt lacks the
+bug id, profile, worktree, and no-shell drive instructions, or if it leaks hidden
+oracle paths/content or real-fix commit/source hints.
 `Unprepared cells` means a selected cell does not yet have no-drive handoff
 metadata; `Stale prepared cells` means the metadata exists but points at
 missing prompt/worktree/preflight paths. Neither means the cell failed. The

@@ -417,8 +417,97 @@ def test_drive_cell_preflight_scopes_to_requested_bug():
             assert Path(prepared["worktree"]).exists()
             assert Path(prepared["prompt"]).exists()
             assert prepared["preflight"].endswith(f"{project}-bug1-opus-4.8.json")
+            old_here = bench.HERE
+            bench.HERE = Path(HERE)
+            try:
+                out = io.StringIO()
+                rel = os.path.relpath(cache / "results", bench.HERE)
+                with redirect_stdout(out):
+                    rc = bench.audit_handoffs(
+                        bench.load(project),
+                        results_dir=rel,
+                        candidate="opus-4.8",
+                        bug_ids="bug1",
+                    )
+            finally:
+                bench.HERE = old_here
+            assert rc == 0
+            audit = json_load(out.getvalue())
+            assert audit["ok"] is True
+            assert audit["prepared_cells"] == 1
         finally:
             shutil.rmtree(manifest_dir, ignore_errors=True)
+
+
+def test_audit_handoffs_rejects_oracle_and_real_fix_leaks():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        manifest_dir = root / "projects" / "demo"
+        oracle_dir = manifest_dir / "oracles"
+        oracle_dir.mkdir(parents=True)
+        oracle_line = "assert_eq!(loaded_config.modules.len(), 1, \"duplicate module was rejected\");"
+        (oracle_dir / "bug1.rs").write_text(f"#[test]\nfn oracle() {{\n    {oracle_line}\n}}\n")
+        worktree = root / "cells" / "demo-bug1-ready"
+        worktree.mkdir(parents=True)
+        preflight = root / "preflight" / "demo-bug1-ready.json"
+        preflight.parent.mkdir()
+        preflight.write_text("{}")
+        prompt = root / "prompts" / "demo-bug1-ready.md"
+        prompt.parent.mkdir()
+        prompt.write_text(
+            "Drive ONE kitsoki bug-fix pipeline cell\n"
+            'profile: "ready-profile"\n'
+            'ticket_id: "bug1"\n'
+            'ticket_title: "Leaky bug — reproduce it"\n'
+            'workdir: "' + str(worktree) + '"\n'
+            'workspace_id: ""\n'
+            "Do not use shell\n"
+            "Hidden hints: oracles/bug1.rs abcdef12 src/fix.rs cargo test oracle_bug1\n"
+            f"{oracle_line}\n"
+        )
+        prepared_dir = root / "prepared"
+        prepared_dir.mkdir()
+        (prepared_dir / "demo-bug1-ready.json").write_text(json.dumps({
+            "project": "demo",
+            "bug": "bug1",
+            "candidate": "ready",
+            "profile": "ready-profile",
+            "worktree": str(worktree),
+            "branch": "bench-demo-bug1",
+            "baseline_sha": "1234567",
+            "trace": str(root / "traces" / "demo-bug1-ready.jsonl"),
+            "thread": str(root / "threads" / "demo-bug1-ready.md"),
+            "prompt": str(prompt),
+            "preflight": str(preflight),
+            "score_result": str(root / "results" / "cells" / "demo-bug1-ready-kitsoki.json"),
+        }))
+        manifest = {
+            "project": {"id": "demo"},
+            "bugs": [{
+                "id": "bug1",
+                "title": "Leaky bug",
+                "ticket": "reproduce it",
+                "baseline_sha": "1234567",
+                "fix_sha": "abcdef12",
+                "fix_source": "src/fix.rs",
+                "oracle_test": "oracles/bug1.rs",
+                "oracle": {"target": "tests/oracle_bug1.rs", "run": "cargo test oracle_bug1"},
+            }],
+            "_dir": manifest_dir,
+        }
+        out = io.StringIO()
+        rel = os.path.relpath(root / "results", bench.HERE)
+        with redirect_stdout(out):
+            rc = bench.audit_handoffs(manifest, results_dir=rel, candidate="ready", bug_ids="bug1")
+        assert rc == 1
+        report = json_load(out.getvalue())
+        assert report["ok"] is False
+        joined = "\n".join(report["errors"])
+        assert "prompt leaks hidden oracle_test" in joined
+        assert "prompt leaks hidden fix_sha" in joined
+        assert "prompt leaks hidden fix_source" in joined
+        assert "prompt leaks hidden oracle.run" in joined
+        assert "prompt leaks hidden oracle content" in joined
 
 
 def json_load(raw):
