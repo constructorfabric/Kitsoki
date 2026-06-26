@@ -12,7 +12,11 @@
   ],
   "run_result": {
     "required": ["run_id", "created_at", "mode", "project", "persona", "stages", "scenarios", "artifacts"],
-    "artifacts": ["run.json", "journey.md", "metrics.json", "bugs.json", "findings.json", "evidence.json", "scenarios.json", "execution-plan.json", "execution-plan.md", "review.json", "deck.slidey.json"]
+    "artifacts": ["run.json", "journey.md", "metrics.json", "bugs.json", "findings.json", "evidence.json", "scenarios.json", "execution-plan.json", "execution-plan.md", "agent-brief.json", "agent-brief.md", "review.json", "deck.slidey.json"]
+  },
+  "agent_brief": {
+    "required": ["run_id", "project", "persona", "mission", "persona_contract", "operating_rules", "scenario_order", "missing_evidence", "finalize_commands"],
+    "scenario_required": ["id", "label", "task", "primary_story", "mcp_tools", "success_criteria", "evidence"]
   },
   "execution_plan": {
     "required": ["run_id", "project", "persona", "summary", "steps", "finalize_commands"],

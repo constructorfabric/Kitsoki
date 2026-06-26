@@ -65,13 +65,15 @@ to pick up the run without extra flags.
 
 This writes `.artifacts/product-journey/<run-id>/` with `run.json`,
 `journey.md`, `metrics.json`, `bugs.json`, `findings.json`, `evidence.json`,
-`scenarios.json`, `execution-plan.json`, `execution-plan.md`, `review.json`,
-and `deck.slidey.json`. Add `--publish-deck` when the generated deck should
-replace `docs/decks/product-journey-eval.slidey.json` for review.
+`scenarios.json`, `execution-plan.json`, `execution-plan.md`,
+`agent-brief.json`, `agent-brief.md`, `review.json`, and `deck.slidey.json`.
+Add `--publish-deck` when the generated deck should replace
+`docs/decks/product-journey-eval.slidey.json` for review.
 
-Use `execution-plan.md` as the operator handoff: it lists the scenario order,
-the MCP tools to use, expected evidence slots, and ready-to-fill
-`--attach-evidence` commands.
+Use `agent-brief.md` as the live-driver handoff: it states the persona,
+operating rules, scenario order, MCP tools, success criteria, and missing
+evidence without implying planned steps are validated. Use `execution-plan.md`
+for the detailed evidence slots and ready-to-fill `--attach-evidence` commands.
 
 Attach evidence captured by a live or cassette-backed MCP run:
 
@@ -85,7 +87,7 @@ python3 tools/product-journey/run.py --attach-evidence \
 ```
 
 Attachment updates `evidence.json`, `scenarios.json`, `metrics.json`,
-`journey.md`, and `deck.slidey.json`.
+`agent-brief.md`, `journey.md`, and `deck.slidey.json`.
 
 Record a review finding for the deck summary:
 

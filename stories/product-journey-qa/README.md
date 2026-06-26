@@ -22,5 +22,5 @@ It is intentionally no-LLM:
 
 The generated run bundle under `.artifacts/product-journey/<run-id>/` is the
 handoff point for visual MCP, Studio MCP, oracle results, and Slidey review.
-Use `execution-plan.md` inside that bundle to drive the MCP capture sequence and
-copy the generated `--attach-evidence` commands.
+Use `agent-brief.md` inside that bundle to drive the live persona session, then
+use `execution-plan.md` to copy the generated `--attach-evidence` commands.

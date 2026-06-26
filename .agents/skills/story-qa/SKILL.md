@@ -93,10 +93,11 @@ That writes `.artifacts/product-journey/<run-id>/`, including
 `deck.slidey.json`, without calling a live LLM. Add `--publish-deck` when you
 want to update `docs/decks/product-journey-eval.slidey.json`.
 
-The bundle's `scenarios.json` and `evidence.json` are the contract for live or
-cassette-backed MCP runs: each scenario names the story surface, required
-Kitsoki/visual MCP tools, expected evidence, and success criteria.
-Use `execution-plan.md` in the same bundle to follow the concrete MCP capture
+The bundle's `agent-brief.md`, `scenarios.json`, and `evidence.json` are the
+contract for live or cassette-backed MCP runs: each scenario names the story
+surface, required Kitsoki/visual MCP tools, expected evidence, and success
+criteria, while the brief states the persona and operating rules. Use
+`execution-plan.md` in the same bundle to follow the concrete MCP capture
 sequence and copy ready-to-fill `--attach-evidence` commands.
 
 After capturing evidence, attach it back to the bundle:

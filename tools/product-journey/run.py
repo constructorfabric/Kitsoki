@@ -292,6 +292,8 @@ def build_run_bundle(
             "evidence": "evidence.json",
             "scenarios": "scenarios.json",
             "execution_plan": "execution-plan.json",
+            "agent_brief": "agent-brief.json",
+            "agent_brief_markdown": "agent-brief.md",
             "review": "review.json",
             "deck": "deck.slidey.json",
         },
@@ -306,6 +308,7 @@ def build_run_bundle(
         )
     evidence = evidence_plan(run_json)
     execution_plan = build_execution_plan(run_json, evidence)
+    agent_brief = build_agent_brief(run_json, evidence, execution_plan)
     findings = {"run_id": run_id, "items": [], "summary": {"strength": 0, "weakness": 0, "issue": 0, "fix": 0}}
     metrics = {
         "run_id": run_id,
@@ -340,6 +343,8 @@ def build_run_bundle(
     write_json(run_dir / "scenarios.json", {"run_id": run_id, "items": scenario_items})
     write_json(run_dir / "execution-plan.json", execution_plan)
     (run_dir / "execution-plan.md").write_text(render_execution_plan(execution_plan), encoding="utf-8")
+    write_json(run_dir / "agent-brief.json", agent_brief)
+    (run_dir / "agent-brief.md").write_text(render_agent_brief(agent_brief), encoding="utf-8")
     write_json(run_dir / "review.json", {
         "run_id": run_id,
         "status": "not_reviewed",
@@ -535,6 +540,101 @@ def build_execution_plan(run_json: dict, evidence: dict) -> dict:
     }
 
 
+def build_agent_brief(run_json: dict, evidence: dict, execution_plan: dict) -> dict:
+    persona = run_json["persona"]
+    missing_evidence = [
+        {"scenario": item["scenario"], "kind": item["kind"], "hint": evidence_capture_hint(item["kind"])}
+        for item in evidence.get("items", [])
+        if item.get("status") == "missing"
+    ]
+    return {
+        "run_id": run_json["run_id"],
+        "project": run_json["project"],
+        "persona": persona,
+        "mission": (
+            "Drive the product journey as this persona using Kitsoki MCP and visual MCP. "
+            "Capture evidence, record concrete findings, and avoid treating planned steps as validated."
+        ),
+        "persona_contract": {
+            "id": persona["id"],
+            "label": persona["label"],
+            "description": persona["description"],
+            "surface_preference": persona.get("surface_preference", ""),
+            "risk_focus": persona.get("risk_focus", []),
+        },
+        "operating_rules": [
+            "Read the current visual or Kitsoki frame before choosing the next action.",
+            "Use natural persona phrasing; do not optimize only for the scripted happy path.",
+            "Prefer MCP evidence over prose claims: screenshots, session traces, TUI frames, diffs, oracle output, and videos.",
+            "Record strengths as well as weaknesses, issues, and fixes.",
+            "If a live LLM or paid service would be required, stop and record the blocker instead of calling it from an automated test.",
+            "Attach every useful artifact with tools/product-journey/run.py --attach-evidence, then run --review-run.",
+        ],
+        "scenario_order": [
+            {
+                "id": step["scenario"],
+                "label": step["label"],
+                "task": step["task"],
+                "primary_story": step["primary_story"],
+                "mcp_tools": [mcp["tool"] for mcp in step["mcp_steps"]],
+                "success_criteria": step["success_criteria"],
+                "evidence": [item["kind"] for item in step["evidence"]],
+            }
+            for step in execution_plan.get("steps", [])
+        ],
+        "missing_evidence": missing_evidence,
+        "finalize_commands": execution_plan.get("finalize_commands", []),
+    }
+
+
+def render_agent_brief(brief: dict) -> str:
+    lines = [
+        "# Product journey QA agent brief",
+        "",
+        f"- Run: `{brief['run_id']}`",
+        f"- Project: `{brief['project']['label']}`",
+        f"- Persona: `{brief['persona_contract']['label']}`",
+        f"- Surface preference: `{brief['persona_contract']['surface_preference']}`",
+        f"- Risk focus: {', '.join(brief['persona_contract']['risk_focus'])}",
+        "",
+        "## Mission",
+        "",
+        brief["mission"],
+        "",
+        "## Operating Rules",
+        "",
+    ]
+    for rule in brief["operating_rules"]:
+        lines.append(f"- {rule}")
+    lines.extend(["", "## Scenario Order", ""])
+    for index, scenario in enumerate(brief["scenario_order"], start=1):
+        lines.extend([
+            f"### {index}. {scenario['label']}",
+            "",
+            f"- Scenario: `{scenario['id']}`",
+            f"- Story: `{scenario['primary_story']}`",
+            f"- MCP tools: {', '.join(scenario['mcp_tools'])}",
+            f"- Evidence: {', '.join(scenario['evidence'])}",
+            "",
+            scenario["task"],
+            "",
+            "Success criteria:",
+        ])
+        for criterion in scenario["success_criteria"]:
+            lines.append(f"- {criterion}")
+        lines.append("")
+    lines.extend(["## Missing Evidence", ""])
+    if brief["missing_evidence"]:
+        for item in brief["missing_evidence"]:
+            lines.append(f"- `{item['scenario']}` / `{item['kind']}`: {item['hint']}")
+    else:
+        lines.append("- (none)")
+    lines.extend(["", "## Finalize", ""])
+    for command in brief["finalize_commands"]:
+        lines.append(f"```sh\n{command}\n```")
+    return "\n".join(lines) + "\n"
+
+
 def render_execution_plan(plan: dict) -> str:
     lines = [
         "# Product journey execution plan",
@@ -675,6 +775,9 @@ def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None)
     execution_plan = build_execution_plan(run_json, evidence)
     write_json(run_dir / "execution-plan.json", execution_plan)
     (run_dir / "execution-plan.md").write_text(render_execution_plan(execution_plan), encoding="utf-8")
+    agent_brief = build_agent_brief(run_json, evidence, execution_plan)
+    write_json(run_dir / "agent-brief.json", agent_brief)
+    (run_dir / "agent-brief.md").write_text(render_agent_brief(agent_brief), encoding="utf-8")
     (run_dir / "journey.md").write_text(render_journey(run_json), encoding="utf-8")
     deck = render_deck(run_json, metrics, evidence, findings, review, execution_plan)
     write_json(run_dir / "deck.slidey.json", deck)
@@ -800,6 +903,7 @@ def seed_demo_evidence(run_dir: Path, publish_deck: Optional[Path]) -> dict:
         "run_dir": str(run_dir),
         "deck_path": str(run_dir / "deck.slidey.json"),
         "execution_plan_path": str(run_dir / "execution-plan.md"),
+        "agent_brief_path": str(run_dir / "agent-brief.md"),
         "evidence_added": len(demo_evidence),
         "findings_added": findings_added,
         "present_evidence_count": metrics.get("present_evidence_count", 0),
@@ -826,6 +930,8 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
         "scenarios.json",
         "execution-plan.json",
         "execution-plan.md",
+        "agent-brief.json",
+        "agent-brief.md",
         "review.json",
         "deck.slidey.json",
     ]
@@ -914,6 +1020,9 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
     write_json(run_dir / "metrics.json", metrics)
     write_json(run_dir / "execution-plan.json", execution_plan)
     (run_dir / "execution-plan.md").write_text(render_execution_plan(execution_plan), encoding="utf-8")
+    agent_brief = build_agent_brief(run_json, evidence, execution_plan)
+    write_json(run_dir / "agent-brief.json", agent_brief)
+    (run_dir / "agent-brief.md").write_text(render_agent_brief(agent_brief), encoding="utf-8")
     deck = render_deck(run_json, metrics, evidence, findings, review, execution_plan)
     write_json(run_dir / "deck.slidey.json", deck)
     if publish_deck is not None:
@@ -927,6 +1036,7 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
         "review_path": str(run_dir / "review.json"),
         "deck_path": str(run_dir / "deck.slidey.json"),
         "execution_plan_path": str(run_dir / "execution-plan.md"),
+        "agent_brief_path": str(run_dir / "agent-brief.md"),
         "passed": passed,
         "warnings": warned,
         "failed": failed,
@@ -1765,6 +1875,7 @@ def main() -> None:
         print(f"Review: {reviewed['review_path']}")
         print(f"Deck: {reviewed['deck_path']}")
         print(f"Execution plan: {reviewed['execution_plan_path']}")
+        print(f"Agent brief: {reviewed['agent_brief_path']}")
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Reviewed run bundle {run_dir.name}: {reviewed['review_status']}")
@@ -1784,6 +1895,7 @@ def main() -> None:
         print(f"Artifacts: {run_dir}")
         print(f"Deck: {run_dir / 'deck.slidey.json'}")
         print(f"Execution plan: {run_dir / 'execution-plan.md'}")
+        print(f"Agent brief: {run_dir / 'agent-brief.md'}")
         print(f"Evidence present: {seeded['present_evidence_count']}")
         print(f"Findings: {seeded['findings_count']}")
         if publish_deck is not None:
@@ -1824,6 +1936,7 @@ def main() -> None:
                 "scenario": args.scenario,
                 "deck_path": str(run_dir / "deck.slidey.json"),
                 "execution_plan_path": str(run_dir / "execution-plan.md"),
+                "agent_brief_path": str(run_dir / "agent-brief.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
             }, sort_keys=True))
             append_log(f"Recorded {args.finding_kind} finding for {run_dir.name}: {args.title}")
@@ -1832,6 +1945,7 @@ def main() -> None:
         print(f"Artifacts: {run_dir}")
         print(f"Deck: {run_dir / 'deck.slidey.json'}")
         print(f"Execution plan: {run_dir / 'execution-plan.md'}")
+        print(f"Agent brief: {run_dir / 'agent-brief.md'}")
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Recorded {args.finding_kind} finding for {run_dir.name}: {args.title}")
@@ -1869,6 +1983,7 @@ def main() -> None:
                 "evidence_path": args.evidence_path,
                 "deck_path": str(run_dir / "deck.slidey.json"),
                 "execution_plan_path": str(run_dir / "execution-plan.md"),
+                "agent_brief_path": str(run_dir / "agent-brief.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
             }, sort_keys=True))
             append_log(f"Attached evidence {args.scenario}/{args.evidence_kind} to {run_dir.name}")
@@ -1877,6 +1992,7 @@ def main() -> None:
         print(f"Artifacts: {run_dir}")
         print(f"Deck: {run_dir / 'deck.slidey.json'}")
         print(f"Execution plan: {run_dir / 'execution-plan.md'}")
+        print(f"Agent brief: {run_dir / 'agent-brief.md'}")
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Attached evidence {args.scenario}/{args.evidence_kind} to {run_dir.name}")
@@ -1902,6 +2018,7 @@ def main() -> None:
                 "run_dir": str(run_dir),
                 "deck_path": str(run_dir / "deck.slidey.json"),
                 "execution_plan_path": str(run_dir / "execution-plan.md"),
+                "agent_brief_path": str(run_dir / "agent-brief.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
             }, sort_keys=True))
             append_log(f"Emitted dry-run bundle {run_json['run_id']}")
@@ -1910,6 +2027,7 @@ def main() -> None:
         print(f"Artifacts: {run_dir}")
         print(f"Deck: {run_dir / 'deck.slidey.json'}")
         print(f"Execution plan: {run_dir / 'execution-plan.md'}")
+        print(f"Agent brief: {run_dir / 'agent-brief.md'}")
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Emitted dry-run bundle {run_json['run_id']}")
