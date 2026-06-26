@@ -21,6 +21,7 @@ from typing import Optional
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "tools" / "product-journey" / "catalog.json"
 PERSONAS = ROOT / "tools" / "product-journey" / "personas.json"
+SCENARIOS = ROOT / "tools" / "product-journey" / "scenarios.json"
 LOG = ROOT / ".context" / "product-journey-runlog.md"
 ARTIFACT_ROOT = ROOT / ".artifacts" / "product-journey"
 DEFAULT_DECK = ROOT / "docs" / "decks" / "product-journey-eval.slidey.json"
@@ -41,6 +42,10 @@ def load_catalog(path: Path):
 
 def load_personas(path: Path):
     return json.loads(path.read_text())["personas"]
+
+
+def load_scenarios(path: Path):
+    return json.loads(path.read_text())["scenarios"]
 
 
 def append_log(message: str):
@@ -151,12 +156,13 @@ def select_persona(personas: list[dict], persona_id: str, seed: str) -> dict:
     return personas[digest[0] % len(personas)]
 
 
-def stage_plan(project: dict) -> list[dict]:
+def stage_plan(project: dict, scenarios: list[dict]) -> list[dict]:
     readiness = target_status(project)
     stages: list[dict] = []
     for stage in STAGES:
         status = "planned"
         evidence: list[str] = []
+        stage_scenarios = [scenario["id"] for scenario in scenarios if scenario["stage"] == stage]
         if stage == "score_and_report":
             status = readiness
             evidence.append(project.get("manifest") or project.get("validation_command") or "catalog target")
@@ -169,13 +175,55 @@ def stage_plan(project: dict) -> list[dict]:
         elif stage in {"plan_project_work", "fix_bug"}:
             status = readiness if project.get("manifest") else "planned"
             evidence.append(project.get("manifest") or "bug/design fixture pending")
-        stages.append({"id": stage, "status": status, "evidence": evidence})
+        stages.append({"id": stage, "status": status, "evidence": evidence, "scenarios": stage_scenarios})
     return stages
+
+
+def scenario_plan(scenarios: list[dict]) -> list[dict]:
+    planned = []
+    for scenario in scenarios:
+        planned.append({
+            "id": scenario["id"],
+            "label": scenario["label"],
+            "stage": scenario["stage"],
+            "task": scenario["task"],
+            "primary_story": scenario["primary_story"],
+            "required_mcp": scenario["required_mcp"],
+            "evidence": scenario["evidence"],
+            "success_criteria": scenario["success_criteria"],
+            "status": "planned",
+            "evidence_status": "missing",
+            "artifacts": {},
+        })
+    return planned
+
+
+def evidence_plan(run_json: dict) -> dict:
+    items = []
+    for scenario in run_json["scenarios"]:
+        for evidence_kind in scenario["evidence"]:
+            items.append({
+                "scenario": scenario["id"],
+                "kind": evidence_kind,
+                "status": "missing",
+                "path": "",
+                "notes": "Attach from visual MCP, Kitsoki MCP trace, oracle runner, or generated artifact.",
+            })
+    return {
+        "run_id": run_json["run_id"],
+        "items": items,
+        "summary": {
+            "required": len(items),
+            "present": 0,
+            "missing": len(items),
+        },
+    }
 
 
 def build_run_bundle(
     catalog: dict,
     personas: list[dict],
+    scenarios: list[dict],
     project_id: str,
     persona_id: str,
     seed: str,
@@ -192,7 +240,8 @@ def build_run_bundle(
     run_dir = ARTIFACT_ROOT / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
 
-    stages = stage_plan(target)
+    stages = stage_plan(target, scenarios)
+    scenario_items = scenario_plan(scenarios)
     run_json = {
         "run_id": run_id,
         "created_at": created_at,
@@ -201,11 +250,14 @@ def build_run_bundle(
         "project": _meta_value(target),
         "persona": persona,
         "stages": stages,
+        "scenarios": scenario_items,
         "artifacts": {
             "run": "run.json",
             "journey": "journey.md",
             "metrics": "metrics.json",
             "bugs": "bugs.json",
+            "evidence": "evidence.json",
+            "scenarios": "scenarios.json",
             "deck": "deck.slidey.json",
         },
         "notes": [
@@ -213,11 +265,16 @@ def build_run_bundle(
             "Visual MCP, Kitsoki session driving, and video evidence are represented as planned stages until a live or cassette run supplies artifacts.",
         ],
     }
+    evidence = evidence_plan(run_json)
     metrics = {
         "run_id": run_id,
         "stage_count": len(stages),
+        "scenario_count": len(scenario_items),
         "validated_stage_count": sum(1 for stage in stages if stage["status"] in {"validated", "cached_validated"}),
         "planned_stage_count": sum(1 for stage in stages if stage["status"] == "planned"),
+        "required_evidence_count": evidence["summary"]["required"],
+        "present_evidence_count": evidence["summary"]["present"],
+        "missing_evidence_count": evidence["summary"]["missing"],
         "product_bugs_found": 0,
         "oracle_results": [],
         "checkpoint_ratings": [],
@@ -230,6 +287,8 @@ def build_run_bundle(
     (run_dir / "journey.md").write_text(journey, encoding="utf-8")
     write_json(run_dir / "metrics.json", metrics)
     write_json(run_dir / "bugs.json", bugs)
+    write_json(run_dir / "evidence.json", evidence)
+    write_json(run_dir / "scenarios.json", {"run_id": run_id, "items": scenario_items})
     write_json(run_dir / "deck.slidey.json", deck)
     if publish_deck is not None:
         publish_deck.parent.mkdir(parents=True, exist_ok=True)
@@ -255,8 +314,25 @@ def render_journey(run_json: dict) -> str:
     ]
     for stage in run_json["stages"]:
         lines.append(f"- `{stage['id']}`: {stage['status']}")
+        if stage["scenarios"]:
+            lines.append(f"  - scenarios: {', '.join(stage['scenarios'])}")
         for evidence in stage["evidence"]:
             lines.append(f"  - evidence: {evidence}")
+    lines.extend([
+        "",
+        "## Scenarios",
+        "",
+    ])
+    for scenario in run_json["scenarios"]:
+        lines.append(f"### {scenario['label']}")
+        lines.append("")
+        lines.append(f"- Stage: `{scenario['stage']}`")
+        lines.append(f"- Story: `{scenario['primary_story']}`")
+        lines.append(f"- MCP: {', '.join(scenario['required_mcp'])}")
+        lines.append(f"- Evidence: {', '.join(scenario['evidence'])}")
+        lines.append("")
+        lines.append(scenario["task"])
+        lines.append("")
     lines.extend([
         "",
         "## Next Evidence Needed",
@@ -271,6 +347,10 @@ def render_journey(run_json: dict) -> str:
 
 def render_deck(run_json: dict, metrics: dict) -> dict:
     stage_lines = [f"{stage['id']}: {stage['status']}" for stage in run_json["stages"]]
+    scenario_lines = [
+        f"{scenario['label']}: {scenario['stage']} ({', '.join(scenario['required_mcp'])})"
+        for scenario in run_json["scenarios"]
+    ]
     return {
         "meta": {
             "mode": "report",
@@ -294,10 +374,24 @@ def render_deck(run_json: dict, metrics: dict) -> dict:
             },
             {
                 "type": "narrative",
+                "eyebrow": "Scenarios",
+                "title": "Repeatable tasks",
+                "body": "\n".join(scenario_lines),
+                "narration": "Each scenario names the story, MCP tools, evidence, and success criteria expected from a real run.",
+            },
+            {
+                "type": "narrative",
                 "eyebrow": "Metrics",
                 "title": "Current evidence",
-                "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nProduct bugs found: {metrics['product_bugs_found']}",
+                "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nScenarios: {metrics['scenario_count']}\nEvidence present: {metrics['present_evidence_count']} / {metrics['required_evidence_count']}\nProduct bugs found: {metrics['product_bugs_found']}",
                 "narration": "This report distinguishes validated evidence from planned stages.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Video playback",
+                "title": "Key interactions",
+                "body": "No clips attached yet. Expected clips: product discovery, onboarding, bugfix, PRD/design, feature implementation, and product bug filing.",
+                "narration": "Slidey scenes reserve space for key interaction playback once visual evidence is captured.",
             },
             {
                 "type": "narrative",
@@ -485,10 +579,11 @@ def main() -> None:
 
     catalog = load_catalog(CATALOG)
     personas = load_personas(PERSONAS)
+    scenarios = load_scenarios(SCENARIOS)
 
     if args.emit_run:
         publish_deck = DEFAULT_DECK if args.publish_deck else None
-        run_dir, run_json = build_run_bundle(catalog, personas, args.project, args.persona, args.seed, "dry-run", publish_deck)
+        run_dir, run_json = build_run_bundle(catalog, personas, scenarios, args.project, args.persona, args.seed, "dry-run", publish_deck)
         print(f"Product journey run: {run_json['run_id']}")
         print(f"Artifacts: {run_dir}")
         print(f"Deck: {run_dir / 'deck.slidey.json'}")

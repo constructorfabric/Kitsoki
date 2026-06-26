@@ -31,8 +31,8 @@ python3 tools/product-journey/run.py --emit-run --project gears-rust --persona c
 ```
 
 This writes `.artifacts/product-journey/<run-id>/` with `run.json`,
-`journey.md`, `metrics.json`, `bugs.json`, and `deck.slidey.json`. Add
-`--publish-deck` when the generated deck should replace
+`journey.md`, `metrics.json`, `bugs.json`, `evidence.json`, `scenarios.json`,
+and `deck.slidey.json`. Add `--publish-deck` when the generated deck should replace
 `docs/decks/product-journey-eval.slidey.json` for review.
 
 For `gears-rust`, this prints the existing external-bakeoff readiness signal and
@@ -64,6 +64,8 @@ onboarding, and bugfix surfaces.
 
 - `catalog.json` — first-pass project + perspective registry.
 - `personas.json` — reusable personas for deterministic journey assignment.
+- `scenarios.json` — reusable scenario/task definitions with required MCP tools,
+  expected evidence, and success criteria.
 - `schema.json` — current artifact and stage contract.
 - `run.py` — entrypoint script used by the journey orchestrator.
 

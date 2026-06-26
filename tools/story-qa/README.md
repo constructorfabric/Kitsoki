@@ -46,3 +46,8 @@ python3 tools/product-journey/run.py --emit-run --project gears-rust --persona c
 
 Add `--publish-deck` when the generated deck should replace
 `docs/decks/product-journey-eval.slidey.json`.
+
+The generated bundle includes `scenarios.json` and `evidence.json`. Those files
+are the handoff contract for live or cassette-backed MCP runs: each scenario
+names the story surface, required Kitsoki/visual MCP tools, expected evidence,
+and success criteria.

@@ -69,3 +69,7 @@ python3 tools/product-journey/run.py --emit-run --project gears-rust --persona c
 That writes `.artifacts/product-journey/<run-id>/`, including
 `deck.slidey.json`, without calling a live LLM. Add `--publish-deck` when you
 want to update `docs/decks/product-journey-eval.slidey.json`.
+
+The bundle's `scenarios.json` and `evidence.json` are the contract for live or
+cassette-backed MCP runs: each scenario names the story surface, required
+Kitsoki/visual MCP tools, expected evidence, and success criteria.

@@ -1,0 +1,119 @@
+{
+  "scenarios": [
+    {
+      "id": "product-discovery",
+      "label": "Product discovery from local site",
+      "stage": "discover_product",
+      "task": "Start from the locally hosted production product site and explain what Kitsoki does, who it is for, and what the first credible action should be.",
+      "primary_story": "product-site",
+      "required_mcp": ["visual.open", "visual.observe", "visual.act"],
+      "evidence": [
+        "browser_screenshot",
+        "page_url",
+        "navigation_trace",
+        "checkpoint_rating"
+      ],
+      "success_criteria": [
+        "Persona can identify the product category without private repo context.",
+        "Persona can find a documented next action.",
+        "Broken links, stale media, or confusing claims are filed as product findings."
+      ]
+    },
+    {
+      "id": "project-onboarding",
+      "label": "Project onboarding",
+      "stage": "onboard_project",
+      "task": "Use the documented Kitsoki onboarding path to configure the assigned repository and explain how bugfix/design work should be launched.",
+      "primary_story": "stories/dev-story/app.yaml",
+      "required_mcp": ["session.open", "session.inspect", "render.tui", "visual.observe"],
+      "evidence": [
+        "session_trace",
+        "rendered_tui_frame",
+        "generated_config_diff",
+        "onboarding_smoke_result"
+      ],
+      "success_criteria": [
+        "Generated project config names real commands and relevant project files.",
+        "Persona can state the next Kitsoki command or room to use.",
+        "No silent operator-question defaulting occurs."
+      ]
+    },
+    {
+      "id": "bugfix",
+      "label": "Bug fix with hidden oracle",
+      "stage": "fix_bug",
+      "task": "Start from public issue/repro material, drive Kitsoki's bugfix workflow, and score the resulting worktree with the project's deterministic oracle.",
+      "primary_story": "stories/bugfix/app.yaml",
+      "required_mcp": ["session.open", "session.inspect", "render.tui", "visual.observe"],
+      "evidence": [
+        "session_trace",
+        "candidate_diff",
+        "oracle_result",
+        "full_suite_result",
+        "key_interaction_video"
+      ],
+      "success_criteria": [
+        "Hidden oracle passes.",
+        "Full suite passes or failure is classified.",
+        "Patch shape is reviewable for the persona's project."
+      ]
+    },
+    {
+      "id": "prd-design",
+      "label": "PRD and design workflow",
+      "stage": "plan_project_work",
+      "task": "Use Kitsoki to turn a project improvement idea into a PRD/design artifact grounded in repository files, conventions, and tests.",
+      "primary_story": "stories/dev-story/app.yaml",
+      "required_mcp": ["session.open", "session.inspect", "render.tui", "visual.observe"],
+      "evidence": [
+        "session_trace",
+        "prd_artifact",
+        "design_artifact",
+        "review_notes"
+      ],
+      "success_criteria": [
+        "Artifacts cite real repository files and commands.",
+        "Scope is small enough for review.",
+        "Open questions are explicit instead of hidden in generated prose."
+      ]
+    },
+    {
+      "id": "feature-implementation",
+      "label": "Feature implementation",
+      "stage": "plan_project_work",
+      "task": "Use Kitsoki to implement a small accepted design slice and validate it with project tests.",
+      "primary_story": "stories/dev-story/app.yaml",
+      "required_mcp": ["session.open", "session.inspect", "render.tui", "visual.observe"],
+      "evidence": [
+        "session_trace",
+        "implementation_diff",
+        "targeted_test_result",
+        "review_summary"
+      ],
+      "success_criteria": [
+        "Implementation follows the design artifact.",
+        "Tests are targeted and deterministic.",
+        "Remaining work is separated from completed work."
+      ]
+    },
+    {
+      "id": "evidence-backed-product-bug",
+      "label": "Evidence-backed product bug",
+      "stage": "file_product_issue",
+      "task": "Convert any confusing or broken Kitsoki behavior observed during the journey into a useful product bug report with visual and trace evidence.",
+      "primary_story": "stories/dev-story/app.yaml",
+      "required_mcp": ["visual.observe", "session.inspect", "render.tui"],
+      "evidence": [
+        "bug_report_markdown",
+        "screenshot_or_tui_png",
+        "trace_reference",
+        "reproduction_steps"
+      ],
+      "success_criteria": [
+        "Report includes expected versus actual behavior.",
+        "Report includes deterministic reproduction context.",
+        "Sensitive local data is redacted or explicitly marked local-only."
+      ]
+    }
+  ]
+}
