@@ -30,6 +30,18 @@ Emit a repeatable no-LLM dry-run bundle and Slidey deck:
 python3 tools/product-journey/run.py --emit-run --project gears-rust --persona core-maintainer --seed demo
 ```
 
+Emit a repeatable 10-repo GitHub planning matrix:
+
+```sh
+python3 tools/product-journey/run.py --emit-matrix --seed demo
+python3 tools/product-journey/run.py --emit-matrix --seed demo --matrix-personas all
+```
+
+This writes `.artifacts/product-journey/matrices/<matrix-id>/` with
+`matrix.json`, `matrix.md`, and `deck.slidey.json`. The source target list lives
+in `github-targets.json`; refresh each target's `bug_query` before a live scored
+sweep so current open bug counts are recorded outside the no-LLM planner.
+
 This writes `.artifacts/product-journey/<run-id>/` with `run.json`,
 `journey.md`, `metrics.json`, `bugs.json`, `findings.json`, `evidence.json`,
 `scenarios.json`, `review.json`, and `deck.slidey.json`. Add `--publish-deck` when the
@@ -132,6 +144,8 @@ onboarding, and bugfix surfaces.
 ## Files
 
 - `catalog.json` — first-pass project + perspective registry.
+- `github-targets.json` — 10 GitHub candidate targets for natural-usage
+  journey sweeps.
 - `personas.json` — reusable personas for deterministic journey assignment.
 - `scenarios.json` — reusable scenario/task definitions with required MCP tools,
   expected evidence, and success criteria.

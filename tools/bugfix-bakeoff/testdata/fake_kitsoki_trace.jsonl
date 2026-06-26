@@ -1,4 +1,0 @@
-{"turn":1,"seq":0,"ts":"2026-06-24T00:00:00Z","kind":"turn.started","state_path":"reproduce","call_id":"","payload":{}}
-{"turn":1,"seq":1,"ts":"2026-06-24T00:00:01Z","kind":"oracle.call.complete","state_path":"reproduce","call_id":"c1","payload":{"model":"opus","duration_ms":4200,"transcript_ref":"ref1","meta":{"usage":{"input_tokens":48,"output_tokens":15650,"cache_read_input_tokens":1945282,"cache_creation_input_tokens":68532}}}}
-{"turn":2,"seq":2,"ts":"2026-06-24T00:00:05Z","kind":"oracle.call.complete","state_path":"implement","call_id":"c2","payload":{"model":"hf:zai-org/GLM-5.2","duration_ms":3100,"transcript_ref":"ref2","meta":{"usage":{"input_tokens":1200,"output_tokens":800,"cache_read_input_tokens":50000,"cache_creation_input_tokens":2000}}}}
-{"turn":2,"seq":3,"ts":"2026-06-24T00:00:09Z","kind":"harness.returned","state_path":"implement","call_id":"c2","payload":{}}

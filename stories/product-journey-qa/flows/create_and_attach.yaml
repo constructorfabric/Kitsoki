@@ -14,6 +14,19 @@ host_handlers:
             run_id: run-123
             run_dir: .artifacts/product-journey/run-123
             deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      emit_product_journey_matrix:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: matrix_created
+            matrix_id: matrix-123
+            matrix_dir: .artifacts/product-journey/matrices/matrix-123
+            deck_path: .artifacts/product-journey/matrices/matrix-123/deck.slidey.json
+            target_count: 10
+            assignment_count: 10
+            scenario_count: 6
+            persona_mode: primary
       attach_product_journey_evidence:
         data:
           ok: true
@@ -65,6 +78,23 @@ host_handlers:
             total: 8
 
 turns:
+  - intent:
+      name: matrix
+      slots:
+        seed: flow
+        matrix_personas: primary
+    expect_state: matrix_created
+    expect_world:
+      status: matrix_created
+      seed: flow
+      matrix_personas: primary
+      matrix_id: matrix-123
+      matrix_dir: .artifacts/product-journey/matrices/matrix-123
+      deck_path: .artifacts/product-journey/matrices/matrix-123/deck.slidey.json
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_product_journey_matrix }
+
   - intent:
       name: start
       slots:

@@ -17,9 +17,12 @@ do I get a good fix — and at what cost compared to the real one?*
 external/
   bench.py                       # generic grader + fixture verifier (manifest-driven)
   bench_test.go                  # gated reproducible check (make qs-bakeoff): onboard + arm oracles
+  candidates.yaml                # the model/effort axis + named escalation ladders
+  drive_cell.sh                  # run ONE cell live (COST)
+  escalate.sh                    # run a project's bugs up a cheap→expensive ladder (COST)
   projects/<name>/
     manifest.yaml                # repo + bugs + oracle-injection contract
-    oracles/<bug>.test.js        # the regression test the real PR shipped, isolated
+    oracles/<bug>.<ext>          # the regression test the real PR shipped, isolated
 ```
 
 To benchmark a **new** repo, add `projects/<name>/manifest.yaml` (repo URL,
@@ -30,7 +33,27 @@ it. The shipped reference projects are
 [`projects/query-string`](projects/query-string) (sindresorhus/query-string —
 small/simple, one ~558-LOC parser, yet mature: 274 commits, 90 releases) and
 [`projects/gears-rust`](projects/gears-rust) (a large, mature, **private** Rust
-monorepo — captured from the 2026-06 gears-rust dogfood marathon + hard-case run).
+monorepo — captured from the 2026-06 gears-rust dogfood marathon + hard-case run),
+and [`projects/kitsoki`](projects/kitsoki) (**kitsoki's own** go+ts dogfood bugs —
+`local_only`, folded in from the retired parent harness; the 3 armed fixtures are
+bug9/bug12/bug14, all proven RED@baseline→GREEN@fix via a throwaway local mirror).
+
+### Polyglot repos (a JS package not at the repo root)
+
+`bench.py` runs one project-level `install` and links a root `node_modules`. For a
+repo whose test target lives in a sub-package (kitsoki's `tools/runstatus` vitest
+bug), set a per-bug `oracle.setup` — a command run in the scratch tree BEFORE the
+oracle (e.g. `cd tools/runstatus && pnpm install --prefer-offline --silent`). A
+warm global pnpm/cargo store keeps it fast; keeps the harness runner-agnostic.
+
+### Escalate cheap→expensive — `escalate.sh`
+
+The onboarding question ("cheapest model/effort that fixes my bugs?") answered as
+one command. `escalate.sh --project <name> --ladder default` runs each bug up an
+ordered candidate ladder, stopping at the first rung that reaches `solved`
+(`--dry-run` prints the plan free). Effort is a **profile** property — a rung is a
+candidate row pointing at a profile with that (model, effort); see the
+`candidates.yaml` header + the `ladders:` section.
 
 ### Heterogeneous / heavy / private repos (gears-rust)
 

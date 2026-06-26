@@ -1,0 +1,108 @@
+# Kitsoki-self bug-fix benchmark manifest — kitsoki fixing ITS OWN bugs.
+#
+# This folds the legacy parent harness (tools/bugfix-bakeoff/bakeoff.yaml) into
+# the one general external/ harness: kitsoki-self is just another project. Same
+# contract as projects/query-string and projects/gears-rust.
+#
+# `local_only: true` — the repo IS this checkout; it is NOT cloned by the
+# qsbakeoff loop. Verify/score against a THROWAWAY local mirror so the grader's
+# baseline/fix checkouts never dirty the working tree:
+#
+#   git clone --local --no-checkout . /tmp/kitsoki-mirror/kitsoki
+#   python3 bench.py verify --project kitsoki --repo-dir /tmp/kitsoki-mirror/kitsoki
+#
+# Bug selection (pre-flight 2026-06-24, carried from the parent manifest): of the
+# six dogfood-marathon "real fixes" only #9/#12/#14 are genuinely RED at
+# `<fix>^`. #1/#2/#8 were dropped as degenerate (oracle already GREEN at the
+# baseline — a regression test landed atop an already-merged behavioral fix).
+kind: bugfix_bakeoff_external
+version: 1
+
+project:
+  id: kitsoki
+  repo: .                      # local checkout; local_only ⇒ never cloned remotely
+  local_only: true
+  title: "kitsoki — fixing its own dogfood-marathon bugs"
+  language: go                 # + one typescript (runstatus) bug; per-bug oracle picks the runner
+  install: "go mod download"   # local checkout already has deps; runstatus uses pnpm install
+  onboard_app: "@kitsoki/dev-story"
+  # No project-wide secondary suite — each bug pins its own package. The hidden
+  # oracle is the only signal (heavy whole-repo `go test ./...` is not run).
+  suite: false
+  # Default oracle (go); bug14 overrides to vitest. inject: write ⇒ the isolated
+  # oracle file is written to `target` (its real in-tree path so the package
+  # compiles with its neighbours), kept OUT of the candidate tree until scoring.
+  oracle:
+    inject: write
+    target: internal/host/oracle_test.go
+    run: 'go test ./internal/host/ -run {match} -count=1'
+
+bugs:
+  - id: bug9
+    ticket_ref: issues/bugs/2026-06-03T121409Z-concurrent-dogfood-sessions-share-checkout-destructive-git.md
+    title: "Concurrent dogfood sessions share one checkout — destructive git (WIP clobbered)"
+    severity: P1
+    component: host
+    fix_sha: 67ac5fb1
+    baseline_sha: ea2ca55a
+    fix_source: "."   # fix spans internal/host + internal/orchestrator; overlay whole tree for GREEN leg
+    oracle_test: oracles/bug9.go
+    oracle_match: "TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP"
+    oracle:
+      target: internal/host/concurrent_checkout_repro_test.go
+      run: 'go test ./internal/host/ -run {match} -count=1'
+    ticket: |
+      Two concurrent dogfood sessions derive the SAME workspace_id and therefore
+      share one git checkout. Session B's worktree/create is not refused when
+      session A already holds it, so B's destructive git operations clobber A's
+      uncommitted WIP. Creating a second session against an in-use checkout must
+      be refused, not silently shared.
+
+  - id: bug12
+    ticket_ref: issues/bugs/2026-06-10T141756Z-decide-postcmd-captured-submit-reported-abandoned.md
+    title: "host.agent.decide with validator.post_cmd reports 'abandoned' when the payload WAS captured"
+    severity: P1
+    component: runtime
+    fix_sha: ea2ca55a
+    baseline_sha: 45276b88
+    fix_source: "."   # fix spans internal/host + a root file; overlay whole tree for GREEN leg
+    oracle_test: oracles/bug12.go
+    oracle_match: "TestRepro_PostCmdInfraFailureMisreportedAsSemanticRejection|TestRepro_PostCmdCwdIsDroppedOnDecidePath"
+    oracle:
+      target: internal/host/agent_decide_postcmd_captured_abandon_repro_test.go
+      run: 'go test ./internal/host/ -run "{match}" -count=1'
+    ticket: |
+      host.agent.decide with a validator.post_cmd reports the turn as
+      "abandoned" even though the structured payload WAS captured — an infra
+      failure in the post_cmd path is misreported as a semantic rejection, and
+      the post_cmd's cwd is dropped on the decide path. A captured payload must
+      be reported as captured.
+
+  - id: bug14
+    ticket_ref: issues/bugs/2026-06-12T022703Z-web-transport-hides-background-completion-failure.md
+    title: "Web transport doesn't surface a background_completion turn's failure (looks hung)"
+    severity: P2
+    component: web
+    fix_sha: 45276b88
+    baseline_sha: 85ff4917
+    fix_source: tools/runstatus
+    oracle_test: oracles/bug14.test.ts
+    oracle_match: "background_completion failure surfacing"
+    oracle:
+      # Polyglot: the JS package isn't at the repo root, so install it before the
+      # vitest oracle (warm global pnpm store ⇒ fast). `inject: write` overwrites
+      # the test file at its real path; setup runs in the scratch copy.
+      setup: 'cd tools/runstatus && pnpm install --prefer-offline --silent'
+      target: tools/runstatus/tests/unit/run-background-completion.test.ts
+      run: 'cd tools/runstatus && pnpm exec vitest run tests/unit/run-background-completion.test.ts'
+    ticket: |
+      A scheduler-driven background_completion turn that FAILS is not surfaced by
+      the web transport — currentView is not refreshed, so the turn's
+      last_error / say never reaches the UI and the run looks hung. A failing
+      background_completion turn must refresh currentView so its error surfaces.
+
+treatments: [kitsoki, single]
+
+run:
+  story: stories/bench-bugfix/app.yaml
+  worktree_root: .worktrees

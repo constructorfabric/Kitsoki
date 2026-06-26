@@ -110,6 +110,16 @@ def score(m, bug, tree, out, candidate, treatment):
                 f.write(f"\n// ---- injected hidden oracle ({bug['id']}) ----\n")
                 f.write(oracle_file.read_text())
 
+        # Optional per-bug/project `oracle.setup`: a command run in the scratch
+        # tree BEFORE the oracle (e.g. a nested `pnpm install` for a polyglot repo
+        # whose JS package isn't at the root). Keeps the harness general across
+        # go/node/cargo without a root-only node_modules assumption.
+        setup_cmd = oracle_cfg.get("setup")
+        if setup_cmd:
+            setup_r = sh(setup_cmd, cwd=scratch, quiet=True)
+            if setup_r.returncode != 0:
+                sys.stderr.write(setup_r.stdout[-2000:] + setup_r.stderr[-2000:])
+
         run_cmd = oracle_cfg["run"].replace("{target}", oracle_cfg["target"]) \
                                    .replace("{match}", bug.get("oracle_match", ""))
         oracle_r = sh(run_cmd, cwd=scratch, quiet=True)

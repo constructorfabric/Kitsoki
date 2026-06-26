@@ -12,6 +12,9 @@ world:
   project:        { type: string, default: "gears-rust" }
   persona:        { type: string, default: "core-maintainer" }
   seed:           { type: string, default: "default" }
+  matrix_id:      { type: string, default: "" }
+  matrix_dir:     { type: string, default: "" }
+  matrix_personas: { type: string, default: "primary" }
   run_id:         { type: string, default: "" }
   run_dir:        { type: string, default: "" }
   deck_path:      { type: string, default: "" }
@@ -37,6 +40,13 @@ intents:
       project: { type: string, required: false }
       persona: { type: string, required: false }
       seed: { type: string, required: false }
+  matrix:
+    description: "Create a deterministic 10-repo GitHub product-journey matrix."
+    examples: ["create github matrix", "plan ten repo sweep", "emit matrix"]
+    priority: 88
+    slots:
+      seed: { type: string, required: false }
+      matrix_personas: { type: string, required: false }
   attach:
     description: "Attach captured evidence to the current product-journey run."
     examples: ["attach evidence", "add bugfix video", "record trace evidence"]
@@ -79,7 +89,7 @@ intents:
     priority: 10
 
 exports:
-  intents: [start, attach, record, seed_demo, review, accept, quit, look]
+  intents: [start, matrix, attach, record, seed_demo, review, accept, quit, look]
 
 root: idle
 

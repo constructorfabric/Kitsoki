@@ -1,0 +1,74 @@
+states:
+  matrix_created:
+    description: "A product-journey GitHub matrix exists; waiting for assignment runs."
+    relevant_world: [seed, matrix_id, matrix_dir, matrix_personas, deck_path, status]
+    view:
+      - banner:
+          text: "MATRIX CREATED"
+          subtitle: "Plan assignment runs from the generated 10-repo GitHub sweep."
+          color: "#0F766E"
+      - kv:
+          pairs:
+            Matrix: '{{ world.matrix_id|default:"(pending)" }}'
+            Seed: "{{ world.seed }}"
+            Personas: "{{ world.matrix_personas }}"
+            Matrix dir: '{{ world.matrix_dir|default:"(pending)" }}'
+            Deck: '{{ world.deck_path|default:"(pending)" }}'
+            Status: "{{ world.status }}"
+      - prose: "Use the matrix deck and matrix.json to launch one evidence-backed product-journey run per assignment."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start project=... persona=... seed=..."
+              hint: "create a concrete run bundle for one matrix assignment"
+              intent: start
+            - label: "accept"
+              hint: "finish with the current matrix bundle"
+              intent: accept
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      start:
+        - target: run_created
+          effects:
+            - set:
+                project: "{{ slots.project ?? world.project }}"
+                persona: "{{ slots.persona ?? world.persona }}"
+                seed: "{{ slots.seed ?? world.seed }}"
+                status: "creating"
+            - invoke: host.run
+              id: emit_product_journey_run
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --emit-run
+                  - --json-output
+                  - --project
+                  - "{{ slots.project ?? world.project }}"
+                  - --persona
+                  - "{{ slots.persona ?? world.persona }}"
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                run_id: "stdout_json.run_id"
+                run_dir: "stdout_json.run_dir"
+                deck_path: "stdout_json.deck_path"
+              on_error: matrix_created
+            - set:
+                status: "run_created"
+      accept:
+        - target: done
+          effects:
+            - set: { status: "done" }
+      quit:
+        - target: abandoned
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .

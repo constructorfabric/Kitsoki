@@ -167,7 +167,12 @@ def main(argv=None):
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--manifest", default=os.path.join(here, "bakeoff.yaml"))
+    ap.add_argument("--manifest",
+                    default=os.path.join(here, "external", "projects", "kitsoki", "manifest.yaml"))
+    # The candidate (model/effort) axis lives in the shared external candidates.yaml,
+    # not in each project manifest. Merged into the manifest if it lacks `candidates`.
+    ap.add_argument("--candidates",
+                    default=os.path.join(here, "external", "candidates.yaml"))
     ap.add_argument("--cells-dir", default=os.path.join(here, "results", "cells"))
     ap.add_argument("--out", default=os.path.join(here, "results", "summary.json"))
     ap.add_argument("--generated-at", default="")
@@ -183,6 +188,10 @@ def main(argv=None):
     generated_at = resolve_generated_at(args.generated_at)
     manifest = load_manifest(args.manifest)
     manifest["__path__"] = os.path.relpath(args.manifest)
+    # External project manifests carry bugs+treatments; the candidate axis is the
+    # shared candidates.yaml. Merge it in so the deck headers resolve either way.
+    if not manifest.get("candidates") and os.path.exists(args.candidates):
+        manifest["candidates"] = load_manifest(args.candidates).get("candidates", [])
     cells = load_cells(args.cells_dir)
 
     summary = build_summary(manifest, cells, generated_at)

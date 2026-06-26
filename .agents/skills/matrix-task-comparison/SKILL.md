@@ -21,12 +21,27 @@ drivable workflow. The live drive there uses the headless MCP primitive
 re-derive them, and do **not** hardcode the bug9/12/14 specifics into a new
 study.
 
+> **Harness consolidated (2026-06).** The reference impl is now the ONE
+> manifest-driven harness under
+> [`tools/bugfix-bakeoff/external/`](../../../tools/bugfix-bakeoff/external) —
+> kitsoki's own bugs are just `projects/kitsoki`. The legacy four-piece flow
+> (`prepare.sh` · `run_cell.sh` · `score.py` · `bakeoff.yaml`) was retired; map
+> the old names to the new pieces:
+>
+> | legacy | now |
+> |---|---|
+> | `bakeoff.yaml` | `external/projects/<name>/manifest.yaml` + `external/candidates.yaml` |
+> | `prepare.sh` + `run_cell.sh` | `external/drive_cell.sh` (one cell, worktree+drive+score) |
+> | `score.py` | `external/bench.py score` / `verify` / `cost` / `summarize` |
+> | (new) | `external/escalate.sh` — cheap→expensive model/effort ladder |
+> | `aggregate.py` | `aggregate.py` (kept; reads the external manifest + candidates.yaml) |
+
 **Read first (the reference impl):**
 - [`tools/bugfix-bakeoff/README.md`](../../../tools/bugfix-bakeoff/README.md) — the runbook.
-- [`tools/bugfix-bakeoff/bakeoff.yaml`](../../../tools/bugfix-bakeoff/bakeoff.yaml) — the manifest shape.
+- [`tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml`](../../../tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml) — the manifest shape.
+- [`tools/bugfix-bakeoff/external/candidates.yaml`](../../../tools/bugfix-bakeoff/external/candidates.yaml) — the model/effort axis + escalation ladders.
 - [`tools/bugfix-bakeoff/results/SCHEMA.md`](../../../tools/bugfix-bakeoff/results/SCHEMA.md) — the cell/summary contract every tool honors.
-- [`.context/bakeoff-learnings.md`](../../../.context/bakeoff-learnings.md) — the gotchas (mirrored in "Pitfalls" below).
-- `prepare.sh` · `run_cell.sh` · `score.py` · `aggregate.py` — the four pieces.
+- `bench.py` · `drive_cell.sh` · `escalate.sh` · `aggregate.py` — the four pieces.
 
 ## The design — three axes → cells
 
@@ -85,10 +100,12 @@ A baseline that is GREEN is a study finding (note it), not a cell to run.
   never lies:
 
   ```bash
-  python3 tools/bugfix-bakeoff/score.py --bug <task> --candidate <cand> \
-    --treatment <contender> --worktree <wt> --transcript <t> \
-    --adjudication solved \
-    --adjudication-note "per-session-path fix; oracle asserts the sentinel impl"
+  # Deterministic grade (oracle GREEN/RED). bench.py writes the cell JSON; edit its
+  # outcome.adjudicated/adjudication_note when a judge overrides on behaviour.
+  python3 tools/bugfix-bakeoff/external/bench.py score \
+    --project <name> --bug <task> --tree <worktree> \
+    --candidate <cand> --treatment <contender> \
+    --out tools/bugfix-bakeoff/results/cells/<task>-<cand>-<contender>.json
   ```
 
   This sets `outcome.quality`, `adjudicated=true`, and the note; `oracle_status`
@@ -124,8 +141,8 @@ Per `results/SCHEMA.md`, every cell scores three families:
 
 ## Running cells (the cost-bearing step — manual, never CI/auto)
 
-`run_cell.sh` is the **only** cost-bearing piece. `prepare.sh`, `score.py`,
-`aggregate.py` make no LLM calls. Per contender/invoker:
+`drive_cell.sh` and `escalate.sh` are the **only** cost-bearing pieces.
+`bench.py` and `aggregate.py` make no LLM calls. Per contender/invoker:
 
 - **Naive single / `claude_p`** (Opus, Sonnet) — fully scripted:
   ```
@@ -174,14 +191,17 @@ path.) `summary.json` and the `agenteval.Report` files are the durable artifacts
 1. **Setup.** Pick the structure × candidate × task axes. Confirm each candidate
    profile exists (`.kitsoki.local.yaml`) and the model alias prices in
    `pricing.py`.
-2. **Manifest.** Author `bakeoff.yaml`: `bugs`/tasks (`baseline_sha` = `<fix>^`,
-   hidden `oracle_test`, `affected_test_pkgs`), `candidates`, `treatments`,
-   `run.max_guidance_turns`. Copy the reference manifest's shape.
-3. **Pre-flight.** For every task, prove the baseline is RED (above). Drop
-   degenerate (GREEN-at-baseline) tasks; record the drop as a finding.
-4. **Run cells** (COST, manual). `prepare.sh` → `run_cell.sh` per cell; iterate
-   oracle-gated guidance turns up to the cap.
-5. **Score.** `score.py` per cell → `results/cells/<task>-<cand>-<contender>.json`.
+2. **Manifest.** Author `external/projects/<name>/manifest.yaml`: `bugs`/tasks
+   (`baseline_sha` = `<fix>^`, isolated `oracle_test`, `oracle.run`, `fix_source`),
+   `treatments`; the candidate/effort axis + ladders live in
+   `external/candidates.yaml`. Copy a reference project's shape.
+3. **Pre-flight.** Prove every fixture arms with `bench.py verify --project <name>`
+   (RED@baseline, GREEN@real-fix). Drop degenerate (GREEN-at-baseline) tasks;
+   record the drop as a finding.
+4. **Run cells** (COST, manual). `drive_cell.sh --project <name> --bug <task>
+   --candidate <cand> --score` per cell — or `escalate.sh --project <name>
+   --ladder default` to climb the cheap→expensive model/effort ladder per bug.
+5. **Score.** `bench.py score` (run by `drive_cell.sh --score`) → `results/cells/<task>-<cand>-<contender>.json`.
 6. **Adjudicate.** Re-score with `--adjudication`/`--adjudication-note` where a
    coupled oracle false-failed a behaviourally-correct fix.
 7. **Aggregate.** `aggregate.py [--emit-agenteval]` → `summary.json`.
@@ -226,9 +246,9 @@ them, it does not reimplement scoring/pricing.
 
 ## No-LLM testing rule (load-bearing — [AGENTS.md](../../../AGENTS.md))
 
-`run_cell.sh` is the only cost-bearing piece and is run **manually**, never in CI
-or automatically. `prepare.sh`/`score.py`/`aggregate.py` are deterministic and
-free; the reference impl ships ~22 offline tests against fixture transcripts/
+`drive_cell.sh`/`escalate.sh` are the only cost-bearing pieces and are run
+**manually**, never in CI or automatically. `bench.py`/`aggregate.py` are
+deterministic and free; the reference impl ships offline tests against fixture transcripts/
 worktrees (oracle runner + cost extractor are dependency-injected). The committed
 `summary.json` lets the whole study re-derive its report/deck with zero spend.
 

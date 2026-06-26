@@ -82,6 +82,21 @@ It reads the manifest + `candidates.yaml`, preps the baseline worktree, bakes in
 every `initial_world` knob, drives live via `drive.sh`, then scores + extracts
 cost. The rest of this phase is what it automates — read it to debug or extend.
 
+**Cheapest-viable answer — `escalate.sh`.** To answer "what is the cheapest
+model/effort that fixes my bugs?", run each bug up an ordered ladder instead of
+one fixed candidate:
+```sh
+tools/bugfix-bakeoff/external/escalate.sh --project <name> --ladder default
+tools/bugfix-bakeoff/external/escalate.sh --project <name> --ladder default --dry-run  # free plan
+```
+It stops each bug at the first rung that reaches `solved`. Effort is a **profile**
+property (`session.new` has no effort param) — a rung is a candidate row pointing
+at a profile with that (model, effort); see the `candidates.yaml` header +
+`ladders:`. kitsoki's OWN bugs run the same way via `--project kitsoki`
+(`local_only`; verify against a throwaway `git clone --local` mirror).
+Polyglot repos (a JS package not at the root) set a per-bug `oracle.setup`
+(e.g. `cd sub/pkg && pnpm install`) run before the oracle.
+
 Drive `stories/bench-bugfix` through the **headless MCP primitive**
 `tools/mcp-drive/drive.sh` — NOT the in-process Agent tool (an in-process subagent
 inherits the parent's empty MCP set → "No MCP servers configured" → drives
