@@ -179,6 +179,11 @@ Use a real local path relative to the run bundle, an absolute path, a repo-root
 path, a URL, or a retained MCP reference such as `retained://...` or
 `image://...`. Review and validation warn when captured local paths do not
 resolve, so placeholder media cannot silently look like real playback proof.
+Each evidence row also carries a `source`: `demo` for seeded placeholders,
+`retained` for MCP retained references, `external` for URLs, and `local` for
+file-backed captures. Review decks and readiness checks count proof evidence
+separately from demo evidence so a no-LLM smoke can exercise the artifact loop
+without passing as live product proof.
 
 Record a review finding for the deck summary:
 
@@ -220,7 +225,8 @@ aggregation, quality-gate accounting, driver-journal coverage, and Slidey deck
 shape before a live run. It marks every required evidence slot captured with
 deterministic placeholder paths and records one replay-mode driver event per
 scenario, so review gates can exercise the full artifact contract while
-validation still warns that those local paths do not resolve.
+validation still warns that those local paths do not resolve and review warns
+that evidence is demo-only.
 
 Review whether a bundle is ready for human discussion:
 

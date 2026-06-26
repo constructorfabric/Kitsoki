@@ -165,7 +165,7 @@ host_handlers:
           stdout_json:
             status: reviewed
             review_status: ready
-            summary: "ready: 13/14 checks passed, 1 warnings, 0 failures"
+            summary: "ready: 13/15 checks passed, 2 warnings, 0 failures"
             run_dir: .artifacts/product-journey/run-123
             review_path: .artifacts/product-journey/run-123/review.json
             deck_path: .artifacts/product-journey/run-123/deck.slidey.json
@@ -177,9 +177,9 @@ host_handlers:
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
             passed: 13
-            warnings: 1
+            warnings: 2
             failed: 0
-            total: 14
+            total: 15
       prepare_product_journey_driver_handoff:
         data:
           ok: true
@@ -466,7 +466,7 @@ turns:
     expect_world:
       status: reviewed
       review_status: ready
-      review_summary: "ready: 13/14 checks passed, 1 warnings, 0 failures"
+      review_summary: "ready: 13/15 checks passed, 2 warnings, 0 failures"
       deck_path: .artifacts/product-journey/run-123/deck.slidey.json
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
       driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md

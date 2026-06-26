@@ -21,7 +21,7 @@
   },
   "media_manifest": {
     "required": ["run_id", "items", "summary"],
-    "item_required": ["scenario", "evidence_kind", "media_kind", "path", "status", "playback"],
+    "item_required": ["scenario", "evidence_kind", "media_kind", "path", "status", "source", "playback"],
     "media_kinds": ["video", "image", "trace", "document", "artifact"]
   },
   "agent_brief": {

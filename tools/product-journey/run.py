@@ -511,6 +511,7 @@ def evidence_plan(run_json: dict) -> dict:
                 "kind": evidence_kind,
                 "status": "missing",
                 "path": "",
+                "source": "unknown",
                 "notes": "Attach from visual MCP, Kitsoki MCP trace, oracle runner, or generated artifact.",
             })
     return {
@@ -1198,6 +1199,19 @@ def media_kind(evidence_kind: str, artifact_path: str) -> str:
     return "artifact"
 
 
+def evidence_source(artifact_path: str, notes: str = "") -> str:
+    combined = f"{artifact_path} {notes}".lower()
+    if "demo placeholder" in combined or "deterministic placeholder" in combined:
+        return "demo"
+    if artifact_path.startswith(("retained://", "image://")):
+        return "retained"
+    if artifact_path.startswith(("http://", "https://")):
+        return "external"
+    if artifact_path:
+        return "local"
+    return "unknown"
+
+
 def build_media_manifest(run_json: dict, evidence: dict) -> dict:
     items = []
     for item in evidence.get("items", []):
@@ -1211,6 +1225,7 @@ def build_media_manifest(run_json: dict, evidence: dict) -> dict:
             "media_kind": kind,
             "path": artifact_path,
             "status": item.get("status", ""),
+            "source": item.get("source") or evidence_source(artifact_path, item.get("notes", "")),
             "notes": item.get("notes", ""),
             "playback": kind in {"video", "image"},
         })
@@ -1298,6 +1313,8 @@ def build_scenario_outcomes(run_json: dict, evidence: dict, findings: dict) -> d
         scenario_evidence = evidence_by_scenario.get(scenario["id"], [])
         scenario_findings = findings_by_scenario.get(scenario["id"], [])
         present = [item for item in scenario_evidence if item.get("status") in {"captured", "validated"}]
+        demo = [item for item in present if (item.get("source") or evidence_source(item.get("path", ""), item.get("notes", ""))) == "demo"]
+        proof = [item for item in present if (item.get("source") or evidence_source(item.get("path", ""), item.get("notes", ""))) != "demo"]
         validated = [item for item in scenario_evidence if item.get("status") == "validated"]
         rejected = [item for item in scenario_evidence if item.get("status") == "rejected"]
         counts = {
@@ -1339,6 +1356,8 @@ def build_scenario_outcomes(run_json: dict, evidence: dict, findings: dict) -> d
             "evidence_status": evidence_status,
             "required_evidence_count": len(scenario_evidence),
             "present_evidence_count": len(present),
+            "demo_evidence_count": len(demo),
+            "proof_evidence_count": len(proof),
             "validated_evidence_count": len(validated),
             "rejected_evidence_count": len(rejected),
             "finding_counts": counts,
@@ -1391,7 +1410,7 @@ def render_scenario_outcomes(outcomes: dict) -> str:
             f"- Scenario: `{item['scenario']}`",
             f"- Stage: `{item['stage']}`",
             f"- Story: `{item['primary_story']}`",
-            f"- Evidence: {item['present_evidence_count']} / {item['required_evidence_count']} ({item['evidence_status']})",
+            f"- Evidence: {item['present_evidence_count']} / {item['required_evidence_count']} ({item['evidence_status']}; proof {item.get('proof_evidence_count', 0)}, demo {item.get('demo_evidence_count', 0)})",
             f"- Outcome: `{item['outcome']}`",
             f"- Findings: strength={item['finding_counts']['strength']}, weakness={item['finding_counts']['weakness']}, issue={item['finding_counts']['issue']}, fix={item['finding_counts']['fix']}, blocked={item['finding_counts'].get('blocked', 0)}",
             "",
@@ -1976,7 +1995,11 @@ def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None)
     }
 
     evidence_items = evidence.get("items", [])
+    for item in evidence_items:
+        item["source"] = item.get("source") or evidence_source(item.get("path", ""), item.get("notes", ""))
     present_items = [item for item in evidence_items if item.get("status") in {"captured", "validated"}]
+    demo_items = [item for item in present_items if item.get("source") == "demo"]
+    proof_items = [item for item in present_items if item.get("source") != "demo"]
     scenario_status: dict[str, str] = {}
     for scenario in run_json["scenarios"]:
         items = [item for item in evidence_items if item.get("scenario") == scenario["id"]]
@@ -2023,6 +2046,8 @@ def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None)
         "required_evidence_count": evidence["summary"]["required"],
         "present_evidence_count": evidence["summary"]["present"],
         "missing_evidence_count": evidence["summary"]["missing"],
+        "demo_evidence_count": len(demo_items),
+        "proof_evidence_count": len(proof_items),
         "product_bugs_found": len(bugs.get("items", [])),
         "findings_count": len(finding_items),
         "strength_count": finding_summary["strength"],
@@ -2126,6 +2151,7 @@ def attach_evidence(
     target["status"] = status
     target["path"] = artifact_path
     target["notes"] = notes
+    target["source"] = evidence_source(artifact_path, notes)
     target["updated_at"] = now_utc()
 
     for scenario in run_json["scenarios"]:
@@ -2408,8 +2434,12 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
         "deck.slidey.json",
     ]
     evidence_items = evidence.get("items", [])
+    for item in evidence_items:
+        item["source"] = item.get("source") or evidence_source(item.get("path", ""), item.get("notes", ""))
     media_manifest = build_media_manifest(run_json, evidence)
     present_items = [item for item in evidence_items if item.get("status") in {"captured", "validated"}]
+    demo_items = [item for item in present_items if item.get("source") == "demo"]
+    proof_items = [item for item in present_items if item.get("source") != "demo"]
     rejected_items = [item for item in evidence_items if item.get("status") == "rejected"]
     video_items = [item for item in media_manifest["items"] if item["media_kind"] == "video"]
     playback_items = [item for item in media_manifest["items"] if item["playback"]]
@@ -2481,6 +2511,12 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
             "status": "pass" if present_items else "fail",
             "summary": "At least one captured or validated evidence artifact is attached.",
             "detail": f"present={len(present_items)}, required={len(evidence_items)}",
+        },
+        {
+            "id": "non-demo-evidence",
+            "status": "pass" if proof_items else "warn",
+            "summary": "At least one captured evidence artifact is real, retained, external, or cassette-backed rather than seeded demo evidence.",
+            "detail": f"proof={len(proof_items)}, demo={len(demo_items)}",
         },
         {
             "id": "key-video",
@@ -4211,7 +4247,7 @@ def render_deck(
             "type": "narrative",
             "eyebrow": "Metrics",
             "title": "Current evidence",
-            "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nCaptured stages: {metrics.get('captured_stage_count', 0)}\nScenarios: {metrics['scenario_count']}\nEvidence present: {metrics['present_evidence_count']} / {metrics['required_evidence_count']}\nDriver events: {metrics.get('driver_event_count', 0)}\nFindings: {metrics.get('findings_count', 0)}\nStrengths: {metrics.get('strength_count', 0)} · Weaknesses: {metrics.get('weakness_count', 0)} · Fixes: {metrics.get('fix_count', 0)} · Blocked: {metrics.get('blocked_count', 0)}\nProduct bugs found: {metrics['product_bugs_found']}",
+            "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nCaptured stages: {metrics.get('captured_stage_count', 0)}\nScenarios: {metrics['scenario_count']}\nEvidence present: {metrics['present_evidence_count']} / {metrics['required_evidence_count']}\nProof evidence: {metrics.get('proof_evidence_count', 0)} · Demo evidence: {metrics.get('demo_evidence_count', 0)}\nDriver events: {metrics.get('driver_event_count', 0)}\nFindings: {metrics.get('findings_count', 0)}\nStrengths: {metrics.get('strength_count', 0)} · Weaknesses: {metrics.get('weakness_count', 0)} · Fixes: {metrics.get('fix_count', 0)} · Blocked: {metrics.get('blocked_count', 0)}\nProduct bugs found: {metrics['product_bugs_found']}",
             "narration": "This report distinguishes validated evidence from planned stages.",
         },
         {
