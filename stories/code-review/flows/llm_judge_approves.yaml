@@ -49,6 +49,17 @@ host_handlers:
     data:
       ok: true
       stdout: "LGTM."
+  host.run:
+    by_call:
+      code_review_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/code-review/PR-40/report.md"
+            summary_path: ".artifacts/code-review/PR-40/summary.json"
+            deck_path: ".artifacts/code-review/PR-40/deck.slidey.json"
+            summary: "PR-40 reviewed: approve."
 
 turns:
   - intent: { name: start, slots: {} }
@@ -76,6 +87,7 @@ turns:
     expect_world:
       status:   "reviewed"
       decision: "approve"
+      deck_path: ".artifacts/code-review/PR-40/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true

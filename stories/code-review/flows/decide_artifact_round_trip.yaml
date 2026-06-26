@@ -69,6 +69,17 @@ host_handlers:
       pr_id:           "PR-99"
       approve:         true
       request_changes: false
+  host.run:
+    by_call:
+      code_review_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/code-review/PR-99/report.md"
+            summary_path: ".artifacts/code-review/PR-99/summary.json"
+            deck_path: ".artifacts/code-review/PR-99/deck.slidey.json"
+            summary: "PR-99 reviewed: approve."
 
 turns:
   # From comment_executing, `proceed` enters decide_executing and runs
@@ -90,5 +101,6 @@ turns:
     expect_world:
       status:   "reviewed"
       decision: "approve"
+      deck_path: ".artifacts/code-review/PR-99/deck.slidey.json"
 
 expect_terminal: true

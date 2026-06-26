@@ -16,6 +16,11 @@ arc is polymorphic — it reads `world.decision_artifact.decision` to
 decide whether to approve or request changes, so the LLM-judge
 auto-fire path works without forking the state graph.
 
+Reviewed exits also write `.artifacts/code-review/<pr-id>/report.md`,
+`summary.json`, and `deck.slidey.json` from the structured review and
+decision artifacts. The deck is deterministic; LLM output only enters through
+the schema-validated checkpoint artifacts.
+
 ## Standalone
 
 ```
@@ -33,7 +38,7 @@ import's `world_in:` and enters at `entry: idle`.
 
 | Name | Description | `requires:` keys |
 |---|---|---|
-| `reviewed` | Final review posted (approve / request_changes). | `decision_artifact` |
+| `reviewed` | Final review posted (approve / request_changes) and deterministic report/deck written. | `decision_artifact` |
 | `dismissed` | User explicitly dismissed (e.g. wrong reviewer). | — |
 | `abandoned` | User or LLM bailed. | — |
 
@@ -46,6 +51,14 @@ import's `world_in:` and enters at `entry: idle`.
 | `review_pr` | `_executing`, `_awaiting_reply` | yes — `review_summary_artifact` | `comment_executing` |
 | `comment` | `_executing` only | no | `decide_executing` (via `proceed`) |
 | `decide` | `_executing`, `_awaiting_reply` | yes — `decision_artifact` | `@exit:reviewed` (via `approve` / `request_changes`) |
+
+## Report Artifacts
+
+| Key | Meaning |
+|---|---|
+| `report_path` | Human-readable reviewed report. |
+| `summary_path` | Structured input used by the deterministic deck renderer. |
+| `deck_path` | Standardized Slidey code-review status deck. |
 
 ## Intents
 

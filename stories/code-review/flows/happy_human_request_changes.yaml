@@ -49,6 +49,17 @@ host_handlers:
     data:
       ok: true
       stdout: "Login redirect missing CSRF guard; please add."
+  host.run:
+    by_call:
+      code_review_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/code-review/PR-39/report.md"
+            summary_path: ".artifacts/code-review/PR-39/summary.json"
+            deck_path: ".artifacts/code-review/PR-39/deck.slidey.json"
+            summary: "PR-39 reviewed: request_changes."
 
 turns:
   - intent: { name: start, slots: {} }
@@ -74,6 +85,7 @@ turns:
     expect_world:
       status:   "reviewed"
       decision: "request_changes"
+      deck_path: ".artifacts/code-review/PR-39/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true

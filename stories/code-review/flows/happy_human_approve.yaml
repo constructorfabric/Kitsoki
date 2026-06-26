@@ -51,6 +51,17 @@ host_handlers:
     data:
       ok: true
       stdout: "LGTM. One nit on the decimal precision."
+  host.run:
+    by_call:
+      code_review_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/code-review/PR-38/report.md"
+            summary_path: ".artifacts/code-review/PR-38/summary.json"
+            deck_path: ".artifacts/code-review/PR-38/deck.slidey.json"
+            summary: "PR-38 reviewed: approve."
 
 turns:
   # idle → list_pending. on_enter polls iface.vcs.pr_status.
@@ -86,6 +97,7 @@ turns:
     expect_world:
       status:   "reviewed"
       decision: "approve"
+      deck_path: ".artifacts/code-review/PR-38/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true

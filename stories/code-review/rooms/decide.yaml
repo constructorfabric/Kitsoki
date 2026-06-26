@@ -126,7 +126,7 @@ states:
             - label:  "look"
               hint:   "re-render the scene"
               intent: look
-    relevant_world: [judge_mode, pr_id, pr_title, decision, decision_artifact, llm_verdict]
+    relevant_world: [judge_mode, pr_id, pr_title, decision, decision_artifact, llm_verdict, report_path, summary_path, deck_path]
     on_enter:
       - invoke: iface.transport.post
         with:
@@ -171,6 +171,35 @@ states:
                 body:     "Approved."
                 approve:  true
                 request_changes: false
+            - invoke: host.run
+              id: code_review_report
+              with:
+                cmd: python3
+                args:
+                  - "stories/code-review/scripts/code_review_report.py"
+                  - "--pr-id"
+                  - "{{ world.pr_id }}"
+                  - "--pr-title"
+                  - "{{ world.pr_title }}"
+                  - "--pr-url"
+                  - "{{ world.pr_url }}"
+                  - "--decision"
+                  - "approve"
+                  - "--review-title"
+                  - "{{ world.review_summary_artifact.summary_title }}"
+                  - "--review-summary"
+                  - "{{ world.review_summary_artifact.summary_markdown }}"
+                  - "--decision-title"
+                  - "{{ world.decision_artifact.summary_title }}"
+                  - "--decision-summary"
+                  - "{{ world.decision_artifact.summary_markdown }}"
+                  - "--draft-comment"
+                  - "{{ world.draft_comment }}"
+              bind:
+                report_path:  "stdout_json.report_path"
+                summary_path: "stdout_json.summary_path"
+                deck_path:    "stdout_json.deck_path"
+              on_error: decide_awaiting_reply
             - set:
                 status:            "reviewed"
                 decision:          "approve"
@@ -187,6 +216,35 @@ states:
                 body:            "Changes requested."
                 approve:         false
                 request_changes: true
+            - invoke: host.run
+              id: code_review_report
+              with:
+                cmd: python3
+                args:
+                  - "stories/code-review/scripts/code_review_report.py"
+                  - "--pr-id"
+                  - "{{ world.pr_id }}"
+                  - "--pr-title"
+                  - "{{ world.pr_title }}"
+                  - "--pr-url"
+                  - "{{ world.pr_url }}"
+                  - "--decision"
+                  - "request_changes"
+                  - "--review-title"
+                  - "{{ world.review_summary_artifact.summary_title }}"
+                  - "--review-summary"
+                  - "{{ world.review_summary_artifact.summary_markdown }}"
+                  - "--decision-title"
+                  - "{{ world.decision_artifact.summary_title }}"
+                  - "--decision-summary"
+                  - "{{ world.decision_artifact.summary_markdown }}"
+                  - "--draft-comment"
+                  - "{{ world.draft_comment }}"
+              bind:
+                report_path:  "stdout_json.report_path"
+                summary_path: "stdout_json.summary_path"
+                deck_path:    "stdout_json.deck_path"
+              on_error: decide_awaiting_reply
             - set:
                 status:            "reviewed"
                 decision:          "request_changes"
@@ -205,6 +263,35 @@ states:
                 body:            "Changes requested (via LLM judge auto-fire)."
                 approve:         false
                 request_changes: true
+            - invoke: host.run
+              id: code_review_report
+              with:
+                cmd: python3
+                args:
+                  - "stories/code-review/scripts/code_review_report.py"
+                  - "--pr-id"
+                  - "{{ world.pr_id }}"
+                  - "--pr-title"
+                  - "{{ world.pr_title }}"
+                  - "--pr-url"
+                  - "{{ world.pr_url }}"
+                  - "--decision"
+                  - "request_changes"
+                  - "--review-title"
+                  - "{{ world.review_summary_artifact.summary_title }}"
+                  - "--review-summary"
+                  - "{{ world.review_summary_artifact.summary_markdown }}"
+                  - "--decision-title"
+                  - "{{ world.decision_artifact.summary_title }}"
+                  - "--decision-summary"
+                  - "{{ world.decision_artifact.summary_markdown }}"
+                  - "--draft-comment"
+                  - "{{ world.draft_comment }}"
+              bind:
+                report_path:  "stdout_json.report_path"
+                summary_path: "stdout_json.summary_path"
+                deck_path:    "stdout_json.deck_path"
+              on_error: decide_awaiting_reply
             - set:
                 status:            "reviewed"
                 decision:          "request_changes"
@@ -218,6 +305,35 @@ states:
                 body:            "Approved (via LLM judge auto-fire)."
                 approve:         true
                 request_changes: false
+            - invoke: host.run
+              id: code_review_report
+              with:
+                cmd: python3
+                args:
+                  - "stories/code-review/scripts/code_review_report.py"
+                  - "--pr-id"
+                  - "{{ world.pr_id }}"
+                  - "--pr-title"
+                  - "{{ world.pr_title }}"
+                  - "--pr-url"
+                  - "{{ world.pr_url }}"
+                  - "--decision"
+                  - "approve"
+                  - "--review-title"
+                  - "{{ world.review_summary_artifact.summary_title }}"
+                  - "--review-summary"
+                  - "{{ world.review_summary_artifact.summary_markdown }}"
+                  - "--decision-title"
+                  - "{{ world.decision_artifact.summary_title }}"
+                  - "--decision-summary"
+                  - "{{ world.decision_artifact.summary_markdown }}"
+                  - "--draft-comment"
+                  - "{{ world.draft_comment }}"
+              bind:
+                report_path:  "stdout_json.report_path"
+                summary_path: "stdout_json.summary_path"
+                deck_path:    "stdout_json.deck_path"
+              on_error: decide_awaiting_reply
             - set:
                 status:            "reviewed"
                 decision:          "approve"

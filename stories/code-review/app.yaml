@@ -36,6 +36,7 @@ hosts:
   - host.inbox.add
   - host.agent.ask
   - host.agent.decide
+  - host.run
 
 # Four host_interfaces — code-review only needs ticket (optional, for
 # author lookups), vcs (diff, pr_status, pr_comment), and transport
@@ -137,6 +138,9 @@ world:
 
   # ── Story-level "done" sink ──────────────────────────────────────
   status:          { type: string, default: "open" }   # open | reviewed | dismissed | abandoned
+  report_path:     { type: string, default: "" }
+  summary_path:    { type: string, default: "" }
+  deck_path:       { type: string, default: "" }
 
 # Intent vocabulary.
 intents:
