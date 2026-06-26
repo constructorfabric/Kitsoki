@@ -59,6 +59,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, mention Mention, labels []str
 	}
 
 	if !won {
+		if job.State == jobs.GHAwaitingGuidance {
+			if route, ok := d.Routes.Classify(mention, labels); ok {
+				return d.dispatchRouted(ctx, mention, job, route)
+			}
+		}
 		// Re-mention: attach. Update the ack carrying the existing run_url.
 		meta := Meta{JobID: job.JobID, OriginRef: job.OriginRef, Story: job.Story, State: job.State, RunURL: job.RunURL}
 		if d.Comments != nil && job.CommentID != "" {
@@ -114,10 +119,28 @@ func (d *Dispatcher) Dispatch(ctx context.Context, mention Mention, labels []str
 	}
 	job.Story = route.Story
 
+	return d.dispatchRouted(ctx, mention, job, route)
+}
+
+func (d *Dispatcher) dispatchRouted(ctx context.Context, mention Mention, job *jobs.GHJob, route Route) (*jobs.GHJob, error) {
+	if job.Story != route.Story {
+		if err := d.Jobs.SetStory(ctx, job.JobID, route.Story); err != nil {
+			return nil, err
+		}
+		job.Story = route.Story
+	}
 	if d.Comments != nil {
 		meta := Meta{JobID: job.JobID, OriginRef: job.OriginRef, Story: route.Story, State: jobs.GHClaimed}
-		commentID, err := d.Comments.Post(ctx, mention.Item.Number,
-			fmt.Sprintf("On it — dispatching `%s` for `%s`.", route.Story, job.OriginRef), meta)
+		prose := fmt.Sprintf("On it — dispatching `%s` for `%s`.", route.Story, job.OriginRef)
+		var (
+			commentID string
+			err       error
+		)
+		if strings.TrimSpace(job.CommentID) != "" {
+			commentID, err = d.Comments.Update(ctx, mention.Item.Number, job.CommentID, prose, meta)
+		} else {
+			commentID, err = d.Comments.Post(ctx, mention.Item.Number, prose, meta)
+		}
 		if err != nil {
 			return nil, err
 		}

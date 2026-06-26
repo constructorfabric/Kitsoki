@@ -556,14 +556,14 @@ func webhookMention(body []byte, fallbackRepo, trigger string) (ghagent.Mention,
 		return ghagent.Mention{}, nil, false, fmt.Errorf("parse webhook payload: %w", err)
 	}
 	switch payload.Action {
-	case "deleted", "unassigned", "labeled", "unlabeled", "closed":
+	case "deleted", "unassigned", "unlabeled", "closed":
 		return ghagent.Mention{}, nil, false, nil
 	}
 	if strings.TrimSpace(trigger) == "" {
 		trigger = ghagent.DefaultMentionTrigger
 	}
-	mentionBody := firstNonEmpty(payload.Comment.Body, payload.Review.Body, payload.Issue.Title, payload.PullRequest.Title, payload.Issue.Body, payload.PullRequest.Body)
-	if !strings.Contains(strings.ToLower(mentionBody), strings.ToLower(trigger)) {
+	mentionBody := firstContainingTrigger(trigger, payload.Comment.Body, payload.Review.Body, payload.Issue.Title, payload.PullRequest.Title, payload.Issue.Body, payload.PullRequest.Body)
+	if mentionBody == "" {
 		return ghagent.Mention{}, nil, false, nil
 	}
 	repo := strings.TrimSpace(payload.Repository.FullName)
@@ -617,6 +617,19 @@ func webhookMention(body []byte, fallbackRepo, trigger string) (ghagent.Mention,
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func firstContainingTrigger(trigger string, values ...string) string {
+	needle := strings.ToLower(strings.TrimSpace(trigger))
+	if needle == "" {
+		return ""
+	}
+	for _, v := range values {
+		if strings.Contains(strings.ToLower(v), needle) {
 			return v
 		}
 	}

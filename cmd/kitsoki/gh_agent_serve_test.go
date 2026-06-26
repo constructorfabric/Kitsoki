@@ -110,6 +110,34 @@ func TestWebhookMentionPullRequestFromIssueComment(t *testing.T) {
 	}
 }
 
+func TestWebhookMentionIssueLabeledCanCarryRoutingSignal(t *testing.T) {
+	body := []byte(`{
+	  "action":"labeled",
+	  "repository":{"full_name":"o/r"},
+	  "issue":{
+	    "number":42,
+	    "title":"button crashes",
+	    "html_url":"https://github.com/o/r/issues/42",
+	    "body":"@kitsoki please handle this",
+	    "labels":[{"name":"bug"}]
+	  },
+	  "label":{"name":"bug"}
+	}`)
+	mention, labels, ok, err := webhookMention(body, "", "@kitsoki")
+	if err != nil {
+		t.Fatalf("webhookMention: %v", err)
+	}
+	if !ok {
+		t.Fatal("labeled issue mention was ignored")
+	}
+	if mention.Item.Kind != "issue" || mention.Item.Number != "42" {
+		t.Fatalf("mention item=%+v", mention.Item)
+	}
+	if len(labels) != 1 || labels[0] != "bug" {
+		t.Fatalf("labels=%v", labels)
+	}
+}
+
 func TestWebhookMentionIgnoresNonMention(t *testing.T) {
 	body := []byte(`{"repository":{"full_name":"o/r"},"issue":{"number":1},"comment":{"body":"plain comment"}}`)
 	_, _, ok, err := webhookMention(body, "", "@kitsoki")

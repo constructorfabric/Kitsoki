@@ -487,6 +487,91 @@ func TestDispatch_UnlabelledMentionPostsGuidance(t *testing.T) {
 	}
 }
 
+func TestDispatch_AwaitingGuidanceCanResumeWithRoutingSignal(t *testing.T) {
+	ctx := context.Background()
+	mention := Mention{
+		Item: host.GitHubInboxItem{
+			Kind:   "issue",
+			Number: "101",
+			Title:  "@kitsoki please handle this",
+		},
+		Repo:      "o/r",
+		OriginRef: "github:o/r/issue/101",
+		Trigger:   DefaultMentionTrigger,
+	}
+
+	store := newGHJobStore(t)
+	rec := &recordingComments{commentID: "https://github.com/o/r/issues/101#issuecomment-4"}
+	spawnCalls := 0
+	d := &Dispatcher{
+		Jobs:          store,
+		Routes:        DefaultLabelStoryMap(),
+		Comments:      &CommentStore{Exec: rec.handler, Repo: "o/r"},
+		WorkerID:      "worker-guidance-resume",
+		PublicBaseURL: "https://kitsoki-test.slothattax.me",
+		SpawnFn: func(ctx context.Context, route Route, j *jobs.GHJob) (RunResult, error) {
+			spawnCalls++
+			if route.Story != "stories/bugfix" {
+				t.Fatalf("resumed route Story=%q, want stories/bugfix", route.Story)
+			}
+			return RunResult{RunURL: "kitsoki://run/" + j.JobID, FinalState: "passed", Turns: 1}, nil
+		},
+	}
+
+	first, err := d.Dispatch(ctx, mention, nil)
+	if err != nil {
+		t.Fatalf("initial Dispatch: %v", err)
+	}
+	if first.State != jobs.GHAwaitingGuidance {
+		t.Fatalf("initial State=%q, want %q", first.State, jobs.GHAwaitingGuidance)
+	}
+	if spawnCalls != 0 {
+		t.Fatalf("initial guidance path spawned %d time(s)", spawnCalls)
+	}
+
+	resumed, err := d.Dispatch(ctx, mention, []string{"bug"})
+	if err != nil {
+		t.Fatalf("resume Dispatch: %v", err)
+	}
+	if resumed.JobID != first.JobID {
+		t.Fatalf("resume minted new job %q, want %q", resumed.JobID, first.JobID)
+	}
+	if spawnCalls != 1 {
+		t.Fatalf("resume spawned %d time(s), want 1", spawnCalls)
+	}
+	if resumed.State != jobs.GHDone {
+		t.Fatalf("resumed State=%q, want %q", resumed.State, jobs.GHDone)
+	}
+	if resumed.Story != "stories/bugfix" {
+		t.Fatalf("resumed Story=%q, want stories/bugfix", resumed.Story)
+	}
+	if resumed.CommentID != first.CommentID {
+		t.Fatalf("comment drifted to %q, want %q", resumed.CommentID, first.CommentID)
+	}
+
+	rec.mu.Lock()
+	ops := append([]string(nil), rec.ops...)
+	bodies := append([]string(nil), rec.bodies...)
+	rec.mu.Unlock()
+	if strings.Join(ops, ",") != "get,comment,comment_edit,comment_edit" {
+		t.Fatalf("resume should edit the guidance comment in place, ops=%v", ops)
+	}
+	last := bodies[len(bodies)-1]
+	meta := host.GHParseMetadata(last)
+	if meta == nil {
+		t.Fatalf("final resumed comment missing metadata:\n%s", last)
+	}
+	if meta["job_id"] != first.JobID {
+		t.Fatalf("meta job_id=%v, want %s", meta["job_id"], first.JobID)
+	}
+	if meta["story"] != "stories/bugfix" {
+		t.Fatalf("meta story=%v", meta["story"])
+	}
+	if meta["state"] != jobs.GHDone {
+		t.Fatalf("meta state=%v, want %s", meta["state"], jobs.GHDone)
+	}
+}
+
 func TestDispatch_FeatureDevStoryBeat(t *testing.T) {
 	ctx := context.Background()
 	mention := Mention{
