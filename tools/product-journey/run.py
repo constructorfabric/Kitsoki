@@ -21,9 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "tools" / "product-journey" / "catalog.json"
 LOG = ROOT / ".context" / "product-journey-runlog.md"
 REFERENCE_DECK = ROOT / "docs" / "decks" / "product-journey-eval.slidey.json"
-DEFAULT_REPORT = ROOT / ".artifacts" / "product-journey-eval" / "report.json"
-DEFAULT_DECK = ROOT / ".artifacts" / "product-journey-eval" / "report.slidey.json"
-DEFAULT_MARKDOWN = ROOT / ".artifacts" / "product-journey-eval" / "report.md"
+ARTIFACT_ROOT = ROOT / ".artifacts" / "product-journey-eval"
 
 
 def load_catalog(path: Path):
@@ -301,6 +299,18 @@ def build_report_payload(catalog: dict, generated_at: str, run_checks: bool) -> 
     }
 
 
+def report_paths(generated_at: str, report_arg: str, deck_arg: str, markdown_arg: str) -> tuple[Path, Path, Path]:
+    run_id = generated_at.lower().replace(":", "-")
+    for ch in ("/", "\\", " "):
+        run_id = run_id.replace(ch, "-")
+    base = ARTIFACT_ROOT / run_id
+    return (
+        Path(report_arg) if report_arg else base / "report.json",
+        Path(deck_arg) if deck_arg else base / "deck.slidey.json",
+        Path(markdown_arg) if markdown_arg else base / "report.md",
+    )
+
+
 def write_report(catalog: dict, generated_at: str, report_path: Path, deck_path: Path, markdown_path: Path, run_checks: bool) -> None:
     payload = build_report_payload(catalog, generated_at, run_checks)
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -335,9 +345,9 @@ def main() -> None:
     )
     parser.add_argument("--run-log", action="store_true", help="Force a timestamped run log entry")
     parser.add_argument("--generated-at", default="", help="required for --mode report; deterministic timestamp")
-    parser.add_argument("--report", default=str(DEFAULT_REPORT), help="structured report JSON for --mode report")
-    parser.add_argument("--deck", default=str(DEFAULT_DECK), help="generated Slidey spec for --mode report")
-    parser.add_argument("--markdown", default=str(DEFAULT_MARKDOWN), help="generated Markdown index for --mode report")
+    parser.add_argument("--report", default="", help="structured report JSON for --mode report; default is .artifacts/product-journey-eval/<generated-at>/report.json")
+    parser.add_argument("--deck", default="", help="generated Slidey spec for --mode report; default is .artifacts/product-journey-eval/<generated-at>/deck.slidey.json")
+    parser.add_argument("--markdown", default="", help="generated Markdown index for --mode report; default is .artifacts/product-journey-eval/<generated-at>/report.md")
     parser.add_argument("--run-checks", action="store_true", help="refresh target checks while building report")
     args = parser.parse_args()
 
@@ -351,12 +361,18 @@ def main() -> None:
     if args.mode == "report":
         if not args.generated_at:
             raise SystemExit("--generated-at is required for deterministic report generation")
+        report_path, deck_path, markdown_path = report_paths(
+            args.generated_at,
+            args.report,
+            args.deck,
+            args.markdown,
+        )
         write_report(
             catalog,
             args.generated_at,
-            Path(args.report),
-            Path(args.deck),
-            Path(args.markdown),
+            report_path,
+            deck_path,
+            markdown_path,
             args.run_checks,
         )
         return

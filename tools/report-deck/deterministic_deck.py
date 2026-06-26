@@ -48,6 +48,40 @@ def write_markdown(path: str | Path, title: str, summary: str, refs: list[dict[s
     dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def slug(value: str) -> str:
+    out = []
+    for ch in (value or "").lower():
+        if ch.isalnum():
+            out.append(ch)
+        elif ch in {"-", "_", ".", ":", " "}:
+            out.append("-")
+    text = "".join(out).strip("-")
+    while "--" in text:
+        text = text.replace("--", "-")
+    return text or "run"
+
+
+def slug_path(value: str) -> Path:
+    parts = [slug(part) for part in (value or "").replace("\\", "/").split("/") if part.strip()]
+    if not parts:
+        return Path("job")
+    return Path(*parts)
+
+
+def artifact_paths(args: argparse.Namespace) -> tuple[str, str]:
+    if args.out:
+        out = args.out
+        markdown = args.markdown or ""
+        return out, markdown
+    if not args.job:
+        raise SystemExit("deterministic_deck.py: --out or --job is required")
+    run_id = slug(args.run_id or "latest")
+    base = Path(args.artifact_root) / slug_path(args.job) / run_id
+    out = str(base / "deck.slidey.json")
+    markdown = args.markdown if args.markdown is not None else str(base / "report.md")
+    return out, markdown
+
+
 def status(value: str) -> str:
     value = (value or "").lower()
     if value in STATUSES:
@@ -534,9 +568,67 @@ def product_journey(data: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str
     return title_deck(title, data.get("summary", "Deterministic product-journey report"), scenes), refs
 
 
+def dynamic_workflow(data: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    workflow_id = data.get("workflow_id", "dynamic-workflow")
+    validation = data.get("validation") or {}
+    export_status = data.get("status") or ("validated" if validation.get("ok") else "pending")
+    artifacts = data.get("artifacts") or []
+    lifecycle_rows = [
+        {"cells": ["Workflow", workflow_id]},
+        {"cells": ["Goal", data.get("goal", "-")]},
+        {"cells": ["Slug", data.get("slug", "-")]},
+        {"cells": ["Validation", "ok" if validation.get("ok") else "not-ok"]},
+        {"cells": ["Export status", export_status]},
+        {"cells": ["Launch command", data.get("launch_command", "-")]},
+    ]
+    artifact_rows = [{"cells": [Path(str(path)).name, str(path)]} for path in artifacts]
+    if data.get("app_path"):
+        artifact_rows.append({"cells": ["app", data["app_path"]]})
+    if data.get("manifest_path"):
+        artifact_rows.append({"cells": ["manifest", data["manifest_path"]]})
+    if data.get("trace_path"):
+        artifact_rows.append({"cells": ["trace", data["trace_path"]]})
+    if data.get("events_path"):
+        artifact_rows.append({"cells": ["events", data["events_path"]]})
+    scenes = [
+        objectives_scene("Workflow status", [
+            {"label": "Draft generated", "status": "done", "detail": data.get("draft_dir") or data.get("export_path") or workflow_id},
+            {"label": "Validation", "status": "done" if validation.get("ok") else "failed", "detail": "; ".join(validation.get("errors", [])) or "Validation passed."},
+            {"label": "Launch/export", "status": status(export_status), "detail": data.get("url") or data.get("export_path") or data.get("launch_command", "")},
+        ]),
+        {
+            "type": "table",
+            "variant": "data",
+            "title": "Lifecycle",
+            "columns": ["Field", "Value"],
+            "rows": lifecycle_rows,
+            "hold": 2800,
+        },
+        {
+            "type": "table",
+            "variant": "data",
+            "title": "Generated artifacts",
+            "columns": ["Artifact", "Path"],
+            "rows": artifact_rows or [{"cells": ["receipt", str(data.get("_source", ""))]}],
+            "hold": 2800,
+        },
+    ]
+    warnings = data.get("warnings") or validation.get("warnings") or []
+    todos = data.get("todos") or []
+    if warnings or todos:
+        scenes.append(objectives_scene("Follow-ups", [
+            *[{"label": "Warning", "status": "pending", "detail": w} for w in warnings],
+            *[{"label": "Todo", "status": "next", "detail": t} for t in todos],
+        ]))
+    refs = [{"label": "Receipt", "path": str(data.get("_source", "")), "status": "done"}]
+    refs.extend({"label": Path(str(path)).name, "path": str(path), "status": "done"} for path in artifacts)
+    return title_deck(f"Dynamic Workflow: {workflow_id}", f"{export_status}; validation={'ok' if validation.get('ok') else 'not-ok'}", scenes), refs
+
+
 BUILDERS = {
     "bakeoff-summary": bakeoff_summary,
     "bug-report": bug_report,
+    "dynamic-workflow": dynamic_workflow,
     "external-summary": external_summary,
     "fanout": fanout,
     "feature-demo": feature_demo,
@@ -551,8 +643,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--kind", choices=sorted(BUILDERS), required=True)
     ap.add_argument("--input", help="structured JSON input")
     ap.add_argument("--input-json", help="structured JSON input as a string; overrides --input")
-    ap.add_argument("--out", required=True, help="Slidey JSON spec to write")
-    ap.add_argument("--markdown", help="optional Markdown review index")
+    ap.add_argument("--out", help="Slidey JSON spec to write")
+    ap.add_argument("--job", help="derive output under .artifacts/<job>/<run-id>/ when --out is omitted")
+    ap.add_argument("--run-id", help="run id/suffix for derived artifact paths")
+    ap.add_argument("--artifact-root", default=".artifacts", help="artifact root for derived output paths")
+    ap.add_argument("--markdown", help="optional Markdown review index; derived with --job when omitted")
     ap.add_argument("--summary-out", help="optional machine-readable build summary")
     args = ap.parse_args(argv)
 
@@ -564,18 +659,19 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("deterministic_deck.py: --input or --input-json is required")
     if isinstance(data, dict):
         data.setdefault("_source", args.input)
+    out_path, markdown_path = artifact_paths(args)
     deck, refs = BUILDERS[args.kind](data)
-    write_json(args.out, deck)
+    write_json(out_path, deck)
     summary = {
         "kind": args.kind,
-        "spec_path": args.out,
+        "spec_path": out_path,
         "summary": deck["scenes"][0].get("subtitle", ""),
         "title": deck["meta"]["title"],
         "artifacts": refs,
     }
-    if args.markdown:
-        write_markdown(args.markdown, summary["title"], summary["summary"], refs)
-        summary["markdown_path"] = args.markdown
+    if markdown_path:
+        write_markdown(markdown_path, summary["title"], summary["summary"], refs)
+        summary["markdown_path"] = markdown_path
     if args.summary_out:
         write_json(args.summary_out, summary)
     print(json.dumps(summary, sort_keys=True))

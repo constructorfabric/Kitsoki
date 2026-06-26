@@ -135,10 +135,11 @@ summary. This is free and does not call an LLM:
 
 ```sh
 python3 bench.py summarize --project query-string \
-  --deck results/deck.slidey.json \
-  --markdown results/report.md
+  --deck ../../../.artifacts/query-string-bakeoff/2026-06-26t00-00-00z/deck.slidey.json \
+  --markdown ../../../.artifacts/query-string-bakeoff/2026-06-26t00-00-00z/report.md
 ```
 
 The deck builder reads `results/summary.json` and uses the shared
-`tools/report-deck/deterministic_deck.py` structure. Commit durable `.slidey.json`
-specs; keep generated HTML/MP4 review artifacts under `.artifacts/`.
+`tools/report-deck/deterministic_deck.py` structure. Generated deck specs,
+HTML/MP4 renders, and review artifacts should stay under `.artifacts/<job>/<run>/`
+so reruns do not clobber older reports.

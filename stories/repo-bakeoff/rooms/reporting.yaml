@@ -34,10 +34,12 @@ states:
             - "external-summary"
             - "--input"
             - "results/summary.json"
-            - "--out"
-            - "results/deck.slidey.json"
-            - "--markdown"
-            - "results/report.md"
+            - "--job"
+            - "repo-bakeoff-{{ world.project }}"
+            - "--run-id"
+            - "{{ world.generated_at ?? 'latest' }}"
+            - "--artifact-root"
+            - "../../../.artifacts"
           cwd: "{{ world.harness_dir }}"
         bind:
           report_markdown: stdout_json.markdown_path

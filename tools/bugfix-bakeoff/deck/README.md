@@ -15,8 +15,8 @@ after the live grid runs) before baking. For the standardized data deck, run:
 ```bash
 python3 tools/bugfix-bakeoff/aggregate.py \
   --generated-at 2026-06-24T00:00:00Z \
-  --deck tools/bugfix-bakeoff/results/deck.slidey.json \
-  --markdown tools/bugfix-bakeoff/results/report.md
+  --deck .artifacts/bugfix-bakeoff/2026-06-24t00-00-00z/deck.slidey.json \
+  --markdown .artifacts/bugfix-bakeoff/2026-06-24t00-00-00z/report.md
 ```
 
 ## How it bakes

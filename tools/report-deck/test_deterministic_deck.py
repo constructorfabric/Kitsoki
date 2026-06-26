@@ -25,6 +25,21 @@ def run_tool(kind, payload):
         return json.loads(proc.stdout), json.loads(out.read_text(encoding="utf-8"))
 
 
+def run_tool_with_args(payload, *args):
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        src = tmp_path / "input.json"
+        src.write_text(json.dumps(payload), encoding="utf-8")
+        proc = subprocess.run(
+            ["python3", str(TOOL), "--kind", "workflow", "--input", str(src), *args],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return json.loads(proc.stdout)
+
+
 class DeterministicDeckTest(unittest.TestCase):
     def test_bakeoff_deck_uses_summary_numbers(self):
         summary, deck = run_tool("bakeoff-summary", {
@@ -77,6 +92,36 @@ class DeterministicDeckTest(unittest.TestCase):
         videos = [scene for scene in deck["scenes"] if scene["type"] == "video"]
         self.assertEqual(videos[0]["rrweb"], "clips/replay.rrweb.json")
         self.assertEqual(videos[0]["chapters"], "auto")
+
+    def test_job_output_derives_artifact_run_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = run_tool_with_args(
+                {
+                    "title": "Derived output",
+                    "objectives": [{"label": "Deck", "status": "done", "detail": "derived path"}],
+                    "artifacts": [],
+                },
+                "--job", "fan out job",
+                "--run-id", "2026-06-26T00:00:00Z",
+                "--artifact-root", tmp,
+            )
+            self.assertTrue(summary["spec_path"].endswith("fan-out-job/2026-06-26t00-00-00z/deck.slidey.json"))
+            self.assertTrue(Path(summary["spec_path"]).exists())
+            self.assertTrue(Path(summary["markdown_path"]).exists())
+
+    def test_job_output_allows_nested_artifact_folders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = run_tool_with_args(
+                {
+                    "title": "Dynamic workflow",
+                    "objectives": [{"label": "Receipt", "status": "done", "detail": "generated"}],
+                    "artifacts": [],
+                },
+                "--job", "dynamic-workflows/dwf_123",
+                "--run-id", "dwf_123",
+                "--artifact-root", tmp,
+            )
+            self.assertTrue(summary["spec_path"].endswith("dynamic-workflows/dwf-123/dwf-123/deck.slidey.json"))
 
     def test_feature_demo_deck_uses_personas_and_rrweb(self):
         _, deck = run_tool("feature-demo", {
@@ -133,6 +178,23 @@ class DeterministicDeckTest(unittest.TestCase):
         self.assertEqual(refs["Reference deck"], "docs/decks/product-journey-eval.slidey.json")
         target_table = [scene for scene in deck["scenes"] if scene.get("title") == "Target lanes"][0]
         self.assertEqual(target_table["rows"][0]["cells"][:3], ["gears-rust", "rust", "validated"])
+
+    def test_dynamic_workflow_deck_uses_receipt_artifacts(self):
+        _, deck = run_tool("dynamic-workflow", {
+            "workflow_id": "dwf_20260625T170429Z_tui-dwf-test",
+            "goal": "implement workflow commands from the TUI",
+            "slug": "tui-dwf-test",
+            "validation": {"ok": True, "warnings": ["review generated flow"]},
+            "launch_command": "kitsoki run .artifacts/dynamic-workflows/dwf/app/app.yaml",
+            "manifest_path": ".artifacts/dynamic-workflows/dwf/manifest.yaml",
+            "events_path": ".artifacts/dynamic-workflows/dwf/events.jsonl",
+            "artifacts": [".artifacts/dynamic-workflows/dwf/app/app.yaml"],
+        })
+        self.assertEqual(deck["meta"]["title"], "Dynamic Workflow: dwf_20260625T170429Z_tui-dwf-test")
+        lifecycle = [scene for scene in deck["scenes"] if scene.get("title") == "Lifecycle"][0]
+        self.assertEqual(lifecycle["rows"][3]["cells"], ["Validation", "ok"])
+        artifacts = [scene for scene in deck["scenes"] if scene.get("title") == "Generated artifacts"][0]
+        self.assertEqual(artifacts["rows"][0]["cells"][0], "app.yaml")
 
 
 if __name__ == "__main__":

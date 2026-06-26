@@ -47,9 +47,9 @@ python3 tools/product-journey/run.py \
 
 By default this writes:
 
-- `.artifacts/product-journey-eval/report.json`
-- `.artifacts/product-journey-eval/report.slidey.json`
-- `.artifacts/product-journey-eval/report.md`
+- `.artifacts/product-journey-eval/<generated-at>/report.json`
+- `.artifacts/product-journey-eval/<generated-at>/deck.slidey.json`
+- `.artifacts/product-journey-eval/<generated-at>/report.md`
 
 Use `--run-checks` only when you want to refresh local oracle evidence while
 building the report. The default report uses the catalog's current validated
@@ -79,5 +79,5 @@ onboarding, and bugfix surfaces.
 - `docs/decks/product-journey-eval.slidey.json` stores the hand-refined,
   proof-ready narrative reference. Report generation links to it and does not
   overwrite it.
-- `.artifacts/product-journey-eval/report.slidey.json` is the generated
-  companion deck for the latest structured report.
+- `.artifacts/product-journey-eval/<generated-at>/deck.slidey.json` is the
+  generated companion deck for a specific structured report run.

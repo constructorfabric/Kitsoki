@@ -11,8 +11,8 @@ Use the standardized builder:
 python3 tools/report-deck/deterministic_deck.py \
   --kind bakeoff-summary \
   --input tools/bugfix-bakeoff/results/summary.json \
-  --out tools/bugfix-bakeoff/results/deck.slidey.json \
-  --markdown tools/bugfix-bakeoff/results/report.md
+  --job bugfix-bakeoff \
+  --run-id 2026-06-26T00:00:00Z
 ```
 
 Supported deck kinds:
@@ -30,10 +30,15 @@ Supported deck kinds:
   rrweb/video playback.
 - `fanout`: bulk/fan-out job decks with succeeded, failed, retried, pending, and
   skipped item status tables.
+- `dynamic-workflow`: generated dynamic-workflow receipt/export decks from
+  `.artifacts/dynamic-workflows/<workflow-id>/receipt.json` or export reports.
 
 For hybrid demos, keep the same deterministic spine and reference existing media
 artifacts. The `workflow` kind accepts media entries with `rrweb` plus
 `chapters:"auto"`, matching the pattern in `docs/decks/dev-story-hybrid.slidey.json`.
 
-Commit `.slidey.json` specs that are intended as durable docs. Put generated HTML,
-MP4s, temporary deck drafts, and QA output under `.artifacts/`.
+`docs/decks/` is for curated, hand-refined reference decks such as the hybrid
+demo and product-journey reference. Generated job decks should go under
+`.artifacts/<job>/<run-id>/` (or another explicit `.artifacts` job folder) so a
+new run never clobbers an older report. Put generated HTML, MP4s, temporary deck
+drafts, and QA output under `.artifacts/` too.

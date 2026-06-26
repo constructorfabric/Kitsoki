@@ -291,6 +291,18 @@ replay no-ops; they index the receipt and promotion artifacts.
 | `dynamic.workflow.url_assigned` | A browser URL is available for the run. |
 | `dynamic.workflow.exported` | The run is promoted/exported into a reusable story package. |
 
+The receipt/export JSON is also the deterministic deck input for a workflow
+status report. Generate the companion deck under the workflow's artifact folder,
+not `docs/decks/`, so reruns do not overwrite earlier reports:
+
+```sh
+python3 tools/report-deck/deterministic_deck.py \
+  --kind dynamic-workflow \
+  --input .artifacts/dynamic-workflows/<workflow-id>/receipt.json \
+  --job dynamic-workflows/<workflow-id> \
+  --run-id <workflow-id>
+```
+
 ### Agent event kinds
 
 Every agent call produces exactly two events: `agent.call.start` and
