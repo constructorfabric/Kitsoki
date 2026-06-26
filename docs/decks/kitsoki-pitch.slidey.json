@@ -138,7 +138,7 @@
       "panels": [
         {
           "label": "",
-          "viewBox": "0 0 940 840",
+          "viewBox": "0 0 940 920",
           "nodes": [
             {
               "id": "boundary",
@@ -163,7 +163,7 @@
                 "move through the loop"
               ],
               "x": 100,
-              "y": 205,
+              "y": 240,
               "w": 600,
               "h": 120
             },
@@ -176,7 +176,7 @@
                 "coupled over time"
               ],
               "x": 100,
-              "y": 380,
+              "y": 450,
               "w": 600,
               "h": 120
             },
@@ -189,7 +189,7 @@
                 "makes the loop executable"
               ],
               "x": 100,
-              "y": 555,
+              "y": 660,
               "w": 600,
               "h": 120,
               "style": "secondary"
