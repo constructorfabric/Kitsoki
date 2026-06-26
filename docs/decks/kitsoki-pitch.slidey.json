@@ -3,7 +3,28 @@
   "meta": {
     "mode": "pitch",
     "title": "Kitsoki",
-    "theme": "rose-pine-moon",
+    "theme": {
+      "name": "rose-pine-moon",
+      "background": "#1c140d",
+      "fontFamily": "'Inter', 'Avenir Next', 'Segoe UI', sans-serif",
+      "colors": {
+        "base": "#1c140d",
+        "surface": "#2a1a10",
+        "overlay": "#3d2419",
+        "muted": "#7b5f4d",
+        "subtle": "#c1a188",
+        "text": "#f3ead8",
+        "love": "#e0a23a",
+        "gold": "#f4cf95",
+        "rose": "#a8492b",
+        "pine": "#c97b4a",
+        "foam": "#e8d6b3",
+        "iris": "#3aa3a0",
+        "highlightLow": "#2f1f16",
+        "highlightMuted": "#412518",
+        "highlightHigh": "#7d2e1c"
+      }
+    },
     "ticket": "",
     "phase": "demo",
     "resolution": {
@@ -20,6 +41,27 @@
       "type": "title",
       "title": "Kitsoki",
       "subtitle": "A conversational workflow engine built for reliable delivery"
+    },
+    {
+      "type": "image",
+      "title": "Brand mark",
+      "src": "assets/kitsoki-wordmark.svg",
+      "alt": "Kitsoki wordmark",
+      "fit": "contain",
+      "frameHeight": "320px",
+      "mediaBackground": "transparent",
+      "mediaPadding": "24px",
+      "caption": "The Mesa Sun lockup, built around a simple, recognisable mark and a readable palette."
+    },
+    {
+      "type": "image",
+      "title": "Brand in app context",
+      "src": "assets/kitsoki-brand-appbar.svg",
+      "alt": "Kitsoki app bar context",
+      "fit": "contain",
+      "frameHeight": "360px",
+      "mediaBackground": "#f6efe2",
+      "caption": "A practical application of the mark in product context."
     },
     {
       "type": "narrative",

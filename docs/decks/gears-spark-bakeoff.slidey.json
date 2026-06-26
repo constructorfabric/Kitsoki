@@ -3,7 +3,28 @@
   "meta": {
     "title": "Can a cheap, fast model fix real OPEN bugs in kitsoki?",
     "resolution": { "width": 1920, "height": 1080 },
-    "theme": "rose-pine-moon",
+    "theme": {
+      "name": "rose-pine-moon",
+      "background": "#0f172a",
+      "fontFamily": "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica Neue, Arial, sans-serif",
+      "colors": {
+        "base": "#0f172a",
+        "surface": "#111f33",
+        "overlay": "#17304d",
+        "muted": "#5f6e83",
+        "subtle": "#90a3bd",
+        "text": "#eef2ff",
+        "love": "#7dd3fc",
+        "gold": "#c4d2ff",
+        "rose": "#fda4af",
+        "pine": "#67e8f9",
+        "foam": "#93c5fd",
+        "iris": "#22d3ee",
+        "highlightLow": "#182f47",
+        "highlightMuted": "#2a4867",
+        "highlightHigh": "#4472a0"
+      }
+    },
     "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
   },
   "scenes": [

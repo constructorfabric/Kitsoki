@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" width="280" height="80" role="img" aria-label="Kitsoki wordmark on a light app bar">
+  <rect x="1" y="1" width="278" height="78" rx="12" fill="#f6efe2" stroke="#e3d6bd"/>
+  <g transform="translate(12 11.8) scale(0.30)">
+    <circle cx="100" cy="70" r="30" fill="#e0a23a"/>
+    <g stroke="#e0a23a" stroke-width="5" stroke-linecap="round">
+      <line x1="150" y1="70" x2="138" y2="70"/>
+      <line x1="135" y1="35" x2="127" y2="43"/>
+      <line x1="100" y1="20" x2="100" y2="32"/>
+      <line x1="65" y1="35" x2="73" y2="43"/>
+      <line x1="50" y1="70" x2="62" y2="70"/>
+    </g>
+    <path d="M20 150 L20 120 L60 120 L60 105 L140 105 L140 120 L180 120 L180 150 Z" fill="#a8492b"/>
+    <path d="M20 150 L180 150 L180 168 L20 168 Z" fill="#7d2e1c"/>
+    <rect x="92" y="120" width="16" height="30" fill="#3a2418"/>
+  </g>
+  <text x="84" y="49" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="26" font-weight="700" letter-spacing="0.5"><tspan fill="#241a12">kits</tspan><tspan fill="#a8492b">oki</tspan></text>
+</svg>
