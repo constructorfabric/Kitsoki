@@ -706,6 +706,9 @@ world:
   human_review_reason: { type: string, default: "" }        # concise reason posted when autonomy needs a human
   human_review_issue_comment_id: { type: string, default: "" }
   human_review_pr_comment_ok:    { type: bool,   default: false }
+  human_review_report_path:      { type: string, default: "" }
+  human_review_summary_path:     { type: string, default: "" }
+  human_review_deck_path:        { type: string, default: "" }
 
   # ── Carry-fields for the bf → pr handoff projection ───────────────
   # bf's @exit:done writes done_artifact via `set:` (per the
