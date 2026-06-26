@@ -140,7 +140,8 @@ evidence slots, attach commands, finding command, blocker command, and final
 gates.
 Captured screenshots, videos, traces, and documents are indexed in
 `media-manifest.json`; the generated Slidey deck uses that manifest for
-playback-ready media entries.
+playback-ready media entries and standalone `Playback evidence` scenes for
+embeddable MP4, rrweb, GIF, and screenshot artifacts.
 Evidence paths should be real run-relative files, absolute paths, repo-root
 paths, URLs, or retained MCP references such as `retained://...` and
 `image://...`. The review and validation gates warn when captured local paths do

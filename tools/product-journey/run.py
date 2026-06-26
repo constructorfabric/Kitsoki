@@ -956,6 +956,59 @@ def build_media_manifest(run_json: dict, evidence: dict) -> dict:
     }
 
 
+def playback_scene_for_item(item: dict) -> Optional[dict]:
+    path = item.get("path", "")
+    if not path:
+        return None
+    scenario = item.get("scenario", "")
+    evidence_kind = item.get("evidence_kind", "")
+    title = f"{scenario} / {evidence_kind}".strip(" /")
+    caption = item.get("notes", "") or path
+    suffix = Path(path).suffix.lower()
+    if item.get("media_kind") == "video":
+        scene = {
+            "type": "video",
+            "mode": "embedded",
+            "eyebrow": "Playback evidence",
+            "title": title,
+            "caption": caption,
+            "chapters": "auto",
+            "narration": f"Playback evidence for {title}.",
+            "product_journey_media": item,
+        }
+        if suffix == ".json" or path.endswith(".rrweb.json"):
+            scene["rrweb"] = path
+        else:
+            scene["video"] = path
+        return scene
+    if item.get("media_kind") == "image":
+        return {
+            "type": "narrative",
+            "eyebrow": "Playback evidence",
+            "title": title,
+            "body": caption,
+            "image": path,
+            "product_journey_media": item,
+            "narration": f"Screenshot evidence for {title}.",
+        }
+    return None
+
+
+def playback_deck_scenes(media_manifest: Optional[dict], limit: int = 6) -> list[dict]:
+    if media_manifest is None:
+        return []
+    scenes = []
+    for item in media_manifest.get("items", []):
+        if not item.get("playback"):
+            continue
+        scene = playback_scene_for_item(item)
+        if scene is not None:
+            scenes.append(scene)
+        if len(scenes) >= limit:
+            break
+    return scenes
+
+
 def build_scenario_outcomes(run_json: dict, evidence: dict, findings: dict) -> dict:
     evidence_by_scenario: dict[str, list[dict]] = {}
     for item in evidence.get("items", []):
@@ -2272,6 +2325,22 @@ def validate_run_bundle(run_dir: Path) -> dict:
     ] if deck else []
     if playback_count and not any(scene.get("media") for scene in video_scenes):
         add_validation_issue(issues, "error", "deck-media", "Video playback scene has no media entries despite manifest playback items", f"playback_items={playback_count}")
+    embeddable_playback_count = len([
+        item for item in media_items
+        if item.get("playback") and playback_scene_for_item(item) is not None
+    ])
+    playback_evidence_scenes = [
+        scene for scene in deck.get("scenes", [])
+        if isinstance(scene, dict) and scene.get("eyebrow") == "Playback evidence"
+    ] if deck else []
+    if embeddable_playback_count and len(playback_evidence_scenes) < min(embeddable_playback_count, 6):
+        add_validation_issue(
+            issues,
+            "error",
+            "deck-playback-scenes",
+            "deck.slidey.json is missing standalone playback evidence scenes",
+            f"expected={min(embeddable_playback_count, 6)}, actual={len(playback_evidence_scenes)}",
+        )
 
     errors = sum(1 for issue in issues if issue["severity"] == "error")
     warnings = sum(1 for issue in issues if issue["severity"] == "warn")
@@ -3333,6 +3402,104 @@ def render_deck(
             )
     driver_body = "\n".join(driver_lines) if driver_lines else "Driver plan not generated yet."
     proof_gates_body = "\n".join(proof_gate_lines) if proof_gate_lines else "Quality gates not generated yet."
+    playback_scenes = playback_deck_scenes(media_manifest)
+    scenes = [
+        {
+            "type": "title",
+            "title": "Product Journey QA",
+            "subtitle": f"{run_json['project']['label']} · {run_json['persona']['label']}",
+            "narration": "A deterministic dry run of the product journey QA pipeline.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Run shape",
+            "title": run_json["run_id"],
+            "body": "\n".join(stage_lines),
+            "narration": "The run records every expected stage before live or cassette evidence is attached.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Scenarios",
+            "title": "Repeatable tasks",
+            "body": "\n".join(scenario_lines),
+            "narration": "Each scenario names the story, MCP tools, evidence, and success criteria expected from a real run.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Execution plan",
+            "title": "MCP capture steps",
+            "body": execution_body,
+            "narration": "The execution plan turns each scenario into concrete MCP capture steps and attach commands.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Driver plan",
+            "title": "Harness and visual surfaces",
+            "body": driver_body,
+            "narration": "The driver plan gives the product-journey QA agent machine-readable harness, visual surface, and evidence instructions.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Metrics",
+            "title": "Current evidence",
+            "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nCaptured stages: {metrics.get('captured_stage_count', 0)}\nScenarios: {metrics['scenario_count']}\nEvidence present: {metrics['present_evidence_count']} / {metrics['required_evidence_count']}\nFindings: {metrics.get('findings_count', 0)}\nStrengths: {metrics.get('strength_count', 0)} · Weaknesses: {metrics.get('weakness_count', 0)} · Fixes: {metrics.get('fix_count', 0)} · Blocked: {metrics.get('blocked_count', 0)}\nProduct bugs found: {metrics['product_bugs_found']}",
+            "narration": "This report distinguishes validated evidence from planned stages.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Findings",
+            "title": "Strengths, weaknesses, issues, fixes",
+            "body": findings_body,
+            "narration": "The journey report records what worked, what failed, what was found, and what was fixed.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Scenario outcomes",
+            "title": "Per-scenario status",
+            "body": outcomes_body,
+            "narration": "Each scenario is summarized separately so natural-use gaps remain visible after the bundle-level review passes.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Proof gates",
+            "title": "Minimum scenario proof",
+            "body": proof_gates_body,
+            "narration": "Quality gates show whether each scenario has the minimum evidence needed before a live or cassette-backed journey is considered complete.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Review readiness",
+            "title": metrics.get("review_status", "not_reviewed"),
+            "body": review_body,
+            "narration": "The review gate checks whether the bundle has enough evidence and findings to discuss.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Video playback",
+            "title": "Key interactions",
+            "body": playback_body,
+            "media": playback_items[:12],
+            "playback_scene_count": len(playback_scenes),
+            "narration": "Slidey scenes carry structured playback media for key visual interactions.",
+        },
+    ]
+    scenes.extend(playback_scenes)
+    scenes.extend([
+        {
+            "type": "narrative",
+            "eyebrow": "Captured evidence",
+            "title": "Attached artifacts",
+            "body": captured_body,
+            "narration": "Captured artifacts are linked back to the scenarios that produced them.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Next",
+            "title": "Evidence to attach",
+            "body": "Visual MCP frames, Kitsoki traces, oracle results, and video clips will turn this dry run into a reviewable journey deck.",
+            "narration": "The next iteration attaches real visual and trace evidence to these scenes.",
+        },
+    ])
     return {
         "meta": {
             "mode": "report",
@@ -3340,99 +3507,7 @@ def render_deck(
             "phase": "dry-run",
             "resolution": {"width": 1920, "height": 1080},
         },
-        "scenes": [
-            {
-                "type": "title",
-                "title": "Product Journey QA",
-                "subtitle": f"{run_json['project']['label']} · {run_json['persona']['label']}",
-                "narration": "A deterministic dry run of the product journey QA pipeline.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Run shape",
-                "title": run_json["run_id"],
-                "body": "\n".join(stage_lines),
-                "narration": "The run records every expected stage before live or cassette evidence is attached.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Scenarios",
-                "title": "Repeatable tasks",
-                "body": "\n".join(scenario_lines),
-                "narration": "Each scenario names the story, MCP tools, evidence, and success criteria expected from a real run.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Execution plan",
-                "title": "MCP capture steps",
-                "body": execution_body,
-                "narration": "The execution plan turns each scenario into concrete MCP capture steps and attach commands.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Driver plan",
-                "title": "Harness and visual surfaces",
-                "body": driver_body,
-                "narration": "The driver plan gives the product-journey QA agent machine-readable harness, visual surface, and evidence instructions.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Metrics",
-                "title": "Current evidence",
-                "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nCaptured stages: {metrics.get('captured_stage_count', 0)}\nScenarios: {metrics['scenario_count']}\nEvidence present: {metrics['present_evidence_count']} / {metrics['required_evidence_count']}\nFindings: {metrics.get('findings_count', 0)}\nStrengths: {metrics.get('strength_count', 0)} · Weaknesses: {metrics.get('weakness_count', 0)} · Fixes: {metrics.get('fix_count', 0)} · Blocked: {metrics.get('blocked_count', 0)}\nProduct bugs found: {metrics['product_bugs_found']}",
-                "narration": "This report distinguishes validated evidence from planned stages.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Findings",
-                "title": "Strengths, weaknesses, issues, fixes",
-                "body": findings_body,
-                "narration": "The journey report records what worked, what failed, what was found, and what was fixed.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Scenario outcomes",
-                "title": "Per-scenario status",
-                "body": outcomes_body,
-                "narration": "Each scenario is summarized separately so natural-use gaps remain visible after the bundle-level review passes.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Proof gates",
-                "title": "Minimum scenario proof",
-                "body": proof_gates_body,
-                "narration": "Quality gates show whether each scenario has the minimum evidence needed before a live or cassette-backed journey is considered complete.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Review readiness",
-                "title": metrics.get("review_status", "not_reviewed"),
-                "body": review_body,
-                "narration": "The review gate checks whether the bundle has enough evidence and findings to discuss.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Video playback",
-                "title": "Key interactions",
-                "body": playback_body,
-                "media": playback_items[:12],
-                "narration": "Slidey scenes carry structured playback media for key visual interactions.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Captured evidence",
-                "title": "Attached artifacts",
-                "body": captured_body,
-                "narration": "Captured artifacts are linked back to the scenarios that produced them.",
-            },
-            {
-                "type": "narrative",
-                "eyebrow": "Next",
-                "title": "Evidence to attach",
-                "body": "Visual MCP frames, Kitsoki traces, oracle results, and video clips will turn this dry run into a reviewable journey deck.",
-                "narration": "The next iteration attaches real visual and trace evidence to these scenes.",
-            },
-        ],
+        "scenes": scenes,
     }
 
 
