@@ -312,15 +312,17 @@ type VisualPoint struct {
 
 // VisualActOK is the output of visual.act.
 type VisualActOK struct {
-	OK             bool        `json:"ok"`
-	VisualHandle   string      `json:"visual_handle"`
-	Kind           string      `json:"kind"`
-	Handle         string      `json:"handle"`
-	Action         string      `json:"action"`
-	Outcome        *TurnResult `json:"outcome,omitempty"`
-	Frame          FrameResult `json:"frame"`
-	ChangedRegions []string    `json:"changed_regions,omitempty"`
-	NeedsSnapshot  bool        `json:"needs_snapshot"`
+	OK             bool           `json:"ok"`
+	VisualHandle   string         `json:"visual_handle"`
+	Kind           string         `json:"kind"`
+	Handle         string         `json:"handle"`
+	Action         string         `json:"action"`
+	ImageID        string         `json:"image_id,omitempty"`
+	Outcome        *TurnResult    `json:"outcome,omitempty"`
+	Frame          FrameResult    `json:"frame"`
+	ChangedRegions []string       `json:"changed_regions,omitempty"`
+	Semantic       map[string]any `json:"semantic,omitempty"`
+	NeedsSnapshot  bool           `json:"needs_snapshot"`
 }
 
 // VisualDiffArgs is the input to visual.diff.
@@ -413,7 +415,7 @@ func (srv *Server) registerVisualTools() {
 	}, srv.handleVisualSnapshot)
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "visual.act",
-		Description: "Perform a deterministic UI action against a visual handle. Supports submit/click/type/press/select/scroll/continue/command and anchored pixel_click via image_id; returns the post-action outcome and frame without requiring a screenshot.",
+		Description: "Perform a deterministic UI action against a visual handle. Supports submit/click/type/press/select/scroll/continue/command/contextmenu and anchored pixel_click via image_id. Browser-backed actions return retained post-action image_id plus semantic metadata so transient UI can be inspected without a fresh snapshot.",
 		InputSchema: visualActInputSchema(),
 	}, srv.handleVisualAct)
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
@@ -1289,6 +1291,17 @@ func (srv *Server) visualWebAct(ctx context.Context, vh *VisualHandle, args Visu
 	if dirty := stringSliceFromAny(semantic["dirty_regions"]); len(dirty) > 0 {
 		changed = dirty
 	}
+	imageID := ""
+	needsSnapshot := true
+	if len(result.PNG) > 0 {
+		processed, err := processVisualPNG(result.PNG, "", "", "", 0, semantic)
+		if err != nil {
+			return buildToolError(ErrBadRequest, fmt.Sprintf("visual.act: %v", err)), nil, nil
+		}
+		image := srv.storeVisualImage(vh, "", "", "", processed.PNG, processed)
+		imageID = image.ID
+		needsSnapshot = false
+	}
 	srv.recordVisualEvent(vh.ID, VisualRecordEvent{
 		At:     time.Now().UTC().Format(time.RFC3339Nano),
 		Type:   "act",
@@ -1307,9 +1320,11 @@ func (srv *Server) visualWebAct(ctx context.Context, vh *VisualHandle, args Visu
 		Kind:           string(vh.Kind),
 		Handle:         vh.Handle,
 		Action:         action,
+		ImageID:        imageID,
 		Frame:          frame,
 		ChangedRegions: changed,
-		NeedsSnapshot:  true,
+		Semantic:       semantic,
+		NeedsSnapshot:  needsSnapshot,
 	}, nil
 }
 

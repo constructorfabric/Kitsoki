@@ -632,7 +632,9 @@ func TestVisualAct_WebSemanticClickUsesBrowserActionWithModifiers(t *testing.T) 
 	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
 	assert.True(t, got.OK)
 	assert.Equal(t, []string{"modal"}, got.ChangedRegions)
-	assert.True(t, got.NeedsSnapshot)
+	assert.False(t, got.NeedsSnapshot)
+	assert.NotEmpty(t, got.ImageID)
+	assert.Equal(t, `[data-testid="bug-modal"]`, got.Semantic["focused"])
 	assert.NotEmpty(t, gotSpec.SessionID)
 	assert.Equal(t, "click", gotAction.Kind)
 	assert.Equal(t, "testid:edit-story-btn", gotAction.ActionHandle)
@@ -666,6 +668,11 @@ func TestVisualAct_WebContextMenuUsesRightButton(t *testing.T) {
 	assert.Equal(t, 24, gotAction.Point.X)
 	assert.Equal(t, 48, gotAction.Point.Y)
 	assert.Equal(t, []string{"Alt"}, gotAction.Modifiers)
+
+	var got studio.VisualActOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.False(t, got.NeedsSnapshot)
+	assert.NotEmpty(t, got.ImageID)
 }
 
 func TestVisualAct_TypeThenPressEnterRoutesBufferedText(t *testing.T) {
