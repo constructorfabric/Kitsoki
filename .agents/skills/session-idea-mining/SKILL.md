@@ -87,22 +87,27 @@ The workflow returns `{ tracesRead, rawFindingCount, headline, themes, rawFindin
 Each theme carries priority (now/soon/later), rationale, categories, target,
 summary, supporting_ideas, session_count, and sessions.
 
-### 3. Render the brief (deterministic)
+### 3. Render the brief and deck (deterministic)
 
-Pipe the workflow result through `focus_brief.py` to get a ranked Markdown brief.
-Save it under `.context/` (transient, per repo convention — never commit):
+Pipe the workflow result through `focus_brief.py` to get a ranked Markdown brief,
+structured summary JSON, and deterministic Slidey deck. Save the conversational
+pointer under `.context/` and the review artifacts under `.artifacts/`:
 
 ```sh
 python3 tools/session-mining/focus_brief.py <workflow-result.json> \
   --title "<focus> — ideas mined from chats" \
   --subtitle "<N> sessions, <M> findings -> <K> themes" \
-  > .context/<focus>-ideas-from-chats.md
+  --markdown .context/<focus>-ideas-from-chats.md \
+  --summary .artifacts/session-idea-mining/<focus>/ideas.summary.json \
+  --slidey-spec .artifacts/session-idea-mining/<focus>/deck.slidey.json
 ```
 
 The result JSON is the workflow's task output (the `<task-id>.output` file, or any
 file containing `{headline, themes}` or `{result:{headline, themes}}`).
 `focus_brief.py` html-unescapes prose, sorts themes now→soon→later (by session
-count within a tier), and is byte-deterministic for a given synthesis.
+count within a tier), and is byte-deterministic for a given synthesis. The deck
+is generated from the same structured themes; it does not ask an LLM to write
+slides.
 
 ### 4. Cross-reference (optional)
 
@@ -157,7 +162,7 @@ forcing them into the bug tracker.
 
 ```
 tools/session-mining/prep.py          distill + (optional redact) + bin-pack into batches; prints BATCHES=/BATCHDIR=
-tools/session-mining/focus_brief.py   render synthesis JSON -> ranked Markdown brief (deterministic)
+tools/session-mining/focus_brief.py   render synthesis JSON -> ranked Markdown + summary JSON + Slidey deck (deterministic)
 tools/session-mining/distill.jq       raw JSONL -> compact action trace (shared with pattern-mining)
 .agents/skills/session-idea-mining/mine.workflow.js   the fan-out + synthesis workflow (parameterized by args)
 ```

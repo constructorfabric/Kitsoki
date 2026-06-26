@@ -391,6 +391,33 @@ class DeterministicDeckTest(unittest.TestCase):
         status = [scene for scene in deck["scenes"] if scene.get("title") == "Intent-mining status"][0]
         self.assertEqual(status["items"][2]["status"], "next")
 
+    def test_session_idea_mining_deck_summarizes_themes(self):
+        _, deck = run_tool("session-idea-mining", {
+            "title": "Kitsoki ideas mined from chats",
+            "headline": "Several recurring workflow gaps are ready to act on.",
+            "markdown_path": ".artifacts/session-idea-mining/run/BRIEF.md",
+            "summary_path": ".artifacts/session-idea-mining/run/ideas.summary.json",
+            "themes": [
+                {
+                    "theme": "Make decks standard",
+                    "priority": "now",
+                    "target": "reporting",
+                    "categories": ["feature", "design"],
+                    "summary": "Every job should emit a deck.",
+                    "rationale": "Repeated across sessions.",
+                    "supporting_ideas": ["status decks", "rrweb playbacks"],
+                    "session_count": 5,
+                    "sessions": ["abc123"],
+                },
+                {"theme": "Later cleanup", "priority": "later", "session_count": 1},
+            ],
+        })
+        self.assertEqual(deck["meta"]["title"], "Kitsoki ideas mined from chats")
+        themes = [scene for scene in deck["scenes"] if scene.get("title") == "Ranked themes"][0]
+        self.assertEqual(themes["rows"][0]["cells"][:3], ["Make decks standard", "now", "5"])
+        status = [scene for scene in deck["scenes"] if scene.get("title") == "Idea-mining status"][0]
+        self.assertEqual(status["items"][1]["status"], "next")
+
 
 if __name__ == "__main__":
     unittest.main()

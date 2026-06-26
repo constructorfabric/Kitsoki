@@ -502,7 +502,7 @@ distill.jq              raw JSONL transcript -> compact action trace
 prep.py                 distill + (optional --redact) + bin-pack into byte-balanced batches; one command, all modes (--job targets .artifacts/ for intent mining). Drops dispatched headless agent/agent transcripts (entrypoint!=cli) by default; --keep-agent-sessions to include them
 redact.py               deterministic scrubber; `--report` scrubs a report's free-text, `--scan` is the share-gate
 report.py               render a pattern-mining aggregate into actionable BRIEF.md + brief.summary.json + deck.slidey.json artifacts
-focus_brief.py          render a focused idea-mining synthesis JSON into a ranked themed Markdown brief (idea-mining mode)
+focus_brief.py          render a focused idea-mining synthesis JSON into ranked Markdown + ideas.summary.json + deck.slidey.json artifacts
 prompts/extractor.md    the versioned extractor prompt (the reproducible core)
 vocab/core.yaml         controlled vocabulary (cross-user merge keys)
 vocab/overlay-go.yaml   Go/backend example signatures (copy per ecosystem)

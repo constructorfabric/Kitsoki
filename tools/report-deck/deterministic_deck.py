@@ -859,6 +859,72 @@ def session_mining_intent(data: dict[str, Any]) -> tuple[dict[str, Any], list[di
     return title_deck("Session-Mining Intent Brief", subtitle, scenes), refs
 
 
+def session_idea_mining(data: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    themes = require_list(data, "themes", "session-idea-mining")
+    counts = {"now": 0, "soon": 0, "later": 0}
+    total_sessions = 0
+    rows = []
+    for theme in themes[:16]:
+        priority = str(theme.get("priority", "later")).lower()
+        counts[priority if priority in counts else "later"] += 1
+        sessions = int(theme.get("session_count") or 0)
+        total_sessions = max(total_sessions, sessions)
+        rows.append({"cells": [
+            theme.get("theme", ""),
+            priority,
+            num(sessions),
+            theme.get("target", ""),
+            "/".join(theme.get("categories") or []),
+            theme.get("summary", ""),
+        ]})
+    now_rows = []
+    for theme in [t for t in themes if str(t.get("priority", "later")).lower() == "now"][:8]:
+        now_rows.append({"cells": [
+            theme.get("theme", ""),
+            theme.get("target", ""),
+            theme.get("rationale", ""),
+            "; ".join((theme.get("supporting_ideas") or [])[:2]),
+        ]})
+    scenes = [
+        objectives_scene("Idea-mining status", [
+            {"label": "Synthesis loaded", "status": "done" if themes else "pending", "detail": f"{len(themes)} theme(s)."},
+            {"label": "Now", "status": "next" if counts["now"] else "done", "detail": f"{counts['now']} high-priority theme(s)."},
+            {"label": "Soon", "status": "pending" if counts["soon"] else "done", "detail": f"{counts['soon']} next theme(s)."},
+            {"label": "Later", "status": "pending" if counts["later"] else "done", "detail": f"{counts['later']} watch-list theme(s)."},
+            {"label": "Evidence spread", "status": "done" if total_sessions else "pending", "detail": f"Top theme spans {total_sessions} session(s)."},
+        ]),
+        {
+            "type": "table",
+            "variant": "data",
+            "title": "Ranked themes",
+            "columns": ["Theme", "Priority", "Sessions", "Target", "Categories", "Summary"],
+            "rows": rows or [{"cells": ["-", "-", "-", "-", "-", "-"]}],
+            "hold": 3400,
+        },
+    ]
+    if now_rows:
+        scenes.append({
+            "type": "table",
+            "variant": "data",
+            "title": "Act now",
+            "columns": ["Theme", "Target", "Rationale", "Signals"],
+            "rows": now_rows,
+            "hold": 3000,
+        })
+    scenes.append(evidence_scene("Review artifacts", [
+        {"label": "Synthesis JSON", "status": "done", "detail": "Workflow result used for deterministic rendering.", "ref": str(data.get("_source", ""))},
+        {"label": "Markdown brief", "status": "done" if data.get("markdown_path") else "pending", "detail": "Ranked idea brief.", "ref": data.get("markdown_path", "")},
+        {"label": "Summary JSON", "status": "done" if data.get("summary_path") else "pending", "detail": "Structured deck input.", "ref": data.get("summary_path", "")},
+    ]))
+    refs = [
+        {"label": "Synthesis JSON", "path": str(data.get("_source", "")), "status": "done"},
+        {"label": "Markdown brief", "path": data.get("markdown_path", ""), "status": "done" if data.get("markdown_path") else "pending"},
+        {"label": "Summary JSON", "path": data.get("summary_path", ""), "status": "done" if data.get("summary_path") else "pending"},
+    ]
+    subtitle = f"{len(themes)} theme(s): {counts['now']} now, {counts['soon']} soon, {counts['later']} later"
+    return title_deck(data.get("title") or "Session Idea Mining Brief", subtitle, scenes), refs
+
+
 def workflow(data: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
     title = data.get("title") or data.get("name") or "Workflow Report"
     objectives = data.get("objectives") or []
@@ -1193,6 +1259,7 @@ BUILDERS = {
     "product-journey": product_journey,
     "session-mining-action": session_mining_action,
     "session-mining-intent": session_mining_intent,
+    "session-idea-mining": session_idea_mining,
     "story-qa": story_qa,
     "workflow": workflow,
 }
