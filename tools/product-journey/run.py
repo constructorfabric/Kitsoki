@@ -3148,6 +3148,28 @@ def validate_run_bundle(run_dir: Path) -> dict:
         ]
         if missing_step_keys:
             add_validation_issue(issues, "error", "execution-plan-step-required-keys", "execution-plan.json steps are missing required keys", ", ".join(missing_step_keys))
+        stale_attach_commands = []
+        for index, step in enumerate(execution_steps, start=1):
+            scenario_id = step.get("scenario", f"step-{index}")
+            evidence_kinds = [item.get("kind", "") for item in step.get("evidence", []) if item.get("kind", "")]
+            commands = step.get("attach_commands", [])
+            if len(commands) != len(evidence_kinds):
+                stale_attach_commands.append(
+                    f"{scenario_id}: expected={len(evidence_kinds)}, actual={len(commands)}"
+                )
+            for evidence_kind in evidence_kinds:
+                matching = [
+                    command for command in commands
+                    if f"--scenario {scenario_id}" in command and f"--evidence-kind {evidence_kind}" in command
+                ]
+                if not matching:
+                    stale_attach_commands.append(f"{scenario_id}/{evidence_kind}: missing command")
+                    continue
+                for token in schema["execution_plan"]["attach_command_tokens"]:
+                    if token not in matching[0]:
+                        stale_attach_commands.append(f"{scenario_id}/{evidence_kind}: command missing {token}")
+        if stale_attach_commands:
+            add_validation_issue(issues, "error", "execution-plan-attach-commands", "execution-plan.json attach commands do not cover the evidence contract", "; ".join(stale_attach_commands))
     if driver_plan and len(driver_scenarios) != len(scenarios):
         add_validation_issue(
             issues,
@@ -3228,6 +3250,20 @@ def validate_run_bundle(run_dir: Path) -> dict:
         })
         if missing_journal_commands:
             add_validation_issue(issues, "error", "driver-plan-journal-command", "driver-plan.json scenarios are missing record-driver-event journal commands", ", ".join(missing_journal_commands))
+        stale_driver_attach_commands = []
+        for index, scenario in enumerate(driver_scenarios, start=1):
+            scenario_id = scenario.get("scenario", f"driver-scenario-{index}")
+            evidence_kinds = [item.get("kind", "") for item in scenario.get("evidence", []) if item.get("kind", "")]
+            commands = scenario.get("attach_commands", [])
+            if len(commands) != len(evidence_kinds):
+                stale_driver_attach_commands.append(
+                    f"{scenario_id}: expected={len(evidence_kinds)}, actual={len(commands)}"
+                )
+            for evidence_kind in evidence_kinds:
+                if not any(f"--scenario {scenario_id}" in command and f"--evidence-kind {evidence_kind}" in command for command in commands):
+                    stale_driver_attach_commands.append(f"{scenario_id}/{evidence_kind}: missing command")
+        if stale_driver_attach_commands:
+            add_validation_issue(issues, "error", "driver-plan-attach-commands", "driver-plan.json attach commands do not cover the scenario evidence slots", "; ".join(stale_driver_attach_commands))
     if driver_journal:
         missing_event_keys = [
             f"{event.get('id', f'event-{index}')}/{key}"

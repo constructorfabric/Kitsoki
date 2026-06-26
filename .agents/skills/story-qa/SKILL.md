@@ -161,7 +161,9 @@ findings or blockers, then run review and validation gates.
 `driver-plan.md` is the driver's machine-readable companion rendered for human
 review: it lists each scenario's harness, visual surface, ordered
 `driver_actions`, evidence slots, attach commands, finding command, blocker
-command, journal command, and final gates.
+command, journal command, and final gates. `--validate-run` checks that
+`execution-plan.json` and `driver-plan.json` include one actionable
+`--attach-evidence` command for every declared evidence slot.
 Captured screenshots, videos, traces, and documents are indexed in
 `media-manifest.json`; the generated Slidey deck uses that manifest for
 playback-ready media entries and standalone `Playback evidence` scenes for

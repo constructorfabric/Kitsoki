@@ -31,7 +31,8 @@
   },
   "execution_plan": {
     "required": ["run_id", "project", "persona", "summary", "steps", "finalize_commands"],
-    "step_required": ["scenario", "primary_story", "mcp_steps", "evidence", "success_criteria", "quality_gate", "attach_commands", "record_blocker_command"]
+    "step_required": ["scenario", "primary_story", "mcp_steps", "evidence", "success_criteria", "quality_gate", "attach_commands", "record_blocker_command"],
+    "attach_command_tokens": ["--attach-evidence", "--run-dir", "--scenario", "--evidence-kind", "--evidence-path", "--evidence-source"]
   },
   "driver_plan": {
     "required": ["run_id", "driver_agent", "project", "persona", "scenarios", "final_gates"],
