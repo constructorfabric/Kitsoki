@@ -23,6 +23,8 @@ states:
           pairs:
             Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary: '{{ world.done_artifact.summary_title|default:"(pending)" }}'
+            Report:  '{{ world.report_path|default:"(pending)" }}'
+            Deck:    '{{ world.deck_path|default:"(pending)" }}'
       - heading: "Artifact"
       - code: '{{ world.done_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
@@ -66,7 +68,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, done_artifact, validate_artifact, fixed_in_commit, llm_verdict, refine_feedback, cycle]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, done_artifact, validate_artifact, fixed_in_commit, report_path, deck_path, llm_verdict, refine_feedback, cycle]
     on_enter:
       # `working_dir` pins the agent to the bugfix worktree even though
       # done's postmortem agent mostly reads upstream artifact text —
@@ -155,6 +157,39 @@ states:
               jq -n --arg commit "$SHA" '{commit:$commit}'
         bind:
           fixed_in_commit: "stdout_json.commit"
+
+      - invoke: host.run
+        id: bugfix_report
+        with:
+          cmd: python3
+          args:
+            - "stories/bugfix/scripts/bugfix_report.py"
+            - "--ticket-id"
+            - "{{ world.ticket_id }}"
+            - "--ticket-title"
+            - "{{ world.ticket_title }}"
+            - "--ticket-url"
+            - "{{ world.ticket_url }}"
+            - "--workdir"
+            - "{{ world.workdir }}"
+            - "--fixed-in-commit"
+            - "{{ world.fixed_in_commit }}"
+            - "--reproduction-artifact"
+            - "{{ world.reproduction_artifact }}"
+            - "--propose-fix-artifact"
+            - "{{ world.propose_fix_artifact }}"
+            - "--implement-artifact"
+            - "{{ world.implement_artifact }}"
+            - "--implement-review-artifact"
+            - "{{ world.implement_review_artifact }}"
+            - "--validate-artifact"
+            - "{{ world.validate_artifact }}"
+            - "--done-artifact"
+            - "{{ world.done_artifact }}"
+        bind:
+          report_path:  "stdout_json.report_path"
+          summary_path: "stdout_json.summary_path"
+          deck_path:    "stdout_json.deck_path"
 
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide

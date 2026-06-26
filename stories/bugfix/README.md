@@ -182,9 +182,18 @@ in `app.yaml`'s `world:` block so the child loads standalone for tests.
 | `propose_fix_artifact` | object | The proposed fix. |
 | `implement_review_artifact` | object | Test review + status. |
 | `validate_artifact` | object | Full-env validation outcome. |
+| `report_path` | string | Markdown close-out report under `.artifacts/bugfix/<run>/report.md`. |
+| `summary_path` | string | Structured close-out report data consumed by the deterministic Slidey deck generator. |
+| `deck_path` | string | Deterministic Slidey close-out deck under `.artifacts/bugfix/<run>/deck.slidey.json`. |
 | `status` | string | `fixed` after `@exit:done`; left as `"open"` on `@exit:abandoned`. |
 | `cycle` | int | Total refinement cycles consumed. |
 | `pr_id`, `pr_url`, `ci_state` | string | Held for the pr-refinement handoff (populated by Wave 2). |
+
+The `done` room writes those report artifacts via
+`stories/bugfix/scripts/bugfix_report.py`. The script consumes only
+structured phase artifacts and story world fields, then calls
+`tools/report-deck/deterministic_deck.py`; no LLM is asked to draft the
+deck.
 
 ### Intent surface
 

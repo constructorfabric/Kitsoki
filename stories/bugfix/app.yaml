@@ -444,6 +444,9 @@ world:
   validate_artifact:         { type: object, default: {} }
   done_artifact:             { type: object, default: {} }
   fixed_in_commit:           { type: string, default: "" }  # short HEAD at close-out; posted to the issue before resolving
+  report_path:               { type: string, default: "" }
+  summary_path:              { type: string, default: "" }
+  deck_path:                 { type: string, default: "" }
 
   # ── Judge state ───────────────────────────────────────────────────────
   llm_verdict:      { type: object, default: {} }   # { intent, reason, confidence, verdict }

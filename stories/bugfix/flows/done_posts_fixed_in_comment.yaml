@@ -29,6 +29,15 @@ host_handlers:
         data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
       done_fixed_in_commit:
         data: { ok: true, exit_code: 0, stdout_json: { commit: "f2e30bdb1234" } }
+      bugfix_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/bugfix/TKT-FIXED-IN/report.md"
+            summary_path: ".artifacts/bugfix/TKT-FIXED-IN/summary.json"
+            deck_path: ".artifacts/bugfix/TKT-FIXED-IN/deck.slidey.json"
+            summary: "Autonomous refine reruns fixed"
   host.local_files.ticket.comment:
     data: { ok: true, comment_id: "comment-1" }
   host.local_files.ticket.transition:
@@ -47,15 +56,19 @@ turns:
     expect_state: done
     expect_world:
       fixed_in_commit: "f2e30bdb1234"
+      deck_path: ".artifacts/bugfix/TKT-FIXED-IN/deck.slidey.json"
     expect_host_calls:
       - handler: host.run
         args: { call: done_fixed_in_commit }
+      - handler: host.run
+        args: { call: bugfix_report }
 
   - intent: { name: accept, slots: {} }
     expect_state: __exit__done
     expect_world:
       status: "fixed"
       fixed_in_commit: "f2e30bdb1234"
+      deck_path: ".artifacts/bugfix/TKT-FIXED-IN/deck.slidey.json"
     expect_host_calls:
       - handler: host.local_files.ticket.comment
         args:
