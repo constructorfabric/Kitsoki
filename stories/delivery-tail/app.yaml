@@ -2,7 +2,7 @@
 #
 # The deterministic delivery half of any brief-based loop: lost-work-safe
 # integrate of the maker's branch into main, independent re-verify of the gate on
-# the merged commit, no-swallowed cleanup, and a shipped read-out/report deck.
+# the merged commit, no-swallowed cleanup, and a shipped read-out.
 #
 # This story is a REUSABLE TAIL — it is NEVER entered at a configure/operator
 # root. It is entered at `integrate` by a parent story (ship-it, bugfix) that
@@ -59,9 +59,6 @@ world:
   cleanup_outcome:    { type: string, default: "" }   # cleaned | refused
   last_error:         { type: string, default: "" }   # the real failure on any needs-human arc
   status:             { type: string, default: "" }   # shipped | needs-human
-  report_path:        { type: string, default: "" }   # .artifacts/delivery-tail/<run>/report.md
-  summary_path:       { type: string, default: "" }   # .artifacts/delivery-tail/<run>/summary.json
-  deck_path:          { type: string, default: "" }   # .artifacts/delivery-tail/<run>/deck.slidey.json
   # Raw host.run result of integrate_exec — always present, even when the script
   # aborts before emitting JSON. Bound so the room can synthesize a non-blank
   # last_error on a no-JSON abort (bug #9b) instead of stalling at `integrate`.

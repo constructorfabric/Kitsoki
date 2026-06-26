@@ -18,13 +18,7 @@ host_handlers:
         data: { exit_code: 1, ok: false, stdout: "FAIL (still)\n" }
         delay: "10ms"
       write_report:
-        data:
-          exit_code: 0
-          ok: true
-          stdout_json:
-            report_path: ".artifacts/fix-tests/exhausted/report.md"
-            summary_path: ".artifacts/fix-tests/exhausted/summary.json"
-            deck_path: ".artifacts/fix-tests/exhausted/deck.slidey.json"
+        data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-exhausted.md" }
   host.agent.task:
     by_call:
       fix:
@@ -49,7 +43,6 @@ turns:
       tests_passed: false
       outcome:      "exhausted"
       cycle:        3
-      report_path:  ".artifacts/fix-tests/exhausted/report.md"
-      report_deck_path: ".artifacts/fix-tests/exhausted/deck.slidey.json"
+      report_path:  ".artifacts/fix-tests/report-exhausted.md"
 
 expect_no_errors: true

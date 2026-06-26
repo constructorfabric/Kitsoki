@@ -3,8 +3,6 @@
 The reusable integrate → verify → cleanup → report tail imported by
 [ship-it](../ship-it/) and [bugfix](../bugfix/) (and any future story
 that needs a lost-work-safe integrate + independent re-verify pipeline).
-The shipped report emits `.artifacts/delivery-tail/<shipped-sha>/report.md`,
-`summary.json`, and `deck.slidey.json` from structured world state.
 
 This story is **never run standalone as a root session**. It is always
 entered at `integrate` by a parent story that has already run its maker
@@ -60,15 +58,12 @@ When imported as alias `tail`, parent reads `world.tail__<key>`:
 | `integrated_sha` | string | The merged commit SHA (bound by integrate). |
 | `verify_ok` | bool | `true` (GREEN) \| `false` (RED). |
 | `cleanup_outcome` | string | `cleaned` \| `refused` |
-| `report_path` | string | Human-readable shipped report. |
-| `summary_path` | string | Structured input used for deterministic deck generation. |
-| `deck_path` | string | Standardized Slidey shipped-status deck. |
 
 ## Flows (no-LLM)
 
 | Flow | Proves |
 |---|---|
-| `happy_path` | integrate (clean) → verify (green on merged commit) → cleanup → deterministic report/deck → `@exit:shipped` |
+| `happy_path` | integrate (clean) → verify (green on merged commit) → cleanup → `@exit:shipped` |
 | `e2e_mocked_maker` | full host-call sequence integrate → re-verify → cleanup → shipped; maker mocked via world-in seed |
 | `integrate_conflict` | unresolvable conflict → `@exit:needs-human` (no swallowed success) |
 | `verify_red_on_main` | branch green but gate RED on the merged commit → `@exit:needs-human` (trust-the-gate) |

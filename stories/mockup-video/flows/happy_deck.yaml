@@ -59,15 +59,6 @@ host_handlers:
     by_call:
       drain_feedback:
         data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
-      mockup_report:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            report_path: ".artifacts/mockup-video/flow/report.md"
-            summary_path: ".artifacts/mockup-video/flow/summary.json"
-            deck_path: ".artifacts/mockup-video/flow/deck.slidey.json"
-            summary: "The /review video feedback panel: accepted deck walkthrough."
 
   host.artifacts_dir:
     by_call:
@@ -96,7 +87,6 @@ turns:
     expect_state: done
     expect_world:
       video_handle: "mockup-video#1"
-      deck_path: ".artifacts/mockup-video/flow/deck.slidey.json"
 
 expect_terminal: false
 expect_no_errors: true

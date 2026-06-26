@@ -72,15 +72,6 @@ host_handlers:
             shipped_count: 2
             parked_count:  0
             pending_count: 0
-      fleet_report:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            report_path: ".artifacts/fleet/test/report.md"
-            report_summary_path: ".artifacts/fleet/test/summary.json"
-            report_deck_path: ".artifacts/fleet/test/deck.slidey.json"
-            fleet_summary: "2 shipped, 0 parked."
       # Each brief's ship-it delivery half (shared call ids per brief).
       integrate_exec:
         data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "deadbee", last_op_ok: true, last_error: "" } }
@@ -113,7 +104,6 @@ turns:
     expect_world:
       shipped_count: 2
       parked_count:  0
-      report_deck_path: ".artifacts/fleet/test/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true

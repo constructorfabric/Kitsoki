@@ -9,7 +9,7 @@
 #   rendering  DETERMINISTIC: deck → host.slidey.render mp4 ; tour → host.run record_tour.sh — both emit chapters.json (slice 1)
 #   review     deterministic: media(video_handle) inline + drains feedback.jsonl (slice 2) ; checkpoint
 #   refining   interpretive:  ONE host.agent.task edits each feedback note's source_ref target (binding directives)
-#   done       deterministic report/deck plus gallery of the final video + scenarios + feedback addressed per iteration
+#   done       gallery of the final video + scenarios + feedback addressed per iteration
 
 app:
   id: mockup-video
@@ -78,11 +78,6 @@ world:
   iterations:      { type: object, default: { items: [] } }  # {items:[{video_handle, feedback_addressed:[...]}]}
   cycle:           { type: int,    default: 0 }
   refine_budget:   { type: int,    default: 6 }
-
-  # ── terminal report artifacts ────────────────────────────────────────────
-  report_path:     { type: string, default: "" }
-  summary_path:    { type: string, default: "" }
-  deck_path:       { type: string, default: "" }
 
   # ── misc ──────────────────────────────────────────────────────────────────
   abandon_reason:  { type: string, default: "" }

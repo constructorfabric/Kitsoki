@@ -1,7 +1,7 @@
 states:
   done:
     description: "Evaluation report artifacts are ready."
-    relevant_world: [question, apply_mode, override_path, report_artifact, report_artifact_path, report_deck, status]
+    relevant_world: [question, apply_mode, override_path, report_artifact, status]
     view:
       - banner:
           text: "DONE"
@@ -14,11 +14,10 @@ states:
             Override: '{{ world.report_artifact.override.path|default:world.override_path }}'
             Applied: '{{ world.report_artifact.override.applied|default:false }}'
             Markdown: '{{ world.report_artifact.markdown_path|default:"(missing)" }}'
-            Deck: '{{ world.report_deck.spec_path|default:"(missing)" }}'
-            Slidey spec: '{{ world.report_deck.spec_path|default:"(missing)" }}'
+            Deck: '{{ world.report_artifact.deck_path|default:"(missing)" }}'
+            Slidey spec: '{{ world.report_artifact.slidey_spec_path|default:"(missing)" }}'
             Case study: '{{ world.report_artifact.case_study_path|default:"(missing)" }}'
             Summary: '{{ world.report_artifact.summary_path|default:"(missing)" }}'
-            Report artifact: '{{ world.report_artifact_path|default:"(missing)" }}'
             Status: '{{ world.report_artifact.status|default:world.status }}'
       - heading: "Result"
       - code: '{{ world.report_artifact.summary_markdown|default:"(no summary returned)" }}'

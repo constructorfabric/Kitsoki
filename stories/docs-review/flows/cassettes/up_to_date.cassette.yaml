@@ -55,17 +55,3 @@ episodes:
         path: "/tmp/.artifacts/docs-review-facefeeddeadbeef.md"
         message_id: "docs-review-facefeeddeadbeef#0"
     replay: any
-
-  - id: docs_report
-    match:
-      handler: host.run
-      call: docs-report
-    response:
-      data:
-        ok: true
-        exit_code: 0
-        stdout_json:
-          report_path: ".artifacts/docs-review/facefeeddeadbeef/report.md"
-          summary_path: ".artifacts/docs-review/facefeeddeadbeef/summary.json"
-          deck_path: ".artifacts/docs-review/facefeeddeadbeef/deck.slidey.json"
-    replay: any

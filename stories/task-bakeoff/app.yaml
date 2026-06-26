@@ -11,7 +11,7 @@
 #               candidates (harness/model axis), and the contenders (structure
 #               axis). The cell list = task × candidate × contender. We do NOT
 #               author the manifest here; the manifest is owned by the harness
-#               (tools/bugfix-bakeoff/bakeoff.yaml). configure echoes the loaded
+#               (tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml). configure echoes the loaded
 #               matrix and computes the cell roster.
 #   running     ORCHESTRATION STUB. The cost-bearing run_cell.sh step is run
 #               MANUALLY, never in CI/auto (AGENTS.md no-LLM rule + the skill's
@@ -64,7 +64,7 @@ world:
   # the reference implementation; manifest_path is its matrix manifest. We never
   # reimplement scoring/pricing — we call the scripts.
   harness_dir:   { type: string, default: "tools/bugfix-bakeoff" }
-  manifest_path: { type: string, default: "tools/bugfix-bakeoff/bakeoff.yaml" }
+  manifest_path: { type: string, default: "tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml" }
   # generated_at is REQUIRED by aggregate.py / the report builder (the build bans
   # implicit wall-clock timestamps). An operator/flow supplies a fixed value.
   generated_at:  { type: string, default: "1970-01-01T00:00:00Z" }

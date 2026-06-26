@@ -43,19 +43,6 @@ initial_world:
     ladder_moves: []
     summary_markdown: "No ladder moves yet — the new gate has no recorded decisions; re-review after a few runs."
 
-host_handlers:
-  host.run:
-    by_call:
-      dev_story_mining_report:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            report_path: ".artifacts/dev-story-mining/intents-20260615/report.md"
-            summary_path: ".artifacts/dev-story-mining/intents-20260615/summary.json"
-            deck_path: ".artifacts/dev-story-mining/intents-20260615/deck.slidey.json"
-            summary: "Mining job intents-20260615 completed for stories."
-
 turns:
   - intent: { name: start, slots: {} }
     expect_state: mine
@@ -77,13 +64,11 @@ turns:
     expect_state: record
     expect_world:
       status: "authored"
-      deck_path: ".artifacts/dev-story-mining/intents-20260615/deck.slidey.json"
 
   - intent: { name: accept, slots: {} }
     expect_state: __exit__done
     expect_world:
       status: "authored"
-      deck_path: ".artifacts/dev-story-mining/intents-20260615/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true

@@ -88,23 +88,6 @@ host_handlers:
               ## Routing model cost study
 
               The report-only run produced a durable case study and Slidey source from 115 mined Kitsoki sessions, yielding 461 routing-eval inputs and 47 correction hard negatives. No runtime default override was applied.
-  host.artifacts_dir:
-    by_call:
-      write_report_artifact:
-        data:
-          ok: true
-          path: ".artifacts/model-harness-eval/compare-haiku-synthetic-small-and-gpt-mini-models-for-room-by-room-routing-using-mined-real-inputs-produce-a-cost-savings-case-study/report_artifact.json"
-          message_id: "report_artifact#1"
-  host.run:
-    by_call:
-      build_report_deck:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            spec_path: ".artifacts/model-harness-eval/compare-haiku-synthetic-small-and-gpt-mini-models-for-room-by-room-routing-using-mined-real-inputs-produce-a-cost-savings-case-study/deck.slidey.json"
-            markdown_path: ".artifacts/model-harness-eval/compare-haiku-synthetic-small-and-gpt-mini-models-for-room-by-room-routing-using-mined-real-inputs-produce-a-cost-savings-case-study/report.md"
-            refs: []
 
 turns:
   - intent:
@@ -122,17 +105,8 @@ turns:
     expect_state: reporting
     expect_world:
       status: "ready"
-      report_artifact_path: ".artifacts/model-harness-eval/compare-haiku-synthetic-small-and-gpt-mini-models-for-room-by-room-routing-using-mined-real-inputs-produce-a-cost-savings-case-study/report_artifact.json"
-      report_deck:
-        spec_path: ".artifacts/model-harness-eval/compare-haiku-synthetic-small-and-gpt-mini-models-for-room-by-room-routing-using-mined-real-inputs-produce-a-cost-savings-case-study/deck.slidey.json"
-        markdown_path: ".artifacts/model-harness-eval/compare-haiku-synthetic-small-and-gpt-mini-models-for-room-by-room-routing-using-mined-real-inputs-produce-a-cost-savings-case-study/report.md"
-        refs: []
     expect_host_calls:
       - handler: host.agent.task
         args: { call: "prepare_reports" }
-      - handler: host.artifacts_dir
-        args: { call: "write_report_artifact" }
-      - handler: host.run
-        args: { call: "build_report_deck" }
 
 expect_no_errors: true

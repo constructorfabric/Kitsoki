@@ -45,15 +45,13 @@ idle ──start──▶ intake ──▶ processing ⇄ (triaging → driving 
 
 ## How it produces the slidey report
 
-`reporting` builds the deck spec from `world.results` + `world.rollup` and writes
-it through `host.artifacts_dir` to
-`.artifacts/dogfood-marathon/<content-suffix>/deck.slidey.json`. `slideshow` runs
-that materialized spec through `host.slidey.render` exactly like
-`stories/slidey-edit`, producing a static HTML deck emitted to
-`host.artifacts_dir` as `report_handle`. The deck shape is fixed in
-`scripts/build_deck.star`; LLM output can appear only as already-journaled,
-structured fields from triage/drive/verify artifacts, not as free-form deck
-authoring.
+`reporting` builds the deck spec from `world.results` + `world.rollup`; `slideshow`
+runs that spec through `host.slidey.render` exactly like `stories/slidey-edit`,
+producing a static HTML deck emitted to `host.artifacts_dir` as `report_handle`.
+A baked report deck (`baked/report.deck.json`) lets the render/flow run
+deterministically; a live drive overwrites it from the journaled run data (the
+slidey-edit baked-deck discipline — `ctx.fs` is read-only, so a script can't write
+the deck JSON itself).
 
 ## Honesty posture — keep the rooms honest
 
@@ -108,6 +106,11 @@ kitsoki test flows stories/dogfood-marathon/app.yaml
   ticket frontmatter (title / `repro_command`) or pin each case's baseline per
   `baseline_policy` (`<fix>^` discovery). Today the operator pins baselines; wire
   real frontmatter parsing + `<fix>^` resolution.
+- **Live deck authoring.** A live drive must overwrite `baked/report.deck.json`
+  from the journaled `results`/`rollup` (a script can't write — `ctx.fs` is
+  read-only). Wire the kitsoki-mcp-driver / a write-capable host call to
+  materialize the per-run deck (richer per-case scenes, cost/time charts) instead
+  of rendering the static baked scaffold.
 - **Findings → tickets.** `record_case.star` carries per-case findings into
   `world.findings`, but the story does not yet file them via `issue_create`. Add a
   findings room (or a `done` action) that files the consequential ones in the

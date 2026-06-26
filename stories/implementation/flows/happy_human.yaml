@@ -35,18 +35,7 @@ host_handlers:
   # report a clean worktree so the open/proceed arcs enter the pr import. A
   # dirty tree would route to @exit:abandoned — see flows/handoff_refuses_dirty_tree.yaml.
   host.run:
-    by_call:
-      done_clean_tree_check:
-        data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
-      implementation_report:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            report_path: ".artifacts/implementation/TKT-T-001/report.md"
-            summary_path: ".artifacts/implementation/TKT-T-001/summary.json"
-            deck_path: ".artifacts/implementation/TKT-T-001/deck.slidey.json"
-            summary: "TKT-T-001 ready for PR handoff: Stub task summary."
+    data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
 
   # iface.workspace.* — prefix-fallback to host.git_worktree.
   host.git_worktree:
@@ -157,7 +146,6 @@ turns:
     expect_state: handoff
     expect_world:
       pr_title: "Stub task summary"
-      deck_path: ".artifacts/implementation/TKT-T-001/deck.slidey.json"
 
   # proceed → pr.open_pr (the pr-refinement compound's entry state).
   - intent: { name: proceed, slots: {} }

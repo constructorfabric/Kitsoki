@@ -218,9 +218,6 @@ world:
 
   # ── Story-level "done" sink for standalone runs ──────────────────
   status:           { type: string, default: "open" }   # open | done | merged | abandoned
-  report_path:      { type: string, default: "" }
-  summary_path:     { type: string, default: "" }
-  deck_path:        { type: string, default: "" }
 
   # ── Lost-work guard (clean-tree invariant) ───────────────────────
   # The maker rooms mutate the worktree (write_code applies the change,

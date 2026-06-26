@@ -5,7 +5,7 @@ states:
 
   done:
     description: "Mockup walkthrough accepted."
-    relevant_world: [video_handle, chapters_handle, brief, iterations, cycle, report_path, summary_path, deck_path]
+    relevant_world: [video_handle, chapters_handle, brief, iterations, cycle]
     view:
       - heading: "Mockup video studio · done"
       - kv:
@@ -14,8 +14,6 @@ states:
             Scenarios:  '{{ world.brief.scenarios|length }}'
             Iterations: '{{ world.iterations.items|length }}'
             Cycles:     "{{ world.cycle }}"
-            Report:     '{{ world.report_path|default:"(pending)" }}'
-            Deck:       '{{ world.deck_path|default:"(pending)" }}'
       - heading: "Final walkthrough"
       - media:
           handle:  "{{ world.video_handle }}"
@@ -33,38 +31,6 @@ states:
           items:
             - label: "look"
               hint:  "re-render"
-    on_enter:
-      - invoke: host.run
-        id: mockup_report
-        with:
-          cmd: python3
-          args:
-            - "stories/mockup-video/scripts/mockup_report.py"
-            - "--feature"
-            - "{{ world.brief.feature }}"
-            - "--medium"
-            - "{{ world.medium }}"
-            - "--source-kind"
-            - "{{ world.source.kind }}"
-            - "--source-spec"
-            - "{{ world.source.spec_path }}"
-            - "--source-summary"
-            - "{{ world.source.summary }}"
-            - "--video-handle"
-            - "{{ world.video_handle }}"
-            - "--chapters-handle"
-            - "{{ world.chapters_handle }}"
-            - "--video-path"
-            - "{{ world.video_path }}"
-            - "--chapters-path"
-            - "{{ world.chapters_path }}"
-            - "--cycle"
-            - "{{ world.cycle }}"
-        bind:
-          report_path:  "stdout_json.report_path"
-          summary_path: "stdout_json.summary_path"
-          deck_path:    "stdout_json.deck_path"
-        on_error: done
     on:
       look:
         - target: .

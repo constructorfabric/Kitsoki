@@ -62,12 +62,7 @@ imports:
       build_cmd:       "{{ world.build_cmd }}"
       bf_autostart_attempted: "{{ world.bf_autostart_attempted }}"
     exits:
-      done:
-        to: shipped
-        set:
-          report_path:  "{{ world.bf__report_path }}"
-          summary_path: "{{ world.bf__summary_path }}"
-          deck_path:    "{{ world.bf__deck_path }}"
+      done:        { to: shipped }
       abandoned:   { to: shipped }
       pick_ticket: { to: shipped }
       shipped:          { to: shipped }
@@ -92,9 +87,6 @@ world:
   test_cmd:        { type: string, default: "node --test test/timing.test.js" }
   build_cmd:       { type: string, default: "" }
   bf_autostart_attempted: { type: bool, default: true }
-  report_path:     { type: string, default: "" }
-  summary_path:    { type: string, default: "" }
-  deck_path:       { type: string, default: "" }
 
 states:
   shipped:
@@ -104,11 +96,7 @@ states:
           text:     "PR-READY"
           subtitle: "slidey-128 fixed — branch fix/cards-item-timing-drift ready to open a pull request against slidey"
           color:    "#22C55E"
-      - kv:
-          pairs:
-            Report: '{{ world.report_path|default:"(pending)" }}'
-            Deck:   '{{ world.deck_path|default:"(pending)" }}'
       - prose: "The bug-fix pipeline reproduced, proposed, implemented, tested, reviewed and validated the fix for the real slidey bug. The branch is ready for a PR; the ticket is resolved."
-    relevant_world: [ticket_id, ticket_title, feature_branch, report_path, deck_path]
+    relevant_world: [ticket_id, ticket_title, feature_branch]
 
 root: bf

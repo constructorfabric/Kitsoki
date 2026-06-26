@@ -101,23 +101,6 @@ host_handlers:
               Question: How do the available model harnesses perform on real cases?
 
               Fastest and cheapest: synthetic-codex / syn:small:text, inferred from the configured lightweight synthetic option. The report includes a numeric comparison table with effectiveness, p95 latency, and average cost columns; configured candidates without measurements are listed as missing. The main-checkout local override result was recorded at /Users/brad/code/Kitsoki/.kitsoki.local.yaml.
-  host.artifacts_dir:
-    by_call:
-      write_report_artifact:
-        data:
-          ok: true
-          path: ".artifacts/model-harness-eval/how-do-the-available-model-harnesses-perform-on-real-cases/report_artifact.json"
-          message_id: "report_artifact#1"
-  host.run:
-    by_call:
-      build_report_deck:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            spec_path: ".artifacts/model-harness-eval/how-do-the-available-model-harnesses-perform-on-real-cases/deck.slidey.json"
-            markdown_path: ".artifacts/model-harness-eval/how-do-the-available-model-harnesses-perform-on-real-cases/report.md"
-            refs: []
 
 turns:
   - intent:
@@ -129,18 +112,9 @@ turns:
     expect_state: reporting
     expect_world:
       status: "ready"
-      report_artifact_path: ".artifacts/model-harness-eval/how-do-the-available-model-harnesses-perform-on-real-cases/report_artifact.json"
-      report_deck:
-        spec_path: ".artifacts/model-harness-eval/how-do-the-available-model-harnesses-perform-on-real-cases/deck.slidey.json"
-        markdown_path: ".artifacts/model-harness-eval/how-do-the-available-model-harnesses-perform-on-real-cases/report.md"
-        refs: []
     expect_host_calls:
       - handler: host.agent.task
         args: { call: "prepare_reports" }
-      - handler: host.artifacts_dir
-        args: { call: "write_report_artifact" }
-      - handler: host.run
-        args: { call: "build_report_deck" }
 
   - intent: { name: accept, slots: {} }
     expect_state: done

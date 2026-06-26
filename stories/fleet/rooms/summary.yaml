@@ -9,16 +9,13 @@ states:
 
   summary:
     description: "Fan-out complete — the per-brief read-out."
-    relevant_world: [fleet_briefs, shipped_count, parked_count, fleet_summary,
-                     report_path, report_summary_path, report_deck_path]
+    relevant_world: [fleet_briefs, shipped_count, parked_count, fleet_summary]
     view:
       - heading: "Fan-out complete."
       - kv:
           pairs:
             Shipped: '{{ world.shipped_count }}'
             Parked:  '{{ world.parked_count }}'
-            Report:  '{{ world.report_path }}'
-            Deck:    '{{ world.report_deck_path }}'
       - prose: "{{ world.fleet_summary }}"
       - choice:
           mode: single
@@ -30,22 +27,6 @@ states:
       # Build the summary string deterministically (counts + parked errors).
       - set:
           fleet_summary: '{{ world.shipped_count }} shipped, {{ world.parked_count }} parked.'
-      - invoke: host.run
-        id: fleet_report
-        with:
-          cmd: python3
-          args:
-            - "stories/fleet/scripts/fleet_report.py"
-            - "--state-path"
-            - "{{ world.fleet_state_path }}"
-            - "--decomposition-path"
-            - "{{ world.decomposition_path }}"
-        bind:
-          report_path:         "stdout_json.report_path"
-          report_summary_path: "stdout_json.report_summary_path"
-          report_deck_path:    "stdout_json.report_deck_path"
-          fleet_summary:       "stdout_json.fleet_summary"
-        on_error: summary
       - emit_intent: to_summary
     on:
       to_summary:

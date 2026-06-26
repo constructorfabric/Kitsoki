@@ -26,7 +26,7 @@ states:
             Total:   "{{ world.cells_total }}"
             Ran:     "{{ world.cells_ran }}"
             Harness: "{{ world.harness_dir }}"
-      - prose: "Cells are executed manually via tools/bugfix-bakeoff/run_cell.sh (the only cost-bearing step). This room tracks the roster; accept once the cell results are written to aggregate them."
+      - prose: "Cells are executed manually via tools/bugfix-bakeoff/external/drive_cell.sh / escalate.sh (the only cost-bearing steps). This room tracks the roster; accept once the cell results are written to aggregate them."
       - choice:
           mode: single
           prompt: "Actions"

@@ -7,8 +7,7 @@ profile/model policy, drive each item, verify independently, and write a report.
 The story deliberately separates live work from deterministic tests:
 
 - `host.run` scripts load/lint manifests, recompute the board, enforce policy,
-  run deterministic verifiers, and write `.artifacts/punch-list/<run-id>/report.md`
-  plus `.artifacts/punch-list/<run-id>/deck.slidey.json`.
+  run deterministic verifiers, and write `.artifacts/punch-list/report.md`.
 - `host.agent.task` is only the live Studio MCP driving boundary. Flow fixtures
   stub it; automated tests never call a real LLM.
 

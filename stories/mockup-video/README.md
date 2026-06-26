@@ -8,9 +8,6 @@ walkthrough MP4 (carrying the slice-1 **chapter sidecar**), the operator
 reviews it inline, and a **refine** checkpoint edits the *exact* source that
 produced each flagged moment — fed by inline feedback or by the structured
 feedback notes the slice-2 web `/review` panel dispatches.
-Accepted walkthroughs also emit a deterministic review bundle under
-`.artifacts/mockup-video/<run>/`: `report.md`, `summary.json`, and
-`deck.slidey.json`.
 
 It is the produce → review → refine cousin of `stories/ui-fix/` (media
 showcase + gallery) and `stories/bugfix/` (refine arc), for video instead of
@@ -47,7 +44,7 @@ intake ──(converse: distil brief)──▶ brief-gate ──ok──▶ auth
 | `rendering` | **deterministic** | `deck` → `host.slidey.render` mp4 ; `tour` → `host.run scripts/record_tour.sh` (wraps the `kitsoki-ui-demo` recorder). Both emit `<out>.mp4` + `<out>.chapters.json` (slice 1), then `host.artifacts_dir` → `video_handle` / `chapters_handle`. Auto-advances to review. |
 | `review` | deterministic | `media(video_handle)` inline + a pointer to `/review?video={handle}`. `on_enter` drains `feedback.jsonl` (slice-2 web notes) into `feedback_batch`. Checkpoint: `accept`/`refine`/`rerender`/`quit`. |
 | `refining` | interpretive | **One** `host.agent.task` edits each feedback note's `source_ref` target (the HTML page for `tour`, the scene object for `slidey`), the notes treated as **binding directives** with a per-note compliance checklist (memory: *refine-honours-operator-guidance*). Records the iteration, re-renders. |
-| `done` | deterministic | Writes the terminal report/deck bundle from structured story state, then shows the final video, scenarios, and refine log per iteration. |
+| `done` | — | Gallery: the final video, the scenarios it covers, the refine log per iteration. |
 
 ## World contract
 
@@ -61,7 +58,6 @@ intake ──(converse: distil brief)──▶ brief-gate ──ok──▶ auth
 | `feedback_batch` | `{items:[{source_ref, time_range, frame_handle, instruction}]}` — drained web notes. |
 | `iterations` | `{items:[{video_handle, feedback_addressed, instruction}]}` — one entry per refine pass; preserved on quit. |
 | `cycle` / `refine_budget` | Refine cycle counter and cap (default 6). |
-| `report_path` / `summary_path` / `deck_path` | Terminal review artifacts generated in `.artifacts/mockup-video/<run>/`. |
 
 ## Exits
 
@@ -71,8 +67,8 @@ intake ──(converse: distil brief)──▶ brief-gate ──ok──▶ auth
 ## Host requirements
 
 `host.agent.converse` / `decide` / `task`, `host.slidey.render` (deck render),
-`host.run` (tour render via `record_tour.sh`, feedback drain via
-`drain_feedback.sh`, terminal report/deck generation), `host.artifacts_dir` (media-emit → handle),
+`host.run` (tour render via `record_tour.sh` + feedback drain via
+`drain_feedback.sh`), `host.artifacts_dir` (media-emit → handle),
 `host.chat.resolve` (intake chat), `host.starlark.run` (iteration accumulate).
 
 The tour path reuses the `kitsoki-ui-demo` Playwright recorder and the deck

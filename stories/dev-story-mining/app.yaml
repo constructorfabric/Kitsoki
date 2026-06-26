@@ -120,9 +120,6 @@ world:
   decide_artifact: { type: object, default: {} }   # { selected:[{theme,room,gate}], rationale, summary_markdown }
   author_artifact: { type: object, default: {} }   # { files_changed, flows_green, summary_markdown }
   record_artifact: { type: object, default: {} }   # { ladder_moves, summary_markdown }
-  report_path:     { type: string, default: "" }
-  summary_path:    { type: string, default: "" }
-  deck_path:       { type: string, default: "" }
 
 intents:
   start:

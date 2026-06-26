@@ -6,7 +6,7 @@
 #   contenders  the structure axis        (e.g. kitsoki, single)
 #
 # A cell = (task × candidate × contender). This room ECHOES the loaded matrix
-# (sourced from the harness manifest tools/bugfix-bakeoff/bakeoff.yaml and seeded
+# (sourced from the harness manifest tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml and seeded
 # into world by the operator/flow — we do NOT re-author the manifest; the harness
 # owns it) and records the cell-count total.
 #

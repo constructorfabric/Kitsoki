@@ -55,15 +55,6 @@ host_handlers:
             chapters_path: ".artifacts/mockup-video/test/walkthrough.chapters.json"
       drain_feedback:
         data: { ok: true, exit_code: 0, stdout_json: { items: [] } }
-      mockup_report:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            report_path: ".artifacts/mockup-video/flow-tour/report.md"
-            summary_path: ".artifacts/mockup-video/flow-tour/summary.json"
-            deck_path: ".artifacts/mockup-video/flow-tour/deck.slidey.json"
-            summary: "The /review video feedback panel: accepted tour walkthrough."
 
   host.artifacts_dir:
     by_call:
@@ -87,7 +78,5 @@ turns:
 
   - intent: { name: accept, slots: {} }
     expect_state: done
-    expect_world:
-      deck_path: ".artifacts/mockup-video/flow-tour/deck.slidey.json"
 
 expect_no_errors: true

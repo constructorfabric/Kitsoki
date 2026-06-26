@@ -2,9 +2,12 @@
 # → slideshow → done. No LLM (Mode-2).
 #
 # The DETERMINISTIC starlark scripts (load_backlog / pick_case / record_case /
-# aggregate_run / build_deck) are deterministic and no-cost. In this flow harness
-# every host call is stubbed by id, so the loop, rollup, deck materialization, and
-# render path are exercised without LLM or Slidey execution.
+# aggregate_run / build_deck) RUN FOR REAL — they carry no LLM and no cost, so the
+# loop, the rollup, and the deck spec are exercised genuinely (the slidey-edit
+# posture: deterministic host calls run; only the LLM-bearing host.agent.task is
+# stubbed). The backlog is seeded via initial_world; load_backlog is idempotent
+# and passes a pre-seeded backlog through. host.slidey.render + host.artifacts_dir
+# are stubbed by id (point at the baked report deck — no slidey runs).
 #
 # Case 1 triages STILL-LIVE → driven (shipped, deliverable present, oracle pass)
 #        → independently verified solved.
@@ -62,9 +65,7 @@ host_handlers:
       build_deck:
         data:
           deck_spec:
-            spec_path: ""
-            artifact_thread: "dogfood-marathon/run-flow/deck.slidey.json"
-            body: '{"version":"1","title":"Dogfood marathon report","theme":"kitsoki-report","scenes":[{"type":"title","title":"Dogfood marathon report"}]}'
+            spec_path: "stories/dogfood-marathon/baked/report.deck.json"
             summary: "Dogfood marathon report — 2 cases, 2 solved."
 
   host.agent.task:
@@ -93,20 +94,15 @@ host_handlers:
       render_report:
         data:
           ok: true
-          path: ".artifacts/dogfood-marathon/run-flow/deck.html"
+          path: "stories/dogfood-marathon/baked/report.deck.json"
 
   host.artifacts_dir:
     by_call:
-      write_deck:
-        data:
-          ok: true
-          path: ".artifacts/dogfood-marathon/run-flow/deck.slidey.json"
-          message_id: "deck.slidey#1"
       emit_report:
         data:
           ok: true
           handle: { id: "dogfood-marathon#1", kind: "slideshow", mime: "text/html" }
-          path: ".artifacts/dogfood-marathon/run-flow/deck.html"
+          path: "stories/dogfood-marathon/baked/report.deck.json"
 
 turns:
   # `start` loads the (seeded) backlog and auto-advances the FIRST case through
@@ -132,11 +128,8 @@ turns:
       report_handle: "dogfood-marathon#1"
       cases_processed: 2
       deck_spec:
-        spec_path: ""
-        artifact_thread: "dogfood-marathon/run-flow/deck.slidey.json"
-        body: '{"version":"1","title":"Dogfood marathon report","theme":"kitsoki-report","scenes":[{"type":"title","title":"Dogfood marathon report"}]}'
+        spec_path: "stories/dogfood-marathon/baked/report.deck.json"
         summary: "Dogfood marathon report — 2 cases, 2 solved."
-      deck_spec_path: ".artifacts/dogfood-marathon/run-flow/deck.slidey.json"
 
 expect_terminal: false
 expect_no_errors: true

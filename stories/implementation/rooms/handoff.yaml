@@ -25,8 +25,6 @@ states:
             Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
             "PR title": '{{ world.pr_title|default:"(none)" }}'
             Workdir:    '{{ world.workdir|default:"(none)" }}'
-            Report:     '{{ world.report_path|default:"(pending)" }}'
-            Deck:       '{{ world.deck_path|default:"(pending)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -35,8 +33,7 @@ states:
             - { label: "proceed", intent: proceed, hint: "alias for open" }
             - { label: "quit",    intent: quit,    hint: "abandon the pipeline" }
             - { label: "look",    intent: look,    hint: "re-render" }
-    relevant_world: [ticket_id, ticket_title, pr_title, pr_body, workdir, worktree_dirty,
-                     report_path, summary_path, deck_path]
+    relevant_world: [ticket_id, ticket_title, pr_title, pr_body, workdir, worktree_dirty]
     on_enter:
       # ── Lost-work guard: the pr-refinement clean-tree invariant ────────
       # Re-read the maker worktree's git status before handing off. The
@@ -78,47 +75,6 @@ states:
         # bounce the whole room to idle. The PRIMARY lost-work fix is the
         # write_code/test stage_all commits; this guard only hardens the
         # pr-refinement handoff when git IS readable.
-      - invoke: host.run
-        id: implementation_report
-        with:
-          cmd: python3
-          args:
-            - "stories/implementation/scripts/implementation_report.py"
-            - "--ticket-id"
-            - "{{ world.ticket_id }}"
-            - "--ticket-title"
-            - "{{ world.ticket_title }}"
-            - "--workdir"
-            - "{{ world.workdir }}"
-            - "--feature-branch"
-            - "{{ world.feature_branch }}"
-            - "--pr-title"
-            - "{{ world.pr_title }}"
-            - "--task-title"
-            - "{{ world.task_summary_artifact.summary_title }}"
-            - "--task-summary"
-            - "{{ world.task_summary_artifact.summary_markdown }}"
-            - "--code-title"
-            - "{{ world.code_artifact.summary_title }}"
-            - "--code-summary"
-            - "{{ world.code_artifact.summary_markdown }}"
-            - "--test-title"
-            - "{{ world.test_artifact.summary_title }}"
-            - "--test-summary"
-            - "{{ world.test_artifact.summary_markdown }}"
-            - "--test-status"
-            - "{{ world.test_artifact.status }}"
-            - "--review-title"
-            - "{{ world.review_artifact.summary_title }}"
-            - "--review-summary"
-            - "{{ world.review_artifact.summary_markdown }}"
-            - "--review-status"
-            - "{{ world.review_artifact.status }}"
-        bind:
-          report_path:  "stdout_json.report_path"
-          summary_path: "stdout_json.summary_path"
-          deck_path:    "stdout_json.deck_path"
-        on_error: handoff
     on:
       # Dispatch into the `pr` import compound. The compound's entry
       # state is pr.open_pr (per imports.pr.entry: open_pr). open_pr's

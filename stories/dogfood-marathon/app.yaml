@@ -43,8 +43,7 @@
 #     recording  append the per-case result (outcome/exit/verify/cost/tokens/time/findings)
 #                to world.results, then emit next_case
 #   aggregating  roll up every result → world.rollup (counts, totals, what-worked / what-didn't)
-#   reporting    build the slidey deck SPEC from results+rollup and write it to
-#                .artifacts/dogfood-marathon/<content-suffix>/deck.slidey.json
+#   reporting    build the slidey deck SPEC from results+rollup (host.starlark.run → deck.json)
 #   slideshow    host.slidey.render the deck spec → a baked static-HTML slidey report; bind the handle
 #   done         gallery of the report + the headline rollup
 
@@ -137,7 +136,6 @@ world:
 
   # ── Report render outputs ──────────────────────────────────────────────────
   deck_spec:        { type: object, default: {} }                # {spec_path,summary} — the built deck JSON
-  deck_spec_path:   { type: string, default: "" }                # materialized deck JSON path under .artifacts
   deck_path:        { type: string, default: "" }                # rendered static-HTML deck path
   report_handle:    { type: string, default: "" }                # media handle for the rendered report
 

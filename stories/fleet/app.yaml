@@ -54,9 +54,6 @@ world:
   base_branch:        { type: string, default: "main" }
   main_worktree_path: { type: string, default: "." }
   fleet_summary:      { type: string, default: "" }      # final read-out
-  report_path:        { type: string, default: "" }      # deterministic Markdown read-out
-  report_summary_path: { type: string, default: "" }     # machine-readable report input
-  report_deck_path:   { type: string, default: "" }      # deterministic Slidey deck
   load_error:         { type: string, default: "" }
   # Set by the ship-it exit projections; consumed by board to mark the brief.
   _ship_disposition:  { type: string, default: "" }      # shipped | parked

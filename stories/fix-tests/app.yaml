@@ -73,8 +73,6 @@ world:
   # Outcome.
   outcome:        { type: string, default: "" }
   report_path:    { type: string, default: "" }
-  report_summary_path: { type: string, default: "" }
-  report_deck_path: { type: string, default: "" }
 
 intents:
   start:

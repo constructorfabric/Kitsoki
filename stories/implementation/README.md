@@ -16,11 +16,6 @@ Each `_awaiting_reply` checkpoint follows the canonical §6 shape from
 inbox + LLM-judge + emit_intent. `world.judge_mode` selects who answers
 without forking the state graph.
 
-The `handoff` room writes `.artifacts/implementation/<run>/report.md`,
-`summary.json`, and `deck.slidey.json` from the structured checkpoint
-artifacts before entering `pr-refinement`. The deck is deterministic; LLM text
-only enters through schema-validated artifacts.
-
 ## Standalone
 
 ```
@@ -50,15 +45,7 @@ short-circuits to the parent's main with `status: abandoned`.
 | `write_code` | `_executing`, `_awaiting_reply` | yes — `code_artifact` | `test_executing` |
 | `test` | `_executing`, `_awaiting_reply` | yes — `test_artifact` | `review_executing` |
 | `review` | `_executing`, `_awaiting_reply` | yes — `review_artifact` | `handoff` |
-| `handoff` | one atomic | n/a | writes report/deck, then `pr` (the pr-refinement import compound) |
-
-## Report Artifacts
-
-| Key | Meaning |
-|---|---|
-| `report_path` | Human-readable implementation handoff report. |
-| `summary_path` | Structured input used by the deterministic deck renderer. |
-| `deck_path` | Standardized Slidey handoff-status deck. |
+| `handoff` | one atomic | n/a | `pr` (the pr-refinement import compound) |
 
 The `test` and `review` rooms' `refine` arcs both bounce back to
 `write_code_executing` with feedback — the loop closes around the

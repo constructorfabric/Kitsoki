@@ -102,17 +102,3 @@ episodes:
         path: "/tmp/.artifacts/docs-review-fix-deadbeefcafefeed.json"
         message_id: "docs-review-fix-deadbeefcafefeed#0"
     replay: any
-
-  - id: docs_report
-    match:
-      handler: host.run
-      call: docs-report
-    response:
-      data:
-        ok: true
-        exit_code: 0
-        stdout_json:
-          report_path: ".artifacts/docs-review/deadbeefcafefeed/report.md"
-          summary_path: ".artifacts/docs-review/deadbeefcafefeed/summary.json"
-          deck_path: ".artifacts/docs-review/deadbeefcafefeed/deck.slidey.json"
-    replay: any

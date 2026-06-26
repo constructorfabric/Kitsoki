@@ -27,5 +27,3 @@ turns:
   - intent: { name: bf__accept, slots: {} }   # -> shipped (exit:done close-out)
     then:
       - expect_state: shipped
-      - expect_world:
-          deck_path: ".artifacts/bugfix/slidey-128/deck.slidey.json"

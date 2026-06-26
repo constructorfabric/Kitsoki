@@ -14,8 +14,6 @@ states:
             "Decision":   '{{ world.verdict.decision|default:"(missing)" }}'
             "Confidence": '{{ world.verdict.confidence|default:"(n/a)" }}'
             "Artifact":   '{{ world.artifact_path|default:"(not written)" }}'
-            "Report":     '{{ world.report_path|default:"(pending)" }}'
-            "Deck":       '{{ world.deck_path|default:"(pending)" }}'
       - heading: "Summary"
       - prose: '{{ world.verdict.summary|default:"(no summary)" }}'
       - heading: "Commits in scope"
@@ -55,32 +53,12 @@ states:
             - label:  "look"
               hint:   "re-render the scene"
               intent: look
-    relevant_world: [commit_sha, verdict, artifact_path, report_path, summary_path, deck_path]
+    relevant_world: [commit_sha, verdict, artifact_path]
     on_enter:
       # Live progress breadcrumb — streamed per-room as the one-shot chain
       # passes through (and shown above the verdict when staged stops here).
       # See docs/proposals/execution-modes-and-gate-deciders.md.
       - say: 'Review complete — verdict: {{ world.verdict.decision }}{% if world.verdict.decision == "needs_update" %} ({{ world.verdict.stale_docs|length }} stale doc(s) cited){% endif %}.'
-      - when: 'world.verdict_decision != "needs_update"'
-        invoke: host.run
-        id: docs-report
-        with:
-          cmd: python3
-          args:
-            - "stories/docs-review/scripts/docs_report.py"
-            - "--commit-sha"
-            - "{{ world.commit_sha }}"
-            - "--review-mode"
-            - "{{ world.review_mode }}"
-            - "--artifact-path"
-            - "{{ world.artifact_path }}"
-            - "--verdict-json"
-            - "{{ world.verdict }}"
-        bind:
-          report_path:  "stdout_json.report_path"
-          summary_path: "stdout_json.summary_path"
-          deck_path:    "stdout_json.deck_path"
-        on_error: review_failed
       # This is an operator gate. A needs_update verdict exposes the
       # `fix_docs` action but does not auto-edit the working tree; the
       # write-capable docs_writer runs only after an explicit operator pick.

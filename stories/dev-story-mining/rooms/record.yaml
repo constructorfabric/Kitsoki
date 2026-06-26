@@ -18,10 +18,6 @@ states:
       - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }}"
       - heading: "Ladder review"
       - code: '{{ world.record_artifact.summary_markdown|default:"(pending — recorder has not returned yet)" }}'
-      - kv:
-          pairs:
-            Report: '{{ world.report_path|default:"(pending)" }}'
-            Deck:   '{{ world.deck_path|default:"(pending)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -39,7 +35,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [job, stories_dir, judge_mode, judge_confidence_threshold, author_artifact, record_artifact, report_path, deck_path, llm_verdict, refine_feedback, cycle]
+    relevant_world: [job, stories_dir, judge_mode, judge_confidence_threshold, author_artifact, record_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
       - invoke: host.agent.ask
         once: true
@@ -53,32 +49,6 @@ states:
         bind:
           record_artifact: submitted
         on_error: idle
-      - invoke: host.run
-        id: dev_story_mining_report
-        with:
-          cmd: python3
-          args:
-            - "stories/dev-story-mining/scripts/mining_report.py"
-            - "--job"
-            - "{{ world.job }}"
-            - "--stories-dir"
-            - "{{ world.stories_dir }}"
-            - "--selected-theme"
-            - "{{ world.selected_theme }}"
-            - "--mine-artifact"
-            - "{{ world.mine_artifact }}"
-            - "--map-artifact"
-            - "{{ world.map_artifact }}"
-            - "--decide-artifact"
-            - "{{ world.decide_artifact }}"
-            - "--author-artifact"
-            - "{{ world.author_artifact }}"
-            - "--record-artifact"
-            - "{{ world.record_artifact }}"
-        bind:
-          report_path:  "stdout_json.report_path"
-          summary_path: "stdout_json.summary_path"
-          deck_path:    "stdout_json.deck_path"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
         with:

@@ -36,9 +36,6 @@ world:
   base_branch:          { type: string, default: "main" }
   main_worktree_path:   { type: string, default: "." }
   delivery_summary:     { type: string, default: "" }   # set by fleet on @exit:done
-  report_path:          { type: string, default: "" }   # projected from fleet
-  report_summary_path:  { type: string, default: "" }   # projected from fleet
-  report_deck_path:     { type: string, default: "" }   # projected from fleet
   last_error:           { type: string, default: "" }   # set by lint (bind) or engine (on_error)
   decomposition_briefs: { type: list,   default: [] }   # briefs returned by the decomposer agent
   lint_route:           { type: string, default: "" }   # "ok" | "fail" — lint script verdict
@@ -99,10 +96,7 @@ imports:
       done:
         to: "@exit:done"
         set:
-          delivery_summary:    "{{ world.fleet__fleet_summary }}"
-          report_path:         "{{ world.fleet__report_path }}"
-          report_summary_path: "{{ world.fleet__report_summary_path }}"
-          report_deck_path:    "{{ world.fleet__report_deck_path }}"
+          delivery_summary: "{{ world.fleet_summary }}"
 
 include:
   - rooms/*.yaml

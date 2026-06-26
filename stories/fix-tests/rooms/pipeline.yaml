@@ -167,7 +167,7 @@ states:
   # Terminal: tests green (either first run or after a fix). Exit 0.
   done_clean:
     description: "All tests passing."
-    relevant_world: [outcome, cycle, report_path, report_deck_path]
+    relevant_world: [outcome, cycle, report_path]
     view:
       extends: "base"
       blocks:
@@ -176,7 +176,6 @@ states:
           - kv:
               pairs:
                 Report: '{{ world.report_path|default:"(pending)" }}'
-                Deck: '{{ world.report_deck_path|default:"(pending)" }}'
         choices:
           - heading: "Actions"
           - list:
@@ -195,9 +194,7 @@ states:
             - "{{ world.fix_artifact }}"
             - "true"
         bind:
-          report_path: stdout_json.report_path
-          report_summary_path: stdout_json.summary_path
-          report_deck_path: stdout_json.deck_path
+          report_path: stdout
       - invoke: host.inbox.add
         with:
           kind:  checkpoint
@@ -213,7 +210,7 @@ states:
   # Terminal: still red after max_cycles. Exit nonzero.
   done_exhausted:
     description: "Tests still failing after the fix budget was exhausted."
-    relevant_world: [outcome, cycle, max_cycles, report_path, report_deck_path]
+    relevant_world: [outcome, cycle, max_cycles, report_path]
     view:
       extends: "base"
       blocks:
@@ -222,7 +219,6 @@ states:
           - kv:
               pairs:
                 Report: '{{ world.report_path|default:"(pending)" }}'
-                Deck: '{{ world.report_deck_path|default:"(pending)" }}'
         choices:
           - heading: "Actions"
           - list:
@@ -241,9 +237,7 @@ states:
             - "{{ world.fix_artifact }}"
             - "false"
         bind:
-          report_path: stdout_json.report_path
-          report_summary_path: stdout_json.summary_path
-          report_deck_path: stdout_json.deck_path
+          report_path: stdout
       - invoke: host.inbox.add
         with:
           kind:  checkpoint
@@ -259,7 +253,7 @@ states:
   # Terminal: the fixer hit a question that needs a human answer. Exit nonzero.
   blocked:
     description: "Blocked — the fixer needs a decision before it can continue."
-    relevant_world: [fix_artifact, report_path, report_deck_path]
+    relevant_world: [fix_artifact, report_path]
     view:
       extends: "base"
       blocks:
@@ -269,7 +263,6 @@ states:
           - kv:
               pairs:
                 Report: '{{ world.report_path|default:"(pending)" }}'
-                Deck: '{{ world.report_deck_path|default:"(pending)" }}'
         choices:
           - heading: "Actions"
           - list:
@@ -288,9 +281,7 @@ states:
             - "{{ world.fix_artifact }}"
             - "false"
         bind:
-          report_path: stdout_json.report_path
-          report_summary_path: stdout_json.summary_path
-          report_deck_path: stdout_json.deck_path
+          report_path: stdout
       - invoke: host.inbox.add
         with:
           kind:  checkpoint

@@ -86,7 +86,6 @@ states:
                   reason:       fixed
               bind:
                 fixed: bucket
-                fixed_report_lines: report_lines
             - set:
                 cursor:        "{{ world.cursor + 1 }}"
                 current:       {}
@@ -109,7 +108,6 @@ states:
                   reason:       fixed
               bind:
                 fixed: bucket
-                fixed_report_lines: report_lines
             - set:
                 cursor:        "{{ world.cursor + 1 }}"
                 current:       {}

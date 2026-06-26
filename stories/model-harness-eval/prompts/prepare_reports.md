@@ -14,8 +14,8 @@ Override request:
 Write or refresh these artifacts:
 
 - Markdown report: `{{ args.markdown_path }}`
-- Deterministic Slidey deck destination: `{{ args.deck_path }}`
-- Deterministic Slidey JSON source destination: `{{ args.slidey_spec_path }}`
+- Slide-style HTML deck or rendered review artifact: `{{ args.deck_path }}`
+- Slidey JSON deck source: `{{ args.slidey_spec_path }}`
 - Durable case study: `{{ args.case_study_path }}`
 - Machine summary JSON: `{{ args.summary_path }}`
 - Live evidence policy: `{{ args.live_policy }}`
@@ -81,11 +81,10 @@ Routing/case-study mode:
   problem, mined corpus, method, current architecture, candidate model tiers,
   what is safe to switch now, what needs live eval, expected cost mechanism,
   risks, and the next implementation path.
-- Do not author the Slidey deck. Return the structured `report_artifact` fields
-  only. The story writes the validated artifact to `.artifacts/` and runs
-  `tools/report-deck/deterministic_deck.py --kind model-harness` to create the
-  trusted Slidey JSON from your schema-checked recommendations, evidence counts,
-  commands, limitations, and artifact paths.
+- The Slidey source at `{{ args.slidey_spec_path }}` must be a real Slidey JSON
+  deck, not a markdown outline. It should be suitable for review/rendering with
+  `slidey {{ args.slidey_spec_path }} --validate` and should summarize the case
+  study with crisp slides, tables, and a final recommendation.
 
 Selection proposal:
 
@@ -117,17 +116,15 @@ Selection proposal:
   profiles are local test/provider options, `codex-native` is the native Codex
   profile, and `claude-native` is the checked-in baseline. Choose the option
   that best satisfies the operator's question, not merely the current default.
-- The Markdown report must include a plain recommendation section:
+- The Markdown report and HTML deck must include a plain recommendation section:
   fastest, cheapest, best, selected, why, the table row that supports each
-  measured recommendation, and the override applied. The deterministic Slidey
-  deck will mirror this from the returned structured JSON.
+  measured recommendation, and the override applied.
 
 Override application:
 
-- `report`: do not apply a default-profile override. Write the report, case
-  study, and summary JSON only. Set `override.applied` to false and explain that
-  no runtime default was changed. The story generates the Slidey source and
-  rendered review artifact deterministically after your return value validates.
+- `report`: do not apply a default-profile override. Write the report, Slidey
+  source, rendered review artifact, case study, and summary JSON only. Set
+  `override.applied` to false and explain that no runtime default was changed.
 - `local`: update `{{ args.override_path }}` so new Kitsoki sessions use the
   selected profile/model/effort by default. Preserve unrelated keys such as
   `intercept:` and existing `harness_profiles:`. Do not write secrets. If the

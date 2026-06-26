@@ -19,13 +19,7 @@ host_handlers:
         data: { exit_code: 0, ok: true, stdout: "ok\n" }
         delay: "20ms"
       write_report:
-        data:
-          exit_code: 0
-          ok: true
-          stdout_json:
-            report_path: ".artifacts/fix-tests/fixed/report.md"
-            summary_path: ".artifacts/fix-tests/fixed/summary.json"
-            deck_path: ".artifacts/fix-tests/fixed/deck.slidey.json"
+        data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-fixed.md" }
   host.agent.task:
     by_call:
       fix:
@@ -50,7 +44,6 @@ turns:
       tests_passed: true
       outcome:      "fixed"
       cycle:        1
-      report_path:  ".artifacts/fix-tests/fixed/report.md"
-      report_deck_path: ".artifacts/fix-tests/fixed/deck.slidey.json"
+      report_path:  ".artifacts/fix-tests/report-fixed.md"
 
 expect_no_errors: true

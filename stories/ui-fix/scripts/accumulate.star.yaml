@@ -4,5 +4,4 @@ inputs:
   reason:       { type: string, required: false }
 
 outputs:
-  bucket:       { type: object }
-  report_lines: { type: string }
+  bucket:  { type: object }

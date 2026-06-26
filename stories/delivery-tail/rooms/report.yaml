@@ -1,14 +1,14 @@
 # report — the shipped read-out → @exit:shipped.
 #
-# Renders shipped_sha, the brief, a one-line summary, and deterministic report
-# artifacts, then fires @exit:shipped (requires [shipped_sha]). This is the room
-# fleet reads to mark a brief done and release the merge-lock.
+# Renders shipped_sha, the brief, and a one-line summary, then fires
+# @exit:shipped (requires [shipped_sha]). This is the room fleet reads to mark
+# a brief done and release the merge-lock.
 
 states:
 
   report:
     description: "Shipped read-out → @exit:shipped."
-    relevant_world: [brief, shipped_sha, workspace_branch, status, report_path, summary_path, deck_path]
+    relevant_world: [brief, shipped_sha, workspace_branch, status]
     view:
       - heading: "Shipped."
       - kv:
@@ -17,8 +17,6 @@ states:
             Merged:   '{{ world.shipped_sha }}  (on main, gate green on the merged sha)'
             Worktree: 'removed ({{ world.workspace_branch }}, branch -D)'
             Status:   'shipped'
-            Report:   '{{ world.report_path|default:"(pending)" }}'
-            Deck:     '{{ world.deck_path|default:"(pending)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -26,37 +24,6 @@ states:
             - label: "look"
               intent: look
     on_enter:
-      - invoke: host.run
-        id: delivery_report
-        with:
-          cmd: python3
-          args:
-            - "stories/delivery-tail/scripts/delivery_report.py"
-            - "--brief"
-            - "{{ world.brief }}"
-            - "--workspace-branch"
-            - "{{ world.workspace_branch }}"
-            - "--worktree-path"
-            - "{{ world.worktree_path }}"
-            - "--gate-command"
-            - "{{ world.gate_command }}"
-            - "--integrate-outcome"
-            - "{{ world.integrate_outcome }}"
-            - "--integrated-sha"
-            - "{{ world.integrated_sha }}"
-            - "--verify-ok"
-            - "{{ world.verify_ok }}"
-            - "--verify-output"
-            - "{{ world.verify_output }}"
-            - "--cleanup-outcome"
-            - "{{ world.cleanup_outcome }}"
-            - "--shipped-sha"
-            - "{{ world.shipped_sha }}"
-        bind:
-          report_path:  "stdout_json.report_path"
-          summary_path: "stdout_json.summary_path"
-          deck_path:    "stdout_json.deck_path"
-        on_error: report
       - emit_intent: ship_done
     on:
       ship_done:

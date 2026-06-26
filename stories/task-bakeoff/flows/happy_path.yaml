@@ -11,7 +11,7 @@ app: ../app.yaml
 initial_state: idle
 initial_world:
   harness_dir: "tools/bugfix-bakeoff"
-  manifest_path: "tools/bugfix-bakeoff/bakeoff.yaml"
+  manifest_path: "tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml"
   generated_at: "2026-06-24T00:00:00Z"
   tasks: [bug9, bug12, bug14]
   candidates: [opus-4.8, sonnet-4.6]
@@ -36,15 +36,14 @@ host_handlers:
             generated_at: "2026-06-24T00:00:00Z"
             cells: [{ key: "bug9-opus-4.8-kitsoki" }, { key: "bug9-opus-4.8-single" }, { key: "bug9-sonnet-4.6-single" }]
             rollup: { by_treatment: {}, by_candidate: {}, by_cell_key: {} }
-      # reporting: deterministic_deck.py → report markdown + deck spec.
+      # reporting: eval_pilot_report.py → report markdown + deck spec.
       build_report:
         data:
           ok: true
           exit_code: 0
           stdout_json:
-            markdown_path: "tools/bugfix-bakeoff/results/report.md"
-            spec_path: "stories/task-bakeoff/baked/deck.json"
-            summary: "Matrix bake-off report deck (bug9 grid)."
+            markdown: "# Bake-off report\n\nsolve rate, cost, tokens, wall time by treatment."
+            deck: { spec_path: "stories/task-bakeoff/baked/deck.json", summary: "Matrix bake-off report deck (bug9 grid)." }
 
   host.slidey.render:
     by_call:

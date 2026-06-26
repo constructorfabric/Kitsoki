@@ -7,8 +7,6 @@ app:
 
 hosts:
   - host.agent.task
-  - host.artifacts_dir
-  - host.run
 
 agents:
   reporter:
@@ -29,14 +27,12 @@ world:
   output_root:     { type: string, default: ".artifacts/model-harness-eval" }
   markdown_path:   { type: string, default: ".context/model-harness-eval.md" }
   deck_path:       { type: string, default: ".artifacts/model-harness-eval/index.html" }
-  slidey_spec_path: { type: string, default: ".artifacts/model-harness-eval/latest/deck.slidey.json" }
+  slidey_spec_path: { type: string, default: "docs/decks/model-harness-eval.json" }
   case_study_path: { type: string, default: "docs/case-studies/model-harness-eval.md" }
   summary_path:    { type: string, default: ".artifacts/model-harness-eval/summary.json" }
   live_policy:     { type: string, default: "no_cost" }
   refine_feedback: { type: string, default: "" }
   report_artifact: { type: object, default: {} }
-  report_artifact_path: { type: string, default: "" }
-  report_deck:     { type: object, default: {} }
   status:          { type: string, default: "idle" }
 
 intents:

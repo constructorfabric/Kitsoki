@@ -44,15 +44,6 @@ host_handlers:
             outcome:    cleaned
             last_op_ok: true
             last_error: ""
-      delivery_report:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json:
-            report_path: ".artifacts/delivery-tail/e4f5a6b/report.md"
-            summary_path: ".artifacts/delivery-tail/e4f5a6b/summary.json"
-            deck_path: ".artifacts/delivery-tail/e4f5a6b/deck.slidey.json"
-            summary: "Shipped burst-fix at e4f5a6b."
 
 turns:
   # begin transitions bootstrap → integrate, firing on_enter → the autonomous
@@ -66,8 +57,6 @@ turns:
       verify_ok:         true
       integrate_outcome: integrated
       cleanup_outcome:   cleaned
-      report_path:       ".artifacts/delivery-tail/e4f5a6b/report.md"
-      deck_path:         ".artifacts/delivery-tail/e4f5a6b/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true
