@@ -27,3 +27,16 @@ CREATE TABLE IF NOT EXISTS gh_job_events (
     FOREIGN KEY(job_id) REFERENCES gh_jobs(job_id)
 ) STRICT;
 CREATE INDEX IF NOT EXISTS gh_job_events_job ON gh_job_events(job_id, id);
+
+CREATE TABLE IF NOT EXISTS gh_job_assets (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id     TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    mime_type  TEXT NOT NULL DEFAULT 'application/octet-stream',
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(job_id) REFERENCES gh_jobs(job_id),
+    UNIQUE(job_id, name)
+) STRICT;
+CREATE INDEX IF NOT EXISTS gh_job_assets_job ON gh_job_assets(job_id);
+

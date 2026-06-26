@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -60,6 +62,16 @@ type GHJobEvent struct {
 	CreatedAt time.Time
 }
 
+// GHJobAsset records a file asset associated with a GitHub job.
+type GHJobAsset struct {
+	ID        int64
+	JobID     string
+	Name      string
+	MimeType  string
+	SizeBytes int64
+	CreatedAt time.Time
+}
+
 // GHMention is the minimal mention shape the store needs to mint a job row.
 // internal/ghagent.Mention satisfies it via its exported fields; keeping the
 // store's dependency a tiny local interface avoids an import cycle
@@ -78,7 +90,8 @@ type GHMention struct {
 // distinct table rather than an overload of UpsertJob (which is INSERT OR
 // REPLACE and so cannot serve an idempotent-attach Claim).
 type GHJobStore struct {
-	db *sql.DB
+	db      *sql.DB
+	DataDir string // root directory for on-disk asset blobs; empty disables Put/Get
 }
 
 // NewGHJobStore applies the gh_jobs DDL idempotently and configures WAL +
@@ -383,4 +396,93 @@ func insertGHJobEventTx(ctx context.Context, tx *sql.Tx, jobID, state, message s
 
 func isSQLiteDuplicateColumn(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate column")
+}
+
+// PutAsset saves a binary asset file to disk associated with a job ID,
+// and records its metadata in the sqlite DB.
+func (s *GHJobStore) PutAsset(ctx context.Context, jobID, name, mimeType string, data []byte) error {
+	if s.DataDir == "" {
+		return fmt.Errorf("jobs.GHJobStore.PutAsset: DataDir is not configured")
+	}
+
+	var exists int
+	err := s.db.QueryRowContext(ctx, "SELECT 1 FROM gh_jobs WHERE job_id = ?", jobID).Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("jobs.GHJobStore.PutAsset: job not found: %s", jobID)
+		}
+		return fmt.Errorf("jobs.GHJobStore.PutAsset: %w", err)
+	}
+
+	dir := filepath.Join(s.DataDir, "assets", jobID)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("jobs.GHJobStore.PutAsset: %w", err)
+	}
+
+	tmpPath := filepath.Join(dir, name+".tmp")
+	destPath := filepath.Join(dir, name)
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("jobs.GHJobStore.PutAsset: %w", err)
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("jobs.GHJobStore.PutAsset: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO gh_job_assets (job_id, name, mime_type, size_bytes, created_at)
+		 VALUES (?, ?, ?, ?, ?)`,
+		jobID, name, mimeType, len(data), time.Now().UnixMilli())
+	if err != nil {
+		return fmt.Errorf("jobs.GHJobStore.PutAsset: %w", err)
+	}
+
+	return nil
+}
+
+// GetAssetData returns the binary file content and its recorded MIME type.
+func (s *GHJobStore) GetAssetData(ctx context.Context, jobID, name string) ([]byte, string, error) {
+	if s.DataDir == "" {
+		return nil, "", fmt.Errorf("jobs.GHJobStore.GetAssetData: DataDir is not configured")
+	}
+
+	var mimeType string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT mime_type FROM gh_job_assets WHERE job_id = ? AND name = ?",
+		jobID, name).Scan(&mimeType)
+	if err != nil {
+		return nil, "", fmt.Errorf("jobs.GHJobStore.GetAssetData: %w", err)
+	}
+
+	path := filepath.Join(s.DataDir, "assets", jobID, name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", fmt.Errorf("jobs.GHJobStore.GetAssetData: %w", err)
+	}
+
+	return data, mimeType, nil
+}
+
+// ListAssets lists all metadata for assets associated with a job ID.
+func (s *GHJobStore) ListAssets(ctx context.Context, jobID string) ([]GHJobAsset, error) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT id, job_id, name, mime_type, size_bytes, created_at FROM gh_job_assets WHERE job_id = ? ORDER BY name",
+		jobID)
+	if err != nil {
+		return nil, fmt.Errorf("jobs.GHJobStore.ListAssets: %w", err)
+	}
+	defer rows.Close()
+
+	var assets []GHJobAsset
+	for rows.Next() {
+		var a GHJobAsset
+		var createdMs int64
+		if err := rows.Scan(&a.ID, &a.JobID, &a.Name, &a.MimeType, &a.SizeBytes, &createdMs); err != nil {
+			return nil, fmt.Errorf("jobs.GHJobStore.ListAssets: %w", err)
+		}
+		a.CreatedAt = time.UnixMilli(createdMs)
+		assets = append(assets, a)
+	}
+
+	return assets, nil
 }

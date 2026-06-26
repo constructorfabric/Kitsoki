@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /*
- * Build the live @kitsoki GitHub-agent Slidey deck from collected evidence and
- * captured rrweb clips.
+ * Build a per-phase @kitsoki GitHub-agent Slidey deck from collected evidence
+ * and captured rrweb clips for a single case.
  *
- * Strict mode is the default: all evidence notes and media files must exist,
+ * Strict mode is the default: the evidence note and media files must exist,
  * and evidence URLs must point at a consistent live GitHub repo + public
- * gh-agent service. Use --allow-missing-media only to emit a draft scaffold.
+ * gh-agent service. Use --allow-missing-media to emit a draft scaffold.
  */
 
 import fs from "node:fs";
@@ -104,64 +104,52 @@ const STEPS = [
   },
 ];
 
-const DEFAULT_OUT = ".artifacts/github-agent-live/live-github-agent.slidey.json";
-const DEFAULT_EVIDENCE_DIR = ".context";
+const VALID_SLUGS = CASES.map((c) => c.slug);
 const DEFAULT_MEDIA_ROOT = ".artifacts/github-agent-live";
 
 function usage() {
-  console.error(`usage: scripts/build-gh-agent-live-deck.mjs [options]
+  console.error(`usage: scripts/build-gh-agent-phase-deck.mjs --case <slug> [options]
 
 Options:
-  --out <deck.slidey.json>       default ${DEFAULT_OUT}
-  --evidence-dir <dir>           default ${DEFAULT_EVIDENCE_DIR}
+  --case <slug>                  one of: ${VALID_SLUGS.join(", ")}
+  --evidence <path>              default .context/live-poc-<slug>.md
   --media-root <dir>             default ${DEFAULT_MEDIA_ROOT}
-  --developer-arc-media <path>   rrweb clip for Section 7
+  --out <path>                   default ${DEFAULT_MEDIA_ROOT}/<slug>/deck.slidey.json
   --allow-missing-media          emit a draft even when clip files are absent
   --allow-nonlive-urls           skip live URL host validation (tests only)
   -h, --help                     show this help
 
 Inputs:
-  <evidence-dir>/live-poc-bug-issue.md
-  <evidence-dir>/live-poc-feature-issue.md
-  <evidence-dir>/live-poc-guidance.md
-  <evidence-dir>/live-poc-guidance-resume.md
-  <evidence-dir>/live-poc-pr-status.md
-
-Expected case rrweb logs:
-  <media-root>/bug-issue/01-github-thread.rrweb.json
-  <media-root>/bug-issue/02-app-comment.rrweb.json
-  <media-root>/bug-issue/03-run-page.rrweb.json
-  <media-root>/bug-issue/04-run-api.rrweb.json
-  ...and the same four files for feature-issue, guidance, guidance-resume, and pr-status.`);
+  <evidence>                     evidence markdown file for the selected case
+  <media-root>/<slug>/01-github-thread.rrweb.json
+  <media-root>/<slug>/02-app-comment.rrweb.json
+  <media-root>/<slug>/03-run-page.rrweb.json
+  <media-root>/<slug>/04-run-api.rrweb.json`);
 }
 
 function parseArgs(argv) {
   const args = {
-    out: DEFAULT_OUT,
-    evidenceDir: DEFAULT_EVIDENCE_DIR,
+    caseSlug: "",
+    evidence: "",
     mediaRoot: DEFAULT_MEDIA_ROOT,
-    developerArcMedia: "",
-    publicBaseURL: "",
+    out: "",
     allowMissingMedia: false,
     allowNonliveUrls: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     switch (arg) {
-      case "--out":
-        args.out = argv[++i];
+      case "--case":
+        args.caseSlug = argv[++i];
         break;
-      case "--evidence-dir":
-        args.evidenceDir = argv[++i];
+      case "--evidence":
+        args.evidence = argv[++i];
         break;
       case "--media-root":
         args.mediaRoot = argv[++i];
         break;
-      case "--developer-arc-media":
-        args.developerArcMedia = argv[++i];
-        break;
-      case "--public-base-url":
-        args.publicBaseURL = argv[++i];
+      case "--out":
+        args.out = argv[++i];
         break;
       case "--allow-missing-media":
         args.allowMissingMedia = true;
@@ -177,8 +165,24 @@ function parseArgs(argv) {
         throw new Error(`unknown argument: ${arg}`);
     }
   }
+  if (!args.help) {
+    if (!args.caseSlug) {
+      throw new Error("--case is required");
+    }
+    if (!VALID_SLUGS.includes(args.caseSlug)) {
+      throw new Error(`--case must be one of: ${VALID_SLUGS.join(", ")} (got ${args.caseSlug})`);
+    }
+    if (!args.evidence) {
+      args.evidence = `.context/live-poc-${args.caseSlug}.md`;
+    }
+    if (!args.out) {
+      args.out = `${args.mediaRoot}/${args.caseSlug}/deck.slidey.json`;
+    }
+  }
   return args;
 }
+
+/* ── Evidence-reading helpers (same as build-gh-agent-live-deck.mjs) ─────── */
 
 function field(markdown, label) {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -234,16 +238,12 @@ function relativeMediaPath(deckOut, mediaPath) {
 }
 
 function readEvidence(args, c) {
-  const evidencePath = path.join(args.evidenceDir, `live-poc-${c.slug}.md`);
+  const evidencePath = args.evidence;
   const markdown = fs.readFileSync(evidencePath, "utf8");
-  const observedBase = normalizeBaseURL(field(markdown, "Public base URL"));
-  if (!args.expectedPublicBaseURL) {
-    args.expectedPublicBaseURL = observedBase;
-  }
   const publicBaseURL = requireURL(
     `${c.slug} Public base URL`,
     field(markdown, "Public base URL"),
-    (u) => normalizeBaseURL(u) === args.expectedPublicBaseURL,
+    null,
     args.allowNonliveUrls,
   );
   const expectedWebhookURL = `${normalizeBaseURL(publicBaseURL)}/gh-agent/webhook`;
@@ -253,14 +253,10 @@ function readEvidence(args, c) {
     (u) => u === expectedWebhookURL,
     args.allowNonliveUrls,
   );
-  const observedRepo = githubRepoFromURL(field(markdown, "Source URL"));
-  if (!args.expectedRepo) {
-    args.expectedRepo = observedRepo;
-  }
   const sourceURL = requireURL(
     `${c.slug} Source URL`,
     field(markdown, "Source URL"),
-    (u) => githubRepoFromURL(u) === args.expectedRepo,
+    null,
     args.allowNonliveUrls,
   );
   const runURL = requireURL(
@@ -346,124 +342,76 @@ function mediaScenes(deckOut, c, evidence, files) {
   }));
 }
 
-function developerArcScene(args, deckOut) {
-  if (!args.developerArcMedia) {
-    if (!args.allowMissingMedia) {
-      throw new Error("--developer-arc-media is required for the full final deck");
-    }
-    return {
+/* ── Deck construction ───────────────────────────────────────────────────── */
+
+function buildScaffoldDeck(c) {
+  const scenes = [
+    {
       type: "title",
-      eyebrow: "Section 7",
-      title: "Slidey developer arc",
-      subtitle: "Attach the existing QA-passed bugfix, refine, and PR clips before final render",
-      narration:
-        "The live GitHub POC connects to the existing Slidey developer arc. This draft marks where the QA-passed developer footage must be attached before the deck is final.",
-    };
-  }
-  if (!fs.existsSync(args.developerArcMedia) && !args.allowMissingMedia) {
-    throw new Error(`missing developer arc media: ${args.developerArcMedia}`);
-  }
-  if (!args.developerArcMedia.endsWith(".rrweb.json") && !args.allowMissingMedia) {
-    throw new Error(`developer arc media must be an rrweb log, got ${args.developerArcMedia}`);
-  }
-  const rel = relativeMediaPath(deckOut, args.developerArcMedia);
-  const scene = {
-    type: "video",
-    mode: "embedded",
-    eyebrow: "Existing evidence",
-    title: "Slidey developer arc",
-    caption: "Existing QA-passed Slidey bugfix, feature refine, and PR evidence.",
-    narration:
-      "This section connects the live GitHub front door to the existing Slidey developer arc evidence: bugfix, feature refinement, and pull request work.",
-    rrweb: rel,
-    chapters: "auto",
-  };
-  return scene;
+      eyebrow: c.eyebrow,
+      title: `@kitsoki ${c.title}`,
+      subtitle: c.subtitle,
+      narration: c.narration,
+    },
+    {
+      type: "cta",
+      wordmark: "kitsoki",
+      tagline: `${c.title}: ${c.subtitle}`,
+      url: "Evidence and media pending",
+      narration: `${c.title} deck scaffold. Evidence and media are not yet available.`,
+    },
+  ];
+  return makeDeck(c, scenes, true);
 }
 
-function buildDeck(args) {
-  const evidence = new Map();
-  const media = new Map();
-  for (const c of CASES) {
-    evidence.set(c.slug, readEvidence(args, c));
-    media.set(c.slug, requireMedia(args, c));
-  }
-  const bug = evidence.get("bug-issue");
-  const feature = evidence.get("feature-issue");
-  const guidance = evidence.get("guidance");
-  const pr = evidence.get("pr-status");
+function buildDeck(args, c) {
+  const evidence = readEvidence(args, c);
+  const files = requireMedia(args, c);
+  const anyMediaMissing = files.some((f) => !fs.existsSync(f.path));
 
   const scenes = [
     {
       type: "title",
-      eyebrow: "Live GitHub App POC",
-      title: "@kitsoki on GitHub",
-      subtitle: `Live GitHub App on ${new URL(bug.publicBaseURL).host}: real mentions, webhook deliveries, App comments, and hosted run pages`,
-    },
-    {
-      type: "title",
-      eyebrow: "Section 1",
-      title: "Live GitHub front door",
-      subtitle: `Real ${args.expectedRepo || "GitHub"} mentions delivered to ${bug.webhookURL}`,
-    },
-    {
-      type: "title",
-      eyebrow: "Section 2",
-      title: "Dispatch and run link",
-      subtitle: "One claimed job, one story route, one public /run/<job-id> URL",
+      eyebrow: c.eyebrow,
+      title: `@kitsoki ${c.title}`,
+      subtitle: c.subtitle,
+      narration: c.narration,
     },
   ];
 
-  for (const c of CASES) {
-    scenes.push({
-      type: "title",
-      eyebrow: c.section,
-      title: c.title,
-      subtitle: c.subtitle,
-    });
-    scenes.push(...mediaScenes(args.out, c, evidence.get(c.slug), media.get(c.slug)));
-    // Per-phase deck link: points to the self-contained HTML deck on the server.
-    const ev = evidence.get(c.slug);
-    const deckBaseURL = args.publicBaseURL || ev.publicBaseURL || "";
-    if (deckBaseURL && ev.jobID) {
-      const deckURL = `${deckBaseURL.replace(/\/+$/, "")}/run/${ev.jobID}/assets/deck.html`;
+  if (anyMediaMissing) {
+    for (const file of files) {
+      const exists = fs.existsSync(file.path);
       scenes.push({
-        type: "narrative",
-        eyebrow: "Phase deck",
-        lede: `${c.title}: interactive deck`,
-        body: `Self-contained slidey deck for this phase: ${deckURL}`,
-        narration: `An interactive slidey deck for the ${c.title.toLowerCase()} phase is available on the kitsoki server.`,
+        type: "title",
+        eyebrow: "Missing media",
+        title: `${c.title}: ${file.title}`,
+        subtitle: exists ? file.path : `⚠ Missing: ${file.path}`,
+        narration: exists
+          ? `${file.title} clip exists but other clips are missing.`
+          : `${file.title} clip is missing.`,
       });
     }
+  } else {
+    scenes.push(...mediaScenes(args.out, c, evidence, files));
   }
 
   scenes.push({
-    type: "title",
-    eyebrow: "Section 8",
-    title: "Slidey developer arc",
-    subtitle: "Existing QA-passed bugfix, feature refine, and PR clips",
-  });
-  scenes.push(developerArcScene(args, args.out));
-  scenes.push({
-    type: "title",
-    eyebrow: "Section 9",
-    title: "What remains",
-    subtitle: "Full PR autopilot, artifact gallery, OAuth operator drive, review-thread resolve",
-  });
-  scenes.push({
     type: "cta",
     wordmark: "kitsoki",
-    tagline: "Proven now: live GitHub App ingress, story dispatch, comments, run links",
-    url: "Future: PR autopilot, artifacts, OAuth drive, review-thread resolve",
-    narration:
-      "Live GitHub to linked runs. Autopilot remains future work.",
+    tagline: `${c.title}: ${c.subtitle}`,
+    url: evidence.runURL,
+    narration: `${c.title} phase deck complete.`,
   });
 
+  return makeDeck(c, scenes, anyMediaMissing);
+}
+
+function makeDeck(c, scenes, isDraft) {
   return {
-    _comment:
-      "Generated by scripts/build-gh-agent-live-deck.mjs from live evidence notes and captured media. Do not treat this as final if generated with --allow-missing-media.",
+    _comment: `Generated by scripts/build-gh-agent-phase-deck.mjs for case ${c.slug}.${isDraft ? " Draft: missing media or evidence." : ""}`,
     meta: {
-      title: "@kitsoki on GitHub, demonstrated through slidey",
+      title: `@kitsoki ${c.title}`,
       mode: "pitch",
       resolution: { width: 1600, height: 900 },
       narration: {
@@ -478,6 +426,8 @@ function buildDeck(args) {
   };
 }
 
+/* ── Main ────────────────────────────────────────────────────────────────── */
+
 function main() {
   let args;
   try {
@@ -491,8 +441,19 @@ function main() {
     usage();
     return;
   }
+  const c = CASES.find((c) => c.slug === args.caseSlug);
   try {
-    const deck = buildDeck(args);
+    let deck;
+    const evidenceExists = fs.existsSync(args.evidence);
+    if (!evidenceExists) {
+      if (!args.allowMissingMedia) {
+        throw new Error(`evidence file not found: ${args.evidence}`);
+      }
+      console.error(`warning: evidence file not found, emitting scaffold: ${args.evidence}`);
+      deck = buildScaffoldDeck(c);
+    } else {
+      deck = buildDeck(args, c);
+    }
     fs.mkdirSync(path.dirname(args.out), { recursive: true });
     fs.writeFileSync(args.out, `${JSON.stringify(deck, null, 2)}\n`);
     console.log(`wrote ${args.out}`);

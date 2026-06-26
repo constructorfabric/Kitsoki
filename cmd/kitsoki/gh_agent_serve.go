@@ -42,6 +42,7 @@ func newGHAgentServeCmd() *cobra.Command {
 		appID             int64
 		installationID    int64
 		appKeyFile        string
+		assetDir          string
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -69,6 +70,7 @@ func newGHAgentServeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			store.DataDir = assetDir
 			if strings.TrimSpace(webhookSecret) == "" {
 				webhookSecret = os.Getenv(githubapp.EnvWebhookSecret)
 			}
@@ -104,6 +106,7 @@ func newGHAgentServeCmd() *cobra.Command {
 	cmd.Flags().Int64Var(&appID, "gh-app-id", 0, "GitHub App id (overrides KITSOKI_GH_APP_ID)")
 	cmd.Flags().Int64Var(&installationID, "gh-app-installation-id", 0, "installation id (overrides KITSOKI_GH_APP_INSTALLATION_ID)")
 	cmd.Flags().StringVar(&appKeyFile, "gh-app-key-file", "", "path to the App's RSA private key .pem (overrides KITSOKI_GH_APP_PRIVATE_KEY_FILE)")
+	cmd.Flags().StringVar(&assetDir, "asset-dir", "/var/lib/kitsoki-gh-agent/assets", "root directory for on-disk asset blobs")
 	return cmd
 }
 
@@ -356,6 +359,20 @@ func ghAgentRunHandler(store *jobs.GHJobStore) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
+		parts := strings.Split(jobID, "/assets/")
+		if len(parts) == 2 {
+			actualJobID := parts[0]
+			assetName := parts[1]
+			data, mimeType, err := store.GetAssetData(r.Context(), actualJobID, assetName)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", mimeType)
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
+			_, _ = w.Write(data)
+			return
+		}
 		job, err := store.GetJob(r.Context(), jobID)
 		if err != nil {
 			http.NotFound(w, r)
@@ -407,6 +424,40 @@ func ghAgentRunAPIHandler(store *jobs.GHJobStore) http.HandlerFunc {
 		if jobID == "" {
 			http.NotFound(w, r)
 			return
+		}
+		if strings.HasSuffix(jobID, "/assets") && r.Method == http.MethodGet {
+			actualJobID := strings.TrimSuffix(jobID, "/assets")
+			assets, err := store.ListAssets(r.Context(), actualJobID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(assets)
+			return
+		}
+		if parts := strings.Split(jobID, "/assets/"); len(parts) == 2 {
+			actualJobID := parts[0]
+			assetName := parts[1]
+			if r.Method == http.MethodPut {
+				data, err := io.ReadAll(r.Body)
+				if err != nil {
+					http.Error(w, "failed to read body: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+				mimeType := r.Header.Get("Content-Type")
+				if mimeType == "" {
+					mimeType = "application/octet-stream"
+				}
+				err = store.PutAsset(r.Context(), actualJobID, assetName, mimeType, data)
+				if err != nil {
+					http.Error(w, "failed to store asset: "+err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("ok"))
+				return
+			}
 		}
 		job, err := store.GetJob(r.Context(), jobID)
 		if err != nil {
