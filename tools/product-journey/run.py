@@ -1307,6 +1307,48 @@ def run_dir_from_arg(value: str) -> Path:
     return path
 
 
+def is_external_artifact_ref(path: str) -> bool:
+    value = path.strip()
+    if not value:
+        return False
+    prefixes = (
+        "http://",
+        "https://",
+        "retained:",
+        "retained://",
+        "image:",
+        "image://",
+        "trace:",
+        "trace://",
+        "mcp:",
+        "mcp://",
+    )
+    return value.startswith(prefixes)
+
+
+def artifact_ref_exists(run_dir: Path, path: str) -> bool:
+    value = path.strip()
+    if not value or is_external_artifact_ref(value):
+        return True
+    candidate = Path(value)
+    if candidate.is_absolute():
+        return candidate.exists()
+    return (run_dir / candidate).exists() or (ROOT / candidate).exists()
+
+
+def missing_local_artifact_refs(run_dir: Path, items: list[dict]) -> list[str]:
+    missing = []
+    for item in items:
+        path = item.get("path", "")
+        if item.get("status") not in {"captured", "validated"} or not path:
+            continue
+        if not artifact_ref_exists(run_dir, path):
+            scenario = item.get("scenario", "")
+            kind = item.get("kind", item.get("evidence_kind", "artifact"))
+            missing.append(f"{scenario}/{kind}:{path}")
+    return sorted(missing)
+
+
 def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None) -> None:
     run_json = read_json(run_dir / "run.json")
     evidence = read_json(run_dir / "evidence.json")
@@ -1595,6 +1637,7 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
     rejected_items = [item for item in evidence_items if item.get("status") == "rejected"]
     video_items = [item for item in media_manifest["items"] if item["media_kind"] == "video"]
     playback_items = [item for item in media_manifest["items"] if item["playback"]]
+    missing_playback_refs = missing_local_artifact_refs(run_dir, playback_items)
     finding_items = findings.get("items", [])
     finding_kinds = {item.get("kind") for item in finding_items}
     blocked_scenarios = {
@@ -1650,6 +1693,12 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
             "status": "pass" if playback_items else "warn",
             "summary": "Captured visual media is listed in the playback manifest.",
             "detail": f"playback_items={len(playback_items)}",
+        },
+        {
+            "id": "playback-artifacts-resolve",
+            "status": "pass" if not missing_playback_refs else "warn",
+            "summary": "Playback media references resolve locally or use retained/external IDs.",
+            "detail": ", ".join(missing_playback_refs),
         },
         {
             "id": "findings-summary",
@@ -1942,6 +1991,15 @@ def validate_run_bundle(run_dir: Path) -> dict:
     if present_evidence - media_refs:
         missing = sorted(f"{scenario}/{kind}:{path}" for scenario, kind, path in present_evidence - media_refs)
         add_validation_issue(issues, "error", "media-manifest-coverage", "media-manifest.json is missing captured evidence items", ", ".join(missing))
+    missing_artifact_refs = missing_local_artifact_refs(run_dir, evidence_items)
+    if missing_artifact_refs:
+        add_validation_issue(
+            issues,
+            "warn",
+            "artifact-ref-exists",
+            "Captured evidence paths do not resolve locally and are not retained/external references",
+            ", ".join(missing_artifact_refs),
+        )
 
     schema_media_kinds = set(schema["media_manifest"]["media_kinds"])
     invalid_media_kinds = sorted({
@@ -3284,7 +3342,10 @@ def main() -> None:
                 "run_deck_path": report["run"]["deck_path"],
                 "rollup_deck_path": report["rollup"]["deck_path"],
                 "review_status": report["review"]["review_status"],
+                "review_summary": report["review"]["summary"],
+                "review_warnings": report["review"]["warnings"],
                 "run_validation_status": report["validation"]["run"]["status"],
+                "run_validation_warnings": report["validation"]["run"]["warnings"],
                 "matrix_validation_status": report["validation"]["matrix"]["status"],
                 "matrix_validation_warnings": report["validation"]["matrix"]["warnings"],
             }, sort_keys=True))
@@ -3302,7 +3363,7 @@ def main() -> None:
         print(f"Run deck: {report['run']['deck_path']}")
         print(f"Rollup deck: {report['rollup']['deck_path']}")
         print(f"Review: {report['review']['summary']}")
-        print(f"Run validation: {report['validation']['run']['status']}")
+        print(f"Run validation: {report['validation']['run']['status']} ({report['validation']['run']['warnings']} warnings)")
         print(f"Matrix validation: {report['validation']['matrix']['status']} ({report['validation']['matrix']['warnings']} warnings)")
         append_log(f"Ran product journey dogfood smoke {report['dogfood_id']}: {report['status']}")
         if report["status"] != "passed":

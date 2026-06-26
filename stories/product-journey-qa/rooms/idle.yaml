@@ -130,8 +130,12 @@ states:
                 run_dir: "stdout_json.run_dir"
                 deck_path: "stdout_json.deck_path"
                 review_status: "stdout_json.review_status"
+                review_summary: "stdout_json.review_summary"
+                dogfood_review_warnings: "stdout_json.review_warnings"
                 validation_status: "stdout_json.run_validation_status"
-                validation_warnings: "stdout_json.matrix_validation_warnings"
+                validation_warnings: "stdout_json.run_validation_warnings"
+                dogfood_run_validation_warnings: "stdout_json.run_validation_warnings"
+                dogfood_matrix_validation_warnings: "stdout_json.matrix_validation_warnings"
               on_error: idle
             - set:
                 status: "dogfood_smoke_created"

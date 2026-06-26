@@ -1,7 +1,7 @@
 states:
   dogfood_created:
     description: "A deterministic product-journey dogfood smoke exists for review."
-    relevant_world: [seed, dogfood_id, dogfood_dir, dogfood_report_path, dogfood_deck_path, dogfood_matrix_deck_path, dogfood_run_deck_path, dogfood_rollup_deck_path, matrix_dir, run_dir, review_status, validation_status, validation_warnings, status]
+    relevant_world: [seed, dogfood_id, dogfood_dir, dogfood_report_path, dogfood_deck_path, dogfood_matrix_deck_path, dogfood_run_deck_path, dogfood_rollup_deck_path, matrix_dir, run_dir, review_status, review_summary, dogfood_review_warnings, validation_status, dogfood_run_validation_warnings, dogfood_matrix_validation_warnings, status]
     view:
       - banner:
           text: "DOGFOOD SMOKE CREATED"
@@ -20,8 +20,10 @@ states:
             Run deck: '{{ world.dogfood_run_deck_path|default:"(pending)" }}'
             Rollup deck: '{{ world.dogfood_rollup_deck_path|default:"(pending)" }}'
             Review: '{{ world.review_status|default:"(pending)" }}'
+            Review warnings: "{{ world.dogfood_review_warnings }}"
             Run validation: '{{ world.validation_status|default:"(pending)" }}'
-            Matrix validation warnings: "{{ world.validation_warnings }}"
+            Run validation warnings: "{{ world.dogfood_run_validation_warnings }}"
+            Matrix validation warnings: "{{ world.dogfood_matrix_validation_warnings }}"
             Status: "{{ world.status }}"
       - prose: "The smoke proves that matrix creation, assignment run creation, evidence aggregation, review, validation, matrix rollup, and Slidey deck generation compose without live LLM calls."
       - prose: "Use it as an artifact-loop check before spending live visual MCP or cassette capture time; the seeded demo evidence is not product proof."
@@ -78,8 +80,12 @@ states:
                 run_dir: "stdout_json.run_dir"
                 deck_path: "stdout_json.deck_path"
                 review_status: "stdout_json.review_status"
+                review_summary: "stdout_json.review_summary"
+                dogfood_review_warnings: "stdout_json.review_warnings"
                 validation_status: "stdout_json.run_validation_status"
-                validation_warnings: "stdout_json.matrix_validation_warnings"
+                validation_warnings: "stdout_json.run_validation_warnings"
+                dogfood_run_validation_warnings: "stdout_json.run_validation_warnings"
+                dogfood_matrix_validation_warnings: "stdout_json.matrix_validation_warnings"
               on_error: dogfood_created
             - set:
                 status: "dogfood_smoke_created"

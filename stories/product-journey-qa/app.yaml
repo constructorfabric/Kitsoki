@@ -31,6 +31,9 @@ world:
   dogfood_matrix_deck_path: { type: string, default: "" }
   dogfood_run_deck_path: { type: string, default: "" }
   dogfood_rollup_deck_path: { type: string, default: "" }
+  dogfood_review_warnings: { type: int, default: 0 }
+  dogfood_run_validation_warnings: { type: int, default: 0 }
+  dogfood_matrix_validation_warnings: { type: int, default: 0 }
   run_id:         { type: string, default: "" }
   run_dir:        { type: string, default: "" }
   deck_path:      { type: string, default: "" }

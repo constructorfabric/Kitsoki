@@ -139,6 +139,10 @@ gates.
 Captured screenshots, videos, traces, and documents are indexed in
 `media-manifest.json`; the generated Slidey deck uses that manifest for
 playback-ready media entries.
+Evidence paths should be real run-relative files, absolute paths, repo-root
+paths, URLs, or retained MCP references such as `retained://...` and
+`image://...`. The review and validation gates warn when captured local paths do
+not resolve, so placeholder media cannot silently pass as playback proof.
 Use `scenario-outcomes.md` to review evidence coverage and findings per
 scenario before treating a run as representative natural-usage proof.
 

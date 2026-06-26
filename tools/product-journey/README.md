@@ -132,6 +132,10 @@ artifact and feeds the Slidey playback scene with structured media entries.
 Scenario outcomes summarize evidence coverage and finding counts per scenario
 so onboarding, bugfix, PRD/design, feature implementation, and product-bug gaps
 stay visible independently of the bundle-level review status.
+Use a real local path relative to the run bundle, an absolute path, a repo-root
+path, a URL, or a retained MCP reference such as `retained://...` or
+`image://...`. Review and validation warn when captured local paths do not
+resolve, so placeholder media cannot silently look like real playback proof.
 
 Record a review finding for the deck summary:
 
