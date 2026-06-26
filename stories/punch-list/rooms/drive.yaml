@@ -16,6 +16,12 @@ states:
             Status: '{{ world.drive_result.status|default:"driving" }}'
             Job: '{{ world.drive_job_id|default:"(starting)" }}'
       - prose: "The live driver uses Studio MCP and human phrasing. The result is only a handoff; verification decides pass/fail."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "skip", intent: skip_current, hint: "record this item as skipped and continue" }
+            - { label: "look", intent: look }
     on_enter:
       - set:
           drive_result: {}
@@ -59,6 +65,24 @@ states:
             target: verify
         on_error: needs_human
     on:
+      skip_current:
+        - target: record
+          effects:
+            - set:
+                drive_result:
+                  status: "skipped"
+                  story: "{{ world.current_item.story }}"
+                  trace_path: "{{ world.current_item.trace_path }}"
+                  model: "{{ world.current_item.model }}"
+                  profile: "{{ world.current_item.profile }}"
+                  findings:
+                    - "Operator skipped the running drive job {{ world.drive_job_id }} before it returned a handoff."
+                  summary: "Operator skipped the running drive before handoff."
+                drive_status: "skipped"
+                drive_trace_path: "{{ world.current_item.trace_path }}"
+                drive_model: "{{ world.current_item.model }}"
+                verify_result: { status: "skipped", summary: "Operator skipped the running drive before handoff." }
+                verify_status: "skipped"
       drive_done:
         - when: "world.current_item.require_trace_model == true && (world.drive_trace_path != world.current_item.trace_path || world.drive_model != world.current_item.model)"
           target: needs_human

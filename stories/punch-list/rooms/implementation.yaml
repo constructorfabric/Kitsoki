@@ -15,6 +15,12 @@ states:
             Trace: '{{ world.implementation_result.trace_path|default:"(pending)" }}'
             Job: '{{ world.implementation_job_id|default:"(starting)" }}'
       - prose: "This is still gated by profile/model policy. The independent verify room decides the final item result."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "skip", intent: skip_current, hint: "record this item as skipped and continue" }
+            - { label: "look", intent: look }
     on_enter:
       - set:
           implementation_result: {}
@@ -56,6 +62,24 @@ states:
             target: verify
         on_error: needs_human
     on:
+      skip_current:
+        - target: record
+          effects:
+            - set:
+                implementation_result:
+                  status: "skipped"
+                  story: "{{ world.current_item.implementation_story }}"
+                  trace_path: "{{ world.current_item.implementation_trace_path }}"
+                  model: "{{ world.current_item.model }}"
+                  profile: "{{ world.current_item.profile }}"
+                  findings:
+                    - "Operator skipped the running implementation job {{ world.implementation_job_id }} before it returned a handoff."
+                  summary: "Operator skipped the running implementation before handoff."
+                implementation_status: "skipped"
+                implementation_trace_path: "{{ world.current_item.implementation_trace_path }}"
+                implementation_model: "{{ world.current_item.model }}"
+                verify_result: { status: "skipped", summary: "Operator skipped the running implementation before handoff." }
+                verify_status: "skipped"
       implementation_done:
         - when: "world.current_item.require_trace_model == true && (((world.current_item.implementation_trace_path ?? '') != '' && world.implementation_trace_path != world.current_item.implementation_trace_path) || world.implementation_model != world.current_item.model)"
           target: needs_human
