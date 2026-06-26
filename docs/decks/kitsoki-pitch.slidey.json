@@ -138,7 +138,7 @@
       "panels": [
         {
           "label": "",
-          "viewBox": "0 0 940 760",
+          "viewBox": "0 0 940 840",
           "nodes": [
             {
               "id": "boundary",
@@ -151,7 +151,7 @@
               "x": 100,
               "y": 30,
               "w": 600,
-              "h": 140,
+              "h": 120,
               "style": "primary"
             },
             {
@@ -165,7 +165,7 @@
               "x": 100,
               "y": 205,
               "w": 600,
-              "h": 140
+              "h": 120
             },
             {
               "id": "cognition",
@@ -178,7 +178,7 @@
               "x": 100,
               "y": 380,
               "w": 600,
-              "h": 140
+              "h": 120
             },
             {
               "id": "kitsoki",
@@ -191,7 +191,7 @@
               "x": 100,
               "y": 555,
               "w": 600,
-              "h": 140,
+              "h": 120,
               "style": "secondary"
             }
           ],
@@ -210,15 +210,6 @@
               "from": "cognition",
               "to": "kitsoki",
               "label": "enacts"
-            },
-            {
-              "from": "kitsoki",
-              "to": "boundary",
-              "label": "revises",
-              "style": "back",
-              "bus": 800,
-              "lift": -15,
-              "land": 15
             }
           ]
         }
