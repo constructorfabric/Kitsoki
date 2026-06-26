@@ -5,7 +5,29 @@
       "width": 1920,
       "height": 1080
     },
-    "theme": "rose-pine-moon",
+    "theme": {
+      "name": "rose-pine-moon",
+      "background": "#1c140d",
+      "fontFamily": "'Inter', 'Avenir Next', 'Segoe UI', sans-serif",
+      "colors": {
+        "base": "#1c140d",
+        "surface": "#2a1a10",
+        "overlay": "#3d2419",
+        "muted": "#7b5f4d",
+        "subtle": "#c1a188",
+        "text": "#f3ead8",
+        "love": "#e0a23a",
+        "gold": "#f4cf95",
+        "rose": "#a8492b",
+        "pine": "#c97b4a",
+        "foam": "#e8d6b3",
+        "iris": "#3aa3a0",
+        "highlightLow": "#2f1f16",
+        "highlightMuted": "#412518",
+        "highlightHigh": "#7d2e1c"
+      },
+      "css": "#title-card{gap:24px !important;}#title-card-subtitle{display:flex;flex-direction:column;align-items:center;gap:16px;color:#f3ead8;}#title-card-subtitle img{display:block;height:auto;max-width:640px;width:640px;}#title-card-subtitle div.deck-subtitle{max-width:1500px;line-height:1.45;font-size:36px;color:#d9c9ad;}#title-card-subtitle .deck-subtitle-note{display:block;max-width:1300px;line-height:1.35;font-size:28px;color:#b29b7a;}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon .spinner-bar,\n#root.theme-rose-pine-moon #stat-value,\n#root.theme-rose-pine-moon #trace-title,\n#root.theme-rose-pine-moon #book-title,\n#root.theme-rose-pine-moon #diagramsvg-title,\n#root.theme-rose-pine-moon #diagram-title,\n#root.theme-rose-pine-moon #narrative-eyebrow,\n#root.theme-rose-pine-moon #thread-title,\n#root.theme-rose-pine-moon #diagramsvg-panel-label,\n#root.theme-rose-pine-moon .cards-title,\n#root.theme-rose-pine-moon .image-title,\n#root.theme-rose-pine-moon .imagecompare-title,\n#root.theme-rose-pine-moon .mermaid-title,\n#root.theme-rose-pine-moon .table-title,\n#root.theme-rose-pine-moon .code-call,\n#root.theme-rose-pine-moon .code-dot-call,\n#root.theme-rose-pine-moon .table-crown,\n#root.theme-rose-pine-moon .table-row-hi,\n#root.theme-rose-pine-moon a {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon .code-line-hl,\n#root.theme-rose-pine-moon #stat-value,\n#root.theme-rose-pine-moon .dsvg-arrow path,\n#root.theme-rose-pine-moon .dsvg-edge path,\n#root.theme-rose-pine-moon .dsvg-edge line {\n  border-color: var(--slidey-rose);\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon #stat-value {\n  background: linear-gradient(90deg, var(--slidey-gold), var(--slidey-rose));\n}\n\n#root.theme-rose-pine-moon .dsvg-edge line:not(.dsvg-gate-bar),\n#root.theme-rose-pine-moon .dsvg-edge path,\n#root.theme-rose-pine-moon .dsvg-arrow path,\n#root.theme-rose-pine-moon .dsvg-arrow-back path,\n#root.theme-rose-pine-moon .dsvg-edge-back path,\n#root.theme-rose-pine-moon .dsvg-edge-gate.dsvg-gate-oracle,\n#root.theme-rose-pine-moon .dsvg-gate-bar.dsvg-gate-oracle,\n#root.theme-rose-pine-moon .dsvg-edge-recycle,\n#root.theme-rose-pine-moon .dsvg-arrow-recycle path {\n  stroke: var(--slidey-gold);\n  fill: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow-back path,\n#root.theme-rose-pine-moon .dsvg-edge-back path {\n  stroke: var(--slidey-highlight-high);\n  fill: var(--slidey-background);\n}\n\n#root.theme-rose-pine-moon .dsvg-edge-recycle path {\n  fill: var(--slidey-background) !important;\n  stroke: var(--slidey-background) !important;\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow-recycle path {\n  fill: var(--slidey-background) !important;\n  stroke: var(--slidey-background) !important;\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary rect,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary rect,\n#root.theme-rose-pine-moon .dsvg-node rect {\n  stroke: var(--slidey-rose);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary rect {\n  fill: var(--slidey-highlight-muted);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary rect {\n  fill: var(--slidey-highlight-low);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-label,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-label {\n  fill: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-sub,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-sub,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-line,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-line {\n  fill: var(--slidey-text);\n}\n\n#root.theme-rose-pine-moon .trace-turn-user::before,\n#root.theme-rose-pine-moon .thread-system.thread-system-jira,\n#root.theme-rose-pine-moon .thread-system.thread-system-bitbucket {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .json-key,\n#root.theme-rose-pine-moon .code-key,\n#root.theme-rose-pine-moon .cards-bullet,\n#root.theme-rose-pine-moon .cards-card.cards-style-primary,\n#root.theme-rose-pine-moon .cards-col.accent-blue,\n#root.theme-rose-pine-moon .cards-col.accent-purple,\n#root.theme-rose-pine-moon .cards-qa-question,\n#root.theme-rose-pine-moon .cards-qa-answer,\n#root.theme-rose-pine-moon .mockup-blue,\n#root.theme-rose-pine-moon .tx-hud-app,\n#root.theme-rose-pine-moon .tx-card-turn {\n  color: var(--slidey-gold);\n  border-color: var(--slidey-rose);\n}\n\n\n#root.theme-rose-pine-moon #table-title,\n#root.theme-rose-pine-moon [id$=\"-title\"],\n#root.theme-rose-pine-moon #cta-wordmark,\n#root.theme-rose-pine-moon #cta-tagline,\n#root.theme-rose-pine-moon #cta-url {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #cta-wordmark {\n  background: linear-gradient(180deg, var(--slidey-gold), var(--slidey-rose));\n  -webkit-background-clip: text;\n  background-clip: text;\n  color: transparent !important;\n}\n\n#root.theme-rose-pine-moon #cta-url {\n  background: var(--slidey-overlay);\n  border-color: var(--slidey-highlight-high);\n}\n\n#root.theme-rose-pine-moon .spinner-bar,\n#root.theme-rose-pine-moon #spinner-bar {\n  background: linear-gradient(90deg, var(--slidey-gold), var(--slidey-rose)) !important;\n}\n\n#book-region .book-takeaway {\n  font-size: 24px;\n  line-height: 1.35;\n}\n\n#book-region .book-count-1 .book-takeaway {\n  font-size: 32px;\n  line-height: 1.3;\n}\n\n#book-region .book-caption {\n  font-size: 32px;\n  line-height: 1.4;\n  max-width: 1500px;\n}\n\n#narrative-region {\n  max-width: 1600px;\n}\n\n#narrative-body {\n  font-size: 68px;\n  line-height: 1.18;\n  max-width: 1380px;\n}\n\n#narrative-lede {\n  font-size: 36px;\n  line-height: 1.42;\n  max-width: 1360px;\n}\n#root.theme-rose-pine-moon .usecase-row,\n#root.theme-rose-pine-moon .persona-card {\n  background: var(--slidey-surface);\n  border-color: var(--slidey-highlight-muted);\n}\n#root.theme-rose-pine-moon .usecase-text {\n  border-left-color: var(--slidey-highlight-muted);\n}\n#root.theme-rose-pine-moon .usecase-action {\n  color: var(--slidey-text);\n}\n#root.theme-rose-pine-moon .usecase-detail,\n#root.theme-rose-pine-moon .persona-role,\n#root.theme-rose-pine-moon .persona-intro {\n  color: var(--slidey-subtle);\n}\n#root.theme-rose-pine-moon .personas-caption {\n  color: var(--slidey-subtle);\n}"
+    },
     "narration": {
       "voice": "en-AU-NatashaNeural"
     },
@@ -16,7 +38,7 @@
         "name": "Priya",
         "role": "Product manager",
         "intro": "Turns a one-line idea into a validated PRD and a mockup deck.",
-        "color": "#58a6ff",
+        "color": "#f4cf95",
         "glyph": "🧭"
       },
       {
@@ -24,7 +46,7 @@
         "name": "Arden",
         "role": "Architect",
         "intro": "Shapes requirements into a design epic, slices, and ADRs.",
-        "color": "#bc8cff",
+        "color": "#3aa3a0",
         "glyph": "📐"
       },
       {
@@ -32,7 +54,7 @@
         "name": "Devin",
         "role": "Developer",
         "intro": "Decomposes, fixes a mid-stream bug, refines, and ships — every step traceable.",
-        "color": "#3fb950",
+        "color": "#c97b4a",
         "glyph": "🛠️",
         "avatar": "data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox%3D%220 0 200 200%22 width%3D%22200%22 height%3D%22200%22 role%3D%22img%22 aria-label%3D%22Kitsoki mesa sun avatar%22%3E %3Ccircle cx%3D%22100%22 cy%3D%22100%22 r%3D%2295%22 fill%3D%22%23f0e3c8%22 stroke%3D%22%23c97b4a%22 stroke-width%3D%229%22%2F%3E %3Cg transform%3D%22translate(28 32.3) scale(0.72)%22%3E %3Ccircle cx%3D%22100%22 cy%3D%2270%22 r%3D%2230%22 fill%3D%22%23e0a23a%22%2F%3E %3Cg stroke%3D%22%23e0a23a%22 stroke-width%3D%225%22 stroke-linecap%3D%22round%22%3E %3Cline x1%3D%22150%22 y1%3D%2270%22 x2%3D%22138%22 y2%3D%2270%22%2F%3E %3Cline x1%3D%22135%22 y1%3D%2235%22 x2%3D%22127%22 y2%3D%2243%22%2F%3E %3Cline x1%3D%22100%22 y1%3D%2220%22 x2%3D%22100%22 y2%3D%2232%22%2F%3E %3Cline x1%3D%2265%22 y1%3D%2235%22 x2%3D%2273%22 y2%3D%2243%22%2F%3E %3Cline x1%3D%2250%22 y1%3D%2270%22 x2%3D%2262%22 y2%3D%2270%22%2F%3E %3C%2Fg%3E %3Cpath d%3D%22M20 150 L20 120 L60 120 L60 105 L140 105 L140 120 L180 120 L180 150 Z%22 fill%3D%22%23a8492b%22%2F%3E %3Cpath d%3D%22M20 150 L180 150 L180 168 L20 168 Z%22 fill%3D%22%237d2e1c%22%2F%3E %3Crect x%3D%2292%22 y%3D%22120%22 width%3D%2216%22 height%3D%2230%22 fill%3D%22%233a2418%22%2F%3E %3C%2Fg%3E %3C%2Fsvg%3E"
       }
