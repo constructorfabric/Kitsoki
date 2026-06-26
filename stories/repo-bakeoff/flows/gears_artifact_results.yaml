@@ -258,5 +258,6 @@ turns:
         spec_path: .artifacts/external-bakeoff/report/deck.slidey.json
         summary: "gears-rust bake-off: 1/1 attempted solved"
       report_markdown: .artifacts/external-bakeoff/report/report.md
+    expect_view_matches: "Completion:         complete"
 
 expect_no_errors: true

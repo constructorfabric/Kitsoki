@@ -179,5 +179,6 @@ turns:
           spec_path: .artifacts/external-bakeoff/report/deck.slidey.json
           summary: "gears-rust bake-off: 0/0 attempted solved; 1 pending"
         markdown: .artifacts/external-bakeoff/report/report.md
+    expect_view_matches: "Completion:         complete-with-pending"
 
 expect_no_errors: true
