@@ -33,6 +33,18 @@ host_handlers:
             driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+            persona_starting_surface: "docs-first; follow the documented path before trying hidden commands"
+            persona_first_question: "Can I follow the docs without private repo context or tribal knowledge?"
+            persona_evidence_emphasis: "page URLs, screenshots, prerequisite commands, stale-link proof, and onboarding smoke results"
+            persona_escalation_trigger: "stale docs, missing prerequisites, broken media, or commands that require unexplained setup"
+            persona_finding_bias: "Prefer onboarding clarity, documented next actions, and confusing-copy findings."
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            missing_evidence_count: 25
+            missing_proof_evidence_count: 25
+            proof_minimum_evidence_count: 0
+            minimum_evidence_count: 25
+            missing_proof_summary: "project-onboarding: generated_config_diff, onboarding_smoke_result"
       emit_product_journey_matrix:
         data:
           ok: true
@@ -338,6 +350,19 @@ turns:
       driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
       scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+      persona_starting_surface: "docs-first; follow the documented path before trying hidden commands"
+      persona_first_question: "Can I follow the docs without private repo context or tribal knowledge?"
+      persona_evidence_emphasis: "page URLs, screenshots, prerequisite commands, stale-link proof, and onboarding smoke results"
+      persona_escalation_trigger: "stale docs, missing prerequisites, broken media, or commands that require unexplained setup"
+      persona_finding_bias: "Prefer onboarding clarity, documented next actions, and confusing-copy findings."
+      proof_evidence_count: 0
+      demo_evidence_count: 0
+      missing_evidence_count: 25
+      missing_proof_evidence_count: 25
+      proof_minimum_evidence_count: 0
+      minimum_evidence_count: 25
+      missing_proof_summary: "project-onboarding: generated_config_diff, onboarding_smoke_result"
+    expect_view_matches: "Starting surface[\\s\\S]*docs-first[\\s\\S]*Proof evidence[\\s\\S]*minimum 0 / 25[\\s\\S]*project-onboarding"
     expect_host_calls:
       - handler: host.run
         args: { call: emit_product_journey_run }
