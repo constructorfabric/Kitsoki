@@ -450,10 +450,18 @@ create_issue_case() {
 
 create_guidance_resume_case() {
 	local slug="guidance-resume"
-	local title="live @kitsoki POC guidance resume issue $RUN_STAMP"
-	local body="$body_common
+	local title="Webhook deliveries occasionally double-post the run comment"
+	local body="We've seen the rolling run comment land twice on a single issue once or twice
+this week. It's intermittent and I can't pin down whether it's GitHub retrying a
+delivery or a real bug in the comment-upsert path that mints a second comment.
 
-@kitsoki please take a look. No bug or feature label is intentionally applied at first; kitsoki should ask for guidance, then resume when this issue is labelled."
+I don't want to mislabel it, so I'm holding off on a label until we agree on how to
+classify it. Once you've triaged, I'll add the right one and you can pick it up.
+
+<!-- kitsoki POC run stamp: $RUN_STAMP -->
+
+@kitsoki can you triage this? I'll add the bug label once you confirm it's a real
+double-post and not just a delivery retry — then please resume from there."
 	local issue_url issue_num origin guidance_row guidance_job guidance_comment row job_id comment_url
 
 	ensure_label "$BUG_LABEL" "d73a4a" "Live @kitsoki POC bug label"
@@ -502,7 +510,7 @@ create_guidance_resume_case() {
 
 run_pr_case() {
 	local pr_num mention mention_url origin row job_id comment_url
-	mention="@kitsoki please read PR status for this live POC run. stamp: $RUN_STAMP"
+	mention="@kitsoki can you give this PR a status read before I merge? Want to make sure the run links and state line up with what's on the branch."
 	if [ "$YES" -eq 1 ]; then
 		pr_num="$(issue_number_from_url "$PR_URL")"
 		mention_url="$(gh issue comment "$pr_num" --repo "$REPO" --body "$mention" | last_non_empty_line)"
@@ -552,34 +560,87 @@ if [ "$DO_DEPLOY" -eq 1 ]; then
 	run_or_print scripts/deploy-gh-agent.sh --yes
 fi
 
-body_common="Temporary live @kitsoki GitHub-agent POC issue.
+# A hidden HTML comment carries the run stamp for cleanup/traceability without
+# polluting the rendered issue. The origin_ref is keyed on the issue number, so
+# the stamp is purely cosmetic — the bodies can read like real reports.
+stamp_marker="<!-- kitsoki POC run stamp: $RUN_STAMP -->"
 
-Run stamp: $RUN_STAMP
+bug_body="## What happens
 
-This issue can be closed after the demo evidence is captured."
+\`kitsoki inbox sync --github\` against a busy repo intermittently comes back with an
+empty inbox even when there are open issues that mention the agent. It's not every
+run — maybe one in five — and there's no error printed, so it just looks like
+there's nothing to do.
+
+## Steps to reproduce
+
+1. Have at least one open issue and one open PR that mention \`@kitsoki\`.
+2. Run \`kitsoki inbox sync --github\` a handful of times in a row.
+3. Every so often the result is empty, with exit code 0 and no warning.
+
+## Expected
+
+The sync should return the full set of mentions, or fail loudly. Silently
+dropping everything is the worst case — we skip real work and don't know it.
+
+## Hunch
+
+I suspect the PR-search half of the query is timing out and the error is being
+swallowed, so the whole sync short-circuits to empty.
+
+$stamp_marker"
 
 create_issue_case \
 	bug-issue \
-	"bug: live @kitsoki POC bug issue $RUN_STAMP" \
-	"$body_common" \
+	"Inbox sync silently returns empty when the PR search query times out" \
+	"$bug_body" \
 	"$BUG_LABEL" \
-	"@kitsoki please handle this as the live bug issue POC. stamp: $RUN_STAMP"
+	"@kitsoki can you take a look at this one? It's been biting us on every release cut and I'd love a real fix rather than a retry."
+
+feature_body="## Problem
+
+When kitsoki posts a run link on an issue, reviewers open the run status page and
+then almost always want to paste that exact URL into Slack. Today they have to
+select the address bar by hand, which is fiddly on the hosted view and easy to
+get wrong (people grab the \`/assets\` sub-path instead of the canonical run URL).
+
+## Proposal
+
+Add a small **Copy run URL** button next to the job-state header on the run
+status page. One click copies the canonical \`/run/<job-id>\` URL to the clipboard
+and shows a brief \"Copied\" confirmation.
+
+## Why it's worth it
+
+It's a tiny affordance, but sharing the proof link is the single most common thing
+anyone does on that page. Removing the manual select-and-copy step makes the whole
+\"kitsoki replied, here's the receipt\" loop feel finished.
+
+$stamp_marker"
 
 create_issue_case \
 	feature-issue \
-	"feature: live @kitsoki POC feature issue $RUN_STAMP" \
-	"$body_common" \
+	"Add a \"Copy run URL\" button to the run status page" \
+	"$feature_body" \
 	"$FEATURE_LABEL" \
-	"@kitsoki please handle this as the live feature issue POC. stamp: $RUN_STAMP"
+	"@kitsoki want to pick this up? Should be a small front-end change on the run status page — happy to review."
+
+guidance_body="After yesterday's redeploy, a couple of run links pointed at what looked like a
+stale job for a second or two before correcting themselves. I genuinely can't tell
+whether this is a real caching bug in the run page or just expected behaviour while
+the service does a rolling restart.
+
+Could someone take a look and tell me which it is? If it's a bug I'll open it
+properly; if it's just deploy churn I'll stop worrying about it.
+
+$stamp_marker"
 
 create_issue_case \
 	guidance \
-	"live @kitsoki POC ambiguous guidance issue $RUN_STAMP" \
-	"$body_common
-
-No bug or feature label is intentionally applied; kitsoki should ask for guidance." \
+	"Run page briefly shows a stale job after a redeploy — bug or expected?" \
+	"$guidance_body" \
 	"" \
-	"@kitsoki please take a look. stamp: $RUN_STAMP"
+	"@kitsoki not sure if this is a real bug or just how rolling redeploys look — can you take a look and tell me how to classify it?"
 
 create_guidance_resume_case
 
