@@ -162,7 +162,9 @@ condition. The generated Slidey deck includes a `Proof gates` scene that rolls
 up each scenario's minimum-evidence coverage and current outcome for review.
 `--validate-run` checks that `execution-plan.json` and `driver-plan.json`
 include one actionable `--attach-evidence` command for every declared evidence
-slot, so a valid bundle should be directly usable by the driver.
+slot, and that the execution plan, agent brief, driver plan, and handoff retain
+the final `--review-run` and `--validate-run` commands. A valid bundle should be
+directly usable by the driver.
 
 Attach evidence captured by a live or cassette-backed MCP run:
 

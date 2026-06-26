@@ -163,7 +163,9 @@ review: it lists each scenario's harness, visual surface, ordered
 `driver_actions`, evidence slots, attach commands, finding command, blocker
 command, journal command, and final gates. `--validate-run` checks that
 `execution-plan.json` and `driver-plan.json` include one actionable
-`--attach-evidence` command for every declared evidence slot.
+`--attach-evidence` command for every declared evidence slot, and that the
+execution plan, agent brief, driver plan, and handoff retain the final
+`--review-run` and `--validate-run` commands.
 Captured screenshots, videos, traces, and documents are indexed in
 `media-manifest.json`; the generated Slidey deck uses that manifest for
 playback-ready media entries and standalone `Playback evidence` scenes for

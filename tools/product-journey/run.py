@@ -2967,6 +2967,19 @@ def load_json_for_validation(path: Path, issues: list[dict]) -> dict:
         return {}
 
 
+def validate_final_commands(commands: list[str], issues: list[dict], check_id: str, label: str) -> None:
+    if not commands:
+        add_validation_issue(issues, "error", check_id, f"{label} has no final review/validation commands")
+        return
+    required = ["--review-run", "--validate-run"]
+    missing = [
+        token for token in required
+        if not any(token in command for command in commands)
+    ]
+    if missing:
+        add_validation_issue(issues, "error", check_id, f"{label} is missing final review/validation commands", ", ".join(missing))
+
+
 def deck_scene_eyebrows(deck: dict) -> set[str]:
     return {
         scene.get("eyebrow", "")
@@ -3140,6 +3153,12 @@ def validate_run_bundle(run_dir: Path) -> dict:
             f"steps={len(execution_steps)}, scenarios={len(scenarios)}",
         )
     if execution_plan:
+        validate_final_commands(
+            execution_plan.get("finalize_commands", []),
+            issues,
+            "execution-plan-finalize-commands",
+            "execution-plan.json",
+        )
         missing_step_keys = [
             f"{step.get('scenario', f'step-{index}')}/{key}"
             for index, step in enumerate(execution_steps, start=1)
@@ -3179,6 +3198,12 @@ def validate_run_bundle(run_dir: Path) -> dict:
             f"scenarios={len(driver_scenarios)}, run.json={len(scenarios)}",
         )
     if driver_plan:
+        validate_final_commands(
+            driver_plan.get("final_gates", []),
+            issues,
+            "driver-plan-final-gates",
+            "driver-plan.json",
+        )
         missing_driver_scenario_keys = [
             f"{scenario.get('scenario', f'driver-scenario-{index}')}/{key}"
             for index, scenario in enumerate(driver_scenarios, start=1)
@@ -3314,6 +3339,12 @@ def validate_run_bundle(run_dir: Path) -> dict:
             f"scenario_order={len(brief_scenarios)}, scenarios={len(scenarios)}",
         )
     if agent_brief:
+        validate_final_commands(
+            agent_brief.get("finalize_commands", []),
+            issues,
+            "agent-brief-finalize-commands",
+            "agent-brief.json",
+        )
         missing_brief_lens_keys = [
             key for key in schema["agent_brief"]["persona_lens_required"]
             if key not in agent_brief.get("persona_contract", {}).get("lens", {})
@@ -3321,6 +3352,12 @@ def validate_run_bundle(run_dir: Path) -> dict:
         if missing_brief_lens_keys:
             add_validation_issue(issues, "error", "agent-brief-persona-lens", "agent-brief.json persona_contract is missing lens keys", ", ".join(missing_brief_lens_keys))
     if driver_handoff:
+        validate_final_commands(
+            driver_handoff.get("finalize_commands", []),
+            issues,
+            "driver-handoff-finalize-commands",
+            "driver-handoff.json",
+        )
         missing_status_keys = [
             key for key in schema["driver_handoff"]["status_required"]
             if key not in driver_handoff.get("status", {})
@@ -3461,8 +3498,6 @@ def validate_run_bundle(run_dir: Path) -> dict:
         extra = sorted(driver_ids - scenario_ids)
         detail = f"missing={', '.join(missing) or 'none'}; extra={', '.join(extra) or 'none'}"
         add_validation_issue(issues, "error", "driver-plan-scenarios", "driver-plan.json scenarios do not match run.json scenarios", detail)
-    if driver_plan and not driver_plan.get("final_gates"):
-        add_validation_issue(issues, "error", "driver-plan-final-gates", "driver-plan.json has no final review/validation gates")
 
     unknown_scenario_refs = sorted({
         item.get("scenario", "")
