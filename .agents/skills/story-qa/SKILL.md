@@ -38,6 +38,14 @@ python3 tools/story-qa/run.py --project gears-rust
 python3 tools/story-qa/run.py --project all
 ```
 
+Those commands are summary-only. To run deterministic local oracle checks, opt in
+explicitly:
+
+```sh
+python3 tools/story-qa/run.py --project postgresql --check
+python3 tools/story-qa/run.py --project kubernetes --check --timeout 900
+```
+
 For the local product site/docs surface, run the web app from the workspace:
 
 ```sh
@@ -51,5 +59,13 @@ other project lanes remain placeholders until a local corpus is available.
 ## Evidence
 
 The skill writes a transient report under `.context/` and prints the exact status
-per project. That keeps the exploratory pass reviewable without pretending the
-planned lanes are already validated.
+per project. For repeatable product-journey review artifacts and a Slidey deck,
+use:
+
+```sh
+python3 tools/product-journey/run.py --emit-run --project gears-rust --persona core-maintainer --seed demo
+```
+
+That writes `.artifacts/product-journey/<run-id>/`, including
+`deck.slidey.json`, without calling a live LLM. Add `--publish-deck` when you
+want to update `docs/decks/product-journey-eval.slidey.json`.

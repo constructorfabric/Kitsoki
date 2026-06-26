@@ -7,6 +7,7 @@ contracts so the runner itself stays cost-free by default.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -14,15 +15,32 @@ import datetime
 import tempfile
 import shutil
 from pathlib import Path
+from typing import Optional
 
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "tools" / "product-journey" / "catalog.json"
+PERSONAS = ROOT / "tools" / "product-journey" / "personas.json"
 LOG = ROOT / ".context" / "product-journey-runlog.md"
+ARTIFACT_ROOT = ROOT / ".artifacts" / "product-journey"
+DEFAULT_DECK = ROOT / "docs" / "decks" / "product-journey-eval.slidey.json"
+STAGES = [
+    "discover_product",
+    "follow_tutorial",
+    "onboard_project",
+    "plan_project_work",
+    "fix_bug",
+    "file_product_issue",
+    "score_and_report",
+]
 
 
 def load_catalog(path: Path):
     return json.loads(path.read_text())
+
+
+def load_personas(path: Path):
+    return json.loads(path.read_text())["personas"]
 
 
 def append_log(message: str):
@@ -33,6 +51,14 @@ def append_log(message: str):
         LOG.write_text("# Product journey run log\n\n")
     with LOG.open("a", encoding="utf-8") as fp:
         fp.write(entry)
+
+
+def now_utc() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+
+
+def slug_timestamp() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def shell(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess:
@@ -103,6 +129,184 @@ def _meta_value(project):
         "status": project["status"],
         "notes": project["notes"],
         "manifest": project.get("manifest"),
+    }
+
+
+def target_status(project: dict) -> str:
+    if project.get("validation_command"):
+        return "ready-heavy-check"
+    if project.get("run_mode") == "external-benchmark" and project.get("status") == "validated":
+        return "cached_validated"
+    return project.get("status", "planned")
+
+
+def select_persona(personas: list[dict], persona_id: str, seed: str) -> dict:
+    if persona_id:
+        for persona in personas:
+            if persona["id"] == persona_id:
+                return persona
+        known = ", ".join(persona["id"] for persona in personas)
+        raise SystemExit(f"Unknown persona '{persona_id}'. Known: {known}")
+    digest = hashlib.sha256(seed.encode("utf-8")).digest()
+    return personas[digest[0] % len(personas)]
+
+
+def stage_plan(project: dict) -> list[dict]:
+    readiness = target_status(project)
+    stages: list[dict] = []
+    for stage in STAGES:
+        status = "planned"
+        evidence: list[str] = []
+        if stage == "score_and_report":
+            status = readiness
+            evidence.append(project.get("manifest") or project.get("validation_command") or "catalog target")
+        elif stage in {"discover_product", "follow_tutorial", "file_product_issue"}:
+            status = "planned"
+            evidence.append("requires visual MCP/browser evidence in live or cassette run")
+        elif stage == "onboard_project":
+            status = "planned"
+            evidence.append(project.get("manifest") or "project onboarding fixture pending")
+        elif stage in {"plan_project_work", "fix_bug"}:
+            status = readiness if project.get("manifest") else "planned"
+            evidence.append(project.get("manifest") or "bug/design fixture pending")
+        stages.append({"id": stage, "status": status, "evidence": evidence})
+    return stages
+
+
+def build_run_bundle(
+    catalog: dict,
+    personas: list[dict],
+    project_id: str,
+    persona_id: str,
+    seed: str,
+    mode: str,
+    publish_deck: Optional[Path],
+) -> tuple[Path, dict]:
+    target = next((t for t in catalog["targets"] if t["id"] == project_id), None)
+    if target is None:
+        known = ", ".join(t["id"] for t in catalog["targets"])
+        raise SystemExit(f"Unknown project '{project_id}'. Known: {known}")
+    persona = select_persona(personas, persona_id, f"{project_id}:{seed}")
+    created_at = now_utc()
+    run_id = f"{slug_timestamp()}-{project_id}-{persona['id']}-{seed}"
+    run_dir = ARTIFACT_ROOT / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+
+    stages = stage_plan(target)
+    run_json = {
+        "run_id": run_id,
+        "created_at": created_at,
+        "mode": mode,
+        "seed": seed,
+        "project": _meta_value(target),
+        "persona": persona,
+        "stages": stages,
+        "artifacts": {
+            "run": "run.json",
+            "journey": "journey.md",
+            "metrics": "metrics.json",
+            "bugs": "bugs.json",
+            "deck": "deck.slidey.json",
+        },
+        "notes": [
+            "This dry run is deterministic and does not call a live LLM.",
+            "Visual MCP, Kitsoki session driving, and video evidence are represented as planned stages until a live or cassette run supplies artifacts.",
+        ],
+    }
+    metrics = {
+        "run_id": run_id,
+        "stage_count": len(stages),
+        "validated_stage_count": sum(1 for stage in stages if stage["status"] in {"validated", "cached_validated"}),
+        "planned_stage_count": sum(1 for stage in stages if stage["status"] == "planned"),
+        "product_bugs_found": 0,
+        "oracle_results": [],
+        "checkpoint_ratings": [],
+    }
+    bugs = {"run_id": run_id, "items": []}
+    journey = render_journey(run_json)
+    deck = render_deck(run_json, metrics)
+
+    write_json(run_dir / "run.json", run_json)
+    (run_dir / "journey.md").write_text(journey, encoding="utf-8")
+    write_json(run_dir / "metrics.json", metrics)
+    write_json(run_dir / "bugs.json", bugs)
+    write_json(run_dir / "deck.slidey.json", deck)
+    if publish_deck is not None:
+        publish_deck.parent.mkdir(parents=True, exist_ok=True)
+        write_json(publish_deck, deck)
+    return run_dir, run_json
+
+
+def write_json(path: Path, data: dict) -> None:
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def render_journey(run_json: dict) -> str:
+    lines = [
+        "# Product journey dry run",
+        "",
+        f"- Run: `{run_json['run_id']}`",
+        f"- Mode: `{run_json['mode']}`",
+        f"- Project: `{run_json['project']['label']}`",
+        f"- Persona: `{run_json['persona']['label']}`",
+        "",
+        "## Stage Plan",
+        "",
+    ]
+    for stage in run_json["stages"]:
+        lines.append(f"- `{stage['id']}`: {stage['status']}")
+        for evidence in stage["evidence"]:
+            lines.append(f"  - evidence: {evidence}")
+    lines.extend([
+        "",
+        "## Next Evidence Needed",
+        "",
+        "- Visual MCP frames or browser screenshots for product discovery and docs/tutorial stages.",
+        "- Kitsoki session traces for onboarding, PRD/design, feature implementation, and bugfix paths.",
+        "- Oracle result JSON for every attempted project bug.",
+        "- Video clips or retained screenshot IDs for Slidey playback scenes.",
+    ])
+    return "\n".join(lines) + "\n"
+
+
+def render_deck(run_json: dict, metrics: dict) -> dict:
+    stage_lines = [f"{stage['id']}: {stage['status']}" for stage in run_json["stages"]]
+    return {
+        "meta": {
+            "mode": "report",
+            "title": "Product Journey QA",
+            "phase": "dry-run",
+            "resolution": {"width": 1920, "height": 1080},
+        },
+        "scenes": [
+            {
+                "type": "title",
+                "title": "Product Journey QA",
+                "subtitle": f"{run_json['project']['label']} · {run_json['persona']['label']}",
+                "narration": "A deterministic dry run of the product journey QA pipeline.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Run shape",
+                "title": run_json["run_id"],
+                "body": "\n".join(stage_lines),
+                "narration": "The run records every expected stage before live or cassette evidence is attached.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Metrics",
+                "title": "Current evidence",
+                "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nProduct bugs found: {metrics['product_bugs_found']}",
+                "narration": "This report distinguishes validated evidence from planned stages.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Next",
+                "title": "Evidence to attach",
+                "body": "Visual MCP frames, Kitsoki traces, oracle results, and video clips will turn this dry run into a reviewable journey deck.",
+                "narration": "The next iteration attaches real visual and trace evidence to these scenes.",
+            },
+        ],
     }
 
 
@@ -268,10 +472,30 @@ def main() -> None:
         choices=["status", "check"],
         help="status: print catalog, check: validate a single project",
     )
+    parser.add_argument("--persona", default="", help="Persona id from tools/product-journey/personas.json")
+    parser.add_argument("--seed", default="default", help="Deterministic run seed")
     parser.add_argument("--run-log", action="store_true", help="Force a timestamped run log entry")
+    parser.add_argument("--emit-run", action="store_true", help="Write a no-LLM run artifact bundle and Slidey deck")
+    parser.add_argument(
+        "--publish-deck",
+        action="store_true",
+        help="Also update docs/decks/product-journey-eval.slidey.json with the generated deck",
+    )
     args = parser.parse_args()
 
     catalog = load_catalog(CATALOG)
+    personas = load_personas(PERSONAS)
+
+    if args.emit_run:
+        publish_deck = DEFAULT_DECK if args.publish_deck else None
+        run_dir, run_json = build_run_bundle(catalog, personas, args.project, args.persona, args.seed, "dry-run", publish_deck)
+        print(f"Product journey run: {run_json['run_id']}")
+        print(f"Artifacts: {run_dir}")
+        print(f"Deck: {run_dir / 'deck.slidey.json'}")
+        if publish_deck is not None:
+            print(f"Published deck: {publish_deck}")
+        append_log(f"Emitted dry-run bundle {run_json['run_id']}")
+        return
 
     if args.mode == "status":
         print_status(catalog)

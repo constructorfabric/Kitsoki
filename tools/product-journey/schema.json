@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "artifact_root": ".artifacts/product-journey/<run-id>",
+  "stages": [
+    "discover_product",
+    "follow_tutorial",
+    "onboard_project",
+    "plan_project_work",
+    "fix_bug",
+    "file_product_issue",
+    "score_and_report"
+  ],
+  "run_result": {
+    "required": ["run_id", "created_at", "mode", "project", "persona", "stages", "artifacts"],
+    "artifacts": ["run.json", "journey.md", "metrics.json", "bugs.json", "deck.slidey.json"]
+  },
+  "stage_statuses": ["planned", "ready", "cached_validated", "validated", "blocked", "error"]
+}
