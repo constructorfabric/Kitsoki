@@ -309,10 +309,10 @@ var validBackends = map[string]bool{"": true, "claude": true, "copilot": true, "
 // validEfforts mirrors the engine's --effort levels (internal/app loader).
 var validEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
-// Load reads WebConfig from the given base path, then deep-merges the sibling
-// local override (see LocalConfigPath) on top of it. A missing base or local
-// file is not an error — each absent file contributes nothing, so an empty repo
-// returns a zero WebConfig and the caller falls back to the default via Resolve.
+// Load reads WebConfig from the given base path, then deep-merges the local
+// override (see LocalConfigPath) on top of it. A missing base or local file is
+// not an error — each absent file contributes nothing, so an empty repo returns
+// a zero WebConfig and the caller falls back to the default via Resolve.
 //
 // Merge happens before validation, so ${VAR} expansion and the backend / model
 // / effort / default_profile checks all run once against the effective config:
@@ -324,7 +324,7 @@ func Load(path string) (WebConfig, error) {
 	if err != nil {
 		return WebConfig{}, err
 	}
-	local, hadLocal, err := parseConfig(LocalConfigPath(path))
+	local, hadLocal, err := parseFirstConfig(LocalConfigPathCandidates(path))
 	if err != nil {
 		return WebConfig{}, err
 	}
@@ -359,6 +359,29 @@ func LocalConfigPath(path string) string {
 	return strings.TrimSuffix(path, ext) + ".local" + ext
 }
 
+// LocalConfigPathCandidates returns the local override paths Load checks, in
+// precedence order. The sibling local file wins. When running from a linked git
+// worktree, the primary checkout's same relative local file is a fallback so
+// gitignored machine config does not need to be copied into every worktree.
+func LocalConfigPathCandidates(path string) []string {
+	local := LocalConfigPath(path)
+	candidates := []string{local}
+	if primaryLocal, ok := primaryWorktreeLocalConfigPath(path); ok && primaryLocal != local {
+		candidates = append(candidates, primaryLocal)
+	}
+	return candidates
+}
+
+func parseFirstConfig(paths []string) (WebConfig, bool, error) {
+	for _, path := range paths {
+		cfg, exists, err := parseConfig(path)
+		if err != nil || exists {
+			return cfg, exists, err
+		}
+	}
+	return WebConfig{}, false, nil
+}
+
 // parseConfig reads and YAML-unmarshals one config file WITHOUT validating or
 // expanding it — validation is deferred to Load so it runs once on the merged
 // result. A missing file yields a zero WebConfig and exists=false; any other
@@ -375,6 +398,90 @@ func parseConfig(path string) (cfg WebConfig, exists bool, err error) {
 		return WebConfig{}, false, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return cfg, true, nil
+}
+
+func primaryWorktreeLocalConfigPath(configPath string) (string, bool) {
+	absConfig, err := filepath.Abs(configPath)
+	if err != nil {
+		return "", false
+	}
+	localAbs, err := filepath.Abs(LocalConfigPath(configPath))
+	if err != nil {
+		return "", false
+	}
+	worktreeRoot, gitDir, ok := findGitRoot(filepath.Dir(absConfig))
+	if !ok {
+		return "", false
+	}
+	commonDir, ok := gitCommonDir(gitDir)
+	if !ok {
+		return "", false
+	}
+	primaryRoot := filepath.Dir(commonDir)
+	if samePath(primaryRoot, worktreeRoot) {
+		return "", false
+	}
+	rel, err := filepath.Rel(worktreeRoot, localAbs)
+	if err != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
+		return "", false
+	}
+	return filepath.Join(primaryRoot, rel), true
+}
+
+func findGitRoot(start string) (root, gitDir string, ok bool) {
+	dir := start
+	for {
+		gitPath := filepath.Join(dir, ".git")
+		info, err := os.Stat(gitPath)
+		if err == nil {
+			if info.IsDir() {
+				return dir, gitPath, true
+			}
+			b, err := os.ReadFile(gitPath)
+			if err != nil {
+				return "", "", false
+			}
+			const prefix = "gitdir:"
+			text := strings.TrimSpace(string(b))
+			if !strings.HasPrefix(text, prefix) {
+				return "", "", false
+			}
+			gd := strings.TrimSpace(strings.TrimPrefix(text, prefix))
+			if !filepath.IsAbs(gd) {
+				gd = filepath.Join(dir, gd)
+			}
+			return dir, filepath.Clean(gd), true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", "", false
+		}
+		dir = parent
+	}
+}
+
+func gitCommonDir(gitDir string) (string, bool) {
+	commonDir := gitDir
+	if b, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
+		commonDir = strings.TrimSpace(string(b))
+		if !filepath.IsAbs(commonDir) {
+			commonDir = filepath.Join(gitDir, commonDir)
+		}
+	}
+	commonDir = filepath.Clean(commonDir)
+	if filepath.Base(commonDir) != ".git" {
+		return "", false
+	}
+	return commonDir, true
+}
+
+func samePath(a, b string) bool {
+	aa, errA := filepath.Abs(a)
+	bb, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return filepath.Clean(aa) == filepath.Clean(bb)
 }
 
 // mergeConfig deep-merges a local override onto a base config, local-wins:
