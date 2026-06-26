@@ -199,7 +199,7 @@ def candidate_by_key(candidates_path, key):
     return None
 
 
-def drive_plan(m, bug_ids=None, candidate=None, repo_dir=None):
+def build_drive_plan(m, bug_ids=None, candidate=None, repo_dir=None):
     bugs = selected_bugs(m, bug_ids)
     candidates = split_csv(candidate)
     if not candidates:
@@ -217,7 +217,7 @@ def drive_plan(m, bug_ids=None, candidate=None, repo_dir=None):
             commands.append({"bug": b["id"], "candidate": cand, "command": cmd})
             lines.append(f"- `{b['id']}` x `{cand}`: `{cmd}`")
     markdown = "\n".join(lines)
-    print(json.dumps({
+    return {
         "ok": True,
         "project": m["project"]["id"],
         "repo_dir": str(Path(repo_dir).expanduser()) if repo_dir else "",
@@ -225,7 +225,11 @@ def drive_plan(m, bug_ids=None, candidate=None, repo_dir=None):
         "candidates": candidates,
         "commands": commands,
         "markdown": markdown,
-    }))
+    }
+
+
+def drive_plan(m, bug_ids=None, candidate=None, repo_dir=None):
+    print(json.dumps(build_drive_plan(m, bug_ids=bug_ids, candidate=candidate, repo_dir=repo_dir)))
     return 0
 
 
@@ -308,7 +312,7 @@ def git_tracked_dirty(repo):
     return bool(r.stdout.strip())
 
 
-def preflight(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=None):
+def build_preflight(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=None):
     """No-cost readiness check for a repo-history bake-off cell/sweep."""
     proj = m["project"]
     errors = []
@@ -403,8 +407,150 @@ def preflight(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=No
         "warnings": warnings,
         "commands": commands,
     }
+    return out
+
+
+def preflight(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=None):
+    out = build_preflight(m, repo_dir=repo_dir, candidate=candidate,
+                          candidates_path=candidates_path, bug_ids=bug_ids)
     print(json.dumps(out, indent=2))
     return 0 if out["ok"] else 1
+
+
+def collect_cells(results_dir):
+    cells_dir = HERE / results_dir / "cells"
+    cells = []
+    for f in sorted(cells_dir.glob("*.json")) if cells_dir.exists() else []:
+        try:
+            cell = json.loads(f.read_text())
+        except Exception:
+            continue
+        cell["_path"] = str(f)
+        cells.append(cell)
+    return cells, cells_dir
+
+
+def rollup_cells(cells):
+    by = {}
+    for c in cells:
+        cand = c.get("candidate", "?")
+        q = (c.get("outcome", {}) or {}).get("quality", "?")
+        b = by.setdefault(cand, {"n": 0, "solved": 0, "partial": 0, "failed": 0, "pending": 0})
+        b["n"] += 1
+        if q in b:
+            b[q] += 1
+    for _, b in by.items():
+        attempted = b["n"] - b.get("pending", 0)
+        b["attempted"] = attempted
+        b["solve_rate"] = round(b["solved"] / attempted, 3) if attempted else 0.0
+    return by
+
+
+def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=None,
+              results_dir="../../../.artifacts/external-bakeoff/results", markdown=None,
+              armed=False):
+    """Free operator-facing audit for the selected repo-history matrix.
+
+    This command does not run cargo/npm or call a model. It composes preflight,
+    drive-plan, and existing result artifacts into one report so an operator can
+    see whether setup is ready, which cells are still missing, and what command
+    to run next.
+    """
+    pre = build_preflight(m, repo_dir=repo_dir, candidate=candidate,
+                          candidates_path=candidates_path, bug_ids=bug_ids)
+    plan = build_drive_plan(m, bug_ids=bug_ids, candidate=candidate, repo_dir=repo_dir)
+    cells, cells_dir = collect_cells(results_dir)
+    selected = {(cmd["bug"], cmd["candidate"]) for cmd in plan["commands"]}
+    matching = []
+    for cell in cells:
+        key = (cell.get("bug"), cell.get("candidate"))
+        if key in selected and cell.get("project") == m["project"]["id"]:
+            matching.append(cell)
+    completed = {(c.get("bug"), c.get("candidate")) for c in matching}
+    missing = [
+        {"bug": cmd["bug"], "candidate": cmd["candidate"], "command": cmd["command"]}
+        for cmd in plan["commands"]
+        if (cmd["bug"], cmd["candidate"]) not in completed
+    ]
+    result_summary = {
+        "cells_dir": str(cells_dir),
+        "selected_cells": len(plan["commands"]),
+        "scored_cells": len(matching),
+        "missing_cells": len(missing),
+        "rollup": {"by_candidate": rollup_cells(matching)},
+    }
+    next_actions = []
+    if not pre["ok"]:
+        next_actions.append("fix preflight errors before arming or driving live cells")
+    elif not armed:
+        next_actions.append("run history-smoke or bench.py verify for RED/GREEN arming if not already captured")
+    if missing:
+        next_actions.append("run the listed drive_cell.sh --score commands, or mark blocked providers with bench.py pending")
+    else:
+        next_actions.append("run bench.py summarize or advance repo-bakeoff scoring to generate the report/deck")
+    out = {
+        "ok": pre["ok"],
+        "project": m["project"]["id"],
+        "preflight": pre,
+        "arming": {
+            "verified": bool(armed),
+            "note": "selected fixtures verified RED@baseline/GREEN@fix" if armed else "not checked by this readiness command",
+        },
+        "drive_plan": plan,
+        "results": result_summary,
+        "missing": missing,
+        "next_actions": next_actions,
+    }
+    if markdown:
+        write_readiness_markdown(out, Path(markdown))
+        out["markdown"] = markdown
+    print(json.dumps(out, indent=2))
+    return 0 if pre["ok"] else 1
+
+
+def write_readiness_markdown(report, markdown):
+    pre = report["preflight"]
+    plan = report["drive_plan"]
+    results = report["results"]
+    markdown.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"# {report['project']} repo-history readiness",
+        "",
+        f"Preflight: {'ready' if pre.get('ok') else 'blocked'}",
+        f"Arming: {'verified' if report.get('arming', {}).get('verified') else 'not captured'}",
+        f"Selected cells: {results['selected_cells']}",
+        f"Scored cells: {results['scored_cells']}",
+        f"Missing cells: {results['missing_cells']}",
+        "",
+        "## Setup",
+        "",
+    ]
+    if pre.get("errors"):
+        lines.extend(["Errors:", ""])
+        lines.extend(f"- {e}" for e in pre.get("errors", []))
+        lines.append("")
+    if pre.get("warnings"):
+        lines.extend(["Warnings:", ""])
+        lines.extend(f"- {w}" for w in pre.get("warnings", []))
+        lines.append("")
+    if not pre.get("errors") and not pre.get("warnings"):
+        lines.extend(["No preflight errors or warnings.", ""])
+    lines.extend([
+        "## Drive Commands",
+        "",
+        plan.get("markdown", "(none)"),
+        "",
+        "## Missing Cells",
+        "",
+    ])
+    if report.get("missing"):
+        for m in report["missing"]:
+            lines.append(f"- `{m['bug']}` x `{m['candidate']}`: `{m['command']}`")
+    else:
+        lines.append("All selected cells have scored or pending results.")
+    lines.extend(["", "## Next Actions", ""])
+    lines.extend(f"- {a}" for a in report.get("next_actions", []))
+    markdown.write_text("\n".join(lines) + "\n")
 
 
 def score(m, bug, tree, out, candidate, treatment, trace=None, candidates_path=None):
@@ -579,13 +725,9 @@ def summarize(m, results_dir, deck=None, markdown=None, allow_empty=False):
     """Roll up every results/cells/<bug>-<cand>-*.json into a by-candidate summary
     (solved/partial/failed counts + solve_rate). Free, deterministic — consumed by
     the repo-bakeoff story's scoring room and the report/deck builder."""
-    cells_dir = HERE / results_dir / "cells"
-    cells = []
-    for f in sorted(cells_dir.glob("*.json")) if cells_dir.exists() else []:
-        try:
-            cells.append(json.loads(f.read_text()))
-        except Exception:
-            continue
+    cells, cells_dir = collect_cells(results_dir)
+    for c in cells:
+        c.pop("_path", None)
     if not cells and not allow_empty:
         print(json.dumps({
             "ok": False,
@@ -595,18 +737,7 @@ def summarize(m, results_dir, deck=None, markdown=None, allow_empty=False):
             "hint": "run drive_cell.sh --score for at least one matrix cell before scoring",
         }))
         return 1
-    by = {}
-    for c in cells:
-        cand = c.get("candidate", "?")
-        q = (c.get("outcome", {}) or {}).get("quality", "?")
-        b = by.setdefault(cand, {"n": 0, "solved": 0, "partial": 0, "failed": 0, "pending": 0})
-        b["n"] += 1
-        if q in b:
-            b[q] += 1
-    for cand, b in by.items():
-        attempted = b["n"] - b.get("pending", 0)
-        b["attempted"] = attempted
-        b["solve_rate"] = round(b["solved"] / attempted, 3) if attempted else 0.0
+    by = rollup_cells(cells)
     out = {"project": m["project"]["id"], "cells": cells, "rollup": {"by_candidate": by},
            "summary_path": str((HERE / results_dir / "summary.json"))}
     summary_path = HERE / results_dir / "summary.json"
@@ -807,6 +938,20 @@ def main():
     dp.add_argument("--candidate", action="append", required=True,
                     help="candidate key to drive; repeat or pass comma-separated keys")
     dp.add_argument("--repo-dir", help="local checkout for private/local_only projects")
+    rd = sub.add_parser("readiness")
+    rd.add_argument("--project", required=True)
+    rd.add_argument("--bug", action="append", required=True,
+                    help="bug id to audit; repeat or pass comma-separated ids")
+    rd.add_argument("--candidate", action="append", required=True,
+                    help="candidate key to audit; repeat or pass comma-separated keys")
+    rd.add_argument("--repo-dir", help="local checkout for private/local_only projects")
+    rd.add_argument("--results", default="../../../.artifacts/external-bakeoff/results",
+                    help="results dir to inspect for existing cells")
+    rd.add_argument("--markdown", help="optional Markdown readiness report")
+    rd.add_argument("--armed", action="store_true",
+                    help="mark selected fixtures as already verified RED@baseline/GREEN@fix")
+    rd.add_argument("--candidates", default=str(HERE / "candidates.yaml"),
+                    help="candidates.yaml for candidate/profile lookup")
     pc = sub.add_parser("pending")
     pc.add_argument("--project", required=True)
     pc.add_argument("--bug", required=True)
@@ -843,6 +988,11 @@ def main():
     if a.cmd == "drive-plan":
         sys.exit(drive_plan(m, bug_ids=a.bug, candidate=a.candidate,
                             repo_dir=a.repo_dir))
+    if a.cmd == "readiness":
+        sys.exit(readiness(m, repo_dir=a.repo_dir, candidate=a.candidate,
+                           candidates_path=a.candidates, bug_ids=a.bug,
+                           results_dir=a.results, markdown=a.markdown,
+                           armed=a.armed))
     if a.cmd == "pending":
         sys.exit(pending_cell(m, a.bug, a.candidate, a.reason, a.out,
                               candidates_path=a.candidates, treatment=a.treatment))

@@ -203,6 +203,68 @@ def test_pending_cell_rolls_up_separately_from_failures():
         assert "| bug1 | cheap | pending | pending |" in text
 
 
+def test_readiness_reports_missing_and_scored_cells():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        candidates = root / "candidates.yaml"
+        candidates.write_text(
+            "candidates:\n"
+            "  - key: ready\n"
+            "    profile: ready-profile\n"
+        )
+        (root / ".kitsoki.yaml").write_text(
+            "harness_profiles:\n"
+            "  ready-profile:\n"
+            "    backend: replay\n"
+        )
+        manifest_dir = root / "projects" / "demo"
+        oracle_dir = manifest_dir / "oracles"
+        oracle_dir.mkdir(parents=True)
+        (oracle_dir / "bug1.test").write_text("oracle")
+        (oracle_dir / "bug2.test").write_text("oracle")
+        manifest = {
+            "project": {"id": "demo"},
+            "bugs": [
+                {"id": "bug1", "baseline_sha": "abc123", "fix_sha": "def456", "oracle_test": "oracles/bug1.test"},
+                {"id": "bug2", "baseline_sha": "abc123", "fix_sha": "def456", "oracle_test": "oracles/bug2.test"},
+            ],
+            "_dir": manifest_dir,
+        }
+        results = root / "results"
+        out_cell = results / "cells" / "demo-bug1-ready-kitsoki.json"
+        with redirect_stdout(io.StringIO()):
+            bench.pending_cell(manifest, "bug1", "ready", "provider blocked", str(out_cell))
+        old_root = bench.REPO_ROOT
+        bench.REPO_ROOT = root
+        try:
+            out = io.StringIO()
+            markdown = root / "ready.md"
+            rel = os.path.relpath(results, bench.HERE)
+            with redirect_stdout(out):
+                rc = bench.readiness(
+                    manifest,
+                    candidate="ready",
+                    candidates_path=str(candidates),
+                    bug_ids="bug1,bug2",
+                    results_dir=rel,
+                    markdown=str(markdown),
+                    armed=True,
+                )
+        finally:
+            bench.REPO_ROOT = old_root
+        assert rc == 0
+        report = json_load(out.getvalue())
+        assert report["results"]["selected_cells"] == 2
+        assert report["results"]["scored_cells"] == 1
+        assert report["results"]["missing_cells"] == 1
+        assert report["arming"]["verified"] is True
+        assert report["missing"][0]["bug"] == "bug2"
+        text = markdown.read_text()
+        assert "Preflight: ready" in text
+        assert "Arming: verified" in text
+        assert "`bug2` x `ready`" in text
+
+
 def json_load(raw):
     import json
     return json.loads(raw)

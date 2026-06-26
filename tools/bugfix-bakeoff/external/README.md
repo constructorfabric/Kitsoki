@@ -164,6 +164,27 @@ make history-smoke \
 
 `make gears-history-smoke` is the preconfigured gears-rust shortcut. If the
 generic smoke fails, fix that blocker before running cost-bearing cells.
+It also writes a review artifact under
+`.artifacts/external-bakeoff/readiness/<project>.md`.
+
+To regenerate that readiness report without rerunning RED/GREEN arming, call the
+harness directly. This is useful after adding scored or pending cell JSON:
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py readiness \
+  --project gears-rust \
+  --repo-dir ~/code/gears-rust \
+  --bug bug1 \
+  --candidate opus-4.8 \
+  --armed \
+  --markdown .artifacts/external-bakeoff/readiness/gears-rust.md
+```
+
+The readiness report is an audit index, not a substitute for arming or scoring:
+it shows preflight errors/warnings, exact drive commands, existing scored cells,
+missing cells, and the next action.
+Pass `--armed` only when the selected fixtures were just verified, for example
+by `make history-smoke` or `bench.py verify`.
 
 ## Run cost-bearing LLM cells (operator-only)
 

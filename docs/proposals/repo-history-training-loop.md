@@ -125,7 +125,8 @@ repo:
 - `make history-smoke` is the reusable product-path smoke: harness unit tests,
   candidate/profile preflight, scoped oracle arming, exact `drive_cell.sh`
   command rendering, and `repo-bakeoff` story flow validation. `make
-  gears-history-smoke` is the preconfigured gears-rust wrapper.
+  gears-history-smoke` is the preconfigured gears-rust wrapper. The smoke also
+  writes a readiness Markdown audit under `.artifacts/external-bakeoff/readiness/`.
 - `stories/repo-bakeoff` wraps the deterministic prepare, run-command handoff,
   scoring, reporting, and Slidey deck generation path without running live LLM
   cells in tests.

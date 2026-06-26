@@ -305,6 +305,9 @@ history-smoke:
 		python3 tools/bugfix-bakeoff/external/bench.py verify --project "$(HISTORY_PROJECT)" --bug "$(HISTORY_BUGS)" $$repo_arg
 	@if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
 		python3 tools/bugfix-bakeoff/external/bench.py drive-plan --project "$(HISTORY_PROJECT)" --bug "$(HISTORY_BUGS)" $$repo_arg --candidate "$(HISTORY_CANDIDATES)"
+	@mkdir -p .artifacts/external-bakeoff/readiness
+	@if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
+		python3 tools/bugfix-bakeoff/external/bench.py readiness --project "$(HISTORY_PROJECT)" --bug "$(HISTORY_BUGS)" $$repo_arg --candidate "$(HISTORY_CANDIDATES)" --armed --markdown ".artifacts/external-bakeoff/readiness/$(HISTORY_PROJECT).md"
 	GOCACHE=$$(pwd)/.cache/go-build go run ./cmd/kitsoki validate stories/repo-bakeoff/app.yaml
 	GOCACHE=$$(pwd)/.cache/go-build go run ./cmd/kitsoki test flows stories/repo-bakeoff/app.yaml
 

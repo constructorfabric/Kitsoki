@@ -97,6 +97,26 @@ make history-smoke \
 If this target fails, do not run live cells. Its failures are setup or story
 quality blockers: missing profiles, missing local commits, broken oracles,
 stale flow fixtures, or drive commands that no longer match the harness.
+When it passes, it also writes a review artifact at
+`.artifacts/external-bakeoff/readiness/gears-rust.md` with preflight status,
+the selected live-cell commands, existing scored/pending cells, missing cells,
+and the next action.
+
+Regenerate that readiness report after adding results without rerunning the
+cargo-backed RED/GREEN arming step:
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py readiness \
+  --project gears-rust \
+  --repo-dir /Users/brad/code/gears-rust \
+  --bug bug1 \
+  --candidate opus-4.8 \
+  --armed \
+  --markdown .artifacts/external-bakeoff/readiness/gears-rust.md
+```
+
+Use `--armed` only when the selected fixtures were just verified by
+`make gears-history-smoke`, `make history-smoke`, or `bench.py verify`.
 
 ## Deterministic Arming
 
