@@ -105,8 +105,8 @@ knobs that make it actually work** (each learned by a failure):
 | `base_branch`/`feature_branch` | `bench-<bug>-<short>` | a ref that exists in the worktree. |
 | `bf_autostart_attempted` | `true` | else idle auto-derives/clobbers `workdir`. |
 | `judge_mode` | `"llm"` | auto-advances review/validate headlessly. |
-| `test_cmd` | the repo's test cmd | retargets the testing room off Go (e.g. `npx ava`, `pytest -q`). |
-| `ticket_title` | the full bug description | the reproducer is fed `ticket_id`+`ticket_title` only — pack the repro detail here (no ticket file needed; leave `gate_command` empty for LLM-only repro so the hidden oracle never leaks). |
+| `test_cmd` | the repo's test cmd | retargets the testing room off Go (e.g. `npx ava`, `pytest -q`, `cargo test -p <crate>`). ALSO arms the **deterministic GREEN→RED gate**: with `test_cmd` set + `gate_command` empty, `implementing/on_enter` mechanically proves baseline-GREEN (HEAD~1) → reproducer-RED off the model's OWN synthesised test, before any maker spend — leak-safe (no hidden oracle exposed). Prefer this over LLM-only repro. |
+| `ticket_title` | the full bug description | the reproducer is fed `ticket_id`+`ticket_title` only — pack the repro detail here (no ticket file needed; leave `gate_command` empty so the deterministic gate runs off the synthesised repro_command and the hidden oracle never leaks). |
 
 Orchestrator prompt: drive `full_pipeline` ONCE, then only advance explicit gates
 (accept/continue) and answer ask-gates affirmatively; **don't re-drive start**

@@ -61,7 +61,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact, implement_artifact, reproduction_artifact, gate_command, landing_gate, repro_committed]
+    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact, implement_artifact, reproduction_artifact, gate_command, landing_gate, repro_committed, test_cmd, repro_gate_ran, repro_gate_ok, repro_baseline_green, repro_test_red, repro_gate_summary]
     on_enter:
       # Self-heal the workspace before we touch it. bf.idle's auto-
       # create only runs when `!bf_autostart_attempted`, so once that
@@ -163,6 +163,99 @@ states:
           cwd: "{{ world.workdir }}"
         on_error: idle
 
+      # DETERMINISTIC GREEN→RED gate (synthesis path). Runs AFTER the reproducer's
+      # RED test is committed as the discrete pre-fix tip (commit_repro_test above)
+      # and BEFORE the implementer spends any maker budget. Proves the first two
+      # legs of the GREEN→RED→GREEN lifecycle mechanically, off the project
+      # test_cmd + the synthesised repro_command — no pre-supplied oracle, so it
+      # is leak-safe in a bake-off:
+      #   GREEN (baseline): test_cmd on a HEAD~1 scratch worktree (the branch
+      #                     BEFORE the repro test) must exit 0 — the branch was
+      #                     clean, so the failure we induce is genuinely NEW.
+      #   RED   (reproducer): repro_command on the current tree (repro test present,
+      #                     fix not yet applied) must exit non-zero — the bug
+      #                     actually reproduces.
+      # repro_gate_ok = baseline_green && test_red. The GREEN(fix) leg is proven in
+      # `testing` (HEAD~1 RED→GREEN regression gate). !ok ⇒ restart_from reproducing
+      # with the verdict as feedback, BEFORE the implementer runs. Empty test_cmd ⇒
+      # skipped (LLM-only fallback). Scoped to repro_committed (synthesis path); a
+      # ticket-supplied repro_command keeps reproducing's pre-agent RED gate.
+      # Reuses testing's HEAD~1 scratch-worktree technique. See
+      # .context/green-red-green-repro-gate.md + flows/bugfix_green_red_green_gate.yaml.
+      - when: "world.repro_committed && world.test_cmd != '' && world.workdir != '' && !world.repro_gate_ran"
+        invoke: host.run
+        id: repro_det_gate
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set +e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              WT="{{ world.workdir }}"
+              cd "$WT" || { jq -n '{ran:false,baseline_green:false,test_red:false,ok:false,summary:"gate skipped: workdir unavailable",log:""}'; exit 0; }
+              TESTCMD='{{ world.test_cmd }}'
+              REPRO='{{ world.gate_command }}'
+              # RED leg: the reproducer's command on the current tip (repro test
+              # present, no fix yet) must FAIL.
+              RED_EXIT=0; RED_OUT=$( bash -c "$REPRO" 2>&1 ) || RED_EXIT=$?
+              # GREEN baseline: the branch BEFORE the repro test (HEAD~1) must pass
+              # the suite. Materialise it in a detached scratch worktree.
+              PREFIX_SHA=$( git rev-parse 'HEAD~1' 2>/dev/null || echo "" )
+              BASE_EXIT=0; BASE_OUT=""
+              if [ -z "$PREFIX_SHA" ]; then
+                BASE_EXIT=99; BASE_OUT="no pre-test snapshot (HEAD~1 missing)"
+              else
+                SCRATCH="$WT-baseline-gate"
+                if git worktree add --detach "$SCRATCH" "$PREFIX_SHA" >/dev/null 2>&1; then
+                  BASE_OUT=$( (cd "$SCRATCH" && bash -c "$TESTCMD") 2>&1 ) || BASE_EXIT=$?
+                  git worktree remove --force "$SCRATCH" >/dev/null 2>&1 || true
+                else
+                  BASE_EXIT=98; BASE_OUT="could not materialise HEAD~1 scratch worktree"
+                fi
+              fi
+              RED=false;   [ "$RED_EXIT"  -ne 0 ] && RED=true
+              GREEN=false; [ "$BASE_EXIT" -eq 0 ] && GREEN=true
+              OK=false; { [ "$RED" = true ] && [ "$GREEN" = true ]; } && OK=true
+              if   [ "$OK" = true ];     then SUM="✅ GREEN→RED proven · baseline GREEN (test_cmd exit 0 on HEAD~1) → reproducer RED (repro_command exit $RED_EXIT)"
+              elif [ "$GREEN" != true ]; then SUM="❌ baseline NOT green — branch already failing (test_cmd exit $BASE_EXIT on HEAD~1) without the reproducer test; gate cannot trust this branch"
+              else                            SUM="❌ reproducer test did NOT fail (repro_command exit 0) — bug not reproduced"
+              fi
+              RED_TAIL=$( printf '%s' "$RED_OUT"  | tail -c 1500 )
+              BASE_TAIL=$( printf '%s' "$BASE_OUT" | tail -c 1500 )
+              LOG=$( printf 'baseline(GREEN) test_cmd exit=%s on HEAD~1 | reproducer(RED) repro_command exit=%s\n[reproducer/RED tail]\n%s\n[baseline/GREEN tail]\n%s' "$BASE_EXIT" "$RED_EXIT" "$RED_TAIL" "$BASE_TAIL" )
+              jq -n --arg sum "$SUM" --arg log "$LOG" --argjson green $GREEN --argjson red $RED --argjson ok $OK \
+                '{ran:true,baseline_green:$green,test_red:$red,ok:$ok,summary:$sum,log:$log}'
+          cwd: "{{ world.workdir }}"
+        bind:
+          repro_gate_ran:       "stdout_json.ran"
+          repro_baseline_green: "stdout_json.baseline_green"
+          repro_test_red:       "stdout_json.test_red"
+          repro_gate_ok:        "stdout_json.ok"
+          repro_gate_summary:   "stdout_json.summary"
+          repro_gate_log:       "stdout_json.log"
+        on_error: idle
+
+      # Post the deterministic verdict so it is legible in the trace + thread the
+      # moment the gate runs.
+      - when: "world.repro_gate_ran && world.repro_gate_summary != ''"
+        invoke: iface.transport.post
+        with:
+          thread:   "{{ world.thread }}"
+          title:    "Repro gate (GREEN→RED): {{ world.ticket_id }}"
+          body:     "{{ world.repro_gate_summary }}\n\n{{ world.repro_gate_log }}"
+          phase_id: "repro_gate_{{ world.ticket_id }}_{{ world.cycle }}"
+
+      # Deterministic bounce: the GREEN→RED proof FAILED (baseline not green, or
+      # the reproducer's test didn't fail). Restart from reproducing with the
+      # verdict as feedback BEFORE the implementer runs — never spend maker budget
+      # on an untrustworthy reproducer. The agent step below is skipped this turn.
+      - when: "world.repro_gate_ran && !world.repro_gate_ok"
+        emit_intent: restart_from
+        slots:
+          stage:    reproducing
+          feedback: "{{ world.repro_gate_summary }}"
+
       # Apply the proposed fix. The agent runs with cwd=workdir
       # (the bugfix worktree), reads the proposal artifact, and uses
       # Edit/Write to make the actual code changes. Without this
@@ -235,11 +328,21 @@ states:
           effects:
             - set:
                 restart_from_stage:    "reproducing"
-                refine_feedback:       ""
+                # Carry any feedback (e.g. the deterministic GREEN→RED gate's
+                # verdict when it bounced an untrustworthy reproducer) so the
+                # re-authored reproduction addresses it.
+                refine_feedback:       "{{ slots.feedback ?? '' }}"
                 reproducing_cycle:     0
                 cycle:                 0
                 # Clear reproducing's once: bind so it re-runs fresh.
                 reproduction_artifact: {}
+                # Re-arm the synthesis + deterministic GREEN→RED gate so a fresh
+                # reproducer test is re-committed and re-checked from scratch.
+                repro_committed:       false
+                gate_command:          ""
+                repro_gate_ran:        false
+                repro_gate_ok:         false
+                repro_gate_summary:    ""
         - when: "slots.stage == 'proposing' || slots.stage == 'propose_fix'"
           target: proposing
           effects:
