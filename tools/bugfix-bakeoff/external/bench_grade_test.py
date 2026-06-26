@@ -239,13 +239,28 @@ def test_readiness_reports_missing_and_scored_cells():
             bench.pending_cell(manifest, "bug1", "ready", "provider blocked", str(out_cell))
         prepared = root / "prepared" / "demo-bug2-ready.json"
         prepared.parent.mkdir(parents=True)
+        (root / "cells" / "demo-bug2-ready").mkdir(parents=True)
+        (root / "prompts").mkdir()
+        (root / "prompts" / "demo-bug2-ready.md").write_text("prompt")
+        (root / "preflight").mkdir()
+        (root / "preflight" / "demo-bug2-ready.json").write_text("{}")
         prepared.write_text(json.dumps({
             "project": "demo",
             "bug": "bug2",
             "candidate": "ready",
             "worktree": str(root / "cells" / "demo-bug2-ready"),
             "prompt": str(root / "prompts" / "demo-bug2-ready.md"),
+            "preflight": str(root / "preflight" / "demo-bug2-ready.json"),
             "trace": str(root / "traces" / "demo-bug2-ready.jsonl"),
+        }))
+        stale = root / "prepared" / "demo-bug1-ready.json"
+        stale.write_text(json.dumps({
+            "project": "demo",
+            "bug": "bug1",
+            "candidate": "ready",
+            "worktree": str(root / "cells" / "missing"),
+            "prompt": str(root / "prompts" / "missing.md"),
+            "preflight": str(root / "preflight" / "missing.json"),
         }))
         old_root = bench.REPO_ROOT
         bench.REPO_ROOT = root
@@ -271,6 +286,7 @@ def test_readiness_reports_missing_and_scored_cells():
         assert report["results"]["scored_cells"] == 1
         assert report["results"]["missing_cells"] == 1
         assert report["results"]["prepared_cells"] == 1
+        assert report["results"]["stale_prepared_cells"] == 1
         assert report["results"]["unprepared_cells"] == 1
         assert report["arming"]["verified"] is True
         assert report["prepared"]["cells"][0]["bug"] == "bug2"
@@ -283,6 +299,7 @@ def test_readiness_reports_missing_and_scored_cells():
         assert "Preflight: ready" in text
         assert "Arming: verified" in text
         assert "Prepared cells: 1" in text
+        assert "Stale prepared cells: 1" in text
         assert "Unprepared cells: 1" in text
         assert "## What This Proves" in text
         assert "verified RED at the historical baseline and GREEN at the real fix" in text
@@ -290,6 +307,8 @@ def test_readiness_reports_missing_and_scored_cells():
         assert "## Prepared Cells" in text
         assert "metadata `" in text
         assert "demo-bug2-ready.json" in text
+        assert "## Stale Prepared Metadata" in text
+        assert "demo-bug1-ready.json" in text
         assert "## Unprepared Cells" in text
         assert "--no-drive" in text
         assert "`bug2` x `ready`" in text
@@ -307,6 +326,7 @@ def test_readiness_markdown_uses_singular_missing_cell_wording():
             "scored_cells": 0,
             "missing_cells": 1,
             "prepared_cells": 0,
+            "stale_prepared_cells": 0,
             "unprepared_cells": 1,
         },
         "arming": {"verified": True},

@@ -445,6 +445,7 @@ def collect_cells(results_dir):
 def collect_prepared(results_dir, project, selected):
     prepared_dir = ((HERE / results_dir).parent / "prepared").resolve()
     prepared = []
+    stale = []
     for f in sorted(prepared_dir.glob("*.json")) if prepared_dir.exists() else []:
         try:
             item = json.loads(f.read_text())
@@ -453,8 +454,16 @@ def collect_prepared(results_dir, project, selected):
         key = (item.get("bug"), item.get("candidate"))
         if item.get("project") == project and key in selected:
             item["_path"] = str(f)
-            prepared.append(item)
-    return prepared, prepared_dir
+            missing_paths = [
+                field for field in ("prompt", "worktree", "preflight")
+                if not item.get(field) or not Path(item[field]).exists()
+            ]
+            if missing_paths:
+                item["missing_paths"] = missing_paths
+                stale.append(item)
+            else:
+                prepared.append(item)
+    return prepared, stale, prepared_dir
 
 
 def rollup_cells(cells):
@@ -494,7 +503,7 @@ def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=No
         if key in selected and cell.get("project") == m["project"]["id"]:
             matching.append(cell)
     completed = {(c.get("bug"), c.get("candidate")) for c in matching}
-    prepared, prepared_dir = collect_prepared(results_dir, m["project"]["id"], selected)
+    prepared, stale_prepared, prepared_dir = collect_prepared(results_dir, m["project"]["id"], selected)
     prepared_keys = {(p.get("bug"), p.get("candidate")) for p in prepared}
     missing = [
         {
@@ -521,6 +530,7 @@ def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=No
         "scored_cells": len(matching),
         "missing_cells": len(missing),
         "prepared_cells": len(prepared),
+        "stale_prepared_cells": len(stale_prepared),
         "unprepared_cells": len(unprepared),
         "rollup": {"by_candidate": rollup_cells(matching)},
     }
@@ -548,6 +558,7 @@ def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=No
         "prepared": {
             "dir": str(prepared_dir),
             "cells": prepared,
+            "stale": stale_prepared,
         },
         "unprepared": unprepared,
         "missing": missing,
@@ -580,6 +591,7 @@ def write_readiness_markdown(report, markdown):
         f"Scored cells: {scored_cells}",
         f"Missing cells: {missing_cells}",
         f"Prepared cells: {results.get('prepared_cells', 0)}",
+        f"Stale prepared cells: {results.get('stale_prepared_cells', 0)}",
         f"Unprepared cells: {results.get('unprepared_cells', 0)}",
         "",
         "## What This Proves",
@@ -636,6 +648,14 @@ def write_readiness_markdown(report, markdown):
             )
     else:
         lines.append("No prepared-cell metadata found yet. Run `drive_cell.sh --no-drive` or `make history-smoke` with first-cell preparation enabled.")
+    stale = report.get("prepared", {}).get("stale", [])
+    if stale:
+        lines.extend(["", "## Stale Prepared Metadata", ""])
+        lines.append("These prepared-cell records point at missing prompt/worktree/preflight paths. Re-run the listed `--no-drive` commands:")
+        lines.append("")
+        for p in stale:
+            missing = ", ".join(p.get("missing_paths", []))
+            lines.append(f"- `{p.get('bug')}` x `{p.get('candidate')}`: metadata `{p.get('_path')}` missing {missing}")
     if report.get("unprepared"):
         lines.extend(["", "## Unprepared Cells", ""])
         lines.append("These selected cells do not have prepared handoff metadata yet. This is optional before `--score`, but useful for review:")
