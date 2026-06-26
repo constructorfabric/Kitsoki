@@ -59,6 +59,61 @@ describe("MetaButton — Report bug", () => {
     ).toBe(true);
   });
 
+  it("Alt+click starts a placed bug report with target context", async () => {
+    const store = useBugReportStore();
+    const trigger = vi.spyOn(store, "trigger").mockImplementation(async () => {
+      store.status = "reviewing";
+    });
+    const host = document.createElement("div");
+    host.innerHTML = `<p data-testid="translated-label">Guardar cambios</p>`;
+    document.body.appendChild(host);
+
+    mount(MetaButton, { attachTo: document.body });
+    host
+      .querySelector('[data-testid="translated-label"]')!
+      .dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          altKey: true,
+          clientX: 42,
+          clientY: 77,
+        })
+      );
+    await flushPromises();
+
+    expect(trigger).toHaveBeenCalledTimes(1);
+    const opts = trigger.mock.calls[0][0];
+    expect(opts.defaultTitle).toBe("Bug report at clicked location");
+    expect(opts.placement).toMatchObject({
+      x: 42,
+      y: 77,
+      selector: '[data-testid="translated-label"]',
+      text: "Guardar cambios",
+    });
+  });
+
+  it("ignores Alt+click inside editable fields", async () => {
+    const store = useBugReportStore();
+    const trigger = vi.spyOn(store, "trigger").mockResolvedValue();
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+
+    mount(MetaButton, { attachTo: document.body });
+    input.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        altKey: true,
+        clientX: 5,
+        clientY: 6,
+      })
+    );
+    await flushPromises();
+
+    expect(trigger).not.toHaveBeenCalled();
+  });
+
   it("shows the filed toast with the path after a successful submit", async () => {
     const store = useBugReportStore();
     vi.spyOn(store, "trigger").mockResolvedValue();

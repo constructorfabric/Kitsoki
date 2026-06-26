@@ -145,6 +145,7 @@ import { isEmbedded } from "../../lib/embed.js";
 import { useMetaStore } from "../../stores/meta.js";
 import { useBugReportStore } from "../../stores/bugReport.js";
 import { useWorkflowStore } from "../../stores/workflow.js";
+import type { BugPlacementContext } from "../../stores/bugReport.js";
 
 const props = withDefaults(
   defineProps<{
@@ -247,6 +248,22 @@ async function reportBug(): Promise<void> {
   });
 }
 
+async function reportBugAt(e: MouseEvent): Promise<void> {
+  if (!e.altKey || !visible.value || bugReport.status === "capturing") return;
+  const target = e.target as HTMLElement | null;
+  if (!target || shouldIgnorePointReport(target)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  dropdownOpen.value = false;
+  await bugReport.trigger({
+    source,
+    defaultTitle: "Bug report at clicked location",
+    severity: "med",
+    traceRef: sessionId.value || undefined,
+    placement: placementContext(e, target),
+  });
+}
+
 function openWorkflow(): void {
   dropdownOpen.value = false;
   workflow.openPanel();
@@ -267,6 +284,67 @@ function openFiled(): void {
   window.open(path, "_blank");
 }
 
+function shouldIgnorePointReport(target: HTMLElement): boolean {
+  if (
+    target.closest(
+      ".meta-launcher, .br-backdrop, input, textarea, select, button, a, [contenteditable='true'], [role='textbox']"
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function placementContext(e: MouseEvent, target: HTMLElement): BugPlacementContext {
+  return {
+    x: e.clientX,
+    y: e.clientY,
+    selector: describeTarget(target),
+    text: visibleText(target),
+    route: `${window.location.pathname}${window.location.hash}`,
+  };
+}
+
+function visibleText(target: HTMLElement): string | undefined {
+  const text = (target.innerText || target.textContent || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return undefined;
+  return text.length > 140 ? `${text.slice(0, 137)}...` : text;
+}
+
+function describeTarget(target: HTMLElement): string {
+  const testId = target.getAttribute("data-testid");
+  if (testId) return `[data-testid="${testId}"]`;
+  const aria = target.getAttribute("aria-label");
+  if (aria) return `${target.tagName.toLowerCase()}[aria-label="${cssEscape(aria)}"]`;
+  const id = target.id ? `#${cssEscape(target.id)}` : "";
+  if (id) return `${target.tagName.toLowerCase()}${id}`;
+  const path: string[] = [];
+  let el: HTMLElement | null = target;
+  while (el && el !== document.body && path.length < 4) {
+    path.unshift(describePart(el));
+    el = el.parentElement;
+  }
+  return path.join(" > ");
+}
+
+function describePart(el: HTMLElement): string {
+  const testId = el.getAttribute("data-testid");
+  if (testId) return `[data-testid="${testId}"]`;
+  const cls = Array.from(el.classList)
+    .filter((c) => c && !c.startsWith("v-"))
+    .slice(0, 2)
+    .map((c) => `.${cssEscape(c)}`)
+    .join("");
+  return `${el.tagName.toLowerCase()}${cls}`;
+}
+
+function cssEscape(s: string): string {
+  const esc = (globalThis as typeof globalThis & { CSS?: { escape?: (v: string) => string } }).CSS?.escape;
+  return esc ? esc(s) : s.replace(/["\\]/g, "\\$&");
+}
+
 async function refreshModes(): Promise<void> {
   meta.setSession(sessionId.value);
   if (!isSnapshot) await meta.loadModes(source, sessionId.value);
@@ -282,8 +360,16 @@ function onDocClick(e: MouseEvent): void {
   if (el && el.closest(".meta-launcher")) return;
   dropdownOpen.value = false;
 }
-onMounted(() => document.addEventListener("click", onDocClick));
-onUnmounted(() => document.removeEventListener("click", onDocClick));
+onMounted(() => {
+  document.addEventListener("click", onDocClick);
+  document.addEventListener("click", reportBugAt, true);
+  document.addEventListener("contextmenu", reportBugAt, true);
+});
+onUnmounted(() => {
+  document.removeEventListener("click", onDocClick);
+  document.removeEventListener("click", reportBugAt, true);
+  document.removeEventListener("contextmenu", reportBugAt, true);
+});
 </script>
 
 <style scoped>
