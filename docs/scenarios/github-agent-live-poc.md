@@ -117,9 +117,23 @@ A run is acceptable only when:
 - Each narrated rrweb beat has a precise visual annotation target. Broad fallback
   targets such as the whole page or main content region do not satisfy the gate.
 - Text-heavy evidence beats use readable zoom overlays so GitHub comments, run
-  metadata, and API JSON can be read directly in the Slidey deck.
+  metadata, and API JSON can be read directly in the Slidey deck. A valid
+  readable zoom must visibly select the original DOM element with a glowing
+  border, hold that selected state, animate a computed-style clone out from that
+  element's exact location, then return the clone to the source rectangle before
+  the tour transitions away. The expanded box must preserve the visible focus
+  surface: dark sources stay dark, and light evidence opened under the dark focus
+  overlay uses the same dark focus treatment instead of flashing as a bright
+  white card. It must also scale uniformly from the source proportions.
+  Detached restyled overlays or dark-source-to-light-card transitions do not
+  satisfy the scenario. Metadata targets such as `dt`/`dd` rows must expand as
+  label/value evidence, not as a lone label strip.
 - `scripts/verify-gh-agent-live-poc.mjs` passes without requiring an HTML viewer
   or MP4 export.
+- `pnpm -C tools/runstatus exec playwright test github-agent-live-zoom-qa --project=chromium`
+  passes against the captured rrweb logs. This gate samples the actual replayed
+  zoom frames and compares the panel text/colors to the selected source surface;
+  helper-only screenshots or rrweb marker metadata are not sufficient sign-off.
 
 ## Non-Default Exports
 

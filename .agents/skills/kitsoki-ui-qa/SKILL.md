@@ -108,6 +108,12 @@ pipeline removes that failure mode structurally, not by hoping the model behaves
    panel) unless `--blank-strict`. Together they stop a silently-broken image
    from passing QA — the LLM catches context, the scan catches what a model
    might gloss over.
+   For rrweb-backed Slidey decks, do not stop at producer metadata (`rrweb`
+   markers, chapter events, style signatures). Add or run a replay-pixel gate that
+   opens the actual captured rrweb logs, seeks to the relevant moments, and checks
+   what the deck viewer will render. This is how color/source-surface bugs and
+   label-only readable zooms get caught; helper-only screenshots are a unit test,
+   not evidence sign-off for the deck.
 6. **Annotation-consistency check.** A demo must narrate with ONE mechanism
    throughout — *either* tour popovers (a titled card with a "Step N of M"
    counter and Back/Next/Skip, anchored to a spotlight ring) *or* banner/caption

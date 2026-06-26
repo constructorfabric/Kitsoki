@@ -248,7 +248,12 @@ Finally, verify the whole proof bundle before sharing the deck source:
 ```
 scripts/verify-gh-agent-live-poc.mjs \
   --developer-arc-media <path-to-slidey-developer-arc-mp4-or-rrweb>
+pnpm -C tools/runstatus exec playwright test github-agent-live-zoom-qa --project=chromium
 ```
+
+The verifier checks the evidence/deck contract. The Playwright zoom QA replays
+the captured rrweb logs and samples the readable-zoom frames themselves, so it
+catches source-color or label-only zoom regressions that marker metadata cannot.
 
 The verifier is read-only and strict by default. It checks the four `.context`
 evidence notes, `/api/run` JSON, read-only `gh_jobs` rows, capture plans, rrweb

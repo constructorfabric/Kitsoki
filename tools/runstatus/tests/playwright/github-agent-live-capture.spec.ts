@@ -54,6 +54,7 @@ const SPEC_REF = "tools/runstatus/tests/playwright/github-agent-live-capture.spe
 const CHAPTER_TAG = "slidey.chapter";
 const ANNOTATION_TAG = "kitsoki.annotation";
 const ZOOM_TAG = "kitsoki.readable_zoom";
+const ZOOM_RETURN_TAG = "kitsoki.readable_zoom_return";
 
 function loadPlan(): CapturePlan {
   const planPath = process.env.KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN || DEFAULT_PLAN;
@@ -137,7 +138,7 @@ async function tryMakeReadableZoom(page: Page): Promise<ReadableZoom> {
     return await makeReadableZoom(page);
   } catch (e) {
     console.warn(`[live-capture] readable zoom disabled: ${String(e).slice(0, 240)}`);
-    return async () => false;
+    return async () => ({ phase: "hidden", shown: false, animatedFromSource: false });
   }
 }
 
@@ -324,21 +325,51 @@ async function zoomBeat(
   sub: string,
   holdMs: number,
 ): Promise<void> {
-  const shown = selector
+  const zoomResult = selector
     ? await zoom(selector, { title, fontSize: selector.includes("api-json") ? 17 : 20 })
-    : false;
+    : { shown: false, animatedFromSource: false };
   await page.evaluate(
-    ({ tag, title: eventTitle, selector: eventSelector, shown: eventShown }) => {
+    ({ tag, title: eventTitle, selector: eventSelector, result }) => {
       const rrweb = (window as unknown as { rrweb?: { record?: { addCustomEvent?: (tag: string, payload: unknown) => void } } }).rrweb;
       rrweb?.record?.addCustomEvent?.(tag, {
         title: eventTitle,
         selector: eventSelector,
-        shown: eventShown,
+        shown: result.shown,
+        animatedFromSource: result.animatedFromSource,
+        sourceMatched: result.sourceMatched,
+        selectedBeforeExpand: result.selectedBeforeExpand,
+        scale: result.scale,
+        sourceSelector: result.sourceSelector,
+        sourceText: result.sourceText,
+        resolvedSourceKind: result.resolvedSourceKind,
+        sourceRect: result.sourceRect,
+        finalRect: result.finalRect,
+        styleSignature: result.styleSignature,
       });
     },
-    { tag: ZOOM_TAG, title, selector, shown },
+    { tag: ZOOM_TAG, title, selector, result: zoomResult },
   );
   await caption(title, sub, holdMs);
+  const returnResult = selector ? await zoom(null) : { shown: false, animatedFromSource: false };
+  await page.evaluate(
+    ({ tag, title: eventTitle, selector: eventSelector, result }) => {
+      const rrweb = (window as unknown as { rrweb?: { record?: { addCustomEvent?: (tag: string, payload: unknown) => void } } }).rrweb;
+      rrweb?.record?.addCustomEvent?.(tag, {
+        title: eventTitle,
+        selector: eventSelector,
+        returnedToSource: result.returnedToSource,
+        sourceMatched: result.sourceMatched,
+        selectedBeforeExpand: result.selectedBeforeExpand,
+        scale: result.scale,
+        sourceSelector: result.sourceSelector,
+        sourceText: result.sourceText,
+        resolvedSourceKind: result.resolvedSourceKind,
+        sourceRect: result.sourceRect,
+        finalRect: result.finalRect,
+      });
+    },
+    { tag: ZOOM_RETURN_TAG, title, selector, result: returnResult },
+  );
 }
 
 async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom): Promise<void> {

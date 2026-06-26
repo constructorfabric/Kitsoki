@@ -64,10 +64,30 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > **Make dense evidence readable with capture-only DOM overlays.** For comments,
 > JSON, code blocks, ticket metadata, and other small text boxes, use
 > `makeReadableZoom(page)` from `tools/runstatus/tests/playwright/_helpers/demo.ts`.
-> It clones the target's rendered content into a fixed, enlarged overlay while
-> leaving the real page visible underneath. Stamp or verify a marker when the
-> zoom is part of the evidence contract; a demo should not ask reviewers to read
-> 12px text from a full-page capture.
+> It must feel like the literal DOM element was selected: first show a glowing
+> border on the source element, hold it long enough to read as selected, then
+> animate a computed-style clone outward from that exact source rectangle into
+> focus. When the beat ends, animate the clone back to the source rectangle
+> before moving on. Stamp or verify `sourceMatched`, `selectedBeforeExpand`,
+> `animatedFromSource`, return-to-source markers, and source/final geometry when
+> the zoom is part of the evidence contract; a demo should not ask reviewers to
+> read 12px text from a full-page capture, and a detached restyled card is not
+> enough.
+> Before trusting a change to this helper, run the focused visual regression:
+> `pnpm -C tools/runstatus exec playwright test readable-zoom-visual --project=chromium`.
+> It captures selected/expanded/returned frames under
+> `.artifacts/readable-zoom-visual-qa/` and fails if a dark source opens as a
+> light card, if light evidence under the dark focus overlay opens as a bright
+> white card instead of the dark focus treatment, if a definition-list metadata
+> target expands as a label-only strip instead of a label/value block, or if the
+> expanded rectangle stops using uniform source scaling. For live rrweb deck
+> evidence, helper screenshots and marker
+> metadata are not enough: replay the actual captured logs and sample the zoom
+> moments with
+> `pnpm -C tools/runstatus exec playwright test github-agent-live-zoom-qa --project=chromium`
+> (or the scenario-specific equivalent). That gate compares the rendered panel
+> colors/text against the selected source surface in the rrweb replay, which is
+> the only thing reviewers will see in the Slidey deck.
 
 ## Start from a real dogfood trace (generate the flow + cassette — don't hand-author)
 

@@ -419,6 +419,18 @@ function rrwebEvents(log) {
   return Array.isArray(log) ? log : Array.isArray(log?.events) ? log.events : [];
 }
 
+function rectScaleIssue(payload) {
+  const source = payload?.sourceRect;
+  const final = payload?.finalRect;
+  if (!source?.width || !source?.height || !final?.width || !final?.height) return "missing geometry";
+  const sx = final.width / source.width;
+  const sy = final.height / source.height;
+  if (sx < 1.04 || sy < 1.04) return "not expanded";
+  const mismatch = Math.abs(sx - sy) / Math.max(sx, sy);
+  if (mismatch > 0.12) return `non-uniform scale ${sx.toFixed(2)}x/${sy.toFixed(2)}x`;
+  return "";
+}
+
 function checkRrwebLog(file, step, report, label) {
   if (!fs.existsSync(file)) {
     return false;
@@ -454,6 +466,7 @@ function checkRrwebLog(file, step, report, label) {
     report.fail(`${label} has ${fallbackTargets.length} broad fallback annotation target(s) instead of precise callouts`);
   }
   const readableZooms = events.filter((event) => event?.type === 5 && event?.data?.tag === "kitsoki.readable_zoom");
+  const readableZoomReturns = events.filter((event) => event?.type === 5 && event?.data?.tag === "kitsoki.readable_zoom_return");
   if (readableZooms.length < step.minReadableZooms) {
     report.fail(
       `${label} has ${readableZooms.length} readable zoom marker(s), expected at least ${step.minReadableZooms}`,
@@ -462,6 +475,50 @@ function checkRrwebLog(file, step, report, label) {
   const missingReadableZooms = readableZooms.filter((event) => !event?.data?.payload?.shown);
   if (missingReadableZooms.length > 0) {
     report.fail(`${label} has readable zoom marker(s) that did not show an overlay`);
+  }
+  const detachedReadableZooms = readableZooms.filter((event) => {
+    const payload = event?.data?.payload;
+    return (
+      !payload?.animatedFromSource ||
+      !payload?.sourceMatched ||
+      !payload?.selectedBeforeExpand ||
+      !payload?.sourceRect ||
+      !payload?.finalRect ||
+      !payload?.styleSignature
+    );
+  });
+  if (detachedReadableZooms.length > 0) {
+    report.fail(`${label} has readable zoom marker(s) without source-matched selected-element expansion geometry`);
+  }
+  const badZoomScales = readableZooms
+    .map((event) => rectScaleIssue(event?.data?.payload))
+    .filter(Boolean);
+  if (badZoomScales.length > 0) {
+    report.fail(`${label} has readable zoom marker(s) with wrong expansion proportions: ${badZoomScales.join("; ")}`);
+  }
+  if (step.id === "run-page") {
+    const stateZooms = readableZooms.filter((event) => /job state/i.test(event?.data?.payload?.title || ""));
+    if (stateZooms.length === 0) {
+      report.fail(`${label} is missing a readable job-state zoom marker`);
+    }
+    const labelOnlyStateZooms = stateZooms.filter((event) => {
+      const payload = event?.data?.payload || {};
+      const text = String(payload.sourceText || "").replace(/\s+/g, " ").trim().toLowerCase();
+      return !/\bstate\b.*\b(done|running|queued|failed|awaiting[_\s-]*guidance|complete|completed)\b/.test(text);
+    });
+    if (labelOnlyStateZooms.length > 0) {
+      report.fail(`${label} has readable job-state zoom marker(s) that do not include the state value`);
+    }
+  }
+  if (readableZoomReturns.length < readableZooms.length) {
+    report.fail(`${label} has ${readableZoomReturns.length} readable zoom return marker(s), expected at least ${readableZooms.length}`);
+  }
+  const missingReturns = readableZoomReturns.filter((event) => {
+    const payload = event?.data?.payload;
+    return !payload?.returnedToSource || !payload?.sourceMatched || !payload?.selectedBeforeExpand || !payload?.sourceRect || !payload?.finalRect;
+  });
+  if (missingReturns.length > 0) {
+    report.fail(`${label} has readable zoom return marker(s) without return-to-source geometry`);
   }
   return true;
 }
