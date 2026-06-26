@@ -258,17 +258,9 @@ states:
       # 1d. Deterministic refine: the GREEN→RED proof FAILED (baseline not green, or
       #     the reproducer's test didn't fail). Bounce back to the reproducer with
       #     the verdict as feedback BEFORE spending the LLM judge / maker budget.
-      # 1c-escalate. With active escalation on, a gate that RAN but did NOT cleanly
-      #   arm (baseline not GREEN, or the reproducer's test not RED — e.g. a
-      #   compile-coupled "RED" that never behaviorally reproduced the ticket's
-      #   symptom) means the reproduction is mis-scoped. Quit to a human BEFORE the
-      #   refine→abandon grind, handing over the gate output as the question. This
-      #   is what catches a confident-but-wrong-scope reproduction early.
-      - when: "world.escalate_low_value && world.repro_gate_ran && !world.repro_gate_ok"
-        emit_intent: not_reproducible
-        slots:
-          reason: "Reproduction did not cleanly arm the GREEN→RED gate for {{ world.ticket_id }} (baseline_green={{ world.repro_baseline_green }}, test_red={{ world.repro_test_red }}) — likely mis-scoped / not behaviorally reproducing the reported symptom. {{ world.repro_gate_summary }}"
-
+      #     With escalate_low_value on, the refine budget-exhaust handler turns the
+      #     terminal bounce into a needs-human escalation (a mis-scoped repro that
+      #     never arms the gate quits to a human instead of silently abandoning).
       - when: "world.repro_gate_ran && !world.repro_gate_ok"
         emit_intent: refine
         slots:
@@ -335,6 +327,16 @@ states:
       # L2 cycle-budget gate. Refining past the budget routes to
       # @exit:abandoned with a structured reason instead of looping.
       refine:
+        # Active escalation: a reproduction that keeps failing the GREEN→RED gate
+        # (never behaviorally arms — the #47 mis-scope signal) quits to a human
+        # with the gate output instead of silently abandoning.
+        - when: "world.escalate_low_value && world.reproducing_cycle >= world.reproducing_budget"
+          target: "@exit:needs-human"
+          effects:
+            - set:
+                needs_human_reason: "Reproduction never cleanly armed the GREEN→RED gate for {{ world.ticket_id }} after {{ world.reproducing_cycle }} cycles — likely mis-scoped / not behaviorally reproducing the reported symptom. {{ world.repro_gate_summary }}"
+                last_error:         "NEEDS HUMAN (reproducing): repro gate never armed after {{ world.reproducing_cycle }} cycles."
+                status:             "needs-human"
         - when: "world.reproducing_cycle >= world.reproducing_budget"
           target: "@exit:abandoned"
           effects:
@@ -430,29 +432,11 @@ states:
       # bug does not currently reproduce. Hand off to needs-human with the
       # gate's captured output as the reason; never spend maker budget.
       not_reproducible:
-        # Active-escalation variant: the deterministic gate ran but did not arm
-        # (mis-scoped reproduction). Carry the structured question to the human.
-        - when: "world.escalate_low_value && world.repro_gate_ran && !world.repro_gate_ok"
-          target: "@exit:not-reproducible"
-          effects:
-            - set:
-                needs_human_reason: "{{ slots.reason }}"
-                last_error:         "NEEDS HUMAN (reproducing): {{ slots.reason }}"
-                status:             "needs-human"
         - target: "@exit:not-reproducible"
           effects:
             - set:
                 last_error: "repro_command passed (GREEN) on the unchanged worktree — bug does not currently reproduce.\n{{ world.regression_pre_fix_log }}"
                 status:     "not-reproducible"
-
-      # (internal) active escalation → quit to a human with the question.
-      escalate_human:
-        - target: "@exit:needs-human"
-          effects:
-            - set:
-                needs_human_reason: "{{ slots.reason }}"
-                last_error:         "NEEDS HUMAN (reproducing): {{ slots.reason }}"
-                status:             "needs-human"
 
       quit:
         - target: "@exit:abandoned"

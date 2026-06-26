@@ -388,6 +388,20 @@ world:
   judge_mode:       { type: string, default: "human" }           # human | llm | llm_then_human
   judge_confidence_threshold: { type: float, default: 0.8 }
 
+  # Active human-escalation on low-value work. Default false preserves the
+  # supervised behavior (uncertain HOLDS for an operator sweep; budget exhaustion
+  # ABANDONS). When true, the proposing/reproducing gates quit EARLY to
+  # @exit:needs-human with a structured `needs_human_reason` instead of
+  # refine-looping into the expensive implement→test→review path or steamrolling
+  # a low-confidence verdict. Autonomous drivers (bench-bugfix, drive_cell) set
+  # true; the TUI / kitsoki-dev leave it false. See .context/bugfix-early-escalation.md.
+  escalate_low_value: { type: bool, default: false }
+  # A proposed fix below this self-reported confidence is "low value" → escalate
+  # before spending implement/test/review budget (only when escalate_low_value).
+  proposer_confidence_floor: { type: float, default: 0.5 }
+  # The question handed to the human on an escalation exit (carried in last_error).
+  needs_human_reason: { type: string, default: "" }
+
   # Global cycle counter — tracks total refinements across the run. Per-phase
   # counters (below) drive the L2 budget gates; this scalar is a coarse
   # convenience for views / audit.
@@ -581,13 +595,21 @@ intents:
     description: "(internal) the repro_command passed (GREEN) on the unchanged worktree → the bug does not currently reproduce → needs-human, never fixed."
     examples: []
     priority: 1
+  # ── active early-escalation (escalate_low_value). An internal guarded emit:
+  # a low-confidence proposal, an uncertain judge, an un-armed repro gate, or an
+  # exhausted budget routes to @exit:needs-human with a structured question
+  # instead of grinding/abandoning. Carries needs_human_reason. ───────────────
+  escalate_human:
+    description: "(internal) low-value/low-confidence work detected with escalate_low_value on → quit early to needs-human with a question."
+    examples: []
+    priority: 1
 
 # Intents exposed to importing parent stories. Wave 2 (dev-story hub)
 # `intents.import: [start, proceed, accept, refine, restart_from, quit]`
 # lifts these into the parent's bare intent table so an operator can
 # drive the imported pipeline without typing the `bf__` prefix.
 exports:
-  intents: [start, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, triage, change_ticket, quit, look]
+  intents: [start, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, triage, change_ticket, quit, look, escalate_human]
 
 # Named return points. A parent story (dev-story / kitsoki-dev / cyber-devstory)
 # maps each to one of its own states. Standalone load synthesises

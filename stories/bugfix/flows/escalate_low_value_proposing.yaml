@@ -1,0 +1,84 @@
+# escalate_low_value_proposing — with escalate_low_value ON, a proposal the
+# proposer itself rates below proposer_confidence_floor quits EARLY to
+# @exit:needs-human (carrying needs_human_reason) instead of spending the judge +
+# the whole implement→test→review path. The complement of quit_at_proposing
+# (which, with escalate OFF, just holds for the operator).
+#
+# Asserts:
+#   - entering proposing with a low-confidence (0.3 < floor 0.5) proposal emits
+#     the internal escalate_human intent from on_enter and lands at needs-human
+#   - status = needs-human and needs_human_reason is populated with the question
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:   "TKT-047"
+  thread:      "TKT-047"
+  judge_mode:  "human"           # reproducing holds; operator accepts to reach proposing
+  escalate_low_value: true       # the behavior under test
+  proposer_confidence_floor: 0.5
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.git:
+    data: { ok: true, sha: "abc123", diff: "" }
+  host.local:
+    data: { ok: true, log: "" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Low-confidence proposal"
+        summary_markdown: "A fix on an adjacent path; not confident it addresses the reported symptom."
+        bug_verified:     true
+        involved_components: [{ name: "x" }]
+        fix_description: "A speculative change to an adjacent code path."
+        root_cause:      "Unclear — possibly the wrong subsystem."
+        affected_files:  ["x.go"]
+        confidence:      0.3
+        reasoning:       "Low confidence: the root cause may be a different path than the one edited."
+  host.agent.ask:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Low-confidence proposal"
+        summary_markdown: "A fix on an adjacent path; not confident it addresses the reported symptom."
+        bug_verified:     true
+        involved_components: [{ name: "x" }]
+        fix_description: "A speculative change to an adjacent code path."
+        root_cause:      "Unclear — possibly the wrong subsystem."
+        affected_files:  ["x.go"]
+        confidence:      0.3
+        reasoning:       "Low confidence: the root cause may be a different path than the one edited."
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Low-confidence proposal"
+        summary_markdown: "A fix on an adjacent path; not confident it addresses the reported symptom."
+        bug_verified:     true
+        involved_components: [{ name: "x" }]
+        fix_description: "A speculative change to an adjacent code path."
+        root_cause:      "Unclear — possibly the wrong subsystem."
+        affected_files:  ["x.go"]
+        confidence:      0.3
+        reasoning:       "Low confidence: the root cause may be a different path than the one edited."
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: reproducing
+  # accept enters proposing; on_enter binds the low-confidence proposal and the
+  # escalate_low_value arc emits escalate_human → @exit:needs-human, same turn.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status: "needs-human"
+
+expect_terminal: true
+expect_no_errors: true

@@ -58,12 +58,14 @@ turns:
       landing_gate:    "go test ./cmd/kitsoki -run TestRegistry_TerminalSessionNotListedAsActive -count=1"
       repro_committed: true
     expect_host_calls:
+      # The implementation commit now stages the agent's full worktree delta
+      # (stage_all) rather than an explicit file list, so a synthesized helper/test
+      # the implementer didn't name still lands. The reproducer's RED test is
+      # committed separately as the discrete pre-fix commit (commit_repro_test).
       - handler: host.git.commit
         args:
           workdir: ".worktrees/commit-repro"
           message: "Filter terminal sessions"
-          files:
-            - "cmd/kitsoki/registry.go"
-            - "cmd/kitsoki/registry_test.go"
+          stage_all: true
 
 expect_no_errors: true

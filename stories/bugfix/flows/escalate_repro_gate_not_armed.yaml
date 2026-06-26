@@ -1,0 +1,80 @@
+# escalate_repro_gate_not_armed — the #47-catcher. Identical un-armed gate setup
+# to bugfix_green_red_green_gate_refine (baseline NOT green ⇒ the reproduction
+# never cleanly/behaviorally armed the GREEN→RED gate), but with escalate_low_value
+# ON. Instead of refine-looping to @exit:abandoned, the reproducing room quits
+# EARLY to @exit:needs-human on turn 1 — a mis-scoped reproduction doesn't burn
+# the whole implement→test→review budget; a human is asked instead.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-GRG-ESC"
+  ticket_title:     "Dashed gear env override is dropped"
+  thread:           "TKT-GRG-ESC"
+  workspace_id:     "grgesc-fix"
+  workdir:          ".worktrees/grgesc-fix"
+  feature_branch:   "grgesc-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "open-PR"
+  gate_command:     ""
+  test_cmd:         "cargo test -p demo --lib"
+  escalate_low_value: true       # the behavior under test
+  reproducing_budget: 1          # escalate fast: one un-armed cycle → needs-human
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/grgesc-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Dashed gear env override reproduced"
+        summary_markdown: "The reproducer authors a unit test asserting that an underscore env var override applies to the dashed gear key. The test fails on the unfixed tree. This markdown is intentionally padded to satisfy the reproducing_artifact schema minimum length so the flow exercises the deterministic gate's escalation rather than a schema bounce in the harness path."
+        bug_verified:     true
+        involved_components: [{ name: "config", reason: "the dashed gear key lives here" }]
+        repro_command:    "cargo test -p demo --lib dashed_gear_env_override"
+        repro_test_paths: ["src/config.rs"]
+        status:           "passed"
+        outcome:          "pass"
+        applied:          true
+        files_changed:    []
+  host.agent.ask:
+    data: { ok: true, submitted: { summary_title: "p", summary_markdown: "proposal padded to two hundred chars so the proposing artifact schema is satisfied and the flow advances through proposing into implementing where the deterministic GREEN to RED gate runs and bounces on a non-green baseline.", fix_description: "remap the gear-name segment", root_cause: "dashed key never matched", affected_files: ["src/config.rs"] } }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      commit_repro_test:
+        data: { ok: true, exit_code: 0, stdout_json: { sha: "deadbeef", committed: true } }
+      # Gate FAILS: baseline NOT green ⇒ ok=false. escalate_low_value ON ⇒ the
+      # reproducing room escalates to needs-human instead of refine→abandon.
+      repro_det_gate:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ran:            true
+            baseline_green: false
+            test_red:       true
+            ok:             false
+            summary:        "❌ baseline NOT green — reproduction did not cleanly arm the GREEN→RED gate; likely mis-scoped"
+            log:            "baseline(GREEN) test_cmd exit=2 on HEAD~1 | reproducer(RED) repro_command exit=101"
+
+turns:
+  # start → reproducing on_enter: reproducer authors a test, the deterministic
+  # gate runs and does NOT arm (baseline not green); escalate_low_value routes it
+  # to the needs-human-class @exit:not-reproducible carrying the question, instead
+  # of the refine→abandon grind.
+  - intent: { name: start, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status: "needs-human"
+
+expect_no_errors: true

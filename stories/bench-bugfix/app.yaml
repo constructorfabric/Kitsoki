@@ -60,6 +60,11 @@ imports:
       build_cmd:       "{{ world.build_cmd }}"
       gate_command:    "{{ world.gate_command }}"
       bf_autostart_attempted: "{{ world.bf_autostart_attempted }}"
+      # Autonomous benchmark/dogfood runs want ACTIVE escalation: quit early to
+      # needs-human on a mis-scoped reproduction / low-confidence proposal / budget
+      # exhaustion rather than grinding a low-value fix (see #47). Overridable per
+      # session via initial_world.escalate_low_value.
+      escalate_low_value: "{{ world.escalate_low_value }}"
     exits:
       done:             { to: finished }
       abandoned:        { to: finished }
@@ -93,6 +98,10 @@ world:
   # to create a worktree in the wrong repo). The driver seeds workdir +
   # workspace_id + feature_branch and drives `start` explicitly.
   bf_autostart_attempted: { type: bool, default: true }
+  # Active early-escalation: quit to needs-human on a mis-scoped reproduction /
+  # low-confidence proposal / budget exhaustion instead of grinding. Default true
+  # for autonomous runs; override per session via initial_world.
+  escalate_low_value: { type: bool, default: true }
 
 states:
   finished:
