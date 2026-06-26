@@ -3605,9 +3605,10 @@ def validate_run_bundle(run_dir: Path) -> dict:
     if review and review.get("status") not in schema["review_statuses"]:
         add_validation_issue(issues, "error", "review-status", "review.json has an unknown status", review.get("status", ""))
     if review:
+        review_checks = review.get("checks", [])
         invalid_check_statuses = sorted({
             check.get("status", "")
-            for check in review.get("checks", [])
+            for check in review_checks
             if check.get("status", "") not in schema["review_check_statuses"]
         })
         if invalid_check_statuses:
@@ -3615,7 +3616,7 @@ def validate_run_bundle(run_dir: Path) -> dict:
         expected_review_checks = set(schema.get("review_check_ids", []))
         actual_review_checks = {
             check.get("id", "")
-            for check in review.get("checks", [])
+            for check in review_checks
             if check.get("id", "")
         }
         missing_review_checks = sorted(expected_review_checks - actual_review_checks)
@@ -3624,6 +3625,27 @@ def validate_run_bundle(run_dir: Path) -> dict:
             add_validation_issue(issues, "error", "review-check-contract", "review.json is missing required review checks", ", ".join(missing_review_checks))
         if extra_review_checks:
             add_validation_issue(issues, "warn", "review-check-extra", "review.json has checks outside the schema contract", ", ".join(extra_review_checks))
+        expected_review_counts = {
+            "passed": sum(1 for check in review_checks if check.get("status") == "pass"),
+            "warned": sum(1 for check in review_checks if check.get("status") == "warn"),
+            "failed": sum(1 for check in review_checks if check.get("status") == "fail"),
+            "total": len(review_checks),
+        }
+        for key, expected in expected_review_counts.items():
+            actual = review.get("summary_counts", {}).get(key)
+            if actual != expected:
+                add_validation_issue(issues, "error", "review-summary-counts", f"review.json summary_counts.{key} is stale or inconsistent", f"expected={expected}, actual={actual}")
+        expected_review_status = "ready" if expected_review_counts["failed"] == 0 else "needs_evidence"
+        if review.get("status") != expected_review_status:
+            add_validation_issue(issues, "error", "review-status-consistency", "review.json status does not match failed review checks", f"expected={expected_review_status}, actual={review.get('status')}")
+        if metrics:
+            for key, expected in [
+                ("review_passed_checks", expected_review_counts["passed"]),
+                ("review_total_checks", expected_review_counts["total"]),
+                ("review_status", review.get("status")),
+            ]:
+                if metrics.get(key) != expected:
+                    add_validation_issue(issues, "error", "metrics-review-consistency", f"metrics.json {key} is stale or inconsistent with review.json", f"expected={expected}, actual={metrics.get(key)}")
 
     validate_slidey_deck_shape(deck, media_manifest, issues)
     scene_eyebrows = deck_scene_eyebrows(deck)

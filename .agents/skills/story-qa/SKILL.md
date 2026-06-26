@@ -259,7 +259,9 @@ python3 tools/product-journey/run.py --validate-run \
 
 The validator also checks that `review.json` contains the full schema-required
 review gate set, including `driver-action-contract`; rerun `--review-run` when
-an older bundle is missing a newly added review gate.
+an older bundle is missing a newly added review gate. It also recomputes review
+pass/warn/fail totals from `review.checks`, so stale `review.json` or
+`metrics.json` summaries fail instead of looking current.
 
 The `tools/story-qa/run.py` runner also writes a transient pointer report under
 `.context/` and a durable review bundle under `.artifacts/story-qa/<run>/`
