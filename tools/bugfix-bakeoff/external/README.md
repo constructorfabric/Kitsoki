@@ -169,6 +169,12 @@ generic smoke fails, fix that blocker before running cost-bearing cells.
 It also writes a review artifact under
 `.artifacts/external-bakeoff/readiness/<project>.md` and the same readiness
 index as JSON under `.artifacts/external-bakeoff/readiness/<project>.json`.
+It also writes the explicit completion verdict under
+`.artifacts/external-bakeoff/readiness/<project>-completion.md` and
+`.artifacts/external-bakeoff/readiness/<project>-completion.json`. The
+completion report distinguishes four states: no-cost setup ready, ready to
+drive live, result evidence complete with pending cells, and fully live-scored
+capability evidence.
 The free preparation step writes baseline worktrees under
 `.artifacts/external-bakeoff/cells/` and the delegated Studio MCP prompt under
 `.artifacts/external-bakeoff/drive-prompts/`. It also writes
@@ -227,6 +233,18 @@ python3 tools/bugfix-bakeoff/external/bench.py readiness \
   --candidate opus-4.8 \
   --armed \
   --markdown .artifacts/external-bakeoff/readiness/gears-rust.md
+```
+
+To regenerate the completion verdict from the same current artifacts:
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py completion \
+  --project gears-rust \
+  --repo-dir ~/code/gears-rust \
+  --bug bug1 \
+  --candidate opus-4.8 \
+  --armed \
+  --markdown .artifacts/external-bakeoff/readiness/gears-rust-completion.md
 ```
 
 The readiness report is an audit index, not a substitute for arming or scoring:

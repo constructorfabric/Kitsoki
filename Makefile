@@ -338,6 +338,17 @@ history-smoke:
 		if [ "$(HISTORY_PREPARE_ALL_CELLS)" = "1" ]; then \
 			python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); results = data["results"]; assert results["prepared_cells"] == results["selected_cells"], results; assert results["stale_prepared_cells"] == 0, results; assert results["unprepared_cells"] == 0, results' "$$readiness_json"; \
 		fi
+	@if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
+		completion_json=".artifacts/external-bakeoff/readiness/$(HISTORY_PROJECT)-completion.json"; \
+		if ! python3 tools/bugfix-bakeoff/external/bench.py completion --project "$(HISTORY_PROJECT)" --bug "$(HISTORY_BUGS)" $$repo_arg --candidate "$(HISTORY_CANDIDATES)" --armed --markdown ".artifacts/external-bakeoff/readiness/$(HISTORY_PROJECT)-completion.md" > "$$completion_json"; then \
+			cat "$$completion_json"; \
+			exit 1; \
+		fi; \
+		cat "$$completion_json"; \
+		python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); checks = data["checks"]; assert checks["no_cost_ready"], data; assert data["results"]["stale_result_cells"] == 0, data' "$$completion_json"; \
+		if [ "$(HISTORY_PREPARE_ALL_CELLS)" = "1" ]; then \
+			python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); checks = data["checks"]; assert checks["ready_to_drive"], data' "$$completion_json"; \
+		fi
 	GOCACHE=$$(pwd)/.cache/go-build go run ./cmd/kitsoki validate stories/repo-bakeoff/app.yaml
 	GOCACHE=$$(pwd)/.cache/go-build go run ./cmd/kitsoki test flows stories/repo-bakeoff/app.yaml
 

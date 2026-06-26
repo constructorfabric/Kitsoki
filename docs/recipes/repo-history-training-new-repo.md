@@ -76,6 +76,8 @@ The readiness report lands at:
 ```text
 .artifacts/external-bakeoff/readiness/<project>.md
 .artifacts/external-bakeoff/readiness/<project>.json
+.artifacts/external-bakeoff/readiness/<project>-completion.md
+.artifacts/external-bakeoff/readiness/<project>-completion.json
 ```
 
 The prepared-handoff audit lands beside it:
@@ -88,11 +90,17 @@ The prepared-handoff audit lands beside it:
 The Markdown is for review. The JSON files are the machine-readable audit indexes
 used by full-matrix smoke gates to assert every selected cell has fresh prepared
 handoff metadata before anyone spends on live drives.
+The completion report is the operator verdict. It says whether the matrix is
+`no-cost ready`, `ready to drive live`, complete only because some cells are
+honestly `pending`, or fully `live scored`.
 
 It should say:
 
 - `Preflight: ready`
 - `Arming: verified`
+- completion `No-cost ready: yes`
+- completion `Ready to drive live: yes` when the full selected matrix has fresh
+  prepared handoff metadata
 - selected cells equal the intended matrix size
 - missing cells equal the live cells that still need model attempts
 - stale result cells are selected result artifacts whose recorded baseline does
@@ -106,6 +114,22 @@ It should say:
   inspectable before spend
 - the handoff audit is ready; it rejects missing metadata, weak MCP prompts,
   hidden oracle leaks, and real-fix commit/source hints
+
+After live cells finish or are marked pending, regenerate the completion verdict:
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py completion \
+  --project <project> \
+  --repo-dir /path/to/local-checkout \
+  --bug <bug1,bug2,bug3> \
+  --candidate <candidate-key> \
+  --armed \
+  --markdown .artifacts/external-bakeoff/readiness/<project>-completion.md
+```
+
+`Result evidence complete: yes` means every selected cell has a current scored
+or pending result artifact. `Live scored capability result: yes` is stricter:
+every selected cell has a current non-pending scored result.
 
 ## 4. Rehearse Blocked-Provider Reporting
 
@@ -180,6 +204,8 @@ A repo-history training path is ready to cite when:
 - the manifest and oracle files are committed;
 - `make history-smoke ...` passes for the intended matrix;
 - readiness shows clean preflight and verified arming;
+- the completion report says `No-cost ready: yes` before spend and
+  `Result evidence complete: yes` before publishing a result;
 - the full no-cost smoke validates pending report/deck generation without
   touching the normal live results directory;
 - every selected cell is either scored from a live model attempt or honestly

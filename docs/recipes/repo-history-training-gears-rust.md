@@ -122,8 +122,12 @@ audit index at `.artifacts/external-bakeoff/readiness/gears-rust.json` with
 preflight status, the selected live-cell commands, existing scored/pending
 cells, missing cells, stale result artifacts, prepared/stale/unprepared handoff
 counts, pending-cell command templates for true provider/profile blockers, and
-the next action. It
-also writes `.artifacts/external-bakeoff/readiness/gears-rust-handoffs.md` and
+the next action. It also writes
+`.artifacts/external-bakeoff/readiness/gears-rust-completion.md` and
+`.artifacts/external-bakeoff/readiness/gears-rust-completion.json`, which give
+the explicit product verdict: no-cost ready, ready to drive live, result
+evidence complete, and live scored capability result. It also writes
+`.artifacts/external-bakeoff/readiness/gears-rust-handoffs.md` and
 `.artifacts/external-bakeoff/readiness/gears-rust-handoffs.json`, which audit
 the prepared MCP prompts before spend. That audit fails if the prompt lacks the
 bug id, profile, worktree, and no-shell drive instructions, or if it leaks hidden
@@ -156,6 +160,23 @@ python3 tools/bugfix-bakeoff/external/bench.py readiness \
 
 Use `--armed` only when the selected fixtures were just verified by
 `make gears-history-smoke`, `make history-smoke`, or `bench.py verify`.
+Regenerate the completion verdict from the same artifacts after live cells
+finish or after true pre-attempt blockers are recorded as pending:
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py completion \
+  --project gears-rust \
+  --repo-dir /Users/brad/code/gears-rust \
+  --bug bug1,bug4,bug5,bug9 \
+  --candidate opus-4.8 \
+  --armed \
+  --markdown .artifacts/external-bakeoff/readiness/gears-rust-completion.md
+```
+
+For the current full no-cost reference run, completion should say
+`No-cost ready: yes` and `Ready to drive live: yes`, while
+`Result evidence complete` and `Live scored capability result` remain `no`
+until every selected cell has a current scored or pending result artifact.
 
 To rehearse the blocked-provider report path without touching the normal live
 results directory, run:

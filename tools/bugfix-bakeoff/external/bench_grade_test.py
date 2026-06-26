@@ -331,6 +331,45 @@ def test_readiness_reports_missing_and_scored_cells():
         assert "## Stale Result Artifacts" in text
         assert "demo-bug2-ready-kitsoki.json" in text
 
+        out = io.StringIO()
+        completion_md = root / "completion.md"
+        old_root = bench.REPO_ROOT
+        bench.REPO_ROOT = root
+        try:
+            with redirect_stdout(out):
+                rc = bench.completion(
+                    manifest,
+                    candidate="ready",
+                    candidates_path=str(candidates),
+                    bug_ids="bug1,bug2",
+                    results_dir=rel,
+                    markdown=str(completion_md),
+                    armed=True,
+                )
+        finally:
+            bench.REPO_ROOT = old_root
+        assert rc == 0
+        completion = json_load(out.getvalue())
+        assert completion["status"] == "blocked"
+        assert completion["checks"]["no_cost_ready"] is True
+        assert completion["checks"]["ready_to_drive"] is False
+        assert completion["checks"]["result_evidence_complete"] is False
+        assert completion["checks"]["live_scored"] is False
+        assert completion["results"]["selected_cells"] == 2
+        assert completion["results"]["result_cells"] == 1
+        assert completion["results"]["missing_cells"] == 1
+        assert completion["results"]["stale_result_cells"] == 1
+        assert any("prepared handoff" in b for b in completion["blockers"])
+        assert any("stale" in b for b in completion["blockers"])
+        assert any("need a scored or pending result" in b for b in completion["blockers"])
+        completion_text = completion_md.read_text()
+        assert "No-cost ready: yes" in completion_text
+        assert "Ready to drive live: no" in completion_text
+        assert "Result evidence complete: no" in completion_text
+        assert "Live scored capability result: no" in completion_text
+        assert "## Drive Commands" in completion_text
+        assert "## Pending Commands" in completion_text
+
 
 def test_readiness_markdown_uses_singular_missing_cell_wording():
     report = {

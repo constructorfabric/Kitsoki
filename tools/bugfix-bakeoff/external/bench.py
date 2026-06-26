@@ -26,6 +26,11 @@ No LLM, no cost. Two subcommands:
       Print exact drive_cell.sh --score commands for the selected matrix.
       Free/no-LLM.
 
+  bench.py completion --project <name> --bug <id[,id]> --candidate <key[,key]>
+      Print an explicit repo-history completion verdict from readiness/results:
+      no-cost ready, ready to drive live, complete with pending, or live scored.
+      Free/no-LLM.
+
 A project is described entirely by its manifest (see projects/query-string/
 manifest.yaml): project.{repo,install,test_cmd,oracle.{target,run}} and
 bugs[].{baseline_sha,fix_sha,fix_source,oracle_test,oracle_match}. To add a new
@@ -681,16 +686,10 @@ def rollup_cells(cells):
     return by
 
 
-def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=None,
-              results_dir="../../../.artifacts/external-bakeoff/results", markdown=None,
-              armed=False):
-    """Free operator-facing audit for the selected repo-history matrix.
-
-    This command does not run cargo/npm or call a model. It composes preflight,
-    drive-plan, and existing result artifacts into one report so an operator can
-    see whether setup is ready, which cells are still missing, and what command
-    to run next.
-    """
+def build_readiness_report(m, repo_dir=None, candidate=None, candidates_path=None,
+                           bug_ids=None,
+                           results_dir="../../../.artifacts/external-bakeoff/results",
+                           armed=False):
     pre = build_preflight(m, repo_dir=repo_dir, candidate=candidate,
                           candidates_path=candidates_path, bug_ids=bug_ids)
     plan = build_drive_plan(m, bug_ids=bug_ids, candidate=candidate, repo_dir=repo_dir)
@@ -780,11 +779,27 @@ def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=No
         "stale_results": stale_results,
         "next_actions": next_actions,
     }
+    return out
+
+
+def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=None,
+              results_dir="../../../.artifacts/external-bakeoff/results", markdown=None,
+              armed=False):
+    """Free operator-facing audit for the selected repo-history matrix.
+
+    This command does not run cargo/npm or call a model. It composes preflight,
+    drive-plan, and existing result artifacts into one report so an operator can
+    see whether setup is ready, which cells are still missing, and what command
+    to run next.
+    """
+    out = build_readiness_report(m, repo_dir=repo_dir, candidate=candidate,
+                                 candidates_path=candidates_path, bug_ids=bug_ids,
+                                 results_dir=results_dir, armed=armed)
     if markdown:
         write_readiness_markdown(out, Path(markdown))
         out["markdown"] = markdown
     print(json.dumps(out, indent=2))
-    return 0 if pre["ok"] else 1
+    return 0 if out["preflight"]["ok"] else 1
 
 
 def write_readiness_markdown(report, markdown):
@@ -909,6 +924,179 @@ def write_readiness_markdown(report, markdown):
             )
     lines.extend(["", "## Next Actions", ""])
     lines.extend(f"- {a}" for a in report.get("next_actions", []))
+    markdown.write_text("\n".join(lines) + "\n")
+
+
+def build_completion_report(m, repo_dir=None, candidate=None, candidates_path=None,
+                            bug_ids=None,
+                            results_dir="../../../.artifacts/external-bakeoff/results",
+                            armed=False):
+    readiness_report = build_readiness_report(
+        m,
+        repo_dir=repo_dir,
+        candidate=candidate,
+        candidates_path=candidates_path,
+        bug_ids=bug_ids,
+        results_dir=results_dir,
+        armed=armed,
+    )
+    results = readiness_report["results"]
+    preflight_ok = bool(readiness_report["preflight"].get("ok"))
+    arming_verified = bool(readiness_report["arming"].get("verified"))
+    selected = results.get("selected_cells", 0)
+    missing = results.get("missing_cells", 0)
+    stale_results = results.get("stale_result_cells", 0)
+    stale_prepared = results.get("stale_prepared_cells", 0)
+    unprepared = results.get("unprepared_cells", 0)
+    prepared = results.get("prepared_cells", 0)
+    no_cost_ready = preflight_ok and arming_verified and selected > 0
+    ready_to_drive = no_cost_ready and stale_prepared == 0 and unprepared == 0
+    result_evidence_complete = no_cost_ready and missing == 0 and stale_results == 0
+    rollup = (results.get("rollup", {}) or {}).get("by_candidate", {})
+    pending = sum(v.get("pending", 0) for v in rollup.values())
+    attempted = sum(v.get("attempted", 0) for v in rollup.values())
+    solved = sum(v.get("solved", 0) for v in rollup.values())
+    partial = sum(v.get("partial", 0) for v in rollup.values())
+    failed = sum(v.get("failed", 0) for v in rollup.values())
+    live_scored = result_evidence_complete and pending == 0 and attempted == selected
+    blockers = []
+    if not preflight_ok:
+        blockers.append("preflight is blocked")
+    if not arming_verified:
+        blockers.append("selected fixtures have not been verified RED@baseline/GREEN@fix in this report")
+    if selected == 0:
+        blockers.append("no selected cells")
+    if stale_prepared:
+        blockers.append(f"{stale_prepared} prepared handoff(s) are stale")
+    if unprepared:
+        blockers.append(f"{unprepared} selected cell(s) have no prepared handoff metadata")
+    if stale_results:
+        blockers.append(f"{stale_results} selected result artifact(s) are stale")
+    if missing:
+        blockers.append(f"{missing} selected cell(s) still need a scored or pending result")
+    if result_evidence_complete and pending:
+        blockers.append(f"{pending} selected cell(s) are pending, so this is not a live scored capability result")
+
+    status = "complete"
+    if not result_evidence_complete:
+        status = "ready-to-drive" if ready_to_drive else "blocked"
+    elif pending:
+        status = "complete-with-pending"
+
+    out = {
+        "ok": result_evidence_complete,
+        "project": m["project"]["id"],
+        "status": status,
+        "checks": {
+            "preflight_ok": preflight_ok,
+            "arming_verified": arming_verified,
+            "no_cost_ready": no_cost_ready,
+            "ready_to_drive": ready_to_drive,
+            "result_evidence_complete": result_evidence_complete,
+            "live_scored": live_scored,
+        },
+        "results": {
+            "selected_cells": selected,
+            "prepared_cells": prepared,
+            "unprepared_cells": unprepared,
+            "stale_prepared_cells": stale_prepared,
+            "result_cells": results.get("scored_cells", 0),
+            "missing_cells": missing,
+            "stale_result_cells": stale_results,
+            "attempted_cells": attempted,
+            "pending_cells": pending,
+            "solved_cells": solved,
+            "partial_cells": partial,
+            "failed_cells": failed,
+        },
+        "blockers": blockers,
+        "drive_commands": readiness_report.get("missing", []),
+        "pending_commands": [
+            {
+                "bug": item["bug"],
+                "candidate": item["candidate"],
+                "command": item["pending_command"],
+            }
+            for item in readiness_report.get("missing", [])
+        ],
+        "readiness": readiness_report,
+    }
+    return out
+
+
+def completion(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=None,
+               results_dir="../../../.artifacts/external-bakeoff/results",
+               markdown=None, armed=False):
+    report = build_completion_report(
+        m,
+        repo_dir=repo_dir,
+        candidate=candidate,
+        candidates_path=candidates_path,
+        bug_ids=bug_ids,
+        results_dir=results_dir,
+        armed=armed,
+    )
+    if markdown:
+        write_completion_markdown(report, Path(markdown))
+        report["markdown"] = markdown
+    print(json.dumps(report, indent=2))
+    return 0 if report["checks"]["preflight_ok"] else 1
+
+
+def write_completion_markdown(report, markdown):
+    markdown.parent.mkdir(parents=True, exist_ok=True)
+    checks = report["checks"]
+    results = report["results"]
+    lines = [
+        f"# {report['project']} repo-history completion",
+        "",
+        f"Status: {report['status']}",
+        f"No-cost ready: {'yes' if checks['no_cost_ready'] else 'no'}",
+        f"Ready to drive live: {'yes' if checks['ready_to_drive'] else 'no'}",
+        f"Result evidence complete: {'yes' if checks['result_evidence_complete'] else 'no'}",
+        f"Live scored capability result: {'yes' if checks['live_scored'] else 'no'}",
+        "",
+        "## Cell Counts",
+        "",
+        f"- Selected cells: {results['selected_cells']}",
+        f"- Prepared cells: {results['prepared_cells']}",
+        f"- Unprepared cells: {results['unprepared_cells']}",
+        f"- Stale prepared cells: {results['stale_prepared_cells']}",
+        f"- Result cells: {results['result_cells']}",
+        f"- Missing cells: {results['missing_cells']}",
+        f"- Stale result cells: {results['stale_result_cells']}",
+        f"- Attempted cells: {results['attempted_cells']}",
+        f"- Pending cells: {results['pending_cells']}",
+        f"- Solved cells: {results['solved_cells']}",
+        f"- Partial cells: {results['partial_cells']}",
+        f"- Failed cells: {results['failed_cells']}",
+        "",
+        "## Blockers",
+        "",
+    ]
+    if report.get("blockers"):
+        lines.extend(f"- {item}" for item in report["blockers"])
+    else:
+        lines.append("None.")
+    if report.get("drive_commands"):
+        lines.extend(["", "## Drive Commands", ""])
+        for item in report["drive_commands"]:
+            lines.append(f"- `{item['bug']}` x `{item['candidate']}`: `{item['command']}`")
+    if report.get("pending_commands"):
+        lines.extend(["", "## Pending Commands", ""])
+        lines.append("Use these only for a pre-attempt provider/profile/infrastructure blocker:")
+        lines.append("")
+        for item in report["pending_commands"]:
+            lines.append(f"- `{item['bug']}` x `{item['candidate']}`: `{item['command']}`")
+    lines.extend([
+        "",
+        "## Interpretation",
+        "",
+        "- `No-cost ready` means preflight passed, selected fixtures were armed, and the matrix is non-empty.",
+        "- `Ready to drive live` additionally means every selected cell has fresh prepared handoff metadata.",
+        "- `Result evidence complete` means every selected cell has a current scored or pending result artifact.",
+        "- `Live scored capability result` requires current non-pending result artifacts for every selected cell.",
+    ])
     markdown.write_text("\n".join(lines) + "\n")
 
 
@@ -1313,6 +1501,20 @@ def main():
                     help="mark selected fixtures as already verified RED@baseline/GREEN@fix")
     rd.add_argument("--candidates", default=str(HERE / "candidates.yaml"),
                     help="candidates.yaml for candidate/profile lookup")
+    cp = sub.add_parser("completion")
+    cp.add_argument("--project", required=True)
+    cp.add_argument("--bug", action="append", required=True,
+                    help="bug id to audit; repeat or pass comma-separated ids")
+    cp.add_argument("--candidate", action="append", required=True,
+                    help="candidate key to audit; repeat or pass comma-separated keys")
+    cp.add_argument("--repo-dir", help="local checkout for private/local_only projects")
+    cp.add_argument("--results", default="../../../.artifacts/external-bakeoff/results",
+                    help="results dir to inspect for existing cells")
+    cp.add_argument("--markdown", help="optional Markdown completion report")
+    cp.add_argument("--armed", action="store_true",
+                    help="mark selected fixtures as already verified RED@baseline/GREEN@fix")
+    cp.add_argument("--candidates", default=str(HERE / "candidates.yaml"),
+                    help="candidates.yaml for candidate/profile lookup")
     ah = sub.add_parser("audit-handoffs")
     ah.add_argument("--project", required=True)
     ah.add_argument("--bug", action="append", required=True,
@@ -1363,6 +1565,11 @@ def main():
                            candidates_path=a.candidates, bug_ids=a.bug,
                            results_dir=a.results, markdown=a.markdown,
                            armed=a.armed))
+    if a.cmd == "completion":
+        sys.exit(completion(m, repo_dir=a.repo_dir, candidate=a.candidate,
+                            candidates_path=a.candidates, bug_ids=a.bug,
+                            results_dir=a.results, markdown=a.markdown,
+                            armed=a.armed))
     if a.cmd == "audit-handoffs":
         sys.exit(audit_handoffs(m, results_dir=a.results, candidate=a.candidate,
                                 bug_ids=a.bug, markdown=a.markdown))
