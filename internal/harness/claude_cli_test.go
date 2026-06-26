@@ -121,11 +121,13 @@ func TestClaudeCLIHarness_SystemPromptOverridesClaudeDefault(t *testing.T) {
 	assert.NotContains(t, bare, "--system-prompt")
 	assert.NotContains(t, bare, "--append-system-prompt")
 	assert.NotContains(t, bare, "--exclude-dynamic-system-prompt-sections")
+	assert.NotContains(t, bare, "--no-session-persistence")
 
 	args := harness.BuildClaudeArgsWithSystemPromptForTest(cfg, "ROUTER PROMPT")
 	assert.Contains(t, args, "--exclude-dynamic-system-prompt-sections")
 	assert.NotContains(t, args, "--append-system-prompt",
 		"router prompt must replace, not append to, Claude Code's default")
+	assert.NotContains(t, args, "--no-session-persistence")
 
 	idx := -1
 	for i, a := range args {
@@ -137,6 +139,95 @@ func TestClaudeCLIHarness_SystemPromptOverridesClaudeDefault(t *testing.T) {
 	require.GreaterOrEqual(t, idx, 0, "args should include --system-prompt")
 	require.Less(t, idx+1, len(args), "--system-prompt must be followed by its value")
 	assert.Equal(t, "ROUTER PROMPT", args[idx+1])
+}
+
+func TestClaudeCLIHarness_ClaudeSessionColdWarmCopyAndReset(t *testing.T) {
+	exe, err := os.Executable()
+	require.NoError(t, err)
+
+	appDef := func(id string) *app.AppDef {
+		return &app.AppDef{
+			App: app.AppMeta{ID: id, Title: "Session Cache Test"},
+			Intents: map[string]app.Intent{
+				"go": {
+					Title: "Go",
+					Slots: map[string]app.Slot{
+						"direction": {Type: "string"},
+					},
+				},
+			},
+		}
+	}
+
+	var calls [][]string
+	exec := func(ctx context.Context, bin string, args []string, stdin, workingDir string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if err := writeValidatedTransition(args, "go"); err != nil {
+			return "", err
+		}
+		return `{"type":"result","subtype":"success","result":"ok"}`, nil
+	}
+
+	h, err := harness.NewClaudeCLI(appDef("session-cache"), harness.ClaudeCLIConfig{
+		ClaudeBin:  exe,
+		KitsokiBin: exe,
+		Exec:       exec,
+	})
+	require.NoError(t, err)
+
+	runTurn := func(t *testing.T, h *harness.ClaudeCLIHarness, n int, text string) {
+		t.Helper()
+		_, err := h.RunTurn(context.Background(), harness.TurnInput{
+			SessionID:      app.SessionID("session-cache-test"),
+			TurnNumber:     app.TurnNumber(n),
+			StatePath:      app.StatePath("main"),
+			UserText:       text,
+			World:          world.New(),
+			AllowedIntents: []string{"go"},
+		})
+		require.NoError(t, err)
+	}
+
+	runTurn(t, h, 1, "go north")
+	runTurn(t, h, 2, "go south")
+
+	require.Len(t, calls, 2)
+	cold := calls[0]
+	warm := calls[1]
+	coldID := flagValue(cold, "--session-id")
+	require.NotEmpty(t, coldID)
+	assert.Empty(t, flagValue(cold, "--resume"))
+	assert.Contains(t, cold, "--system-prompt")
+	assert.NotContains(t, cold, "--no-session-persistence")
+	assert.NotEmpty(t, flagValue(cold, "--mcp-config"))
+
+	assert.Equal(t, coldID, flagValue(warm, "--resume"))
+	assert.Empty(t, flagValue(warm, "--session-id"))
+	assert.NotContains(t, warm, "--system-prompt")
+	assert.NotContains(t, warm, "--exclude-dynamic-system-prompt-sections")
+	assert.NotContains(t, warm, "--no-session-persistence")
+	assert.NotEmpty(t, flagValue(warm, "--mcp-config"))
+
+	copy := h.WithClaudeModel("claude-opus-4-5")
+	runTurn(t, copy, 3, "go east")
+	require.Len(t, calls, 3)
+	copyCold := calls[2]
+	copyID := flagValue(copyCold, "--session-id")
+	require.NotEmpty(t, copyID)
+	assert.Empty(t, flagValue(copyCold, "--resume"))
+	assert.NotEqual(t, coldID, copyID)
+	assert.Equal(t, "claude-opus-4-5", flagValue(copyCold, "--model"))
+	assert.Contains(t, copyCold, "--system-prompt")
+
+	h.SetAppDef(appDef("session-cache-reset"))
+	runTurn(t, h, 4, "go west")
+	require.Len(t, calls, 4)
+	resetCold := calls[3]
+	resetID := flagValue(resetCold, "--session-id")
+	require.NotEmpty(t, resetID)
+	assert.Empty(t, flagValue(resetCold, "--resume"))
+	assert.NotEqual(t, coldID, resetID)
+	assert.Contains(t, resetCold, "--system-prompt")
 }
 
 // TestClaudeCLIHarness_RoutingComposesKitsokiAndProject verifies the router's
