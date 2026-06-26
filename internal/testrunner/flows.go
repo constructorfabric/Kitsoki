@@ -2074,6 +2074,25 @@ func waitForJobsParked(ctx context.Context, rig *orchRig) error {
 //
 // The outer context (typically 5 s) is the hard deadline; ctx.Err() is
 // returned if it fires before the drain completes.
+// clarificationPollTick nudges the fake clock past host.RequestClarification's
+// 200ms poll interval so an answered-but-not-yet-resumed job's poll loop fires.
+const clarificationPollTick = 250 * time.Millisecond
+
+// resumeInFlight reports whether a clarification answer has been stored (the DB
+// row is back to `running`) but the scheduler is still idle — i.e. the handler's
+// poll loop hasn't observed the answer and called Resumed yet. Such a job WILL
+// resume and reach terminal, so the drain must not declare the turn settled.
+func resumeInFlight(ctx context.Context, rig *orchRig) bool {
+	if rig.jobStore == nil {
+		return false
+	}
+	running, err := rig.jobStore.ListJobsByStatus(ctx, rig.sid, jobs.JobRunning)
+	if err != nil {
+		return false
+	}
+	return len(running) > 0
+}
+
 func advanceAndWait(ctx context.Context, rig *orchRig, d time.Duration) error {
 	if err := waitForJobsParked(ctx, rig); err != nil {
 		return fmt.Errorf("park barrier: %w", err)
@@ -2104,6 +2123,21 @@ func advanceAndWait(ctx context.Context, rig *orchRig, d time.Duration) error {
 		// Otherwise loop: the next WaitIdle blocks until the cascading job
 		// finishes; the next WaitListenerIdle drains its event.
 		if rig.sched.IsIdle() {
+			// Clarification-resume race: host.jobs.answer_clarification flips the
+			// DB row to `running`, but the handler's poll loop only re-registers
+			// the job as running (Resumed → runningCount++) on its next 200ms
+			// clock tick. Between answer-storage and that tick the scheduler
+			// briefly reports idle while a resume is in flight, so WaitIdle can
+			// return before the resumed handler completes — the terminal event
+			// then lands after this drain returns and `expect_jobs: status done`
+			// races (the documented clarification race, worse under load). Detect
+			// it via the DB (status=running while the scheduler is idle) and nudge
+			// the fake clock so the poll loop wakes, resumes, and completes before
+			// we declare the turn drained.
+			if resumeInFlight(ctx, rig) {
+				rig.clk.Advance(clarificationPollTick)
+				continue
+			}
 			return nil
 		}
 	}
