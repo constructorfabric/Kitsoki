@@ -109,6 +109,9 @@ python3 bench.py score --project query-string --bug qs1 --tree <worktree> \
 
 # verify every fixture is armed (RED@baseline, GREEN@real-fix):
 python3 bench.py verify --project query-string
+
+# preflight repo/candidate readiness before spending:
+python3 bench.py preflight --project query-string --candidate gpt-5.5
 ```
 
 `score` copies the candidate tree (never mutates it), links a prebuilt
@@ -174,6 +177,21 @@ For private or heavy `local_only` projects, pass `--repo-dir <checkout>` or set
 `<PROJECT>_REPO` (for example `GEARS_RUST_REPO`). The harness creates disposable
 per-cell worktrees under `.artifacts/external-bakeoff/cells/` and leaves the
 source checkout untouched.
+
+Before any arm/drive step, run the free preflight. It reports all setup blockers
+as JSON: manifest/oracle files, local checkout presence, baseline/fix commits,
+candidate key, and whether the candidate's Kitsoki profile is configured.
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py preflight \
+  --project gears-rust \
+  --repo-dir ~/code/gears-rust \
+  --candidate opus-4.8
+```
+
+`ok: true` means the repo is ready for deterministic arming and a cost-bearing
+cell. Missing profiles or commits fail here, before `drive_cell.sh` prepares a
+worktree or invokes Studio MCP.
 
 See [`docs/case-studies/query-string-bakeoff.md`](../../../docs/case-studies/query-string-bakeoff.md)
 for the worked GPT-5.5-vs-GLM-5.2 study.

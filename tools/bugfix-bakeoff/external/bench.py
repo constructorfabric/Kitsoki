@@ -18,6 +18,10 @@ No LLM, no cost. Two subcommands:
       Prove each fixture: RED at baseline_sha, GREEN after the real fix's source.
       exit 0 ⇔ all checked fixtures armed.
 
+  bench.py preflight --project <name> [--repo-dir <prebuilt clone>] [--candidate K]
+      Check manifest, local checkout, oracles, baseline commits, and profile setup.
+      Free/no-LLM. exit 0 ⇔ ready to arm/drive.
+
 A project is described entirely by its manifest (see projects/query-string/
 manifest.yaml): project.{repo,install,test_cmd,oracle.{target,run}} and
 bugs[].{baseline_sha,fix_sha,fix_source,oracle_test,oracle_match}. To add a new
@@ -32,6 +36,7 @@ except ImportError:
     sys.exit("bench.py needs pyyaml (pip install pyyaml)")
 
 HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parents[2]
 
 
 def load(project):
@@ -143,6 +148,143 @@ def candidate_meta(candidates_path, key):
         if c.get("key") == key:
             return {k: c.get(k) for k in ("model", "effort", "provider")}
     return {}
+
+
+def load_candidates(candidates_path):
+    if not candidates_path or not os.path.exists(candidates_path):
+        return {}
+    try:
+        return yaml.safe_load(Path(candidates_path).read_text()) or {}
+    except Exception:
+        return {}
+
+
+def candidate_by_key(candidates_path, key):
+    for c in load_candidates(candidates_path).get("candidates", []):
+        if c.get("key") == key:
+            return c
+    return None
+
+
+def configured_profiles(root=None):
+    """Return harness profile names from the checked-in and local kitsoki config.
+
+    This intentionally parses YAML instead of grepping indentation so preflight
+    and shell drivers share one less brittle definition of "configured".
+    """
+    root = Path(root) if root is not None else REPO_ROOT
+    profiles = set()
+    for name in (".kitsoki.yaml", ".kitsoki.local.yaml"):
+        path = Path(root) / name
+        if not path.exists():
+            continue
+        try:
+            data = yaml.safe_load(path.read_text()) or {}
+        except Exception:
+            continue
+        harness_profiles = data.get("harness_profiles") or {}
+        if isinstance(harness_profiles, dict):
+            profiles.update(str(k) for k in harness_profiles.keys())
+    return profiles
+
+
+def git_commit_exists(repo, sha):
+    return sh(["git", "-C", str(repo), "cat-file", "-e", f"{sha}^{{commit}}"],
+              cwd=repo, quiet=True).returncode == 0
+
+
+def git_tracked_dirty(repo):
+    r = sh(["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no"],
+           cwd=repo, quiet=True)
+    if r.returncode != 0:
+        return None
+    return bool(r.stdout.strip())
+
+
+def preflight(m, repo_dir=None, candidate=None, candidates_path=None):
+    """No-cost readiness check for a repo-history bake-off cell/sweep."""
+    proj = m["project"]
+    errors = []
+    warnings = []
+    local_only = bool(proj.get("local_only", False))
+    repo_path = Path(repo_dir).expanduser() if repo_dir else None
+    candidate_info = None
+
+    if not m.get("bugs"):
+        errors.append("manifest has no bugs")
+
+    for b in m.get("bugs", []):
+        oracle = m["_dir"] / b.get("oracle_test", "")
+        if b.get("reference_only"):
+            continue
+        if not oracle.exists():
+            errors.append(f"{b.get('id', '?')}: oracle missing: {oracle}")
+        if not b.get("baseline_sha"):
+            errors.append(f"{b.get('id', '?')}: missing baseline_sha")
+        if not b.get("fix_sha"):
+            warnings.append(f"{b.get('id', '?')}: missing fix_sha; verify cannot prove GREEN")
+
+    if candidate:
+        candidate_info = candidate_by_key(candidates_path, candidate)
+        if not candidate_info:
+            errors.append(f"unknown candidate '{candidate}' in {candidates_path}")
+        else:
+            profile = candidate_info.get("profile", "")
+            profiles = configured_profiles()
+            if not profile:
+                errors.append(f"candidate '{candidate}' has no profile")
+            elif profile not in profiles:
+                errors.append(
+                    f"profile '{profile}' for candidate '{candidate}' is not configured "
+                    "in .kitsoki.yaml/.kitsoki.local.yaml"
+                )
+
+    if local_only:
+        if not repo_path:
+            env_name = f"{proj['id'].upper().replace('-', '_')}_REPO"
+            errors.append(f"local_only project needs --repo-dir <checkout> or {env_name}")
+        elif not (repo_path / ".git").exists():
+            errors.append(f"repo_dir is not a git checkout: {repo_path}")
+    elif repo_path and not (repo_path / ".git").exists():
+        errors.append(f"repo_dir is not a git checkout: {repo_path}")
+
+    if repo_path and (repo_path / ".git").exists():
+        dirty = git_tracked_dirty(repo_path)
+        if dirty is None:
+            warnings.append(f"could not inspect git status for {repo_path}")
+        elif dirty:
+            warnings.append(f"tracked changes present in {repo_path}; source checkout is not mutated, but verify from a clean tree is easier to audit")
+        for b in m.get("bugs", []):
+            if not b.get("baseline_sha"):
+                continue
+            if not git_commit_exists(repo_path, b["baseline_sha"]):
+                errors.append(f"{b['id']}: baseline {b['baseline_sha']} not present in {repo_path}")
+            fix_sha = b.get("fix_sha")
+            if fix_sha and not git_commit_exists(repo_path, fix_sha):
+                errors.append(f"{b['id']}: fix {fix_sha} not present in {repo_path}")
+
+    repo_arg = f" --repo-dir {repo_path}" if repo_path else ""
+    candidate_arg = f" --candidate {candidate}" if candidate else " --candidate <candidate>"
+    commands = {
+        "verify": f"python3 bench.py verify --project {proj['id']}{repo_arg}",
+        "dry_run_cell": f"tools/bugfix-bakeoff/external/drive_cell.sh --project {proj['id']} --bug <bug>{candidate_arg}{repo_arg} --no-drive",
+        "drive_cell": f"tools/bugfix-bakeoff/external/drive_cell.sh --project {proj['id']} --bug <bug>{candidate_arg}{repo_arg} --score",
+        "summarize": f"python3 bench.py summarize --project {proj['id']} --results ../../../.artifacts/external-bakeoff/results --deck ../../../.artifacts/external-bakeoff/report/deck.slidey.json --markdown ../../../.artifacts/external-bakeoff/report/report.md",
+    }
+    out = {
+        "ok": not errors,
+        "project": proj["id"],
+        "local_only": local_only,
+        "repo_dir": str(repo_path) if repo_path else "",
+        "bugs": [b.get("id") for b in m.get("bugs", []) if not b.get("reference_only")],
+        "reference_only": [b.get("id") for b in m.get("bugs", []) if b.get("reference_only")],
+        "candidate": candidate_info or {},
+        "errors": errors,
+        "warnings": warnings,
+        "commands": commands,
+    }
+    print(json.dumps(out, indent=2))
+    return 0 if out["ok"] else 1
 
 
 def score(m, bug, tree, out, candidate, treatment, trace=None, candidates_path=None):
@@ -498,6 +640,12 @@ def main():
     v.add_argument("--project", required=True)
     v.add_argument("--bug")
     v.add_argument("--repo-dir", help="prebuilt clone with node_modules to reuse")
+    pf = sub.add_parser("preflight")
+    pf.add_argument("--project", required=True)
+    pf.add_argument("--repo-dir", help="local checkout for private/local_only projects")
+    pf.add_argument("--candidate", help="candidate key from candidates.yaml to check profile readiness")
+    pf.add_argument("--candidates", default=str(HERE / "candidates.yaml"),
+                    help="candidates.yaml for candidate/profile lookup")
     mt = sub.add_parser("meta")  # machine-readable project facts (for the Go runner)
     mt.add_argument("--project", required=True)
     mt.add_argument("--bug")     # optional: emit one bug's drive facts
@@ -516,6 +664,9 @@ def main():
         sys.exit(summarize(load(a.project), a.results, a.deck, a.markdown))
 
     m = load(a.project)
+    if a.cmd == "preflight":
+        sys.exit(preflight(m, repo_dir=a.repo_dir, candidate=a.candidate,
+                           candidates_path=a.candidates))
     if a.cmd == "score":
         sys.exit(score(m, bug_of(m, a.bug), a.tree, a.out, a.candidate, a.treatment,
                        trace=a.trace, candidates_path=a.candidates))

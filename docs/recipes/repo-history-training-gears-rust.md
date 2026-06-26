@@ -43,6 +43,23 @@ The target checkout may have unrelated dirty files, but the drive should never
 edit that checkout directly. The harness creates per-cell worktrees under
 `.artifacts/external-bakeoff/cells/`.
 
+## Free Preflight
+
+Run preflight before arming or driving. It is deterministic and no-cost:
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py preflight \
+  --project gears-rust \
+  --repo-dir /Users/brad/code/gears-rust \
+  --candidate opus-4.8
+```
+
+The JSON output should say `ok: true`. If it does not, fix every `errors` entry
+first: missing local checkout, unknown candidate, unconfigured profile, absent
+historical commits, or missing oracle files. `warnings` are audit friction, not
+hard blockers; a tracked-dirty target checkout is warned because the harness
+uses disposable mirrors/worktrees, but clean source state is easier to review.
+
 ## Deterministic Arming
 
 Before spending on a live model, prove the corpus:
