@@ -34,6 +34,7 @@ configure{brief,gate_command} ─▶ maker[cherny-loop] ─▶ integrate ─▶ 
 | `verify_ok` | tri-state ("" until re-verify binds) |
 | `last_error` | the real failure on any needs-human arc |
 | `status` | `shipped` \| `needs-human` |
+| `report_path` / `summary_path` / `deck_path` | projected from `delivery-tail` so the ship-it exit links the deterministic close-out report and Slidey deck |
 
 ## The three import / reuse seams
 

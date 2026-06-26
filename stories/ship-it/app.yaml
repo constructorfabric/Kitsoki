@@ -56,6 +56,9 @@ world:
   cleanup_outcome:  { type: string, default: "" }    # cleaned | refused
   last_error:       { type: string, default: "" }    # the real failure on any needs-human arc
   status:           { type: string, default: "" }    # shipped | needs-human
+  report_path:      { type: string, default: "" }    # projected from delivery-tail
+  summary_path:     { type: string, default: "" }    # projected from delivery-tail
+  deck_path:        { type: string, default: "" }    # projected from delivery-tail
 
 intents:
   ship:
@@ -146,8 +149,11 @@ imports:
       shipped:
         to: "@exit:shipped"
         set:
-          shipped_sha: "{{ world.tail__shipped_sha }}"
-          status:      "shipped"
+          shipped_sha:  "{{ world.tail__shipped_sha }}"
+          report_path:  "{{ world.tail__report_path }}"
+          summary_path: "{{ world.tail__summary_path }}"
+          deck_path:    "{{ world.tail__deck_path }}"
+          status:       "shipped"
       needs-human:
         to: "@exit:needs-human"
         set:
