@@ -87,8 +87,10 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > instead of the dark focus treatment, if a definition-list metadata target
 > expands as a label-only strip instead of a label/value block, if a helper
 > reintroduces a page-wide dim/blur mask behind the annotation, or if the
-> expanded rectangle stops using uniform source scaling. For live rrweb deck
-> evidence, helper screenshots and marker
+> expanded rectangle stops using uniform source scaling. The QA must also prove
+> the cloned content scales with the panel; a large selected box with source-sized
+> text, avatars, code blocks, or inner comment cards is still a failed zoom. For
+> live rrweb deck evidence, helper screenshots and marker
 > metadata are not enough: replay the actual captured logs and sample the zoom
 > moments with
 > `pnpm -C tools/runstatus exec playwright test github-agent-live-zoom-qa --project=chromium`

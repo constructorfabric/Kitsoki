@@ -127,6 +127,9 @@ A run is acceptable only when:
   annotation helpers must not add a page-wide opacity or blur layer that obscures
   the source screen; the selected page remains visible behind the outline and
   zoom panel. It must also scale uniformly from the source proportions.
+  The cloned content inside the panel must scale with the panel; source-sized
+  inner cards, avatars, text, or code blocks inside an expanded shell do not
+  satisfy the scenario.
   Detached restyled overlays or dark-source-to-light-card transitions do not
   satisfy the scenario. Metadata targets such as `dt`/`dd` rows must expand as
   label/value evidence, not as a lone label strip.

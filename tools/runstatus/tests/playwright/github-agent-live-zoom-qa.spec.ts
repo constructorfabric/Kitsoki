@@ -20,6 +20,7 @@ type RrwebEvent = {
       sourceText?: string;
       resolvedSourceKind?: string;
       sourceRect?: { width?: number; height?: number };
+      finalRect?: { width?: number; height?: number };
       styleSignature?: {
         pageBackgroundColor?: string;
         backgroundColor?: string;
@@ -43,6 +44,19 @@ type ZoomFrameState = {
   expectedColor: string;
   pageBackground: string;
   annotationPaint: AnnotationPaintState;
+  contentScale: ContentScaleState;
+};
+
+type ContentScaleState = {
+  panelWidthScale: number;
+  panelHeightScale: number;
+  rootWidthScale: number;
+  descendantWidthScale: number;
+  sourceMaxDescendantWidth: number;
+  cloneMaxDescendantWidth: number;
+  sourceFontSize: number;
+  cloneFontSize: number;
+  fontScale: number;
 };
 
 type OverlayPaint = {
@@ -215,7 +229,48 @@ async function readZoomFrameState(page: Page, payload: NonNullable<RrwebEvent["d
         spotBox: paint("demo-spot"),
         readableBackdrop: paint("demo-readable-back"),
       },
+      contentScale: measureContentScale(source, panel, content, p?.sourceRect, p?.finalRect),
     };
+    function measureContentScale(
+      sourceEl: HTMLElement,
+      panelEl: HTMLElement,
+      contentEl: HTMLElement,
+      sourceMarker: { width?: number; height?: number } | undefined,
+      finalMarker: { width?: number; height?: number } | undefined,
+    ): ContentScaleState {
+      const panelRect = panelEl.getBoundingClientRect();
+      const sourceRect = sourceEl.getBoundingClientRect();
+      const contentRect = contentEl.getBoundingClientRect();
+      const sourceWidth = Math.max(1, sourceMarker?.width ?? sourceRect.width);
+      const sourceHeight = Math.max(1, sourceMarker?.height ?? sourceRect.height);
+      const finalWidth = Math.max(1, finalMarker?.width ?? panelRect.width);
+      const finalHeight = Math.max(1, finalMarker?.height ?? panelRect.height);
+      const sourceFontSize = parseFloat(doc.defaultView!.getComputedStyle(sourceEl).fontSize || "0");
+      const cloneFontSize = parseFloat(doc.defaultView!.getComputedStyle(contentEl).fontSize || "0");
+      const sourceMaxDescendantWidth = largestDescendantWidth(sourceEl);
+      const cloneMaxDescendantWidth = largestDescendantWidth(contentEl);
+      return {
+        panelWidthScale: finalWidth / sourceWidth,
+        panelHeightScale: finalHeight / sourceHeight,
+        rootWidthScale: contentRect.width / sourceWidth,
+        descendantWidthScale: cloneMaxDescendantWidth / Math.max(1, sourceMaxDescendantWidth),
+        sourceMaxDescendantWidth,
+        cloneMaxDescendantWidth,
+        sourceFontSize,
+        cloneFontSize,
+        fontScale: cloneFontSize / Math.max(1, sourceFontSize),
+      };
+    }
+    function largestDescendantWidth(root: HTMLElement): number {
+      let max = 0;
+      for (const el of Array.from(root.querySelectorAll<HTMLElement>("*"))) {
+        const rect = el.getBoundingClientRect();
+        const style = doc.defaultView!.getComputedStyle(el);
+        if (rect.width <= 24 || rect.height <= 8 || style.display === "none" || style.visibility === "hidden") continue;
+        max = Math.max(max, rect.width);
+      }
+      return Math.round(max);
+    }
     function paint(id: string): OverlayPaint {
       const el = doc.getElementById(id);
       if (!el) {
@@ -315,6 +370,7 @@ function assertBugIssueCommentZoom(
     Math.min(payload?.sourceRect?.width ?? 0, state.panelRect.width),
     `${label}: comment zoom should use the wide GitHub comment box geometry`,
   ).toBeGreaterThan(360);
+  assertContentScalesWithPanel(state.contentScale, label);
 
   if (/requester comment/.test(title)) {
     expect(sourceText, `${label}: requester zoom must include the full mention comment`).toMatch(/@kitsoki/i);
@@ -326,6 +382,22 @@ function assertBugIssueCommentZoom(
     expect(sourceText, `${label}: app-response zoom must include kitsoki/GitHub comment context`).toMatch(/\b(kitsoki|commented|bot)\b/i);
     expect(panelText, `${label}: app-response replay panel must visibly include the run link`).toMatch(/run_url:\s*https:\/\/kitsoki-test\.slothattax\.me\/run\//i);
   }
+}
+
+function assertContentScalesWithPanel(scale: ContentScaleState, label: string): void {
+  expect(scale.panelWidthScale, `${label}: selected box should expand wide enough for a meaningful zoom`).toBeGreaterThan(1.05);
+  expect(
+    scale.rootWidthScale,
+    `${label}: cloned root should expand with the panel, not remain at source width`,
+  ).toBeGreaterThanOrEqual(scale.panelWidthScale * 0.86);
+  expect(
+    scale.descendantWidthScale,
+    `${label}: cloned content descendants should expand with the panel; source max ${scale.sourceMaxDescendantWidth}px, clone max ${scale.cloneMaxDescendantWidth}px`,
+  ).toBeGreaterThanOrEqual(scale.panelWidthScale * 0.86);
+  expect(
+    scale.fontScale,
+    `${label}: cloned text should scale with the expanded panel`,
+  ).toBeGreaterThanOrEqual(Math.min(scale.panelWidthScale, 1.12) * 0.92);
 }
 
 function colorDistance(a: string, b: string): number {

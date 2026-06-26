@@ -696,9 +696,25 @@ export async function makeReadableZoom(page: Page): Promise<ReadableZoom> {
           ] as const) {
             if (value.endsWith("px")) dest.dataset[`rzPadding${side}`] = String(parseFloat(value));
           }
+          if (!isRoot) {
+            for (const [name, value] of [
+              ["Width", computed.width],
+              ["Height", computed.height],
+              ["MinWidth", computed.minWidth],
+              ["MinHeight", computed.minHeight],
+              ["MaxWidth", computed.maxWidth],
+              ["MaxHeight", computed.maxHeight],
+            ] as const) {
+              if (value.endsWith("px")) dest.dataset[`rz${name}`] = String(parseFloat(value));
+            }
+          }
           dest.style.animation = "none";
           dest.style.transition =
-            "font-size .68s cubic-bezier(.18,.92,.18,1),line-height .68s cubic-bezier(.18,.92,.18,1),padding .68s cubic-bezier(.18,.92,.18,1)";
+            "font-size .68s cubic-bezier(.18,.92,.18,1),line-height .68s cubic-bezier(.18,.92,.18,1)," +
+            "padding .68s cubic-bezier(.18,.92,.18,1),width .68s cubic-bezier(.18,.92,.18,1)," +
+            "height .68s cubic-bezier(.18,.92,.18,1),min-width .68s cubic-bezier(.18,.92,.18,1)," +
+            "min-height .68s cubic-bezier(.18,.92,.18,1),max-width .68s cubic-bezier(.18,.92,.18,1)," +
+            "max-height .68s cubic-bezier(.18,.92,.18,1)";
           if (isRoot) {
             dest.style.position = "static";
             dest.style.transform = "none";
@@ -727,6 +743,19 @@ export async function makeReadableZoom(page: Page): Promise<ReadableZoom> {
               const pad = Number(el.dataset[`rzPadding${side}`]);
               if (Number.isFinite(pad) && pad > 0) {
                 el.style[`padding${side}` as "paddingTop"] = `${Math.round(pad * scale * 10) / 10}px`;
+              }
+            }
+            for (const [name, prop] of [
+              ["Width", "width"],
+              ["Height", "height"],
+              ["MinWidth", "minWidth"],
+              ["MinHeight", "minHeight"],
+              ["MaxWidth", "maxWidth"],
+              ["MaxHeight", "maxHeight"],
+            ] as const) {
+              const base = Number(el.dataset[`rz${name}`]);
+              if (Number.isFinite(base) && base > 0) {
+                el.style[prop] = `${Math.round(base * scale * 10) / 10}px`;
               }
             }
           }
