@@ -3495,6 +3495,195 @@
       "narration": "Kitsoki improves with use. It converts repeated LLM calls into scripts. It accepts your feedback. And it indexes your team's existing tools."
     },
     {
+      "type": "title",
+      "title": "Lessons Learned",
+      "hold": 160,
+      "narration": "Lessons learned."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Demo-driven development",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1320 760",
+          "nodes": [
+            {
+              "id": "proposal",
+              "label": "proposal",
+              "sub": "what should exist",
+              "lines": [
+                "change summary",
+                "scenarios"
+              ],
+              "x": 100,
+              "y": 135,
+              "w": 340,
+              "h": 170
+            },
+            {
+              "id": "build",
+              "label": "feature",
+              "sub": "make it real",
+              "lines": [
+                "web surface",
+                "story behavior"
+              ],
+              "x": 500,
+              "y": 135,
+              "w": 340,
+              "h": 170
+            },
+            {
+              "id": "demo",
+              "label": "demo video",
+              "sub": "prove the proposal",
+              "lines": [
+                "no LLM replay",
+                "watch-speed"
+              ],
+              "x": 100,
+              "y": 430,
+              "w": 340,
+              "h": 170,
+              "style": "primary"
+            },
+            {
+              "id": "qa",
+              "label": "visual QA",
+              "sub": "gate the evidence",
+              "lines": [
+                "cited frames",
+                "skeptical pass"
+              ],
+              "x": 500,
+              "y": 430,
+              "w": 340,
+              "h": 170
+            },
+            {
+              "id": "site",
+              "label": "product site",
+              "sub": "ship the proof",
+              "lines": [
+                "feature catalog",
+                "demo assets"
+              ],
+              "x": 900,
+              "y": 430,
+              "w": 340,
+              "h": 170
+            }
+          ],
+          "edges": [
+            {
+              "from": "proposal",
+              "to": "build"
+            },
+            {
+              "from": "build",
+              "to": "demo"
+            },
+            {
+              "from": "demo",
+              "to": "qa"
+            },
+            {
+              "from": "qa",
+              "to": "build",
+              "label": "fix the gap",
+              "style": "back",
+              "bus": 90,
+              "lift": 65
+            },
+            {
+              "from": "qa",
+              "to": "site",
+              "label": "pass"
+            }
+          ]
+        }
+      ],
+      "caption": "A proposal is not done when the code compiles. It is done when the product can demonstrate the full behavior and the evidence passes review.",
+      "hold": 250,
+      "narration": "The development pattern is proposal, implementation, deterministic demo, visual QA, then either fix the gap or ship the proof.",
+      "instant": true
+    },
+    {
+      "type": "evidence",
+      "title": "The two-skill loop",
+      "items": [
+        {
+          "label": "Feature spec",
+          "status": "validated",
+          "detail": "the proposal or change summary defines what the viewer must see",
+          "refType": "doc",
+          "ref": "proposal / feature.md"
+        },
+        {
+          "label": "kitsoki-ui-demo",
+          "status": "implemented",
+          "detail": "records deterministic, no-LLM product video plus frames and chapters",
+          "refType": "artifact",
+          "ref": "MP4 + NN-*.png + chapters.json"
+        },
+        {
+          "label": "kitsoki-ui-qa",
+          "status": "implemented",
+          "detail": "judges the video against scenarios, cites frames, and can downgrade passes",
+          "refType": "test",
+          "ref": "qa-report.md + verdict.json"
+        },
+        {
+          "label": "Iteration",
+          "status": "validated",
+          "detail": "a QA failure becomes maker feedback, not a hand-waved demo problem",
+          "refType": "log",
+          "ref": "maker -> QA -> maker"
+        }
+      ],
+      "caption": "The demo and the QA report become part of development, not a marketing pass after development.",
+      "hold": 240,
+      "instant": true
+    },
+    {
+      "type": "evidence",
+      "title": "What the loop produces",
+      "items": [
+        {
+          "label": "Product videos",
+          "status": "validated",
+          "detail": "feature tours are recorded from the real web UI at watch speed",
+          "refType": "artifact",
+          "ref": "docs/media + .artifacts"
+        },
+        {
+          "label": "Feature pressure",
+          "status": "validated",
+          "detail": "if the video cannot show the proposal, the product is not legible enough yet",
+          "refType": "test",
+          "ref": "unsupported / fail"
+        },
+        {
+          "label": "Reusable fixtures",
+          "status": "validated",
+          "detail": "real traces can become no-LLM flows and host cassettes for repeatable demos",
+          "refType": "path",
+          "ref": "kitsoki trace to-flow"
+        },
+        {
+          "label": "Site content",
+          "status": "validated",
+          "detail": "the same proof assets feed the product site, docs, decks, and release review",
+          "refType": "doc",
+          "ref": "features/*.yaml"
+        }
+      ],
+      "caption": "The loop turns feature development into evidence production: working UI, deterministic video, QA report, and public-facing proof.",
+      "hold": 240,
+      "instant": true
+    },
+    {
       "type": "cta",
       "wordmark": "Kitsoki",
       "tagline": "Prove what the model did — and what it couldn't",
