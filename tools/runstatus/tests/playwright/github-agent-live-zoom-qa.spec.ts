@@ -6,7 +6,7 @@ import { repoRoot } from "./_helpers/server.js";
 
 const MEDIA_ROOT = path.join(repoRoot, ".artifacts", "github-agent-live");
 const OUT_DIR = path.join(repoRoot, ".artifacts", "github-agent-live-zoom-qa");
-const CASES = ["bug-issue", "feature-issue", "guidance", "pr-status"] as const;
+const CASES = ["bug-issue", "feature-issue", "guidance", "guidance-resume", "pr-status"] as const;
 const MENTION_BREATH_TAG = "kitsoki.mention_breath";
 
 type RrwebEvent = {
