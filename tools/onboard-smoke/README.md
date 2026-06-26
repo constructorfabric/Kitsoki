@@ -19,11 +19,6 @@ It:
    `.kitsoki/stories/<id>-dev/app.yaml`, and the local README.
 5. Asserts root `stories/<id>-dev/` is not created.
 6. Loads the generated app through the current Kitsoki dev-story resolver.
-7. Writes a deterministic review bundle to a fresh
-   `.artifacts/onboard-smoke/sisters[-NNN]/` folder:
-   - `summary.json`
-   - `report.md`
-   - `deck.slidey.json`
 
 Run it with:
 
@@ -65,8 +60,6 @@ It:
    - `.claude/skills/<name>` relative symlinks into `.agents/skills/<name>`
    - `.claude/agents/kitsoki-mcp-driver.md`
    - the generated instance **loads** (a fresh session against it creates cleanly)
-4. Writes a deterministic onboarding review bundle to a fresh
-   `.artifacts/onboard-smoke/pinned-yocto-queue[-NNN]/` folder.
 
 Run it with:
 

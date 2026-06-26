@@ -85,23 +85,14 @@ func TestOnboardSisterProjects_FromBaseline(t *testing.T) {
 		},
 	}
 
-	results := make([]onboardSisterReportItem, 0, len(cases))
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			results = append(results, runSisterReplay(t, kitsokiRoot, tc))
+			runSisterReplay(t, kitsokiRoot, tc)
 		})
-	}
-	if len(results) > 0 {
-		paths, err := writeOnboardSistersReport(kitsokiRoot, "sisters", results)
-		if err != nil {
-			t.Fatalf("write onboarding sisters report deck: %v", err)
-		}
-		t.Logf("onboarding sisters report: %s", paths.Report)
-		t.Logf("onboarding sisters deck: %s", paths.Deck)
 	}
 }
 
-func runSisterReplay(t *testing.T, kitsokiRoot string, tc sisterCase) onboardSisterReportItem {
+func runSisterReplay(t *testing.T, kitsokiRoot string, tc sisterCase) {
 	t.Helper()
 
 	source := os.Getenv(tc.sourceEnv)
@@ -171,15 +162,6 @@ func runSisterReplay(t *testing.T, kitsokiRoot string, tc sisterCase) onboardSis
 		if strings.Contains(status, forbidden) {
 			t.Fatalf("onboarding polluted root stories directory:\n%s", status)
 		}
-	}
-	return onboardSisterReportItem{
-		ProjectID:      tc.projectID,
-		ProjectTitle:   tc.projectTitle,
-		Stack:          tc.stack,
-		BaselineCommit: tc.baselineCommit,
-		ConfigPath:     filepath.Join(work, ".kitsoki.yaml"),
-		ProfilePath:    filepath.Join(work, ".kitsoki", "project-profile.yaml"),
-		InstancePath:   filepath.Join(work, instanceRel),
 	}
 }
 

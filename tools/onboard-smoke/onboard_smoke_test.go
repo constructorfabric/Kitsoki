@@ -103,35 +103,7 @@ func TestOnboardPinnedRepo(t *testing.T) {
 		"--app", filepath.Join(".kitsoki", "stories", projectID+"-dev", "app.yaml"),
 		"--db", filepath.Join(work, "instance.db"), "--key", "local:smoke")
 
-	kitsokiRoot, err := reportRepoRoot()
-	if err != nil {
-		t.Fatalf("resolve report repo root: %v", err)
-	}
-	paths, err := writePinnedOnboardReport(kitsokiRoot, "pinned-"+projectID, map[string]any{
-		"project_id":    projectID,
-		"project_title": "yocto-queue",
-		"target_path":   repo,
-		"stack":         "pinned node package onboarding smoke",
-		"test_command":  "npm test",
-		"build_command": "npm run build",
-		"apply_result": map[string]any{
-			"config_path":   filepath.Join(repo, ".kitsoki.yaml"),
-			"profile_path":  filepath.Join(repo, ".kitsoki", "project-profile.yaml"),
-			"instance_path": filepath.Join(repo, ".kitsoki", "stories", projectID+"-dev", "app.yaml"),
-			"writes": []string{
-				filepath.Join(repo, ".kitsoki.yaml"),
-				filepath.Join(repo, ".mcp.json"),
-				filepath.Join(repo, ".kitsoki", "stories", projectID+"-dev", "app.yaml"),
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("write pinned onboarding report deck: %v", err)
-	}
-
 	t.Logf("onboarded %s@%s → working kitsoki environment", projectID, repoSHA[:12])
-	t.Logf("onboarding smoke report: %s", paths.Report)
-	t.Logf("onboarding smoke deck: %s", paths.Deck)
 }
 
 func run(t *testing.T, dir, name string, args ...string) {

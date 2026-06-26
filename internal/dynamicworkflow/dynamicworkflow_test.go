@@ -2,7 +2,6 @@ package dynamicworkflow
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,19 +34,12 @@ func TestServiceCreateValidateExport(t *testing.T) {
 	require.True(t, strings.Contains(receipt.WorkflowID, "dynamic-workflows"))
 	require.FileExists(t, receipt.ManifestPath)
 	require.FileExists(t, receipt.EventsPath)
-	require.FileExists(t, receipt.DeckPath)
 	require.FileExists(t, filepath.Join(receipt.AppPath, "app.yaml"))
 	require.Contains(t, receipt.LaunchCommand, "kitsoki run")
-	var deck map[string]any
-	deckBytes, err := os.ReadFile(receipt.DeckPath)
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(deckBytes, &deck))
-	require.Equal(t, "Dynamic Workflow: "+receipt.WorkflowID, deck["meta"].(map[string]any)["title"])
 	events, err := os.ReadFile(receipt.EventsPath)
 	require.NoError(t, err)
 	require.Contains(t, string(events), "dynamic.workflow.generated")
 	require.Contains(t, string(events), "dynamic.workflow.validated")
-	require.Contains(t, string(events), "deck_path")
 
 	loaded, err := svc.ReadReceipt(receipt.WorkflowID)
 	require.NoError(t, err)
@@ -63,13 +55,7 @@ func TestServiceCreateValidateExport(t *testing.T) {
 	require.FileExists(t, filepath.Join(exportDir, "launch.yaml"))
 	require.FileExists(t, filepath.Join(exportDir, "README.md"))
 	require.FileExists(t, filepath.Join(exportDir, "export-report.json"))
-	require.FileExists(t, filepath.Join(exportDir, "deck.slidey.json"))
 	require.FileExists(t, filepath.Join(exportDir, "flows", "generated.yaml"))
-	deckBytes, err = os.ReadFile(filepath.Join(exportDir, "deck.slidey.json"))
-	require.NoError(t, err)
-	require.NoError(t, json.Unmarshal(deckBytes, &deck))
-	scenes := deck["scenes"].([]any)
-	require.Equal(t, "Lifecycle", scenes[2].(map[string]any)["title"])
 	events, err = os.ReadFile(receipt.EventsPath)
 	require.NoError(t, err)
 	require.Contains(t, string(events), "dynamic.workflow.exported")

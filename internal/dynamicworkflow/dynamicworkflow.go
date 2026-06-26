@@ -77,7 +77,6 @@ type ExportReport struct {
 	Artifacts       []string `json:"artifacts,omitempty"`
 	StarterFlowPath string   `json:"starter_flow_path,omitempty"`
 	StarterCassette string   `json:"starter_cassette_path,omitempty"`
-	DeckPath        string   `json:"deck_path,omitempty"`
 	Warnings        []string `json:"warnings,omitempty"`
 	Todos           []string `json:"todos,omitempty"`
 	BaseStory       bool     `json:"base_story,omitempty"`
@@ -100,7 +99,6 @@ type Receipt struct {
 	LaunchCommand    string           `json:"launch_command,omitempty"`
 	Validation       ValidationReport `json:"validation"`
 	ValidationPath   string           `json:"validation_path,omitempty"`
-	DeckPath         string           `json:"deck_path,omitempty"`
 	ExportPath       string           `json:"export_path,omitempty"`
 	ExportReportPath string           `json:"export_report_path,omitempty"`
 	SessionID        string           `json:"session_id,omitempty"`
@@ -210,7 +208,6 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Receipt, erro
 	validationPath := filepath.Join(draftDir, "validation.json")
 	eventsPath := filepath.Join(draftDir, "events.jsonl")
 	receiptPath := filepath.Join(draftDir, "receipt.json")
-	deckPath := filepath.Join(draftDir, "deck.slidey.json")
 	exportReportPath := filepath.Join(draftDir, "export-report.json")
 
 	if err := copyDir(s.TemplateStoryDir, appPath); err != nil {
@@ -243,30 +240,12 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Receipt, erro
 		EventsPath:       eventsPath,
 		Validation:       report,
 		ValidationPath:   validationPath,
-		DeckPath:         deckPath,
 		ExportReportPath: exportReportPath,
 	}
 	if report.OK {
 		receipt.LaunchCommand = fmt.Sprintf("kitsoki run %s --warp %s", quoteArg(filepath.Join(appPath, "app.yaml")), quoteArg(launchBasisPath))
 	}
 	if err := writeJSON(receiptPath, receipt); err != nil {
-		return nil, err
-	}
-	if err := writeDynamicWorkflowDeck(deckPath, dynamicWorkflowDeckInput{
-		WorkflowID:    workflowID,
-		Goal:          req.Goal,
-		Slug:          receipt.Slug,
-		Status:        "draft",
-		Validation:    report,
-		LaunchCommand: receipt.LaunchCommand,
-		Artifacts: []string{
-			filepath.ToSlash(receiptPath),
-			filepath.ToSlash(validationPath),
-			filepath.ToSlash(manifestPath),
-			filepath.ToSlash(launchBasisPath),
-			filepath.ToSlash(eventsPath),
-		},
-	}); err != nil {
 		return nil, err
 	}
 	if err := appendWorkflowEvent(eventsPath, map[string]any{
@@ -285,7 +264,6 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (*Receipt, erro
 		"validation":      report,
 		"receipt_path":    receiptPath,
 		"receipt_hash":    mustHashFile(receiptPath),
-		"deck_path":       deckPath,
 	}); err != nil {
 		return nil, err
 	}
@@ -516,30 +494,11 @@ Validation: %t
 		report.Artifacts = append(report.Artifacts, filepath.ToSlash(flowPath))
 	}
 	reportPath := filepath.Join(targetDir, "export-report.json")
-	report.DeckPath = filepath.ToSlash(filepath.Join(targetDir, "deck.slidey.json"))
-	report.Artifacts = append(report.Artifacts, report.DeckPath)
 	if err := writeJSON(reportPath, report); err != nil {
-		return nil, err
-	}
-	if err := writeDynamicWorkflowDeck(filepath.Join(targetDir, "deck.slidey.json"), dynamicWorkflowDeckInput{
-		WorkflowID:    workflowID,
-		Goal:          receipt.Goal,
-		Slug:          receipt.Slug,
-		Status:        report.Status,
-		Validation:    receipt.Validation,
-		LaunchCommand: fmt.Sprintf("kitsoki run %s --warp %s", quoteArg(filepath.Join(exportAppDir, "app.yaml")), quoteArg(filepath.Join(targetDir, "launch.yaml"))),
-		ExportPath:    targetDir,
-		Artifacts: append([]string{
-			filepath.ToSlash(reportPath),
-		}, report.Artifacts...),
-		Warnings: report.Warnings,
-		Todos:    report.Todos,
-	}); err != nil {
 		return nil, err
 	}
 	receipt.ExportPath = targetDir
 	receipt.ExportReportPath = reportPath
-	receipt.DeckPath = filepath.Join(targetDir, "deck.slidey.json")
 	receipt.LaunchBasisPath = filepath.Join(targetDir, "launch.yaml")
 	receipt.AppPath = exportAppDir
 	receipt.ManifestPath = filepath.Join(targetDir, "manifest.yaml")
@@ -730,132 +689,6 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	return os.WriteFile(path, append(b, '\n'), 0o644)
-}
-
-type dynamicWorkflowDeckInput struct {
-	WorkflowID    string
-	Goal          string
-	Slug          string
-	Status        string
-	Validation    ValidationReport
-	LaunchCommand string
-	ExportPath    string
-	Artifacts     []string
-	Warnings      []string
-	Todos         []string
-}
-
-func writeDynamicWorkflowDeck(path string, in dynamicWorkflowDeckInput) error {
-	validationStatus := "not-ok"
-	if in.Validation.OK {
-		validationStatus = "ok"
-	}
-	objectiveItems := []map[string]any{
-		{"label": "Draft generated", "status": "done", "detail": in.Slug},
-		{"label": "Validation", "status": boolStatus(in.Validation.OK), "detail": strings.Join(in.Validation.Errors, "; ")},
-		{"label": "Launch/export", "status": deckStatus(in.Status), "detail": firstNonEmpty(in.ExportPath, in.LaunchCommand)},
-	}
-	if in.Validation.OK {
-		objectiveItems[1]["detail"] = "Validation passed."
-	}
-	lifecycleRows := []map[string]any{
-		{"cells": []string{"Workflow", in.WorkflowID}},
-		{"cells": []string{"Goal", in.Goal}},
-		{"cells": []string{"Slug", in.Slug}},
-		{"cells": []string{"Validation", validationStatus}},
-		{"cells": []string{"Export status", firstNonEmpty(in.Status, "draft")}},
-		{"cells": []string{"Launch command", firstNonEmpty(in.LaunchCommand, "-")}},
-	}
-	artifactRows := make([]map[string]any, 0, len(in.Artifacts))
-	for _, artifact := range in.Artifacts {
-		artifactRows = append(artifactRows, map[string]any{
-			"cells": []string{filepath.Base(filepath.FromSlash(artifact)), filepath.ToSlash(artifact)},
-		})
-	}
-	scenes := []map[string]any{
-		{
-			"type":     "title",
-			"eyebrow":  "Kitsoki report",
-			"title":    fmt.Sprintf("Dynamic Workflow: %s", in.WorkflowID),
-			"subtitle": fmt.Sprintf("%s; validation=%s", firstNonEmpty(in.Status, "draft"), validationStatus),
-			"hold":     1800,
-		},
-		{
-			"type":  "objectives",
-			"title": "Workflow status",
-			"items": objectiveItems,
-			"hold":  2400,
-		},
-		{
-			"type":    "table",
-			"variant": "data",
-			"title":   "Lifecycle",
-			"columns": []string{"Field", "Value"},
-			"rows":    lifecycleRows,
-			"hold":    2800,
-		},
-		{
-			"type":    "table",
-			"variant": "data",
-			"title":   "Generated artifacts",
-			"columns": []string{"Artifact", "Path"},
-			"rows":    artifactRows,
-			"hold":    2800,
-		},
-	}
-	if len(in.Warnings) > 0 || len(in.Todos) > 0 {
-		items := []map[string]any{}
-		for _, warning := range in.Warnings {
-			items = append(items, map[string]any{"label": "Warning", "status": "pending", "detail": warning})
-		}
-		for _, todo := range in.Todos {
-			items = append(items, map[string]any{"label": "Todo", "status": "next", "detail": todo})
-		}
-		scenes = append(scenes, map[string]any{
-			"type":  "objectives",
-			"title": "Follow-ups",
-			"items": items,
-			"hold":  2400,
-		})
-	}
-	return writeJSON(path, map[string]any{
-		"_comment": "Generated by internal/dynamicworkflow from deterministic workflow artifacts. Do not hand-edit generated output; update the source receipt/export report.",
-		"meta": map[string]any{
-			"title":      fmt.Sprintf("Dynamic Workflow: %s", in.WorkflowID),
-			"resolution": map[string]any{"width": 1920, "height": 1080},
-			"theme":      "rose-pine-moon",
-		},
-		"scenes": scenes,
-	})
-}
-
-func boolStatus(ok bool) string {
-	if ok {
-		return "done"
-	}
-	return "failed"
-}
-
-func deckStatus(value string) string {
-	switch strings.ToLower(value) {
-	case "copied", "draft", "validated", "done":
-		return "done"
-	case "copied-with-todos", "pending":
-		return "pending"
-	case "failed", "error":
-		return "failed"
-	default:
-		return "pending"
-	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func appendWorkflowEvent(path string, v any) error {
