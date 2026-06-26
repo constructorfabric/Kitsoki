@@ -40,16 +40,16 @@ func TestConverseToolPolicy(t *testing.T) {
 		require.Equal(t, withAlwaysDenied(readOnlyDeniedTools), disallowed)
 	})
 
-	t.Run("write-capable agent still denies AskUserQuestion", func(t *testing.T) {
+	t.Run("write-capable agent still denies unsafe headless tools", func(t *testing.T) {
 		mode, disallowed := converseToolPolicy("bypassPermissions", writeCapable)
 		require.Equal(t, "bypassPermissions", mode)
-		require.Equal(t, []string{"AskUserQuestion"}, disallowed, "even a write-capable agent must not run the headless-broken AskUserQuestion")
+		require.Equal(t, alwaysDeniedTools, disallowed, "even a write-capable agent must not run tools outside Kitsoki's headless contract")
 	})
 
-	t.Run("unset external_side_effect is treated as write-capable but still denies AskUserQuestion", func(t *testing.T) {
+	t.Run("unset external_side_effect is treated as write-capable but still denies unsafe headless tools", func(t *testing.T) {
 		mode, disallowed := converseToolPolicy("bypassPermissions", unset)
 		require.Equal(t, "bypassPermissions", mode)
-		require.Equal(t, []string{"AskUserQuestion"}, disallowed)
+		require.Equal(t, alwaysDeniedTools, disallowed)
 	})
 
 	// The kitsoki vocabulary "ask"/"denyAll" must never reach the claude CLI —
@@ -67,26 +67,28 @@ func TestConverseToolPolicy(t *testing.T) {
 	})
 }
 
-// TestAlwaysDeniedTools_HeadlessAskUserQuestion locks in the headless fix:
-// AskUserQuestion must be denied on every agent subprocess, because a
-// dispatched `claude -p` has no TTY and the CLI auto-resolves the tool with
-// empty answers (upstream anthropics/claude-code#50728), silently feeding the
-// model a blank answer. See alwaysDeniedTools.
-func TestAlwaysDeniedTools_HeadlessAskUserQuestion(t *testing.T) {
+// TestAlwaysDeniedTools_HeadlessAgents locks in the headless fix: tools that
+// escape Kitsoki's story/tool/profile contract must be denied on every agent
+// subprocess. See alwaysDeniedTools.
+func TestAlwaysDeniedTools_HeadlessAgents(t *testing.T) {
 	require.Contains(t, alwaysDeniedTools, "AskUserQuestion")
+	require.Contains(t, alwaysDeniedTools, "Agent")
+	require.Contains(t, alwaysDeniedTools, "Task")
 
 	t.Run("buildBaseCLIArgs denies it for ask/decide/task", func(t *testing.T) {
 		args := buildBaseCLIArgs(t.Context(), sysprompt.Task, map[string]any{}, Agent{})
 		require.Contains(t, args, "--disallowedTools")
 		idx := indexOf(args, "--disallowedTools")
 		require.Greater(t, len(args), idx+1)
-		require.Contains(t, args[idx+1], "AskUserQuestion")
+		for _, tool := range alwaysDeniedTools {
+			require.Contains(t, args[idx+1], tool)
+		}
 	})
 
 	t.Run("withAlwaysDenied merges without duplicating", func(t *testing.T) {
 		got := withAlwaysDenied([]string{"Bash", "AskUserQuestion"})
-		require.Equal(t, []string{"Bash", "AskUserQuestion"}, got, "already-present entry must not be duplicated")
-		require.Equal(t, []string{"AskUserQuestion"}, withAlwaysDenied(nil))
+		require.Equal(t, []string{"Bash", "AskUserQuestion", "Agent", "Task"}, got, "already-present entry must not be duplicated")
+		require.Equal(t, alwaysDeniedTools, withAlwaysDenied(nil))
 	})
 }
 

@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -267,4 +268,54 @@ func TestDrive_ReplayRequiresCassette(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "requires --cassette")
+}
+
+func TestDriveResolveProfilesUsesLocalConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".kitsoki.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+default_profile: claude-native
+harness_profiles:
+  claude-native:
+    backend: claude
+  synthetic-claude:
+    backend: claude
+    model: hf:zai-org/GLM-5.2
+    env:
+      ANTHROPIC_BASE_URL: https://api.synthetic.new/anthropic
+      ANTHROPIC_AUTH_TOKEN: test-token
+    quota:
+      window: 1m
+      tokens_per_window: 120000
+      max_concurrent: 1
+`), 0o644))
+
+	profiles, defaultProfile, active, err := resolveDriveProfiles(driveCmdConfig{
+		profileName: "synthetic-claude",
+		configPath:  configPath,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "claude-native", defaultProfile)
+	require.Contains(t, profiles, "synthetic-claude")
+	require.NotNil(t, active)
+	require.Equal(t, "hf:zai-org/GLM-5.2", active.Model)
+	require.Equal(t, "https://api.synthetic.new/anthropic", active.Env["ANTHROPIC_BASE_URL"])
+	require.Equal(t, int64(120000), active.Quota.TokensPerWindow)
+}
+
+func TestDriveResolveProfilesRejectsUnknownProfile(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, ".kitsoki.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+harness_profiles:
+  claude-native:
+    backend: claude
+`), 0o644))
+
+	_, _, _, err := resolveDriveProfiles(driveCmdConfig{
+		profileName: "missing",
+		configPath:  configPath,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `unknown --profile "missing"`)
 }

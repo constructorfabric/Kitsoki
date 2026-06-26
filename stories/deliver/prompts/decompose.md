@@ -6,6 +6,13 @@ completion automatically.
 ## Your task
 
 1. **Read** the epic at `{{ args.epic_path }}`.
+   - Do not spawn subagents or use the Claude Code `Agent` tool. You are the
+     decomposer; nested agents waste quota and can inherit the wrong provider
+     model.
+   - Keep discovery bounded: read the epic first, then inspect at most 12
+     directly relevant source/test files. Prefer `Grep`/`Glob` for narrow
+     confirmation. Stop searching as soon as you can name the implementation
+     seams and gates.
 2. **Identify** the smallest independently-shippable implementation slices.
    - Each slice must be completable without changes from later slices.
    - Prefer vertical slices (end-to-end per feature) over horizontal layers.

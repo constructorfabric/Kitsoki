@@ -65,6 +65,7 @@ type quotaInFlight struct {
 	Tokens    int64     `json:"tokens"`
 	StartedAt time.Time `json:"started_at"`
 	ExpiresAt time.Time `json:"expires_at"`
+	PID       int       `json:"pid,omitempty"`
 }
 
 func providerQuotaKey(ctx context.Context, backend agentBackend) (string, QuotaControl, bool) {
@@ -208,6 +209,7 @@ func (l *quotaLimiter) tryReserve(key, reservationID string, tokens int64) (time
 			Tokens:    effective,
 			StartedAt: now,
 			ExpiresAt: now.Add(l.leaseTimeout),
+			PID:       os.Getpid(),
 		}
 		return nil
 	})
@@ -257,11 +259,27 @@ func (p *quotaProfileStat) cleanup(now time.Time) {
 	for id, r := range p.Reservations {
 		if !r.ExpiresAt.IsZero() && now.After(r.ExpiresAt) {
 			delete(p.Reservations, id)
+			continue
+		}
+		if r.PID > 0 && !quotaProcessAlive(r.PID) {
+			delete(p.Reservations, id)
 		}
 	}
 	if len(p.Reservations) == 0 {
 		p.Reservations = nil
 	}
+}
+
+func quotaProcessAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	err = proc.Signal(syscall.Signal(0))
+	return err == nil || err == syscall.EPERM
 }
 
 func (p *quotaProfileStat) rollWindow(now time.Time, window time.Duration) {
