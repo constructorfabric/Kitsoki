@@ -99,13 +99,15 @@ func normalizedActivityForBackend(t *testing.T, c streamParityCase) []string {
 		if ev.Type == "assistant" && ev.Text != "" {
 			out = append(out, "thinking:"+ev.Text)
 		}
-		for _, tool := range ev.Tools {
-			key := tool.Name + ":" + tool.Preview
-			if seenTools[key] {
-				continue
+		if ev.Type == "assistant" {
+			for _, tool := range ev.Tools {
+				key := tool.Name + ":" + tool.Preview
+				if seenTools[key] {
+					continue
+				}
+				seenTools[key] = true
+				out = append(out, "tool:"+key)
 			}
-			seenTools[key] = true
-			out = append(out, "tool:"+key)
 		}
 	}
 	return out

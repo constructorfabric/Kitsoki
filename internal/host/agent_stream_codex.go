@@ -38,7 +38,7 @@ func classifyCodexEvent(ev map[string]any) classifiedEvent {
 
 	case "item.started", "item.completed":
 		item, _ := ev["item"].(map[string]any)
-		classifyCodexItem(item, &ce)
+		classifyCodexItem(evType, item, &ce)
 
 	case "turn.completed":
 		// The terminal event. Usage carries token counts (no dollar cost).
@@ -57,7 +57,7 @@ func classifyCodexEvent(ev map[string]any) classifiedEvent {
 
 // classifyCodexItem fills ce from a codex item object (the payload of
 // item.started / item.completed). Switches on item["type"].
-func classifyCodexItem(item map[string]any, ce *classifiedEvent) {
+func classifyCodexItem(eventType string, item map[string]any, ce *classifiedEvent) {
 	if item == nil {
 		return
 	}
@@ -87,6 +87,9 @@ func classifyCodexItem(item map[string]any, ce *classifiedEvent) {
 		// A shell command run by codex. Preview the command line.
 		cmd, _ := item["command"].(string)
 		preview := onelinePreview(cmd, 120)
+		if eventType == "item.started" {
+			ce.Type = "assistant"
+		}
 		ce.Tool = "shell"
 		ce.ToolArgs = preview
 		ce.Tools = []StreamToolUse{{Name: "shell", Preview: preview}}
@@ -100,6 +103,9 @@ func classifyCodexItem(item map[string]any, ce *classifiedEvent) {
 		}
 		args, _ := item["arguments"].(map[string]any)
 		preview := onelinePreview(toolUseArgsPreview(name, args), 120)
+		if eventType == "item.started" {
+			ce.Type = "assistant"
+		}
 		ce.Tool = name
 		ce.ToolArgs = preview
 		ce.Tools = []StreamToolUse{{Name: name, Preview: preview}}

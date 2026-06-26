@@ -169,6 +169,16 @@ func TestConformance_ToolEventsClassified(t *testing.T) {
 			t.Errorf("codex command Tools = %+v, want one shell tool", ce.Tools)
 		}
 	})
+	t.Run("codex/command_execution_started", func(t *testing.T) {
+		ev := mustUnmarshal(t, `{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'echo hi'","aggregated_output":"","exit_code":null,"status":"in_progress"}}`)
+		ce := codexBackend{}.Classify(ev)
+		if ce.Type != "assistant" {
+			t.Errorf("codex command started type = %q, want assistant", ce.Type)
+		}
+		if ce.Tool != "shell" || ce.ToolArgs != "/bin/zsh -lc 'echo hi'" {
+			t.Errorf("codex command started classify = %q/%q, want shell/<command>", ce.Tool, ce.ToolArgs)
+		}
+	})
 	t.Run("codex/mcp_tool_call", func(t *testing.T) {
 		ev := mustUnmarshal(t, `{"type":"item.completed","item":{"type":"mcp_tool_call","tool":"kitsoki-validator__submit","arguments":{"answer":"hello"}}}`)
 		ce := codexBackend{}.Classify(ev)
@@ -177,6 +187,19 @@ func TestConformance_ToolEventsClassified(t *testing.T) {
 		}
 		if len(ce.Tools) != 1 || ce.Tools[0].Name != "kitsoki-validator__submit" {
 			t.Errorf("codex mcp_tool_call Tools = %+v, want one submit tool", ce.Tools)
+		}
+	})
+	t.Run("codex/mcp_tool_call_started", func(t *testing.T) {
+		ev := mustUnmarshal(t, `{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","tool":"kitsoki-validator__submit","arguments":{"answer":"hello"}}}`)
+		ce := codexBackend{}.Classify(ev)
+		if ce.Type != "assistant" {
+			t.Errorf("codex mcp_tool_call started type = %q, want assistant", ce.Type)
+		}
+		if ce.Tool != "kitsoki-validator__submit" {
+			t.Errorf("codex mcp_tool_call started Tool = %q, want kitsoki-validator__submit", ce.Tool)
+		}
+		if len(ce.Tools) != 1 || ce.Tools[0].Name != "kitsoki-validator__submit" {
+			t.Errorf("codex mcp_tool_call started Tools = %+v, want one submit tool", ce.Tools)
 		}
 	})
 }
