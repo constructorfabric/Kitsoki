@@ -1,0 +1,69 @@
+states:
+  board:
+    description: "Pick the next pending punch-list item or finish."
+    relevant_world: [punch_items, current_item, processed_count, pending_count]
+    view:
+      - heading: "Punch-list · board"
+      - prose: "{{ world.count_summary|default:'(pending)' }}"
+      - prose: "Next item: {{ world.current_item.id|default:'(none)' }} — {{ world.current_item.title|default:'' }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "next", intent: next_item, hint: "process the selected item" }
+            - { label: "report", intent: report, hint: "write a report from current results" }
+            - { label: "quit", intent: quit }
+            - { label: "look", intent: look }
+    on_enter:
+      - set: { board_route: "" }
+      - invoke: host.run
+        id: "punch_board-{{ world.processed_count }}-{{ world._record_status }}"
+        with:
+          cmd: python3
+          args:
+            - "stories/punch-list/scripts/punch_board.py"
+            - "{{ world.state_path }}"
+            - "{{ world.current_item_id }}"
+            - "{{ world._record_status }}"
+            - "{{ world._record_error }}"
+        bind:
+          punch_items: "stdout_json.items"
+          current_item: "stdout_json.next_item"
+          current_item_id: "stdout_json.next_item_id"
+          punch_results: "stdout_json.results"
+          board_route: "stdout_json.route"
+          has_pending: "stdout_json.has_pending"
+          processed_count: "stdout_json.processed_count"
+          count_summary: "stdout_json.count_summary"
+          passed_count: "stdout_json.passed_count"
+          partial_count: "stdout_json.partial_count"
+          failed_count: "stdout_json.failed_count"
+          skipped_count: "stdout_json.skipped_count"
+          pending_count: "stdout_json.pending_count"
+        on_error: needs_human
+      - set:
+          _record_status: ""
+          _record_error: ""
+      - when: "world.auto_start_next == true && world.board_route != 'done' && world.current_item_id != ''"
+        emit_intent: next_item
+    on:
+      next_item:
+        - when: "world.board_route == 'done'"
+          target: report
+          effects:
+            - set: { auto_start_next: false }
+        - target: policy_check
+          effects:
+            - set: { auto_start_next: false }
+      start_first:
+        - when: "world.board_route == 'done'"
+          target: report
+        - target: policy_check
+      backlog_drained:
+        - target: report
+      report:
+        - target: report
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

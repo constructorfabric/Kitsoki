@@ -1,0 +1,6 @@
+app: stories/process-design-workflow/app/app.yaml
+initial_state: idle
+initial_world:
+  manifest_path: stories/process-design-workflow/manifest.yaml
+test_kind: flow
+turns: []

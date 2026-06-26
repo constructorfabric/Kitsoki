@@ -1,0 +1,161 @@
+# yaml-language-server: $schema=feature.schema.json
+id: dynamic-workflows
+kind: feature
+title: Dynamic workflows
+tagline: Turn a proposal-shaped goal into a validated draft, a live session, and an exportable starter base.
+summary: "Dynamic workflows let the operator write one proposal-shaped goal, create a deterministic workflow draft, validate it, launch it as a tracked session, and export a starter story package plus flow/cassette artifacts. The demo uses an existing proposal in docs/proposals as the source example."
+promo:
+  order: 57
+docs:
+  - docs/stories/dynamic-workflows.md
+  - docs/architecture/mcp-studio.md
+  - docs/proposals/process-design.md
+demo:
+  spec: tests/playwright/dynamic-workflows-video.spec.ts
+  artifactDir: dynamic-workflows
+  videoBase: dynamic-workflows-demo
+  posterStep: dwf-home
+  story: stories/punch-list
+  flow: stories/punch-list/flows/happy_top10_gpt55.yaml
+tour:
+  export: DYNAMIC_WORKFLOWS_TOUR_STEPS
+  steps:
+    - id: dwf-home
+      route: home
+      title: Start from the home library
+      body: "The dynamic-workflows launcher is global. We can open it from any story, then turn an existing proposal into a tracked workflow draft."
+      placement: center
+      kind: explain
+      advance: next
+      waitForTarget: home-view
+      dwellMs: 3800
+    - id: dwf-launcher
+      route: home
+      target: meta-workflow-launcher
+      title: Open dynamic workflows
+      body: "Use the shell launcher to create, validate, launch, and export a draft."
+      placement: right
+      kind: action
+      advance: click-target
+      waitForTarget: meta-workflow-launcher
+      dwellMs: 3000
+    - id: dwf-goal
+      route: home
+      target: workflow-goal
+      title: Write the proposal goal
+      body: "Use a real proposal path as the example goal: docs/proposals/process-design.md."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: workflow-goal
+      dwellMs: 4200
+    - id: dwf-create
+      route: home
+      target: workflow-create
+      title: Create the draft
+      body: "The workflow service writes a draft package under .artifacts/dynamic-workflows/ and records a receipt."
+      placement: right
+      kind: action
+      advance: click-target
+      waitForTarget: workflow-create
+      dwellMs: 2600
+    - id: dwf-validate
+      route: home
+      target: workflow-validate
+      title: Validate the manifest
+      body: "Validation checks the copied story package and the generated punch-list manifest before launch."
+      placement: right
+      kind: action
+      advance: click-target
+      waitForTarget: workflow-validate
+      dwellMs: 2600
+    - id: dwf-launch
+      route: home
+      target: workflow-launch
+      title: Launch the draft
+      body: "Launch opens a tracked session URL for the generated workflow."
+      placement: right
+      kind: action
+      advance: route-match
+      advanceRoute: interactive
+      waitForTarget: workflow-launch
+      dwellMs: 2600
+    - id: dwf-start
+      route: interactive
+      target: intent-btn-start
+      title: Start the run
+      body: "Kick off the launched punch-list run so the workflow has live session activity behind its receipt."
+      placement: right
+      kind: action
+      advance: click-target
+      waitForTarget: intent-btn-start
+      dwellMs: 3400
+    - id: dwf-reopen
+      route: interactive
+      target: meta-workflow-launcher
+      title: Reopen the receipt
+      body: "The workflow receipt keeps the launch URL and the session id, even after the modal closes."
+      placement: right
+      kind: action
+      advance: click-target
+      waitForTarget: meta-workflow-launcher
+      dwellMs: 2800
+    - id: dwf-export
+      route: interactive
+      target: workflow-export
+      title: Export the starter base
+      body: "Export writes a reusable story package plus starter flow and cassette artifacts mined from the trace."
+      placement: right
+      kind: action
+      advance: click-target
+      waitForTarget: workflow-export
+      dwellMs: 3200
+    - id: dwf-url
+      route: interactive
+      target: workflow-url
+      title: Track the run
+      body: "The receipt shows the session URL and session id, so the workflow can be followed later."
+      placement: right
+      kind: explain
+      advance: next
+      waitForTarget: workflow-url
+      dwellMs: 3600
+    - id: dwf-done
+      route: interactive
+      title: Dynamic workflows ready
+      body: "The proposal became a validated draft, a live session, and an exportable starter base."
+      placement: center
+      kind: explain
+      advance: next
+      dwellMs: 3200
+qa:
+  scenarios:
+    - id: tour-runs
+      title: The tour overlay drives the demo
+      required: true
+      steps:
+        - A spotlight tour popover is visible over the home story library
+        - The modal opens from the global Dynamic workflows launcher
+        - A closing centered popover appears after the workflow is tracked
+    - id: proposal-goal
+      title: A real proposal path is used as the goal
+      required: true
+      steps:
+        - The workflow goal field is filled with a proposal reference
+        - The goal mentions docs/proposals/process-design.md
+        - The receipt repeats the same goal text after creation
+    - id: validate-export
+      title: Validation passes and the export path is visible
+      required: true
+      steps:
+        - The receipt shows validation as ok
+        - The receipt shows an export path
+        - The receipt shows an export report path
+        - Starter flow and cassette artifacts are visible in the export report
+    - id: tracked-url
+      title: The launched workflow is trackable by URL
+      required: true
+      steps:
+        - The receipt shows a session id
+        - The receipt shows a session URL
+        - The launched session route is open after launch

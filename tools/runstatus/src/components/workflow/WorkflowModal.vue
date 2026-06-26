@@ -106,23 +106,23 @@
           </div>
         </section>
 
-        <section v-if="workflow.receipt" class="workflow-modal__receipt">
+        <section v-if="workflow.receipt" class="workflow-modal__receipt" data-testid="workflow-receipt">
           <div class="workflow-modal__receipt-title">
             <span>workflow {{ workflow.receipt.workflow_id }}</span>
             <span v-if="workflow.receipt.url" class="workflow-modal__pill">URL ready</span>
             <span v-else-if="workflow.receipt.validation.ok" class="workflow-modal__pill">Validated</span>
           </div>
           <div class="workflow-modal__rows">
-            <div><strong>goal:</strong> {{ workflow.receipt.goal }}</div>
-            <div><strong>draft:</strong> {{ workflow.receipt.draft_dir }}</div>
-            <div><strong>manifest:</strong> {{ workflow.receipt.manifest_path }}</div>
-            <div><strong>story:</strong> {{ workflow.receipt.app_path }}</div>
-            <div><strong>validation:</strong> {{ workflow.receipt.validation.ok ? "ok" : `${workflow.receipt.validation.errors.length} error(s)` }}</div>
-            <div v-if="workflow.receipt.launch_command"><strong>launch:</strong> {{ workflow.receipt.launch_command }}</div>
-            <div v-if="workflow.receipt.session_id"><strong>session:</strong> {{ workflow.receipt.session_id }}</div>
-            <div v-if="workflow.receipt.url"><strong>url:</strong> {{ workflow.receipt.url }}</div>
-            <div v-if="workflow.receipt.export_path"><strong>export:</strong> {{ workflow.receipt.export_path }}</div>
-            <div v-if="workflow.receipt.export_report_path"><strong>export report:</strong> {{ workflow.receipt.export_report_path }}</div>
+            <div data-testid="workflow-goal"><strong>goal:</strong> {{ workflow.receipt.goal }}</div>
+            <div data-testid="workflow-draft"><strong>draft:</strong> {{ workflow.receipt.draft_dir }}</div>
+            <div data-testid="workflow-manifest"><strong>manifest:</strong> {{ workflow.receipt.manifest_path }}</div>
+            <div data-testid="workflow-story"><strong>story:</strong> {{ workflow.receipt.app_path }}</div>
+            <div data-testid="workflow-validation"><strong>validation:</strong> {{ workflow.receipt.validation.ok ? "ok" : `${workflow.receipt.validation.errors.length} error(s)` }}</div>
+            <div v-if="workflow.receipt.launch_command" data-testid="workflow-launch-command"><strong>launch:</strong> {{ workflow.receipt.launch_command }}</div>
+            <div v-if="workflow.receipt.session_id" data-testid="workflow-session"><strong>session:</strong> {{ workflow.receipt.session_id }}</div>
+            <div v-if="workflow.receipt.url" data-testid="workflow-url"><strong>url:</strong> {{ workflow.receipt.url }}</div>
+            <div v-if="workflow.receipt.export_path" data-testid="workflow-export-path"><strong>export:</strong> {{ workflow.receipt.export_path }}</div>
+            <div v-if="workflow.receipt.export_report_path" data-testid="workflow-export-report"><strong>export report:</strong> {{ workflow.receipt.export_report_path }}</div>
           </div>
         </section>
 

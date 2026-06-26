@@ -1,0 +1,55 @@
+states:
+  load:
+    description: "Parse and lint the punch-list manifest."
+    relevant_world: [manifest_path, punch_items, load_error]
+    view:
+      - heading: "Punch-list · load"
+      - prose: "Manifest: {{ world.manifest_path ?? '(pending)' }}"
+      - prose: "Loaded {{ world.item_count|default:'(pending)' }} item(s)."
+        when: "(world.load_error ?? '') == ''"
+      - prose: "Load error: {{ world.load_error ?? '(pending)' }}"
+        when: "(world.load_error ?? '') != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "next", intent: next_item, hint: "enter the board" }
+            - { label: "start first", intent: start_first, hint: "enter the board and process the first item" }
+            - { label: "quit", intent: quit }
+            - { label: "look", intent: look }
+    on_enter:
+      - invoke: host.run
+        id: punch_load
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "stories/punch-list/scripts/punch_load.py"
+            - "{{ world.manifest_path }}"
+            - "{{ world.state_path }}"
+        bind:
+          punch_items: "stdout_json.items"
+          item_count: "stdout_json.item_count"
+          manifest_path: "stdout_json.manifest_path"
+          state_path: "stdout_json.state_path"
+          load_error: "stdout_json.error"
+        on_error: needs_human
+    on:
+      next_item:
+        - when: "(world.load_error ?? '') != ''"
+          target: needs_human
+          effects:
+            - set: { last_error: "{{ world.load_error }}" }
+        - target: board
+      start_first:
+        - when: "(world.load_error ?? '') != ''"
+          target: needs_human
+          effects:
+            - set: { last_error: "{{ world.load_error }}" }
+        - target: board
+          effects:
+            - set: { auto_start_next: true }
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

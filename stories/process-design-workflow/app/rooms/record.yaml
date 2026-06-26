@@ -1,0 +1,17 @@
+states:
+  record:
+    description: "Record the current item result into the board."
+    relevant_world: [current_item, verify_result, punch_results]
+    view:
+      - heading: "Punch-list · record"
+      - prose: "Recording {{ world.current_item.id }} as {{ world.verify_result.status|default:'failed' }}."
+    on_enter:
+      - set:
+          _record_status: "{{ world.verify_status }}"
+          _record_error: "{{ world.verify_result.summary }}"
+      - emit_intent: record_done
+    on:
+      record_done:
+        - target: board
+      look:
+        - target: .

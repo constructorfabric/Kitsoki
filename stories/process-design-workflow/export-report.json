@@ -1,0 +1,19 @@
+{
+  "workflow_id": "dwf_20260626T033740Z_process-design-workflow",
+  "export_path": "stories/process-design-workflow",
+  "status": "copied-with-todos",
+  "artifacts": [
+    "stories/process-design-workflow/app/app.yaml",
+    "stories/process-design-workflow/manifest.yaml",
+    "stories/process-design-workflow/launch.yaml",
+    "stories/process-design-workflow/README.md",
+    "stories/process-design-workflow/flows/generated.yaml"
+  ],
+  "starter_flow_path": "stories/process-design-workflow/flows/generated.yaml",
+  "warnings": [
+    "fromtrace: read \"/Users/brad/code/Kitsoki/.artifacts/dynamic-workflows/dwf_20260626T033740Z_process-design-workflow/trace.jsonl\": open /Users/brad/code/Kitsoki/.artifacts/dynamic-workflows/dwf_20260626T033740Z_process-design-workflow/trace.jsonl: no such file or directory"
+  ],
+  "todos": [
+    "review the trace and produce a starter flow by hand"
+  ]
+}

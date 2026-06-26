@@ -1,0 +1,44 @@
+states:
+  policy_check:
+    description: "Enforce model/profile policy for the selected item."
+    relevant_world: [current_item, policy_result, last_error]
+    view:
+      - heading: "Punch-list · policy"
+      - kv:
+          pairs:
+            Item: '{{ world.current_item.id }}'
+            Story: '{{ world.current_item.story }}'
+            Profile: '{{ world.current_item.profile }}'
+            Model: '{{ world.current_item.model }}'
+            Status: '{{ world.policy_result.status|default:"checking" }}'
+      - prose: "{{ world.policy_result.message|default:'' }}"
+    on_enter:
+      - set:
+          policy_result: {}
+          policy_status: ""
+      - invoke: host.run
+        id: "punch_policy-{{ world.current_item_id }}"
+        with:
+          cmd: python3
+          args:
+            - "stories/punch-list/scripts/punch_policy.py"
+            - "{{ world.state_path }}"
+            - "{{ world.current_item_id }}"
+        bind:
+          policy_result: "stdout_json.policy_result"
+          policy_status: "stdout_json.policy_result.status"
+          last_error: "stdout_json.error"
+        on_error: needs_human
+      - when: "world.policy_status == 'ok'"
+        emit_intent: policy_ok
+      - when: "world.policy_status == 'fail'"
+        emit_intent: policy_failed
+    on:
+      policy_ok:
+        - target: drive
+      policy_failed:
+        - target: needs_human
+      look:
+        - target: .
+      quit:
+        - target: "@exit:abandoned"
