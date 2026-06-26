@@ -102,6 +102,15 @@ thought.
   failure→success credit assignment ([`credit-assignment.md`](credit-assignment.md),
   tracing), and the **optimizer step + validation gate**
   ([`training-loop.md`](training-loop.md), runtime+story).
+- [`repo-history-training-loop.md`](repo-history-training-loop.md) — **epic.**
+  Treat repository history as training material for Kitsoki's own workflows:
+  onboarding, bug fixing, feature spec and design, feature implementation, and
+  dev lifecycle / SDLC. Feasibility-reviewed against the existing
+  `internal/mining`, session-mining, bugfix-bakeoff, `internal/agenteval`, and
+  model-harness/reporting substrates: the plan is to generalize those surfaces
+  into a curated history corpus, lane-neutral task/oracle manifests,
+  traceable precedent selection, and a gated autonomous runner. Nothing
+  implemented yet; slices are sketched but not cut.
 - [`contextual-room-routing.md`](contextual-room-routing.md) — (runtime)
   make the final LLM routing tier classify unmatched room input as exactly one
   of: explicit intent with slots, read-only help, in-room free-form request, or
