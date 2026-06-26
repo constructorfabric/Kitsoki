@@ -106,7 +106,7 @@ VM-backed job state captured in the evidence notes.
 2. The deck identifies the live GitHub App webhook.
 3. kitsoki comments back as the GitHub App with a public run link.
 4. The run link opens the hosted kitsoki run page.
-5. The bug, feature, guidance, and PR-status cases are each distinct and named.
+5. The bug, feature, guidance, guidance-resume, and PR-status cases are each distinct and named.
 6. The Slidey developer-arc media is present and plays actual content.
 7. The closing section clearly separates the POC that works now from future
    product work such as full PR autopilot, artifact gallery, OAuth operator
@@ -142,12 +142,13 @@ function scenariosYAML(args) {
       - "The hosted run page opens and shows a kitsoki GitHub run summary rather than a blank or unrelated page."
 
   - id: bug-feature-guidance-pr-distinct
-    title: "Bug, feature, guidance, and PR-status sections are distinguishable"
+    title: "Bug, feature, guidance, guidance-resume, and PR-status sections are distinguishable"
     required: true
     steps:
       - "The bug issue section is labeled as a bug issue dispatch and shows a done/run page path for stories/bugfix."
       - "The feature issue section is labeled as feature or enhancement and shows a dev-story/design route or run page."
       - "The guidance section shows an ambiguous issue and a guidance/awaiting_guidance outcome rather than a guessed bug or feature route."
+      - "The guidance-resume section shows an ambiguous issue that first reaches awaiting_guidance, then resumes after a bug label without presenting a second unrelated job or duplicate comment."
       - "The PR-status section shows a pull request mention and a PR status path, not an issue-only flow."
 
   - id: live-run-state-backed

@@ -41,13 +41,14 @@ authority.
 
 ## Cases
 
-The approved live POC contains four cases:
+The approved live POC contains five cases:
 
 | Case | GitHub trigger | Expected story route | Expected proof state |
 |---|---|---|---|
 | `bug-issue` | `@kitsoki` on a bug-labelled issue | bug route | App comment with run link and completed proof |
 | `feature-issue` | `@kitsoki` on a feature-labelled issue | feature/dev-story route | App comment with run link and completed proof |
 | `guidance` | ambiguous `@kitsoki` issue | guidance route | App comment asks for direction and job parks at `awaiting_guidance` |
+| `guidance-resume` | ambiguous `@kitsoki` issue, then add a bug label | bug route after guidance | Same job/comment resumes from `awaiting_guidance` and completes |
 | `pr-status` | `@kitsoki` on a throwaway PR | PR status route | App comment with run link and PR-status proof |
 
 ## Flow
@@ -58,8 +59,8 @@ The approved live POC contains four cases:
    `--capture`, and `--developer-arc-media <rrweb-or-compatible-media>`.
 3. The runner deploys the current checkout to the VM unless `--skip-deploy` is
    explicitly set.
-4. The runner creates the bug, feature, and guidance issues and comments on the
-   supplied PR.
+4. The runner creates the bug, feature, guidance, and guidance-resume issues
+   and comments on the supplied PR.
 5. The GitHub App webhook reaches the hosted agent and creates one job per
    case.
 6. Each job writes a run URL and App comment id before evidence is collected.
@@ -104,9 +105,11 @@ Expected supporting artifacts:
 
 A run is acceptable only when:
 
-- The four case evidence notes exist and point at live GitHub URLs.
+- The five case evidence notes exist and point at live GitHub URLs.
 - Every case has a VM job row with `run_url` and `comment_id`.
 - The guidance case parks at `awaiting_guidance`.
+- The guidance-resume case reaches `awaiting_guidance` first, then adding the
+  routing label resumes the same job/comment to `done`.
 - Capture plans point at the App response and run URL, not only at the
   requester mention.
 - The Slidey deck exists at the `.slidey.json` path and references the live

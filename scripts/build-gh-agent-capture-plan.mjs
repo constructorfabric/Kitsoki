@@ -32,6 +32,13 @@ const CASES = {
     runTitle: "Guidance run page",
     apiTitle: "Guidance run JSON",
   },
+  "guidance-resume": {
+    curtainTitle: "Live @kitsoki guidance resume POC",
+    threadTitle: "Real guidance resume thread",
+    threadCaption: "The ambiguous issue first parks for guidance, then a label resumes the same job into a completed bugfix route.",
+    runTitle: "Guidance resume run page",
+    apiTitle: "Guidance resume run JSON",
+  },
   "pr-status": {
     curtainTitle: "Live @kitsoki PR status POC",
     threadTitle: "Real PR thread",

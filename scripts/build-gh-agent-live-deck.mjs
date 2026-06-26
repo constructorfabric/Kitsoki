@@ -49,8 +49,20 @@ const CASES = [
       "The guidance proof shows the safety path. When the issue is ambiguous, kitsoki asks for direction instead of guessing and parks the job at awaiting guidance.",
   },
   {
-    slug: "pr-status",
+    slug: "guidance-resume",
     section: "Section 6",
+    eyebrow: "Live evidence",
+    title: "Guidance resume",
+    subtitle: "ambiguous mention -> awaiting_guidance -> bug label -> same job done",
+    expectedStory: "stories/bugfix",
+    expectedState: "done",
+    requiredEventStates: ["awaiting_guidance", "done"],
+    narration:
+      "The guidance resume proof shows the production recovery path: the ambiguous issue parks first, then adding the bug label resumes the same job and rolling comment instead of creating a duplicate.",
+  },
+  {
+    slug: "pr-status",
+    section: "Section 7",
     eyebrow: "Live evidence",
     title: "PR status route",
     subtitle: "PR mention -> pr-beat -> status/run link",
@@ -112,6 +124,7 @@ Inputs:
   <evidence-dir>/live-poc-bug-issue.md
   <evidence-dir>/live-poc-feature-issue.md
   <evidence-dir>/live-poc-guidance.md
+  <evidence-dir>/live-poc-guidance-resume.md
   <evidence-dir>/live-poc-pr-status.md
 
 Expected case rrweb logs:
@@ -119,7 +132,7 @@ Expected case rrweb logs:
   <media-root>/bug-issue/02-app-comment.rrweb.json
   <media-root>/bug-issue/03-run-page.rrweb.json
   <media-root>/bug-issue/04-run-api.rrweb.json
-  ...and the same four files for feature-issue, guidance, and pr-status.`);
+  ...and the same four files for feature-issue, guidance, guidance-resume, and pr-status.`);
 }
 
 function parseArgs(argv) {
@@ -290,6 +303,14 @@ function readEvidence(args, c) {
     if (api.state !== c.expectedState) {
       throw new Error(`${c.slug} API state ${api.state} does not match ${c.expectedState}`);
     }
+    if (Array.isArray(c.requiredEventStates) && c.requiredEventStates.length > 0) {
+      const eventStates = new Set((api.events || []).map((event) => event?.state).filter(Boolean));
+      for (const state of c.requiredEventStates) {
+        if (!eventStates.has(state)) {
+          throw new Error(`${c.slug} API events are missing required lifecycle state ${state}`);
+        }
+      }
+    }
   }
   return { evidencePath, publicBaseURL, webhookURL, sourceURL, runURL, apiURL, commentURL, jobID, api };
 }
@@ -401,14 +422,14 @@ function buildDeck(args) {
 
   scenes.push({
     type: "title",
-    eyebrow: "Section 7",
+    eyebrow: "Section 8",
     title: "Slidey developer arc",
     subtitle: "Existing QA-passed bugfix, feature refine, and PR clips",
   });
   scenes.push(developerArcScene(args, args.out));
   scenes.push({
     type: "title",
-    eyebrow: "Section 8",
+    eyebrow: "Section 9",
     title: "What remains",
     subtitle: "Full PR autopilot, artifact gallery, OAuth operator drive, review-thread resolve",
   });

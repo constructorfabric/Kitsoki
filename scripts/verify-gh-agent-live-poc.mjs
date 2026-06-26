@@ -33,6 +33,14 @@ const CASES = [
     sourcePathPart: "/issues/",
   },
   {
+    slug: "guidance-resume",
+    expectedObjectKind: "issue",
+    expectedStory: "stories/bugfix",
+    expectedState: "done",
+    sourcePathPart: "/issues/",
+    requiredEventStates: ["awaiting_guidance", "done"],
+  },
+  {
     slug: "pr-status",
     expectedObjectKind: "pr",
     expectedStory: "pr-beat",
@@ -77,6 +85,7 @@ Strict final proof inputs:
   <evidence-dir>/live-poc-bug-issue.md
   <evidence-dir>/live-poc-feature-issue.md
   <evidence-dir>/live-poc-guidance.md
+  <evidence-dir>/live-poc-guidance-resume.md
   <evidence-dir>/live-poc-pr-status.md
   each evidence file must include ok health/API/remote-DB checks and HTTP 2xx run-page headers
   <media-root>/capture-plan-<case>.json
@@ -426,6 +435,16 @@ function checkCaseJSON(report, c, value, ctx) {
   }
   if (value.state !== c.expectedState) {
     report.fail(`${ctx.where}: state ${value.state} does not match ${c.expectedState}`);
+  }
+  if (Array.isArray(c.requiredEventStates) && c.requiredEventStates.length > 0 && Array.isArray(value.events)) {
+    const eventStates = new Set(value.events.map((event) => event?.state).filter(Boolean));
+    for (const state of c.requiredEventStates) {
+      if (!eventStates.has(state)) {
+        report.fail(`${ctx.where}: missing required lifecycle event ${state}`);
+      }
+    }
+  } else if (Array.isArray(c.requiredEventStates) && c.requiredEventStates.length > 0 && !ctx.dbRow) {
+    report.fail(`${ctx.where}: missing events needed to prove ${c.slug} lifecycle`);
   }
   if (value.object_number === undefined || value.object_number === null || value.object_number === "") {
     report.fail(`${ctx.where}: missing object_number`);

@@ -448,6 +448,58 @@ create_issue_case() {
 	fi
 }
 
+create_guidance_resume_case() {
+	local slug="guidance-resume"
+	local title="live @kitsoki POC guidance resume issue $RUN_STAMP"
+	local body="$body_common
+
+@kitsoki please take a look. No bug or feature label is intentionally applied at first; kitsoki should ask for guidance, then resume when this issue is labelled."
+	local issue_url issue_num origin guidance_row guidance_job guidance_comment row job_id comment_url
+
+	ensure_label "$BUG_LABEL" "d73a4a" "Live @kitsoki POC bug label"
+
+	if [ "$YES" -eq 1 ]; then
+		issue_url="$(gh issue create --repo "$REPO" --title "$title" --body "$body" | last_non_empty_line)"
+		issue_num="$(issue_number_from_url "$issue_url")"
+		origin="github:$REPO/issue/$issue_num"
+		guidance_row="$(wait_for_job "$origin" "awaiting_guidance")"
+		guidance_job="$(printf '%s' "$guidance_row" | json_field job_id)"
+		guidance_comment="$(printf '%s' "$guidance_row" | json_field comment_id)"
+		gh issue edit "$issue_num" --repo "$REPO" --add-label "$BUG_LABEL" >/dev/null
+		row="$(wait_for_job "$origin" "done")"
+		job_id="$(printf '%s' "$row" | json_field job_id)"
+		comment_url="$(printf '%s' "$row" | json_field comment_id)"
+		if [ "$job_id" != "$guidance_job" ]; then
+			echo "guidance resume minted a new job: initial=$guidance_job final=$job_id" >&2
+			exit 1
+		fi
+		if [ "$comment_url" != "$guidance_comment" ]; then
+			echo "guidance resume changed rolling comment: initial=$guidance_comment final=$comment_url" >&2
+			exit 1
+		fi
+		scripts/collect-gh-agent-poc-evidence.sh \
+			--case "$slug" \
+			--job-id "$job_id" \
+			--source-url "$issue_url" \
+			--mention-url "$issue_url" \
+			--comment-url "$comment_url" \
+			--notes "Started at awaiting_guidance, then resumed the same job/comment after adding label $BUG_LABEL." \
+			--remote-db
+		scripts/build-gh-agent-capture-plan.mjs \
+			--case "$slug" \
+			--evidence "$EVIDENCE_DIR/live-poc-$slug.md" \
+			--out "$MEDIA_ROOT/capture-plan-$slug.json"
+		append_case_summary "$slug" "$issue_url" "$issue_url" "$comment_url" "$job_id"
+	else
+		print_cmd gh issue create --repo "$REPO" --title "$title" --body "$body"
+		printf 'wait for origin_ref github:%s/issue/<%s-issue-number> to reach awaiting_guidance with run_url and comment_id\n' "$REPO" "$slug"
+		print_cmd gh issue edit "<$slug-issue-number>" --repo "$REPO" --add-label "$BUG_LABEL"
+		printf 'wait for the same origin_ref/job/comment to reach done after label %s\n' "$BUG_LABEL"
+		print_cmd scripts/collect-gh-agent-poc-evidence.sh --case "$slug" --job-id "<$slug-job-id>" --source-url "<$slug-issue-url>" --mention-url "<$slug-issue-url>" --comment-url "<$slug-kitsoki-comment-url>" --notes "Started at awaiting_guidance, then resumed the same job/comment after adding label $BUG_LABEL." --remote-db
+		print_cmd scripts/build-gh-agent-capture-plan.mjs --case "$slug" --evidence "$EVIDENCE_DIR/live-poc-$slug.md" --out "$MEDIA_ROOT/capture-plan-$slug.json"
+	fi
+}
+
 run_pr_case() {
 	local pr_num mention mention_url origin row job_id comment_url
 	mention="@kitsoki please read PR status for this live POC run. stamp: $RUN_STAMP"
@@ -529,10 +581,12 @@ No bug or feature label is intentionally applied; kitsoki should ask for guidanc
 	"" \
 	"@kitsoki please take a look. stamp: $RUN_STAMP"
 
+create_guidance_resume_case
+
 run_pr_case
 
 if [ "$DO_CAPTURE" -eq 1 ]; then
-	for case_slug in bug-issue feature-issue guidance pr-status; do
+	for case_slug in bug-issue feature-issue guidance guidance-resume pr-status; do
 		run_capture_or_print "$MEDIA_ROOT/capture-plan-$case_slug.json"
 	done
 fi
