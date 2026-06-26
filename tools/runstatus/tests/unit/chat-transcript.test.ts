@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import ChatTranscript from "../../src/components/ChatTranscript.vue";
 
 // These exercise the agent-text markdown path (the engine ships rendered text;
@@ -479,5 +481,40 @@ describe("ChatTranscript auto-follow", () => {
     });
     await nextTick();
     expect(el.scrollTop).toBe(1200);
+  });
+
+  it("keeps long agent replies in the main transcript scrollport", () => {
+    const longReply = Array.from(
+      { length: 80 },
+      (_, i) => `line ${i + 1}: agent output that should scroll with the chat transcript`
+    ).join("\n");
+
+    const wrapper = mount(ChatTranscript, {
+      props: {
+        transcript: [
+          { role: "user", text: "start the work" },
+          { role: "agent", text: longReply },
+          { role: "user", text: "follow-up that must remain reachable by scrolling the main chat" },
+        ],
+      },
+    });
+
+    const transcript = wrapper.find("[data-testid='chat-transcript']");
+    const agentBubble = wrapper.find(".chat-bubble--agent");
+
+    expect(transcript.exists()).toBe(true);
+    expect(agentBubble.exists()).toBe(true);
+    expect(transcript.classes()).toContain("chat-transcript");
+    expect(agentBubble.classes()).not.toContain("chat-bubble--scrollport");
+    expect(agentBubble.attributes("data-scrollport")).toBeUndefined();
+
+    const componentPath = join(process.cwd(), "src/components/ChatTranscript.vue");
+    const componentSource = readFileSync(componentPath, "utf8");
+    const agentBubbleRule =
+      componentSource.match(/\.chat-bubble--agent[^{]*\{[^}]*\}/g)?.join("\n") ?? "";
+
+    expect(agentBubbleRule).not.toMatch(/overflow-y\s*:\s*auto/);
+    expect(agentBubbleRule).not.toMatch(/max-height\s*:/);
+    expect(agentBubbleRule).not.toMatch(/overscroll-behavior\s*:\s*contain/);
   });
 });
