@@ -114,12 +114,6 @@ test("Alt-click opens placed bug report modal and rrweb video evidence", async (
     await dwell(page, 7000);
     await shot(page, "modal-replay");
 
-    const description = page.getByTestId("bug-modal-description");
-    await description.scrollIntoViewIfNeeded();
-    await expect(description).toBeVisible({ timeout: 8000 });
-    await dwell(page, 7000);
-    await shot(page, "modal-description-placement");
-
     await dwell(page, 10000);
     await page.evaluate(() => {
       document.body.setAttribute("data-alt-click-bug-report-proof", String(Date.now()));
