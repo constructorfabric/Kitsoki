@@ -62,6 +62,7 @@ states:
       # listing strings up-front so the prompt can show the worklist
       # without re-encoding the whole verdict as YAML/JSON twice.
       - invoke: host.agent.task
+        id: docs-writer
         with:
           agent: docs_writer
           acceptance:
@@ -91,6 +92,7 @@ states:
       # Same thread-extension trick as reviewing.yaml — `.json` suffix
       # bypasses the markdown wrapper.
       - invoke: host.artifacts_dir
+        id: docs-fix-artifact
         with:
           thread: "docs-review-fix-{{ world.commit_sha }}.json"
           mode:   "replace"

@@ -121,6 +121,9 @@ world:
 
   # Filesystem path returned by host.artifacts_dir.
   artifact_path:    { type: string, default: "" }
+  report_path:      { type: string, default: "" }
+  summary_path:     { type: string, default: "" }
+  deck_path:        { type: string, default: "" }
 
   # Output of the `fixing` room — written by docs_writer after it
   # applies edits to the docs cited in `verdict.stale_docs`. Mirrors
@@ -158,6 +161,10 @@ intents:
   fix_done:
     description: "Internal: emitted by fixing.on_enter once docs_writer has returned an artifact recording the edits."
     examples: ["fix_done"]
+    priority: 85
+  report_done:
+    description: "Internal: emitted once the deterministic report deck has been written."
+    examples: []
     priority: 85
   review_again:
     description: "Re-run the review (e.g. after a new commit)."

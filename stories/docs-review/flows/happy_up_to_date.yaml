@@ -14,12 +14,14 @@ turns:
     expect_world:
       commit_sha:    "facefeeddeadbeef"
       artifact_path: "/tmp/.artifacts/docs-review-facefeeddeadbeef.md"
+      deck_path:     ".artifacts/docs-review/facefeeddeadbeef/deck.slidey.json"
 
   # Run it again — same cassette, replay: any. Lands back in reviewed.
   - intent: { name: review_again, slots: {} }
     expect_state: reviewed
     expect_world:
       commit_sha:    "facefeeddeadbeef"
+      deck_path:     ".artifacts/docs-review/facefeeddeadbeef/deck.slidey.json"
 
   - intent: { name: quit, slots: {} }
     expect_state: __exit__done

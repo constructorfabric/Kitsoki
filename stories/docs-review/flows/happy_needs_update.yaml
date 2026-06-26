@@ -21,6 +21,7 @@ turns:
       artifact_path:    "/tmp/.artifacts/docs-review-deadbeefcafefeed.md"
       verdict_decision: "needs_update"
       fix_summary:      "Patched docs/hosts.md by appending a host.bar row to the registry table at lines 80-92."
+      deck_path:        ".artifacts/docs-review/deadbeefcafefeed/deck.slidey.json"
 
   # quit cleanly exits.
   - intent: { name: quit, slots: {} }

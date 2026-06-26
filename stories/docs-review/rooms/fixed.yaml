@@ -22,6 +22,8 @@ states:
             "Files":       '{{ world.fix_artifact.files_changed|length|default:"0" }}'
             "Unresolved":  '{{ world.fix_artifact.unresolved|length|default:"0" }}'
             "Verdict":     '{{ world.artifact_path|default:"(not written)" }}'
+            "Report":      '{{ world.report_path|default:"(pending)" }}'
+            "Deck":        '{{ world.deck_path|default:"(pending)" }}'
       - heading: "Summary"
       - prose: '{{ world.fix_artifact.summary|default:"(no summary)" }}'
       - heading: "Files changed"
@@ -53,11 +55,32 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [commit_sha, verdict, fix_artifact, artifact_path]
+    relevant_world: [commit_sha, verdict, fix_artifact, artifact_path, report_path, summary_path, deck_path]
     on_enter:
       # Live progress breadcrumb closing out the one-shot chain. See
       # docs/proposals/execution-modes-and-gate-deciders.md.
       - say: 'Docs patched — {{ world.fix_artifact.files_changed|length|default:"0" }} file(s) changed (uncommitted; review with `git diff`).'
+      - invoke: host.run
+        id: docs-report
+        with:
+          cmd: python3
+          args:
+            - "stories/docs-review/scripts/docs_report.py"
+            - "--commit-sha"
+            - "{{ world.commit_sha }}"
+            - "--review-mode"
+            - "{{ world.review_mode }}"
+            - "--artifact-path"
+            - "{{ world.artifact_path }}"
+            - "--verdict-json"
+            - "{{ world.verdict }}"
+            - "--fix-json"
+            - "{{ world.fix_artifact }}"
+        bind:
+          report_path:  "stdout_json.report_path"
+          summary_path: "stdout_json.summary_path"
+          deck_path:    "stdout_json.deck_path"
+        on_error: review_failed
     on:
       review_again:
         - target: reviewing

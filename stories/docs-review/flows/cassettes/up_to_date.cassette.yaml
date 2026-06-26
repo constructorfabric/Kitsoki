@@ -4,12 +4,13 @@
 kind: host_cassette
 app_id: docs-review
 generated_at: 2026-05-28T00:00:00Z
-match_on: [handler]
+match_on: [handler, call]
 
 episodes:
   - id: preflight_run
     match:
       handler: host.run
+      call: docs-preflight
     response:
       data:
         ok: true
@@ -27,6 +28,7 @@ episodes:
   - id: agent_decide
     match:
       handler: host.agent.decide
+      call: docs-reviewer
     response:
       data:
         ok: true
@@ -46,9 +48,24 @@ episodes:
   - id: artifacts_dir_write
     match:
       handler: host.artifacts_dir
+      call: docs-verdict-artifact
     response:
       data:
         ok: true
         path: "/tmp/.artifacts/docs-review-facefeeddeadbeef.md"
         message_id: "docs-review-facefeeddeadbeef#0"
+    replay: any
+
+  - id: docs_report
+    match:
+      handler: host.run
+      call: docs-report
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout_json:
+          report_path: ".artifacts/docs-review/facefeeddeadbeef/report.md"
+          summary_path: ".artifacts/docs-review/facefeeddeadbeef/summary.json"
+          deck_path: ".artifacts/docs-review/facefeeddeadbeef/deck.slidey.json"
     replay: any
