@@ -1,18 +1,23 @@
 # Bugfix bake-off narrative deck
 
 `deck.json` is the slidey spec for the **narrative** presentation of the
-bake-off (the persuasion deck — distinct from the data deck that
-`eval_pilot_report.py --deck` renders from results). It tells the
+bake-off (the persuasion deck — distinct from the deterministic data deck that
+`tools/report-deck/deterministic_deck.py` renders from results). It tells the
 structure-vs-model story in ~10 slides; the companion written report is
 [`docs/case-studies/bugfix-bakeoff.md`](../../../docs/case-studies/bugfix-bakeoff.md).
 
 ## Status: placeholders pending live data
 
-Every results-dependent value in the deck is marked **`TBD from
-summary.json`**. Fill those in from
+Every results-dependent value in this narrative deck must come from
 [`results/summary.json`](../results/SCHEMA.md) (produced by `aggregate.py`
-after the live grid runs) **before** baking — the deck should never ship
-with `TBD` text.
+after the live grid runs) before baking. For the standardized data deck, run:
+
+```bash
+python3 tools/bugfix-bakeoff/aggregate.py \
+  --generated-at 2026-06-24T00:00:00Z \
+  --deck tools/bugfix-bakeoff/results/deck.slidey.json \
+  --markdown tools/bugfix-bakeoff/results/report.md
+```
 
 ## How it bakes
 

@@ -10,7 +10,7 @@ nondeterministic timestamps in some contexts): pass --generated-at or set
 BAKEOFF_GENERATED_AT.
 
   --emit-agenteval additionally writes results/agenteval/<bug>/latest.json in the
-  agenteval.Report shape so eval_pilot_report.py regenerates the deck offline.
+  agenteval.Report shape so deterministic_deck.py regenerates the deck offline.
   The candidate profile field there is "<candidate>|<treatment>".
 
 Usage:
@@ -26,6 +26,8 @@ import argparse
 import glob
 import json
 import os
+import subprocess
+import sys
 
 import yaml
 
@@ -172,6 +174,10 @@ def main(argv=None):
     ap.add_argument("--emit-agenteval", action="store_true")
     ap.add_argument("--agenteval-dir",
                     default=os.path.join(here, "results", "agenteval"))
+    ap.add_argument("--deck", default="",
+                    help="optional Slidey JSON report spec to generate offline")
+    ap.add_argument("--markdown", default="",
+                    help="optional Markdown review index to generate with --deck")
     args = ap.parse_args(argv)
 
     generated_at = resolve_generated_at(args.generated_at)
@@ -184,7 +190,21 @@ def main(argv=None):
     with open(args.out, "w") as fh:
         json.dump(summary, fh, indent=2)
         fh.write("\n")
-    print(f"wrote {args.out}  cells={len(cells)}")
+    print(f"wrote {args.out}  cells={len(cells)}", file=sys.stderr)
+
+    if args.deck:
+        root = os.path.abspath(os.path.join(here, "..", ".."))
+        builder = os.path.join(root, "tools", "report-deck", "deterministic_deck.py")
+        cmd = [
+            sys.executable,
+            builder,
+            "--kind", "bakeoff-summary",
+            "--input", args.out,
+            "--out", args.deck,
+        ]
+        if args.markdown:
+            cmd += ["--markdown", args.markdown]
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, text=True)
 
     if args.emit_agenteval:
         reports = build_agenteval_reports(manifest, cells, generated_at)
@@ -194,7 +214,16 @@ def main(argv=None):
             with open(dest, "w") as fh:
                 json.dump(report, fh, indent=2)
                 fh.write("\n")
-            print(f"wrote {dest}")
+            print(f"wrote {dest}", file=sys.stderr)
+
+    print(json.dumps({
+        "summary_path": args.out,
+        "generated_at": generated_at,
+        "cells": summary["cells"],
+        "rollup": summary["rollup"],
+        "deck": {"spec_path": args.deck, "summary": "Bugfix bake-off report deck."} if args.deck else {},
+        "markdown": args.markdown,
+    }))
 
 
 if __name__ == "__main__":

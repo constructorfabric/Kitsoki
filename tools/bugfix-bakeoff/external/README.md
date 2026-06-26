@@ -127,3 +127,18 @@ directly instead of creating one against the wrong repo root.
 
 See [`docs/case-studies/query-string-bakeoff.md`](../../../docs/case-studies/query-string-bakeoff.md)
 for the worked GPT-5.5-vs-GLM-5.2 study.
+
+## Regenerate the report deck
+
+After scoring cells, regenerate the deterministic Slidey spec from the external
+summary. This is free and does not call an LLM:
+
+```sh
+python3 bench.py summarize --project query-string \
+  --deck results/deck.slidey.json \
+  --markdown results/report.md
+```
+
+The deck builder reads `results/summary.json` and uses the shared
+`tools/report-deck/deterministic_deck.py` structure. Commit durable `.slidey.json`
+specs; keep generated HTML/MP4 review artifacts under `.artifacts/`.

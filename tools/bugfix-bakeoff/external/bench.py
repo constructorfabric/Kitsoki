@@ -211,7 +211,7 @@ def verify(m, only_bug, repo_dir):
     return 0 if ok else 1
 
 
-def summarize(m, results_dir):
+def summarize(m, results_dir, deck=None, markdown=None):
     """Roll up every results/cells/<bug>-<cand>-*.json into a by-candidate summary
     (solved/partial/failed counts + solve_rate). Free, deterministic — consumed by
     the repo-bakeoff story's scoring room and the report/deck builder."""
@@ -234,7 +234,20 @@ def summarize(m, results_dir):
         b["solve_rate"] = round(b["solved"] / b["n"], 3) if b["n"] else 0.0
     out = {"project": m["project"]["id"], "cells": cells, "rollup": {"by_candidate": by},
            "summary_path": str((HERE / results_dir / "summary.json"))}
-    (HERE / results_dir / "summary.json").write_text(json.dumps(out, indent=2))
+    summary_path = HERE / results_dir / "summary.json"
+    summary_path.write_text(json.dumps(out, indent=2))
+    if deck:
+        root = HERE.parents[2]
+        cmd = [
+            sys.executable,
+            str(root / "tools" / "report-deck" / "deterministic_deck.py"),
+            "--kind", "external-summary",
+            "--input", str(summary_path),
+            "--out", deck,
+        ]
+        if markdown:
+            cmd += ["--markdown", markdown]
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, text=True)
     print(json.dumps(out))
     return 0
 
@@ -301,12 +314,14 @@ def main():
     sm = sub.add_parser("summarize")  # roll up results/cells/*.json by candidate
     sm.add_argument("--project", required=True)
     sm.add_argument("--results", default="results", help="results dir (cells/ under it)")
+    sm.add_argument("--deck", help="optional Slidey JSON report spec")
+    sm.add_argument("--markdown", help="optional Markdown review index")
     a = ap.parse_args()
 
     if a.cmd == "cost":
         sys.exit(trace_cost(a.trace))
     if a.cmd == "summarize":
-        sys.exit(summarize(load(a.project), a.results))
+        sys.exit(summarize(load(a.project), a.results, a.deck, a.markdown))
 
     m = load(a.project)
     if a.cmd == "score":

@@ -2,7 +2,7 @@
 
 The coordination point for all bake-off tooling. `score.py` writes one **cell
 result** JSON per grid cell; `aggregate.py` merges them into `summary.json`,
-which the report + `eval_pilot_report.py` deck consume. No tool may diverge from
+which the deterministic report deck consumes. No tool may diverge from
 these shapes.
 
 ## Cell result — `results/cells/<bug>-<candidate>-<treatment>.json`
@@ -90,9 +90,8 @@ aggregate rollups (solve_rate etc.) key on the possibly-adjudicated `quality`.
 Each rollup bucket: `{ "n", "solved", "solve_rate", "avg_cost_usd",
 "avg_total_tokens", "avg_wall_time_s", "avg_guidance_turns", "avg_compliance" }`.
 
-## eval_pilot_report.py bridge
+## Report-deck bridges
 
 `aggregate.py --emit-agenteval` also writes one `agenteval.Report` JSON per bug
 under `results/agenteval/<bug>/latest.json` (candidate key =
-`"<candidate>|<treatment>"`), so the existing `eval_pilot_report.py --markdown
---deck` regenerates the data deck offline with zero re-spend.
+`"<candidate>|<treatment>"`), so `aggregate.py --deck results/deck.slidey.json --markdown results/report.md` regenerates the standardized Slidey deck offline with zero re-spend. `--emit-agenteval` remains available for tools that consume agenteval reports.

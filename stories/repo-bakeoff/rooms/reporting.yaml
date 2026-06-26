@@ -1,8 +1,6 @@
 # reporting — DETERMINISTIC (no LLM). Assemble the comparison report from the
-# summary rollup and point at the slidey deck spec the slideshow room renders. The
-# baked baked/deck.json is a REAL slidey deck (the query-string study), used as the
-# no-LLM stand-in; a live run with a richer deck-builder would bind deck.spec_path
-# to its output. `once: true` keyed on report_markdown → reload-safe.
+# summary rollup and build a standardized slidey deck spec from the authoritative
+# external bench summary. `once: true` keyed on report_markdown → reload-safe.
 states:
   reporting:
     description: "Assembling the comparison report + selecting the deck spec (deterministic)."
@@ -25,8 +23,26 @@ states:
               hint:   "abandon"
               intent: quit
     on_enter:
-      - set:
-          report_markdown: "External-repo bake-off · project {{ world.project }} · {{ len(world.summary.cells) }} cells rolled up by candidate."
+      - invoke: host.run
+        id: build_report
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "../../report-deck/deterministic_deck.py"
+            - "--kind"
+            - "external-summary"
+            - "--input"
+            - "results/summary.json"
+            - "--out"
+            - "results/deck.slidey.json"
+            - "--markdown"
+            - "results/report.md"
+          cwd: "{{ world.harness_dir }}"
+        bind:
+          report_markdown: stdout_json.markdown_path
+          deck:            stdout_json
+        on_error: scoring
     on:
       accept:
         - target: slideshow

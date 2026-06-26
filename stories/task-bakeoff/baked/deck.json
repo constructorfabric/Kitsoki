@@ -1,5 +1,5 @@
 {
-  "_comment": "task-bakeoff baked report deck — a tiny deterministic 3-scene slidey deck standing in for the report eval_pilot_report.py would build from the rollup. Real scene types (title / cards / narrative) so slidey emits a real .semantic.json sidecar. Used by flows so host.slidey.render need not run live (tour-needs-baked-world lesson).",
+  "_comment": "task-bakeoff baked report deck — a tiny deterministic 3-scene slidey deck standing in for the report deterministic_deck.py would build from the rollup. Real scene types (title / cards / narrative) so slidey emits a real .semantic.json sidecar. Used by flows so host.slidey.render need not run live (tour-needs-baked-world lesson).",
   "meta": {
     "title": "Matrix Bake-off Report",
     "resolution": { "width": 1920, "height": 1080 },
