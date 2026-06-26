@@ -1,0 +1,84 @@
+# done_posts_fixed_in_comment — direct issue-close traceability.
+#
+# When bugfix closes a ticket without a PR, the done.accept arc must leave an
+# auditable "fixed in" ledger on the issue before resolving it. The comment has
+# both a human-visible section and a parseable kitsoki-fixed-in HTML block.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: validating
+initial_world:
+  ticket_id:     "TKT-FIXED-IN"
+  ticket_title:  "Autonomous refine reruns stop"
+  thread:        "TKT-FIXED-IN"
+  workdir:       ".worktrees/tkt-fixed-in"
+  base_branch:   "main"
+  judge_mode:    "human"
+  done_artifact:
+    summary_title:    "Autonomous refine reruns fixed"
+    summary_markdown: "Close-out body."
+  validate_artifact:
+    summary_title:    "Targeted refine flow passed"
+    summary_markdown: "Validation body."
+    outcome:          "pass"
+
+host_handlers:
+  host.run:
+    by_call:
+      done_clean_tree_check:
+        data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
+      done_fixed_in_commit:
+        data: { ok: true, exit_code: 0, stdout_json: { commit: "f2e30bdb1234" } }
+  host.local_files.ticket.comment:
+    data: { ok: true, comment_id: "comment-1" }
+  host.local_files.ticket.transition:
+    data: { ok: true }
+  host.append_to_file:
+    data: { ok: true, message_id: "done-post" }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Autonomous refine reruns fixed"
+        summary_markdown: "Close-out body."
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      fixed_in_commit: "f2e30bdb1234"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: done_fixed_in_commit }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__done
+    expect_world:
+      status: "fixed"
+      fixed_in_commit: "f2e30bdb1234"
+    expect_host_calls:
+      - handler: host.local_files.ticket.comment
+        args:
+          id: "TKT-FIXED-IN"
+          body: |
+            Fixed in:
+
+            - `f2e30bdb1234` Autonomous refine reruns fixed
+
+            Verification:
+
+            - Targeted refine flow passed
+
+            <!-- kitsoki-fixed-in
+            commits:
+              - f2e30bdb1234
+            branch: main
+            workdir: .worktrees/tkt-fixed-in
+            verified:
+              - Targeted refine flow passed
+            -->
+      - handler: host.local_files.ticket.transition
+        args: { id: "TKT-FIXED-IN", to: "resolved" }
+
+expect_terminal: true
+expect_no_errors: true

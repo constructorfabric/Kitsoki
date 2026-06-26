@@ -443,6 +443,7 @@ world:
   implement_review_artifact: { type: object, default: {} }  # testing-room artifact (yes, the name predates the implement_artifact split)
   validate_artifact:         { type: object, default: {} }
   done_artifact:             { type: object, default: {} }
+  fixed_in_commit:           { type: string, default: "" }  # short HEAD at close-out; posted to the issue before resolving
 
   # ── Judge state ───────────────────────────────────────────────────────
   llm_verdict:      { type: object, default: {} }   # { intent, reason, confidence, verdict }
