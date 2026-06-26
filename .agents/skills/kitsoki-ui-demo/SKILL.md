@@ -52,6 +52,14 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > sharing export of the whole deck, not the source format for deck acts. Use MP4
 > `src` only for surfaces rrweb cannot reconstruct (`<canvas>`, `<video>`, WebGL)
 > or when the user explicitly requests a raw video splice.
+>
+> **Embedded rrweb must still be a tour, not a still frame.** A deck act that
+> navigates to a page, waits five seconds, and moves on is not a demo. Capture
+> visible reviewer behavior inside each rrweb segment: caption the purpose,
+> spotlight the control or evidence being inspected, scroll to the next relevant
+> region, and show the handoff the user would actually perform. If the source
+> surface is not the kitsoki SPA, use the portable `makeCaption` +
+> `makeSpotlight` helpers so the rrweb log still contains guided motion.
 
 ## Start from a real dogfood trace (generate the flow + cassette — don't hand-author)
 

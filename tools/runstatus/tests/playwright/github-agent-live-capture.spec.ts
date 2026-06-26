@@ -21,7 +21,7 @@ import {
   SETTLE_MS,
 } from "./_helpers/server.js";
 import { cameraContext } from "./_helpers/camera.js";
-import { captureDiagnostics, installCurtain, liftCurtain, makeCaption } from "./_helpers/demo.js";
+import { captureDiagnostics, installCurtain, liftCurtain, makeCaption, makeSpotlight, type Beat, type Spotlight } from "./_helpers/demo.js";
 import { dumpCapture, installCapture, type CaptureViewport, type RrwebEvent } from "./_helpers/rrweb-replay.js";
 
 type CaptureStep = {
@@ -111,6 +111,15 @@ async function tryMakeCaption(page: Page): Promise<(title: string, sub?: string,
   }
 }
 
+async function tryMakeSpotlight(page: Page): Promise<Spotlight> {
+  try {
+    return await makeSpotlight(page);
+  } catch (e) {
+    console.warn(`[live-capture] spotlight disabled: ${String(e).slice(0, 240)}`);
+    return async () => undefined;
+  }
+}
+
 async function tryStyleAPIProof(page: Page): Promise<void> {
   try {
     await page.addStyleTag({
@@ -130,6 +139,162 @@ async function tryStyleAPIProof(page: Page): Promise<void> {
   } catch (e) {
     console.warn(`[live-capture] API proof styling skipped: ${String(e).slice(0, 240)}`);
   }
+}
+
+async function markTextTarget(page: Page, name: string, needle: string): Promise<string | null> {
+  const marked = await page
+    .evaluate(
+      ({ attr, value }) => {
+        const exact = value.trim().toLowerCase();
+        const candidates = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "a, button, h1, h2, h3, pre, code, p, li, td, th, span, div.timeline-comment, div.js-comment-body, div.markdown-body",
+          ),
+        );
+        const scored = candidates
+          .map((el) => {
+            const text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+            if (!text) return { el, score: 0 };
+            const lower = text.toLowerCase();
+            if (lower === exact) return { el, score: 1000 - text.length };
+            if (lower.includes(exact)) return { el, score: 500 - Math.min(text.length, 480) };
+            return { el, score: 0 };
+          })
+          .filter((entry) => entry.score > 0)
+          .sort((a, b) => b.score - a.score);
+        const target = scored[0]?.el;
+        if (!target) return false;
+        target.setAttribute(attr, name);
+        return true;
+      },
+      { attr: "data-kitsoki-demo-target", value: needle },
+    )
+    .catch(() => false);
+  return marked ? `[data-kitsoki-demo-target="${name}"]` : null;
+}
+
+async function markFirstSelector(page: Page, name: string, selectors: string[]): Promise<string | null> {
+  const marked = await page
+    .evaluate(
+      ({ attr, name: targetName, selectors: choices }) => {
+        for (const sel of choices) {
+          const el = document.querySelector<HTMLElement>(sel);
+          if (el) {
+            el.setAttribute(attr, targetName);
+            return true;
+          }
+        }
+        return false;
+      },
+      { attr: "data-kitsoki-demo-target", name, selectors },
+    )
+    .catch(() => false);
+  return marked ? `[data-kitsoki-demo-target="${name}"]` : null;
+}
+
+async function targetExists(page: Page, selector: string | null): Promise<boolean> {
+  if (!selector) return false;
+  return await page.locator(selector).first().count().then((n) => n > 0).catch(() => false);
+}
+
+async function showTarget(page: Page, spotlight: Spotlight, selector: string | null): Promise<void> {
+  if (await targetExists(page, selector)) {
+    await spotlight(selector);
+  } else {
+    await spotlight(null);
+  }
+}
+
+async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+  const title = await markFirstSelector(page, "issue-title", [
+    "[data-testid='issue-title']",
+    "bdi.js-issue-title",
+    ".js-issue-title",
+    ".gh-header-title",
+    "h1",
+  ]);
+  await caption(step.title, "Start where the requester worked: the live GitHub thread.", 2300);
+  await showTarget(page, spotlight, title);
+  await dwell(page, 1500);
+
+  const mention = await markTextTarget(page, "request-mention", "@kitsoki");
+  await caption("Requester mentions @kitsoki", "This is the user action that should create exactly one kitsoki job.", 2600);
+  await showTarget(page, spotlight, mention);
+  await dwell(page, 1500);
+
+  const appComment = await markTextTarget(page, "app-comment", "kitsoki-test.slothattax.me/run/");
+  await caption("kitsoki answers on the thread", "The App-authenticated response is the handoff from GitHub into the hosted run.", 2800);
+  await showTarget(page, spotlight, appComment);
+  await dwell(page, 1800);
+
+  const runLink = await markTextTarget(page, "run-link", "https://kitsoki-test.slothattax.me/run/");
+  await caption("User follows the run link", "The visible link is the proof surface the requester can open.", 2300);
+  await showTarget(page, spotlight, runLink);
+  await dwell(page, 1500);
+}
+
+async function tourAppComment(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+  const comment = await markTextTarget(page, "app-comment-anchor", "kitsoki-test.slothattax.me/run/");
+  await caption(step.title, "The URL opens directly on the App response, not just the original mention.", 2600);
+  await showTarget(page, spotlight, comment);
+  await dwell(page, 1700);
+
+  const link = await markTextTarget(page, "app-run-link", "https://kitsoki-test.slothattax.me/run/");
+  await caption("Run link is the user's next click", "This is the durable bridge from the GitHub thread to kitsoki's hosted evidence.", 2600);
+  await showTarget(page, spotlight, link);
+  await dwell(page, 1700);
+}
+
+async function tourRunPage(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+  const heading = await markFirstSelector(page, "run-heading", ["h1", "main h2", "body"]);
+  await caption(step.title, "The hosted page proves the VM-backed job exists and is readable.", 2600);
+  await showTarget(page, spotlight, heading);
+  await dwell(page, 1600);
+
+  const state = await markTextTarget(page, "run-state", "state");
+  await caption("Read the job state", "The page exposes the route, state, source, and run URL a reviewer needs.", 2600);
+  await showTarget(page, spotlight, state);
+  await page.mouse.wheel(0, 360).catch(() => undefined);
+  await dwell(page, 1800);
+
+  const source = await markTextTarget(page, "run-source", "github.com/bsacrobatix/Kitsoki");
+  await caption("Trace it back to GitHub", "The hosted view ties the job back to the original issue or PR.", 2300);
+  await showTarget(page, spotlight, source);
+  await dwell(page, 1600);
+}
+
+async function tourRunAPI(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+  const pre = await markFirstSelector(page, "api-json", ["pre", "body"]);
+  await caption(step.title, "The same proof is machine-readable for verification and automation.", 2600);
+  await showTarget(page, spotlight, pre);
+  await dwell(page, 1600);
+
+  const state = await markTextTarget(page, "api-state", "\"state\"");
+  await caption("Verifier reads the same state", "This prevents the deck from being only a pretty screenshot.", 2600);
+  await showTarget(page, spotlight, state || pre);
+  await page.mouse.wheel(0, 320).catch(() => undefined);
+  await dwell(page, 1800);
+}
+
+async function runStepTour(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+  switch (step.id) {
+    case "github-thread":
+      await tourGithubThread(page, step, caption, spotlight);
+      break;
+    case "app-comment":
+      await tourAppComment(page, step, caption, spotlight);
+      break;
+    case "run-page":
+      await tourRunPage(page, step, caption, spotlight);
+      break;
+    case "run-api":
+      await tourRunAPI(page, step, caption, spotlight);
+      break;
+    default:
+      await caption(step.title, step.caption || step.url, step.dwellMs ?? 5000);
+      break;
+  }
+  await spotlight(null);
 }
 
 async function resetRrwebCapture(page: Page): Promise<void> {
@@ -172,7 +337,14 @@ function writeRrwebEnvelope(outPath: string, events: RrwebEvent[], viewport: Cap
   );
 }
 
-async function captureRrwebStep(page: Page, artifactDir: string, idx: number, step: CaptureStep): Promise<void> {
+async function captureRrwebStep(
+  page: Page,
+  artifactDir: string,
+  idx: number,
+  step: CaptureStep,
+  caption: Beat,
+  spotlight: Spotlight,
+): Promise<void> {
   await resetRrwebCapture(page);
   await installCapture(page);
   await page.evaluate(
@@ -182,7 +354,7 @@ async function captureRrwebStep(page: Page, artifactDir: string, idx: number, st
     },
     { id: step.id, label: step.title, specPath: SPEC_REF, tag: CHAPTER_TAG },
   );
-  await dwell(page, step.dwellMs ?? 5000);
+  await runStepTour(page, step, caption, spotlight);
   await page.evaluate(() => {
     const rrweb = (window as unknown as { rrweb?: { record?: { addCustomEvent?: (tag: string, payload: unknown) => void } } }).rrweb;
     rrweb?.record?.addCustomEvent?.("slidey.end", {});
@@ -234,11 +406,10 @@ test("capture live GitHub-agent evidence", async () => {
       await dwell(page, SETTLE_MS);
       diag.mark(`step ${step.id}: lift-curtain`);
       await tryLiftCurtain(page);
-      diag.mark(`step ${step.id}: rrweb`);
-      await captureRrwebStep(page, artifactDir, idx, step);
-      diag.mark(`step ${step.id}: caption`);
       const caption = await tryMakeCaption(page);
-      await caption(step.title, step.caption || step.url, 1000);
+      const spotlight = await tryMakeSpotlight(page);
+      diag.mark(`step ${step.id}: rrweb-tour`);
+      await captureRrwebStep(page, artifactDir, idx, step, caption, spotlight);
       diag.mark(`step ${step.id}: screenshot`);
       await shot(page, step.id);
     }

@@ -67,8 +67,11 @@ The approved live POC contains four cases:
    a run summary under `.context/live-poc-run-<stamp>.md`.
 8. The runner builds Playwright capture plans under
    `.artifacts/github-agent-live/capture-plan-<case>.json`.
-9. The capture harness records rrweb clips for the live GitHub thread, App
-   comment, run page, and run API evidence for each case.
+9. The capture harness records tour-driven rrweb clips for the live GitHub
+   thread, App comment, run page, and run API evidence for each case. Each clip
+   must show what the reviewer would do or inspect on that surface: narrated
+   highlights, visible scroll or focus movement, and the handoff from GitHub to
+   the run link.
 10. The deck builder creates
     `.artifacts/github-agent-live/live-github-agent.slidey.json`.
 11. The verifier checks the evidence bundle and writes the JSON report requested
@@ -109,6 +112,8 @@ A run is acceptable only when:
 - The Slidey deck exists at the `.slidey.json` path and references the live
   GitHub App on `kitsoki-test`.
 - The deck references rrweb source clips for the GitHub cases.
+- The rrweb clips are tour-driven evidence, not five-second passive holds on
+  disconnected pages.
 - `scripts/verify-gh-agent-live-poc.mjs` passes without requiring an HTML viewer
   or MP4 export.
 
@@ -134,4 +139,3 @@ When the live POC flow changes:
 4. Update `.agents/skills/kitsoki-ui-demo/SKILL.md` or
    `.agents/skills/kitsoki-ui-qa/SKILL.md` if the mistake would otherwise recur.
 5. Append transient run details to `.context/github-agent-poc-work-log.md`.
-
