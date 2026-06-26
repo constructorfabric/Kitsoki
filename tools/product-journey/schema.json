@@ -17,7 +17,7 @@
   "scenario_outcomes": {
     "required": ["run_id", "items", "summary"],
     "item_required": ["scenario", "label", "stage", "primary_story", "evidence_status", "required_evidence_count", "present_evidence_count", "finding_counts", "findings", "outcome"],
-    "outcomes": ["not_started", "evidence_captured", "strength_observed", "weakness_found", "issue_found", "fix_recorded"]
+    "outcomes": ["not_started", "evidence_captured", "strength_observed", "weakness_found", "issue_found", "blocked", "fix_recorded"]
   },
   "media_manifest": {
     "required": ["run_id", "items", "summary"],
@@ -30,11 +30,11 @@
   },
   "execution_plan": {
     "required": ["run_id", "project", "persona", "summary", "steps", "finalize_commands"],
-    "step_required": ["scenario", "primary_story", "mcp_steps", "evidence", "success_criteria", "attach_commands"]
+    "step_required": ["scenario", "primary_story", "mcp_steps", "evidence", "success_criteria", "attach_commands", "record_blocker_command"]
   },
   "driver_plan": {
     "required": ["run_id", "driver_agent", "project", "persona", "scenarios", "final_gates"],
-    "scenario_required": ["scenario", "label", "primary_story", "harness", "visual_surface", "required_mcp", "evidence", "success_criteria", "attach_commands", "record_finding_command"]
+    "scenario_required": ["scenario", "label", "primary_story", "harness", "visual_surface", "required_mcp", "evidence", "success_criteria", "attach_commands", "record_finding_command", "record_blocker_command"]
   },
   "matrix_result": {
     "required": ["matrix_id", "created_at", "seed", "selection_contract", "target_proof", "target_count", "assignment_count", "scenario_count", "targets", "assignments", "artifacts"],

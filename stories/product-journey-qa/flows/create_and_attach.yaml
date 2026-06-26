@@ -86,6 +86,21 @@ host_handlers:
             agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+      record_product_journey_blocker:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: blocker_recorded
+            run_dir: .artifacts/product-journey/run-123
+            scenario: prd-design
+            title: Design surface needed live model authorization
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
       seed_product_journey_demo:
         data:
           ok: true
@@ -110,7 +125,7 @@ host_handlers:
           stdout_json:
             status: reviewed
             review_status: ready
-            summary: "ready: 10/10 checks passed, 0 warnings, 0 failures"
+            summary: "ready: 11/11 checks passed, 0 warnings, 0 failures"
             run_dir: .artifacts/product-journey/run-123
             review_path: .artifacts/product-journey/run-123/review.json
             deck_path: .artifacts/product-journey/run-123/deck.slidey.json
@@ -119,10 +134,10 @@ host_handlers:
             agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
             media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
             scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
-            passed: 10
+            passed: 11
             warnings: 0
             failed: 0
-            total: 10
+            total: 11
       rollup_product_journey_matrix:
         data:
           ok: true
@@ -301,6 +316,31 @@ turns:
       - handler: host.run
         args: { call: record_product_journey_finding }
 
+  - intent:
+      name: blocker
+      slots:
+        scenario: prd-design
+        title: Design surface needed live model authorization
+        summary: The PRD/design scenario could not run under no-LLM automation without a cassette.
+        evidence_path: traces/prd-design-blocker.jsonl
+    expect_state: run_created
+    expect_world:
+      status: blocker_recorded
+      finding_kind: issue
+      finding_title: Design surface needed live model authorization
+      finding_summary: The PRD/design scenario could not run under no-LLM automation without a cassette.
+      scenario: prd-design
+      evidence_path: traces/prd-design-blocker.jsonl
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+    expect_host_calls:
+      - handler: host.run
+        args: { call: record_product_journey_blocker }
+
   - intent: { name: seed_demo, slots: {} }
     expect_state: run_created
     expect_world:
@@ -320,7 +360,7 @@ turns:
     expect_world:
       status: reviewed
       review_status: ready
-      review_summary: "ready: 10/10 checks passed, 0 warnings, 0 failures"
+      review_summary: "ready: 11/11 checks passed, 0 warnings, 0 failures"
       deck_path: .artifacts/product-journey/run-123/deck.slidey.json
       execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
       driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md

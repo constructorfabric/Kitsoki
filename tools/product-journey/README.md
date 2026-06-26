@@ -132,6 +132,21 @@ python3 tools/product-journey/run.py --record-finding \
 
 Finding kinds are `strength`, `weakness`, `issue`, and `fix`.
 
+If a scenario was attempted but cannot honestly capture evidence under the
+current harness, record a blocker instead of leaving it invisible or pretending
+it passed:
+
+```sh
+python3 tools/product-journey/run.py --record-blocker \
+  --run-dir .artifacts/product-journey/<run-id> \
+  --scenario prd-design \
+  --title "Design scenario requires live model authorization" \
+  --summary "No cassette exists for this path, and automated tests must stay no-LLM."
+```
+
+The review gate treats a scenario as attempted when it has captured evidence or
+an explicit blocker, so missing live paths stay visible in the deck and rollup.
+
 For a no-LLM dogfood/demo bundle with representative evidence and findings:
 
 ```sh

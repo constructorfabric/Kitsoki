@@ -36,6 +36,9 @@ states:
             - label: "record finding_kind=... title=... summary=..."
               hint: "record a strength, weakness, issue, or fix for the review deck"
               intent: record
+            - label: "blocker scenario=... title=... summary=..."
+              hint: "mark a scenario attempted but blocked, with optional trace/frame evidence"
+              intent: blocker
             - label: "seed_demo"
               hint: "populate representative evidence and findings for deck review"
               intent: seed_demo
@@ -144,6 +147,50 @@ states:
               on_error: run_created
             - set:
                 status: "finding_recorded"
+      blocker:
+        - target: run_created
+          effects:
+            - set:
+                finding_kind: "issue"
+                finding_title: "{{ slots.title }}"
+                finding_summary: "{{ slots.summary }}"
+                finding_severity: "high"
+                scenario: "{{ slots.scenario }}"
+                evidence_path: "{{ slots.evidence_path ?? '' }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                status: "recording_blocker"
+            - invoke: host.run
+              id: record_product_journey_blocker
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --record-blocker
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --scenario
+                  - "{{ slots.scenario }}"
+                  - --title
+                  - "{{ slots.title }}"
+                  - --summary
+                  - "{{ slots.summary }}"
+                  - --evidence-path
+                  - "{{ slots.evidence_path ?? '' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+              on_error: run_created
+            - set:
+                status: "blocker_recorded"
       seed_demo:
         - target: run_created
           effects:

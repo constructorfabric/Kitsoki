@@ -59,8 +59,8 @@ Automated tests must stay no-LLM. For exploratory dogfood:
   such as routing, prompt quality, or agent decision quality.
 
 When live/model work is not explicitly authorized, stop at the blocker and
-record the missing evidence or scenario gap. Do not silently substitute a fake
-pass.
+record the missing evidence or scenario gap with `--record-blocker` or the
+story `blocker` intent. Do not silently substitute a fake pass.
 
 ## Scenario Loop
 
@@ -89,6 +89,9 @@ For each scenario in the bundle:
    - `weakness` when the surface is confusing but not clearly broken;
    - `issue` when behavior is incorrect, blocked, or misleading;
    - `fix` only when an actual product/repo fix was made and verified.
+   - use the blocker command when a scenario was genuinely attempted but cannot
+     proceed without live authorization, a missing cassette, unavailable repo
+     state, or another external prerequisite.
 
 Prefer one high-signal finding over many vague notes. Every issue should include
 expected behavior, actual behavior, reproduction context, and the evidence
@@ -106,8 +109,10 @@ state whenever possible:
 3. Submit `record` for each finding:
    `finding_kind`, `title`, `summary`, `scenario`, `severity`,
    `evidence_path`.
-4. Submit `review`.
-5. Submit `validate`.
+4. Submit `blocker` for each attempted scenario that could not capture evidence:
+   `scenario`, `title`, `summary`, `evidence_path`.
+5. Submit `review`.
+6. Submit `validate`.
 
 If you cannot access the story session that owns the run, report the exact
 `tools/product-journey/run.py --attach-evidence` / `--record-finding` commands

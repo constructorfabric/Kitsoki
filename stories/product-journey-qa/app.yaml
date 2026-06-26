@@ -101,6 +101,15 @@ intents:
       scenario: { type: string, required: false }
       severity: { type: string, required: false }
       evidence_path: { type: string, required: false }
+  blocker:
+    description: "Record that a scenario was attempted but blocked before evidence could be captured."
+    examples: ["record blocker", "block scenario", "mark onboarding blocked"]
+    priority: 81
+    slots:
+      scenario: { type: string, required: true }
+      title: { type: string, required: true }
+      summary: { type: string, required: true }
+      evidence_path: { type: string, required: false }
   seed_demo:
     description: "Attach deterministic demo evidence and findings to the current run."
     examples: ["seed demo evidence", "dogfood the demo bundle", "populate demo"]
@@ -127,7 +136,7 @@ intents:
     priority: 10
 
 exports:
-  intents: [start, matrix, refresh_targets, rollup, validate_matrix, attach, record, seed_demo, review, validate, accept, quit, look]
+  intents: [start, matrix, refresh_targets, rollup, validate_matrix, attach, record, blocker, seed_demo, review, validate, accept, quit, look]
 
 root: idle
 

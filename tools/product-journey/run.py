@@ -531,6 +531,7 @@ def build_run_bundle(
         "strength_count": 0,
         "weakness_count": 0,
         "fix_count": 0,
+        "blocked_count": 0,
         "review_status": "not_reviewed",
         "review_passed_checks": 0,
         "review_total_checks": 0,
@@ -845,6 +846,7 @@ def build_scenario_outcomes(run_json: dict, evidence: dict, findings: dict) -> d
             "weakness": sum(1 for item in scenario_findings if item.get("kind") == "weakness"),
             "issue": sum(1 for item in scenario_findings if item.get("kind") == "issue"),
             "fix": sum(1 for item in scenario_findings if item.get("kind") == "fix"),
+            "blocked": sum(1 for item in scenario_findings if item.get("status") == "blocked"),
         }
         if scenario_evidence and len(validated) == len(scenario_evidence):
             evidence_status = "validated"
@@ -857,6 +859,8 @@ def build_scenario_outcomes(run_json: dict, evidence: dict, findings: dict) -> d
 
         if counts["fix"]:
             outcome = "fix_recorded"
+        elif counts["blocked"]:
+            outcome = "blocked"
         elif counts["issue"]:
             outcome = "issue_found"
         elif counts["weakness"]:
@@ -899,9 +903,10 @@ def build_scenario_outcomes(run_json: dict, evidence: dict, findings: dict) -> d
         "summary": {
             "scenarios": len(outcomes),
             "started": sum(1 for item in outcomes if item["outcome"] != "not_started"),
-            "with_findings": sum(1 for item in outcomes if sum(item["finding_counts"].values()) > 0),
+            "with_findings": sum(1 for item in outcomes if sum(item["finding_counts"][kind] for kind in ["strength", "weakness", "issue", "fix"]) > 0),
             "with_issues": sum(1 for item in outcomes if item["finding_counts"]["issue"] or item["finding_counts"]["weakness"]),
             "with_fixes": sum(1 for item in outcomes if item["finding_counts"]["fix"]),
+            "blocked": sum(1 for item in outcomes if item["finding_counts"]["blocked"]),
             "fully_validated": sum(1 for item in outcomes if item["evidence_status"] == "validated"),
         },
     }
@@ -917,6 +922,7 @@ def render_scenario_outcomes(outcomes: dict) -> str:
         f"- With findings: {outcomes['summary']['with_findings']}",
         f"- With issues or weaknesses: {outcomes['summary']['with_issues']}",
         f"- With fixes: {outcomes['summary']['with_fixes']}",
+        f"- Blocked: {outcomes['summary'].get('blocked', 0)}",
         "",
     ]
     for item in outcomes["items"]:
@@ -928,7 +934,7 @@ def render_scenario_outcomes(outcomes: dict) -> str:
             f"- Story: `{item['primary_story']}`",
             f"- Evidence: {item['present_evidence_count']} / {item['required_evidence_count']} ({item['evidence_status']})",
             f"- Outcome: `{item['outcome']}`",
-            f"- Findings: strength={item['finding_counts']['strength']}, weakness={item['finding_counts']['weakness']}, issue={item['finding_counts']['issue']}, fix={item['finding_counts']['fix']}",
+            f"- Findings: strength={item['finding_counts']['strength']}, weakness={item['finding_counts']['weakness']}, issue={item['finding_counts']['issue']}, fix={item['finding_counts']['fix']}, blocked={item['finding_counts'].get('blocked', 0)}",
             "",
         ])
         for finding in item["findings"]:
@@ -956,6 +962,13 @@ def build_execution_plan(run_json: dict, evidence: dict) -> dict:
             f"--notes \"{evidence_capture_hint(item['kind'])}\""
             for item in evidence_items
         ]
+        record_blocker_command = (
+            "python3 tools/product-journey/run.py --record-blocker "
+            f"--run-dir {run_dir_arg} "
+            f"--scenario {scenario['id']} "
+            "--title <blocker-title> --summary <why-this-scenario-could-not-be-captured> "
+            "--evidence-path <trace-or-frame-path>"
+        )
         steps.append({
             "order": index,
             "scenario": scenario["id"],
@@ -981,6 +994,7 @@ def build_execution_plan(run_json: dict, evidence: dict) -> dict:
             ],
             "success_criteria": scenario["success_criteria"],
             "attach_commands": attach_commands,
+            "record_blocker_command": record_blocker_command,
         })
 
     return {
@@ -995,6 +1009,7 @@ def build_execution_plan(run_json: dict, evidence: dict) -> dict:
         "steps": steps,
         "finalize_commands": [
             f"python3 tools/product-journey/run.py --record-finding --run-dir {run_dir_arg} --finding-kind <strength|weakness|issue|fix> --title <title> --summary <summary>",
+            f"python3 tools/product-journey/run.py --record-blocker --run-dir {run_dir_arg} --scenario <scenario> --title <title> --summary <summary>",
             f"python3 tools/product-journey/run.py --review-run --run-dir {run_dir_arg}",
             f"python3 tools/product-journey/run.py --validate-run --run-dir {run_dir_arg}",
         ],
@@ -1102,6 +1117,13 @@ def build_driver_plan(run_json: dict, evidence: dict, execution_plan: dict) -> d
                 f"--scenario {scenario_id} "
                 "--title <title> --summary <summary> --evidence-path <path-or-retained-id>"
             ),
+            "record_blocker_command": step.get("record_blocker_command", (
+                "python3 tools/product-journey/run.py --record-blocker "
+                f"--run-dir {run_dir_arg} "
+                f"--scenario {scenario_id} "
+                "--title <blocker-title> --summary <why-this-scenario-could-not-be-captured> "
+                "--evidence-path <trace-or-frame-path>"
+            )),
         })
     return {
         "run_id": run_json["run_id"],
@@ -1157,6 +1179,8 @@ def render_driver_plan(plan: dict) -> str:
             lines.append(f"```sh\n{command}\n```")
         lines.extend(["", "### Finding Command", ""])
         lines.append(f"```sh\n{scenario['record_finding_command']}\n```")
+        lines.extend(["", "### Blocker Command", ""])
+        lines.append(f"```sh\n{scenario['record_blocker_command']}\n```")
         lines.extend(["", "### Success Criteria", ""])
         for criterion in scenario["success_criteria"]:
             lines.append(f"- {criterion}")
@@ -1255,6 +1279,8 @@ def render_execution_plan(plan: dict) -> str:
         lines.extend(["", "### Attach Commands", ""])
         for command in step["attach_commands"]:
             lines.append(f"```sh\n{command}\n```")
+        lines.extend(["", "### Blocker Command", ""])
+        lines.append(f"```sh\n{step['record_blocker_command']}\n```")
         lines.extend(["", "### Success Criteria", ""])
         for criterion in step["success_criteria"]:
             lines.append(f"- {criterion}")
@@ -1327,6 +1353,7 @@ def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None)
         "weakness": sum(1 for item in finding_items if item.get("kind") == "weakness"),
         "issue": sum(1 for item in finding_items if item.get("kind") == "issue"),
         "fix": sum(1 for item in finding_items if item.get("kind") == "fix"),
+        "blocked": sum(1 for item in finding_items if item.get("status") == "blocked"),
     }
     findings["summary"] = finding_summary
     metrics = {
@@ -1345,6 +1372,7 @@ def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None)
         "weakness_count": finding_summary["weakness"],
         "issue_count": finding_summary["issue"],
         "fix_count": finding_summary["fix"],
+        "blocked_count": finding_summary["blocked"],
         "review_status": review.get("status", "not_reviewed"),
         "review_passed_checks": review.get("summary_counts", {}).get("passed", 0),
         "review_total_checks": review.get("summary_counts", {}).get("total", 0),
@@ -1435,8 +1463,8 @@ def record_finding(
 ) -> None:
     if kind not in {"strength", "weakness", "issue", "fix"}:
         raise SystemExit("Finding kind must be strength, weakness, issue, or fix")
-    if status not in {"open", "fixed", "observed", "validated"}:
-        raise SystemExit("Finding status must be open, fixed, observed, or validated")
+    if status not in {"open", "fixed", "observed", "validated", "blocked"}:
+        raise SystemExit("Finding status must be open, fixed, observed, validated, or blocked")
     run_json = read_json(run_dir / "run.json")
     known_scenarios = {scenario["id"] for scenario in run_json["scenarios"]}
     if scenario_id and scenario_id not in known_scenarios:
@@ -1459,6 +1487,29 @@ def record_finding(
     items.append(item)
     write_json(findings_path, findings)
     update_derived_artifacts(run_dir, publish_deck=publish_deck)
+
+
+def record_blocker(
+    run_dir: Path,
+    scenario_id: str,
+    title: str,
+    summary: str,
+    evidence_path: str,
+    publish_deck: Optional[Path],
+) -> None:
+    if not scenario_id:
+        raise SystemExit("--record-blocker requires --scenario")
+    record_finding(
+        run_dir,
+        "issue",
+        title,
+        summary,
+        scenario_id,
+        "high",
+        evidence_path,
+        "blocked",
+        publish_deck,
+    )
 
 
 def seed_demo_evidence(run_dir: Path, publish_deck: Optional[Path]) -> dict:
@@ -1545,6 +1596,21 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
     playback_items = [item for item in media_manifest["items"] if item["playback"]]
     finding_items = findings.get("items", [])
     finding_kinds = {item.get("kind") for item in finding_items}
+    blocked_scenarios = {
+        item.get("scenario", "")
+        for item in finding_items
+        if item.get("status") == "blocked" and item.get("scenario")
+    }
+    attempted_scenarios = {
+        item.get("scenario", "")
+        for item in present_items
+        if item.get("scenario")
+    } | blocked_scenarios
+    missing_attempts = [
+        scenario.get("id", "")
+        for scenario in run_json.get("scenarios", [])
+        if scenario.get("id", "") not in attempted_scenarios
+    ]
     scenario_outcomes = build_scenario_outcomes(run_json, evidence, findings)
 
     checks = [
@@ -1559,6 +1625,12 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
             "status": "pass" if len(run_json.get("scenarios", [])) >= 1 and len(evidence_items) >= len(run_json.get("scenarios", [])) else "fail",
             "summary": "Scenario and evidence contracts are present.",
             "detail": f"scenarios={len(run_json.get('scenarios', []))}, evidence_slots={len(evidence_items)}",
+        },
+        {
+            "id": "scenario-attempts",
+            "status": "pass" if not missing_attempts else "fail",
+            "summary": "Every scenario has captured evidence or an explicit blocker.",
+            "detail": ", ".join(missing_attempts),
         },
         {
             "id": "captured-evidence",
@@ -1789,6 +1861,15 @@ def validate_run_bundle(run_dir: Path) -> dict:
             "execution-plan.json step count does not match run.json scenarios",
             f"steps={len(execution_steps)}, scenarios={len(scenarios)}",
         )
+    if execution_plan:
+        missing_step_keys = [
+            f"{step.get('scenario', f'step-{index}')}/{key}"
+            for index, step in enumerate(execution_steps, start=1)
+            for key in schema["execution_plan"]["step_required"]
+            if key not in step
+        ]
+        if missing_step_keys:
+            add_validation_issue(issues, "error", "execution-plan-step-required-keys", "execution-plan.json steps are missing required keys", ", ".join(missing_step_keys))
     if driver_plan and len(driver_scenarios) != len(scenarios):
         add_validation_issue(
             issues,
@@ -1797,6 +1878,15 @@ def validate_run_bundle(run_dir: Path) -> dict:
             "driver-plan.json scenario count does not match run.json scenarios",
             f"scenarios={len(driver_scenarios)}, run.json={len(scenarios)}",
         )
+    if driver_plan:
+        missing_driver_scenario_keys = [
+            f"{scenario.get('scenario', f'driver-scenario-{index}')}/{key}"
+            for index, scenario in enumerate(driver_scenarios, start=1)
+            for key in schema["driver_plan"]["scenario_required"]
+            if key not in scenario
+        ]
+        if missing_driver_scenario_keys:
+            add_validation_issue(issues, "error", "driver-plan-scenario-required-keys", "driver-plan.json scenarios are missing required keys", ", ".join(missing_driver_scenario_keys))
     if agent_brief and len(brief_scenarios) != len(scenarios):
         add_validation_issue(
             issues,
@@ -2263,6 +2353,7 @@ def summarize_run_for_rollup(run_dir: Path) -> dict:
         "weakness_count": finding_summary.get("weakness", metrics.get("weakness_count", 0)),
         "issue_count": finding_summary.get("issue", metrics.get("issue_count", 0)),
         "fix_count": finding_summary.get("fix", metrics.get("fix_count", 0)),
+        "blocked_count": finding_summary.get("blocked", metrics.get("blocked_count", 0)),
         "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
         "scenario_outcomes": outcomes.get("items", []),
         "scenario_outcomes_summary": outcomes.get("summary", {}),
@@ -2285,6 +2376,7 @@ def aggregate_scenario_outcomes(runs: list[dict]) -> list[dict]:
                 "weakness_count": 0,
                 "issue_count": 0,
                 "fix_count": 0,
+                "blocked_count": 0,
                 "outcomes": {},
             })
             finding_counts = outcome.get("finding_counts", {})
@@ -2295,7 +2387,8 @@ def aggregate_scenario_outcomes(runs: list[dict]) -> list[dict]:
             row["weakness_count"] += finding_counts.get("weakness", 0)
             row["issue_count"] += finding_counts.get("issue", 0)
             row["fix_count"] += finding_counts.get("fix", 0)
-            row["findings_count"] += sum(finding_counts.values())
+            row["blocked_count"] += finding_counts.get("blocked", 0)
+            row["findings_count"] += sum(finding_counts.get(kind, 0) for kind in ["strength", "weakness", "issue", "fix"])
             outcome_name = outcome.get("outcome", "unknown")
             row["outcomes"][outcome_name] = row["outcomes"].get(outcome_name, 0) + 1
     return [by_scenario[key] for key in sorted(by_scenario)]
@@ -2321,6 +2414,7 @@ def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
         "weakness_count": sum(run["weakness_count"] for run in runs),
         "issue_count": sum(run["issue_count"] for run in runs),
         "fix_count": sum(run["fix_count"] for run in runs),
+        "blocked_count": sum(run.get("blocked_count", 0) for run in runs),
         "scenario_outcomes": len(scenario_outcomes),
         "scenario_outcomes_with_findings": sum(1 for row in scenario_outcomes if row["findings_count"] > 0),
     }
@@ -2351,7 +2445,7 @@ def render_rollup_summary(rollup: dict) -> str:
         f"- Reviewed runs: {summary['reviewed_runs']}",
         f"- Ready runs: {summary['ready_runs']}",
         f"- Evidence present: {summary['present_evidence_count']} / {summary['required_evidence_count']}",
-        f"- Findings: {summary['findings_count']} (strengths {summary['strength_count']}, weaknesses {summary['weakness_count']}, issues {summary['issue_count']}, fixes {summary['fix_count']})",
+        f"- Findings: {summary['findings_count']} (strengths {summary['strength_count']}, weaknesses {summary['weakness_count']}, issues {summary['issue_count']}, fixes {summary['fix_count']}, blocked {summary.get('blocked_count', 0)})",
         f"- Scenario outcome rows: {summary['scenario_outcomes']} ({summary['scenario_outcomes_with_findings']} with findings)",
         "",
         "## Runs",
@@ -2381,7 +2475,7 @@ def render_rollup_summary(rollup: dict) -> str:
                 f"- Scenario: `{row['scenario']}`",
                 f"- Runs: {row['runs']}",
                 f"- Evidence: {row['present_evidence_count']} / {row['required_evidence_count']}",
-                f"- Findings: {row['findings_count']} (strengths {row['strength_count']}, weaknesses {row['weakness_count']}, issues {row['issue_count']}, fixes {row['fix_count']})",
+                f"- Findings: {row['findings_count']} (strengths {row['strength_count']}, weaknesses {row['weakness_count']}, issues {row['issue_count']}, fixes {row['fix_count']}, blocked {row.get('blocked_count', 0)})",
                 f"- Outcomes: {outcome_counts or '(none)'}",
                 "",
             ])
@@ -2400,7 +2494,8 @@ def render_rollup_deck(rollup: dict) -> dict:
         f"Strengths: {summary['strength_count']}\n"
         f"Weaknesses: {summary['weakness_count']}\n"
         f"Issues: {summary['issue_count']}\n"
-        f"Fixes: {summary['fix_count']}"
+        f"Fixes: {summary['fix_count']}\n"
+        f"Blocked: {summary.get('blocked_count', 0)}"
     )
     scenario_lines = [
         f"{row['scenario']}: evidence {row['present_evidence_count']}/{row['required_evidence_count']}, findings {row['findings_count']}, outcomes {', '.join(f'{name}={count}' for name, count in sorted(row['outcomes'].items()))}"
@@ -2558,7 +2653,7 @@ def render_deck(
     outcome_lines = []
     if scenario_outcomes is not None:
         outcome_lines = [
-            f"{item['scenario']}: {item['outcome']} - evidence {item['present_evidence_count']}/{item['required_evidence_count']} - findings {sum(item['finding_counts'].values())}"
+            f"{item['scenario']}: {item['outcome']} - evidence {item['present_evidence_count']}/{item['required_evidence_count']} - findings {sum(item['finding_counts'].get(kind, 0) for kind in ['strength', 'weakness', 'issue', 'fix'])}"
             for item in scenario_outcomes.get("items", [])
         ]
     outcomes_body = "\n".join(outcome_lines) if outcome_lines else "No scenario outcomes generated yet."
@@ -2628,7 +2723,7 @@ def render_deck(
                 "type": "narrative",
                 "eyebrow": "Metrics",
                 "title": "Current evidence",
-                "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nCaptured stages: {metrics.get('captured_stage_count', 0)}\nScenarios: {metrics['scenario_count']}\nEvidence present: {metrics['present_evidence_count']} / {metrics['required_evidence_count']}\nFindings: {metrics.get('findings_count', 0)}\nStrengths: {metrics.get('strength_count', 0)} · Weaknesses: {metrics.get('weakness_count', 0)} · Fixes: {metrics.get('fix_count', 0)}\nProduct bugs found: {metrics['product_bugs_found']}",
+                "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nCaptured stages: {metrics.get('captured_stage_count', 0)}\nScenarios: {metrics['scenario_count']}\nEvidence present: {metrics['present_evidence_count']} / {metrics['required_evidence_count']}\nFindings: {metrics.get('findings_count', 0)}\nStrengths: {metrics.get('strength_count', 0)} · Weaknesses: {metrics.get('weakness_count', 0)} · Fixes: {metrics.get('fix_count', 0)} · Blocked: {metrics.get('blocked_count', 0)}\nProduct bugs found: {metrics['product_bugs_found']}",
                 "narration": "This report distinguishes validated evidence from planned stages.",
             },
             {
@@ -2932,6 +3027,7 @@ def main() -> None:
     )
     parser.add_argument("--attach-evidence", action="store_true", help="Attach one evidence artifact to an existing run bundle")
     parser.add_argument("--record-finding", action="store_true", help="Record one strength, weakness, issue, or fix in an existing run bundle")
+    parser.add_argument("--record-blocker", action="store_true", help="Record an explicit blocked scenario as an issue finding")
     parser.add_argument("--seed-demo-evidence", action="store_true", help="Attach deterministic demo evidence and findings to an existing run bundle")
     parser.add_argument("--review-run", action="store_true", help="Review an existing run bundle for readiness")
     parser.add_argument("--run-dir", default="", help="Existing .artifacts/product-journey/<run-id> directory")
@@ -2957,7 +3053,7 @@ def main() -> None:
     parser.add_argument(
         "--finding-status",
         default="observed",
-        choices=["open", "fixed", "observed", "validated"],
+        choices=["open", "fixed", "observed", "validated", "blocked"],
         help="Finding status for --record-finding",
     )
     parser.add_argument("--json-output", action="store_true", help="Print machine-readable JSON for story/host.run callers")
@@ -3129,6 +3225,48 @@ def main() -> None:
         if publish_deck is not None:
             print(f"Published deck: {publish_deck}")
         append_log(f"Seeded demo evidence for {run_dir.name}")
+        return
+
+    if args.record_blocker:
+        missing = []
+        for flag, value in {
+            "--run-dir": args.run_dir,
+            "--scenario": args.scenario,
+            "--title": args.title,
+            "--summary": args.summary,
+        }.items():
+            if not value:
+                missing.append(flag)
+        if missing:
+            raise SystemExit(f"--record-blocker requires {', '.join(missing)}")
+        publish_deck = DEFAULT_DECK if args.publish_deck else None
+        run_dir = run_dir_from_arg(args.run_dir)
+        record_blocker(run_dir, args.scenario, args.title, args.summary, args.evidence_path, publish_deck)
+        if args.json_output:
+            print(json.dumps({
+                "status": "blocker_recorded",
+                "run_dir": str(run_dir),
+                "scenario": args.scenario,
+                "title": args.title,
+                "deck_path": str(run_dir / "deck.slidey.json"),
+                "execution_plan_path": str(run_dir / "execution-plan.md"),
+                "driver_plan_path": str(run_dir / "driver-plan.md"),
+                "agent_brief_path": str(run_dir / "agent-brief.md"),
+                "media_manifest_path": str(run_dir / "media-manifest.json"),
+                "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
+                "published_deck_path": str(publish_deck) if publish_deck is not None else "",
+            }, sort_keys=True))
+            append_log(f"Recorded blocker for {run_dir.name}: {args.scenario} / {args.title}")
+            return
+        print(f"Recorded blocker: {args.scenario} / {args.title}")
+        print(f"Artifacts: {run_dir}")
+        print(f"Deck: {run_dir / 'deck.slidey.json'}")
+        print(f"Execution plan: {run_dir / 'execution-plan.md'}")
+        print(f"Driver plan: {run_dir / 'driver-plan.md'}")
+        print(f"Agent brief: {run_dir / 'agent-brief.md'}")
+        if publish_deck is not None:
+            print(f"Published deck: {publish_deck}")
+        append_log(f"Recorded blocker for {run_dir.name}: {args.scenario} / {args.title}")
         return
 
     if args.record_finding:
