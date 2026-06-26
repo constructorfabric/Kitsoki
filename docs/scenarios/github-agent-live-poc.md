@@ -122,9 +122,11 @@ A run is acceptable only when:
   border, hold that selected state, animate a computed-style clone out from that
   element's exact location, then return the clone to the source rectangle before
   the tour transitions away. The expanded box must preserve the visible focus
-  surface: dark sources stay dark, and light evidence opened under the dark focus
-  overlay uses the same dark focus treatment instead of flashing as a bright
-  white card. It must also scale uniformly from the source proportions.
+  surface: dark sources stay dark, and light evidence opened on a dark page uses
+  the same dark focus treatment instead of flashing as a bright white card. The
+  annotation helpers must not add a page-wide opacity or blur layer that obscures
+  the source screen; the selected page remains visible behind the outline and
+  zoom panel. It must also scale uniformly from the source proportions.
   Detached restyled overlays or dark-source-to-light-card transitions do not
   satisfy the scenario. Metadata targets such as `dt`/`dd` rows must expand as
   label/value evidence, not as a lone label strip.

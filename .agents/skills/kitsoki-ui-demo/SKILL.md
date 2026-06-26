@@ -68,7 +68,9 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > border on the source element, hold it long enough to read as selected, then
 > animate a computed-style clone outward from that exact source rectangle into
 > focus. When the beat ends, animate the clone back to the source rectangle
-> before moving on. Stamp or verify `sourceMatched`, `selectedBeforeExpand`,
+> before moving on. Do not paint a full-screen opacity/blur layer behind the
+> annotation; the selected page must remain visible, with the glow/panel doing
+> the work. Stamp or verify `sourceMatched`, `selectedBeforeExpand`,
 > `animatedFromSource`, return-to-source markers, and source/final geometry when
 > the zoom is part of the evidence contract; a demo should not ask reviewers to
 > read 12px text from a full-page capture, and a detached restyled card is not
@@ -77,9 +79,10 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > `pnpm -C tools/runstatus exec playwright test readable-zoom-visual --project=chromium`.
 > It captures selected/expanded/returned frames under
 > `.artifacts/readable-zoom-visual-qa/` and fails if a dark source opens as a
-> light card, if light evidence under the dark focus overlay opens as a bright
-> white card instead of the dark focus treatment, if a definition-list metadata
-> target expands as a label-only strip instead of a label/value block, or if the
+> light card, if light evidence on a dark page opens as a bright white card
+> instead of the dark focus treatment, if a definition-list metadata target
+> expands as a label-only strip instead of a label/value block, if a helper
+> reintroduces a page-wide dim/blur mask behind the annotation, or if the
 > expanded rectangle stops using uniform source scaling. For live rrweb deck
 > evidence, helper screenshots and marker
 > metadata are not enough: replay the actual captured logs and sample the zoom

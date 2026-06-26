@@ -123,14 +123,14 @@ export async function makeCaption(page: Page, defaultHoldMs = 5000): Promise<Bea
 export type Spotlight = (selector: string | null) => Promise<void>;
 
 /**
- * Install a portable spotlight + dimming backdrop and return a `spotlight(sel)`
+ * Install a portable, non-obscuring spotlight outline and return a `spotlight(sel)`
  * mover. This is the narration primitive for driving a site OTHER than kitsoki:
  * the kitsoki tour overlay (window.__startTourWithSteps, [data-testid=tour-*])
  * only exists inside the kitsoki SPA, so an external page (e.g. a GitHub issue)
  * is narrated with makeCaption + this, both of which inject plain DOM and work
- * on ANY page. The backdrop dims the page and the box cuts a bright outlined
- * hole over the target element's bounding rect; both are pointer-events:none so
- * they never intercept clicks. Pass null to lift the dim and hide the box.
+ * on ANY page. The outline frames the target element without tinting or blurring
+ * the page beneath it; both helper nodes are pointer-events:none so they never
+ * intercept clicks. Pass null to hide the box.
  */
 export async function makeSpotlight(page: Page): Promise<Spotlight> {
   await page.addStyleTag({
@@ -139,10 +139,10 @@ export async function makeSpotlight(page: Page): Promise<Spotlight> {
     // QA gate consumes must be correct at any WEB_CHAT_PACE, not just watch-speed.
     content:
       `#demo-spot-back{position:fixed;inset:0;z-index:99990;pointer-events:none;` +
-      `box-shadow:inset 0 0 0 4000px rgba(2,6,23,.62);opacity:0;transition:opacity .35s}` +
-      `#demo-spot-back.show{opacity:1}` +
+      `background:transparent;opacity:0;transition:none}` +
+      `#demo-spot-back.show{opacity:0}` +
       `#demo-spot{position:fixed;z-index:99992;pointer-events:none;border-radius:10px;` +
-      `border:3px solid #fbbf24;box-shadow:0 0 0 4000px rgba(2,6,23,.62),0 0 22px 4px rgba(251,191,36,.6);` +
+      `border:3px solid #fbbf24;box-shadow:0 0 0 3px rgba(251,191,36,.28),0 0 22px 4px rgba(251,191,36,.6);` +
       `opacity:0;transition:opacity .3s}` +
       `#demo-spot.show{opacity:1}`,
   });
@@ -238,8 +238,8 @@ export async function makeReadableZoom(page: Page): Promise<ReadableZoom> {
   await page.addStyleTag({
     content:
       `#demo-readable-back{position:fixed;inset:0;z-index:99996;pointer-events:none;` +
-      `background:rgba(2,6,23,.46);backdrop-filter:blur(1.5px);opacity:0;transition:opacity .24s}` +
-      `#demo-readable-back.show{opacity:1}` +
+      `background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;opacity:0;transition:none}` +
+      `#demo-readable-back.show{opacity:0}` +
       `#demo-readable-select{position:fixed;z-index:99998;pointer-events:none;box-sizing:border-box;` +
       `border:3px solid #fbbf24;border-radius:var(--rz-source-radius,10px);opacity:0;` +
       `box-shadow:0 0 0 3px rgba(251,191,36,.25),0 0 30px 8px rgba(251,191,36,.72);` +

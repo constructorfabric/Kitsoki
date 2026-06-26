@@ -439,6 +439,18 @@ function checkRrwebLog(file, step, report, label) {
     report.fail(`${label} file is zero bytes: ${file}`);
     return true;
   }
+  const rawLog = fs.readFileSync(file, "utf8");
+  const staleAnnotationPaint = [
+    [/rgba\(2,\s*6,\s*23,\s*0\.62\)[^"]{0,160}4000px/i, "old spotlight full-screen dark mask"],
+    [/4000px[^"]{0,160}rgba\(2,\s*6,\s*23,\s*0\.62\)/i, "old spotlight full-screen dark mask"],
+    [/backdrop-filter:\s*blur\(1\.5px\)/i, "old readable-zoom backdrop blur"],
+    [/demo-readable-back[^"]{0,280}background:\s*rgba\(2,\s*6,\s*23,\s*0\.46\)/i, "old readable-zoom translucent backdrop"],
+  ]
+    .filter(([pattern]) => pattern.test(rawLog))
+    .map(([, name]) => name);
+  if (staleAnnotationPaint.length > 0) {
+    report.fail(`${label} contains obscuring annotation paint: ${[...new Set(staleAnnotationPaint)].join(", ")}`);
+  }
   const log = readJSONFile(file, report, label);
   if (!log) return true;
   const events = rrwebEvents(log);

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "fs";
 import path from "path";
-import { makeReadableZoom } from "./_helpers/demo.js";
+import { makeReadableZoom, makeSpotlight } from "./_helpers/demo.js";
 import { makeShot, repoRoot } from "./_helpers/server.js";
 
 const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "readable-zoom-visual-qa");
@@ -20,6 +20,21 @@ type ZoomState = {
   panelText: string;
   panelVisible: boolean;
   selectVisible: boolean;
+};
+
+type OverlayPaint = {
+  present: boolean;
+  opacity: string;
+  backgroundColor: string;
+  boxShadow: string;
+  backdropFilter: string;
+  webkitBackdropFilter: string;
+};
+
+type AnnotationPaintState = {
+  spotBackdrop: OverlayPaint;
+  spotBox: OverlayPaint;
+  readableBackdrop: OverlayPaint;
 };
 
 test("readable zoom keeps dark-theme colors and source proportions", async ({ page }) => {
@@ -146,14 +161,22 @@ source: github.com/bsacrobatix/Kitsoki/issues/123</pre>
   `);
 
   await shot(page, "01-source");
+  const spotlight = await makeSpotlight(page);
+  await spotlight("#dark-card");
+  await shot(page, "01b-spotlight-outline");
+  assertNonObscuringAnnotationPaint(await readAnnotationPaintState(page));
+  await spotlight(null);
+
   const zoom = await makeReadableZoom(page);
 
   const cardOpening = zoom("#dark-card", { fontSize: 22, selectHoldMs: 650 });
   await page.waitForTimeout(220);
   await shot(page, "02-card-selected");
+  assertNonObscuringAnnotationPaint(await readAnnotationPaintState(page));
   await cardOpening;
   await page.waitForTimeout(120);
   await shot(page, "03-card-expanded");
+  assertNonObscuringAnnotationPaint(await readAnnotationPaintState(page));
   const cardState = await readZoomState(page, "#dark-card");
   assertDarkSourcePreserved(cardState);
   assertUniformExpansion(cardState);
@@ -263,6 +286,56 @@ async function readZoomState(page: Page, selector: string): Promise<ZoomState> {
   }, selector);
 }
 
+async function readAnnotationPaintState(page: Page): Promise<AnnotationPaintState> {
+  return await page.evaluate(() => {
+    return {
+      spotBackdrop: paint("demo-spot-back"),
+      spotBox: paint("demo-spot"),
+      readableBackdrop: paint("demo-readable-back"),
+    };
+
+    function paint(id: string): OverlayPaint {
+      const el = document.getElementById(id);
+      if (!el) {
+        return {
+          present: false,
+          opacity: "0",
+          backgroundColor: "rgba(0, 0, 0, 0)",
+          boxShadow: "none",
+          backdropFilter: "none",
+          webkitBackdropFilter: "none",
+        };
+      }
+      const style = getComputedStyle(el);
+      return {
+        present: true,
+        opacity: style.opacity,
+        backgroundColor: style.backgroundColor,
+        boxShadow: style.boxShadow,
+        backdropFilter: style.backdropFilter,
+        webkitBackdropFilter: style.getPropertyValue("-webkit-backdrop-filter"),
+      };
+    }
+  });
+}
+
+function assertNonObscuringAnnotationPaint(state: AnnotationPaintState): void {
+  for (const [name, paint] of [
+    ["spot backdrop", state.spotBackdrop],
+    ["readable backdrop", state.readableBackdrop],
+  ] as const) {
+    if (!paint.present) continue;
+    expect(Number(paint.opacity), `${name} must stay visually transparent`).toBeLessThanOrEqual(0.01);
+    expect(isTransparent(paint.backgroundColor), `${name} must not tint the page`).toBeTruthy();
+    expect(isNoBackdropFilter(paint.backdropFilter), `${name} must not blur the page`).toBeTruthy();
+    expect(isNoBackdropFilter(paint.webkitBackdropFilter), `${name} must not blur the page`).toBeTruthy();
+    expect(hasDarkScreenMask(paint.boxShadow), `${name} must not paint a full-screen mask`).toBeFalsy();
+  }
+  if (state.spotBox.present) {
+    expect(hasDarkScreenMask(state.spotBox.boxShadow), "spotlight outline must not dim the page outside the target").toBeFalsy();
+  }
+}
+
 function assertDarkSourcePreserved(state: ZoomState): void {
   expect(state.panelVisible).toBeTruthy();
   expect(state.selectVisible).toBeTruthy();
@@ -288,6 +361,23 @@ function assertDarkFocusSurface(state: ZoomState): void {
   expect(luminance(state.pageBackground)).toBeLessThan(0.08);
   expect(luminance(state.panelBackground)).toBeLessThan(0.08);
   expect(luminance(state.panelColor)).toBeGreaterThan(0.70);
+}
+
+function isTransparent(value: string): boolean {
+  if (!value || value === "transparent") return true;
+  const match = value.match(/rgba?\(([^)]+)\)/);
+  if (!match) return false;
+  const parts = match[1].split(",").map((part) => part.trim());
+  return parts.length >= 4 && Number(parts[3]) <= 0.01;
+}
+
+function isNoBackdropFilter(value: string): boolean {
+  return !value || value === "none" || value === "blur(0px)";
+}
+
+function hasDarkScreenMask(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return /rgba?\(2,\s*6,\s*23/.test(normalized) || /\b[1-9]\d{3}px\b/.test(normalized);
 }
 
 function colorDistance(a: string, b: string): number {

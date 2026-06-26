@@ -40,6 +40,22 @@ type ZoomFrameState = {
   expectedBackground: string;
   expectedColor: string;
   pageBackground: string;
+  annotationPaint: AnnotationPaintState;
+};
+
+type OverlayPaint = {
+  present: boolean;
+  opacity: string;
+  backgroundColor: string;
+  boxShadow: string;
+  backdropFilter: string;
+  webkitBackdropFilter: string;
+};
+
+type AnnotationPaintState = {
+  spotBackdrop: OverlayPaint;
+  spotBox: OverlayPaint;
+  readableBackdrop: OverlayPaint;
 };
 
 test("live GitHub readable zooms replay with correct colors", async ({ page }) => {
@@ -80,6 +96,10 @@ test("live GitHub readable zooms replay with correct colors", async ({ page }) =
           colorDistance(state.panelColor, state.expectedColor),
           `${caseSlug}/${file} zoom ${i + 1} foreground must match selected source; screenshot ${out}`,
         ).toBeLessThan(72);
+        assertNonObscuringAnnotationPaint(
+          state.annotationPaint,
+          `${caseSlug}/${file} zoom ${i + 1}; screenshot ${out}`,
+        );
         if (/job state/i.test(payload.title ?? "")) {
           expect(
             state.panelTextSample.toLowerCase(),
@@ -176,7 +196,34 @@ async function readZoomFrameState(page: Page, payload: NonNullable<RrwebEvent["d
       expectedBackground,
       expectedColor,
       pageBackground: bodyStyle.backgroundColor,
+      annotationPaint: {
+        spotBackdrop: paint("demo-spot-back"),
+        spotBox: paint("demo-spot"),
+        readableBackdrop: paint("demo-readable-back"),
+      },
     };
+    function paint(id: string): OverlayPaint {
+      const el = doc.getElementById(id);
+      if (!el) {
+        return {
+          present: false,
+          opacity: "0",
+          backgroundColor: "rgba(0, 0, 0, 0)",
+          boxShadow: "none",
+          backdropFilter: "none",
+          webkitBackdropFilter: "none",
+        };
+      }
+      const style = doc.defaultView!.getComputedStyle(el);
+      return {
+        present: true,
+        opacity: style.opacity,
+        backgroundColor: style.backgroundColor,
+        boxShadow: style.boxShadow,
+        backdropFilter: style.backdropFilter,
+        webkitBackdropFilter: style.getPropertyValue("-webkit-backdrop-filter"),
+      };
+    }
     function effectiveBackground(el: HTMLElement, foreground: string, explicitFallback: string | undefined): string {
       let current: HTMLElement | null = el;
       while (current) {
@@ -221,10 +268,44 @@ async function readZoomFrameState(page: Page, payload: NonNullable<RrwebEvent["d
   }, payload);
 }
 
+function assertNonObscuringAnnotationPaint(state: AnnotationPaintState, label: string): void {
+  for (const [name, paint] of [
+    ["spot backdrop", state.spotBackdrop],
+    ["readable backdrop", state.readableBackdrop],
+  ] as const) {
+    if (!paint.present) continue;
+    expect(Number(paint.opacity), `${label}: ${name} must stay visually transparent`).toBeLessThanOrEqual(0.01);
+    expect(isTransparent(paint.backgroundColor), `${label}: ${name} must not tint the page`).toBeTruthy();
+    expect(isNoBackdropFilter(paint.backdropFilter), `${label}: ${name} must not blur the page`).toBeTruthy();
+    expect(isNoBackdropFilter(paint.webkitBackdropFilter), `${label}: ${name} must not blur the page`).toBeTruthy();
+    expect(hasDarkScreenMask(paint.boxShadow), `${label}: ${name} must not paint a full-screen mask`).toBeFalsy();
+  }
+  if (state.spotBox.present) {
+    expect(hasDarkScreenMask(state.spotBox.boxShadow), `${label}: spotlight outline must not dim the page outside the target`).toBeFalsy();
+  }
+}
+
 function colorDistance(a: string, b: string): number {
   const ca = rgb(a);
   const cb = rgb(b);
   return Math.sqrt((ca.r - cb.r) ** 2 + (ca.g - cb.g) ** 2 + (ca.b - cb.b) ** 2);
+}
+
+function isTransparent(value: string): boolean {
+  if (!value || value === "transparent") return true;
+  const match = value.match(/rgba?\(([^)]+)\)/);
+  if (!match) return false;
+  const parts = match[1].split(",").map((part) => part.trim());
+  return parts.length >= 4 && Number(parts[3]) <= 0.01;
+}
+
+function isNoBackdropFilter(value: string): boolean {
+  return !value || value === "none" || value === "blur(0px)";
+}
+
+function hasDarkScreenMask(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return /rgba?\(2,\s*6,\s*23/.test(normalized) || /\b[1-9]\d{3}px\b/.test(normalized);
 }
 
 function rgb(value: string): { r: number; g: number; b: number } {
