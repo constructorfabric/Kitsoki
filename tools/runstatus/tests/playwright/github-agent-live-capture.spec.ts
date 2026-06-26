@@ -870,8 +870,34 @@ test("capture live GitHub-agent evidence", async () => {
   fs.mkdirSync(artifactDir, { recursive: true });
 
   const browser: Browser = await chromium.launch({ headless: true });
-  const context: BrowserContext = await browser.newContext({ ...cameraContext(), bypassCSP: true });
+  // Capture GitHub in its dark theme so the evidence matches the dark deck.
+  // GitHub honors prefers-color-scheme for anonymous viewing, so emulating a
+  // dark color scheme renders real dark-theme comment chrome; the readable-zoom
+  // then reproduces those true colors faithfully (no white pop-outs on a dark
+  // deck, and no synthetic recolor).
+  const context: BrowserContext = await browser.newContext({
+    ...cameraContext(),
+    bypassCSP: true,
+    colorScheme: "dark",
+  });
   const page: Page = await context.newPage();
+  // Pin GitHub to its explicit dark theme via the data-color-mode attribute.
+  // GitHub's anonymous dark theme is otherwise driven by @media
+  // (prefers-color-scheme), which does NOT survive rrweb replay — the page would
+  // revert to light at replay while a dark-captured pop-out stayed dark. The
+  // attribute-keyed dark theme ([data-color-mode="dark"]) is baked into the DOM,
+  // so the page and the readable-zoom clone stay dark and consistent in the deck.
+  await page.addInitScript(() => {
+    const pin = () => {
+      const html = document.documentElement;
+      if (!html) return;
+      html.setAttribute("data-color-mode", "dark");
+      html.setAttribute("data-dark-theme", "dark");
+      html.setAttribute("data-light-theme", "dark");
+    };
+    pin();
+    document.addEventListener("DOMContentLoaded", pin);
+  });
   const shot = makeShot(artifactDir);
   const diag = captureDiagnostics(page, artifactDir);
 
@@ -889,6 +915,17 @@ test("capture live GitHub-agent evidence", async () => {
       if (step.waitForText) {
         diag.mark(`step ${step.id}: wait ${step.waitForText}`);
         await page.getByText(step.waitForText, { exact: false }).first().waitFor({ state: "attached", timeout: 30000 });
+      }
+      if (/github\.com/.test(step.url)) {
+        // Re-assert the dark theme after GitHub's boot JS settles, in case it
+        // restored the SSR auto attribute.
+        diag.mark(`step ${step.id}: pin-dark-theme`);
+        await page.evaluate(() => {
+          const html = document.documentElement;
+          html.setAttribute("data-color-mode", "dark");
+          html.setAttribute("data-dark-theme", "dark");
+          html.setAttribute("data-light-theme", "dark");
+        });
       }
       if (step.id === "run-api") {
         diag.mark(`step ${step.id}: style-api-proof`);
