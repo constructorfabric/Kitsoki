@@ -177,8 +177,8 @@
       "title": "Idea → PRD + mockups",
       "rrweb": "assets/dev-story-hybrid/pm-idea.rrweb.json",
       "chapters": "auto",
-      "caption": "Conversation-driven PRD intake on the slidey repo",
-      "narration": "Here the PM drives the intake live: the brief is refined into a PRD and a mockup deck, all replayed deterministically with no model in the loop."
+      "caption": "Conversation-driven PRD intake — the PRD and a feature mockup, rendered inline",
+      "narration": "Here the PM drives the intake live: the brief is refined into a PRD, and the feature mockup the PRD describes is rendered right in the run — a self-contained handout embedded inline — all replayed deterministically with no model in the loop."
     },
     {
       "type": "personas",
