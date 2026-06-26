@@ -167,6 +167,32 @@ func TestTargetURL_AppendsHashQuery(t *testing.T) {
 	}
 }
 
+func TestTargetURL_RouteQueryOverridesHashRoute(t *testing.T) {
+	got, err := TargetURL("http://127.0.0.1:12345", Spec{
+		SessionID: "sid-123",
+		Query: map[string]string{
+			"route":         "/s/sid-123/chat",
+			"visual_region": "media",
+		},
+	})
+	if err != nil {
+		t.Fatalf("TargetURL: %v", err)
+	}
+	if want := "http://127.0.0.1:12345#/s/sid-123/chat?visual_region=media"; got != want {
+		t.Fatalf("TargetURL = %q, want %q", got, want)
+	}
+}
+
+func TestTargetURL_RouteQueryMustBeHashRoute(t *testing.T) {
+	_, err := TargetURL("http://127.0.0.1:12345", Spec{
+		SessionID: "sid-123",
+		Query:     map[string]string{"route": "https://example.test/"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "must start with /") {
+		t.Fatalf("TargetURL error = %v, want route validation", err)
+	}
+}
+
 // TestShot_NoLLMPosture asserts a shot performs NO live harness/agent work:
 // the only endpoint the boot/health/capture path hits on the served handler is
 // GET / (health), and no agent/LLM-shaped path is ever touched. The

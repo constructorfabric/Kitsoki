@@ -31,7 +31,7 @@ operator to point at a slide.
 This slide's CURRENT content (edit it in place at the spec path above):
 
 ```json
-{{ args.scene }}
+{{ args.scene_json|default:"{}" }}
 ```
 
 ## The annotation

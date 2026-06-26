@@ -66,7 +66,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, done_artifact, validate_artifact, llm_verdict, refine_feedback, cycle]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, done_artifact, validate_artifact, fixed_in_commit, llm_verdict, refine_feedback, cycle]
     on_enter:
       # `working_dir` pins the agent to the bugfix worktree even though
       # done's postmortem agent mostly reads upstream artifact text —
@@ -137,6 +137,25 @@ states:
         # lost-work fix is the testing room's stage_all commit; this guard only
         # hardens the open-PR handoff when git IS readable.
 
+      # Capture the committed tip that the issue is about to be closed against.
+      # This is the direct-main equivalent of a PR merge link: the close-out arc
+      # posts it in a stable, parseable `kitsoki-fixed-in` issue comment before
+      # resolving the ticket.
+      - when: "world.workdir != ''"
+        invoke: host.run
+        id: done_fixed_in_commit
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              WT="{{ world.workdir }}"
+              SHA=$(git -C "$WT" rev-parse --short=12 HEAD 2>/dev/null || true)
+              jq -n --arg commit "$SHA" '{commit:$commit}'
+        bind:
+          fixed_in_commit: "stdout_json.commit"
+
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
         with:
@@ -190,6 +209,27 @@ states:
                 title:    "Bug-fix done: {{ world.ticket_id }}"
                 body:     "{{ world.done_artifact.summary_markdown }}"
                 phase_id: "done_{{ world.ticket_id }}"
+            - invoke: iface.ticket.comment
+              with:
+                id: "{{ world.ticket_id }}"
+                thread: "{{ world.thread }}"
+                body: |
+                  Fixed in:
+
+                  - `{{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}` {{ (world.done_artifact.summary_title ?? '') != '' ? world.done_artifact.summary_title : "Bug-fix close-out" }}
+
+                  Verification:
+
+                  - {{ (world.validate_artifact.summary_title ?? '') != '' ? world.validate_artifact.summary_title : "Validation completed" }}
+
+                  <!-- kitsoki-fixed-in
+                  commits:
+                    - {{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}
+                  branch: {{ world.base_branch != '' ? world.base_branch : "main" }}
+                  workdir: {{ world.workdir }}
+                  verified:
+                    - {{ (world.validate_artifact.summary_title ?? '') != '' ? world.validate_artifact.summary_title : "Validation completed" }}
+                  -->
             - invoke: iface.ticket.transition
               with:
                 id: "{{ world.ticket_id }}"

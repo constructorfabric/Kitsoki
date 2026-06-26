@@ -87,6 +87,7 @@ world:
   scene_index:      { type: int,    default: -1 }    # resolved target scene (resolve_scene.star); -1 = none identified
   scene_label:      { type: string, default: "" }    # human label for the targeted slide
   scene:            { type: object, default: {} }    # the targeted scene's current JSON (fed to the reviser)
+  scene_json:       { type: string, default: "" }    # same scene serialized for prompt rendering
   refine_gate:      { type: bool,   default: false } # gate verdict: edit stayed on the targeted slide
   refine_message:   { type: string, default: "" }    # gate-composed summary (reviser's on success; honest note otherwise)
   addressed:        { type: object, default: { items: [] } }  # {items:[{anchor_label, instruction, deck_handle}]}

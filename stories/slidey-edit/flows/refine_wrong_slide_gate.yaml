@@ -31,7 +31,7 @@ host_handlers:
   host.starlark.run:
     by_call:
       resolve_scene:
-        data: { scene_index: 9, scene_label: "Scene 9 · Cat Wrangling", scene: { type: "image", title: "Cat Wrangling" }, scene_count: 35 }
+        data: { scene_index: 9, scene_label: "Scene 9 · Cat Wrangling", scene: { type: "image", title: "Cat Wrangling" }, scene_json: '{"title":"Cat Wrangling","type":"image"}', scene_count: 35 }
       gate_edited_scene:
         data: { ok: false, stray: ["3/card_0"], edited_count: 1, message: "⚠️ That edit touched the wrong slide (3/card_0), not Scene 9 · Cat Wrangling — try again." }
       accumulate_addressed:

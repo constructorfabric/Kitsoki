@@ -6,6 +6,11 @@ review, skeptical operator walkthroughs, and targeted flow hardening. The output
 is either a short QA report in `.context/` or a commit that fixes the story and
 records what was verified.
 
+The local runnable wrapper for this repository is [`tools/story-qa/run.py`](../../tools/story-qa/run.py):
+it summarizes the three project lanes the exploratory QA pass cares about and
+executes the deterministic `gears-rust` verifier through a temporary no-local
+clone when a local checkout is available.
+
 Automated QA must not call a live LLM. Use flow fixtures, recordings, cassettes,
 and stubbed host handlers. Live runs are optional exploratory checks and must be
 explicitly requested.

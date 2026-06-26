@@ -95,6 +95,35 @@ describe("installKitsokiVisualHelper", () => {
     expect(helper!.dirtyRegions()).toEqual(["full", "trace"]);
   });
 
+  it("reports media, deck, and annotation regions for visual MCP deck QA", () => {
+    document.body.innerHTML = `
+      <section data-testid="chat-section">
+        <div data-testid="media-element">
+          <iframe data-testid="media-slideshow-frame"></iframe>
+          <div data-testid="media-annotate-panel">
+            <div data-testid="artifact-annotator"></div>
+          </div>
+        </div>
+      </section>
+    `;
+    visible("[data-testid='chat-section']", { x: 0, y: 0, width: 900, height: 700 });
+    visible("[data-testid='media-element']", { x: 20, y: 80, width: 800, height: 560 });
+    visible("[data-testid='media-slideshow-frame']", { x: 30, y: 90, width: 780, height: 430 });
+    visible("[data-testid='media-annotate-panel']", { x: 30, y: 530, width: 780, height: 120 });
+    visible("[data-testid='artifact-annotator']", { x: 40, y: 540, width: 760, height: 90 });
+
+    const got = installKitsokiVisualHelper()!.observe();
+    expect(got.regions.map((r) => r.id)).toEqual(
+      expect.arrayContaining(["chat", "media", "deck", "annotation"])
+    );
+    expect(got.regions.find((r) => r.id === "deck")?.bbox).toEqual({
+      x: 30,
+      y: 90,
+      width: 780,
+      height: 430,
+    });
+  });
+
   it("falls back to structural handles when no testid exists", () => {
     document.body.innerHTML = `<main><button aria-label="Refresh sessions"></button></main>`;
     visible("button", { x: 1, y: 2, width: 30, height: 24 });

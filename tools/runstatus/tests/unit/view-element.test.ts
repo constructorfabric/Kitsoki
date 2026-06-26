@@ -37,8 +37,22 @@ vi.mock("vue-router", () => ({
   useRoute: () => route,
 }));
 
+const runStoreStub = {
+  embedScope: "",
+  setEmbedView: vi.fn(),
+  submitIntent: vi.fn<() => Promise<void>>(),
+};
+vi.mock("../../src/stores/run.js", () => ({
+  useRunStore: () => runStoreStub,
+}));
+
 beforeEach(() => {
   route.params = {};
+  window.location.hash = "";
+  runStoreStub.embedScope = "";
+  runStoreStub.setEmbedView.mockReset();
+  runStoreStub.submitIntent.mockReset();
+  runStoreStub.submitIntent.mockResolvedValue(undefined);
   dsStub.semanticMap.mockReset();
   dsStub.semanticMap.mockResolvedValue(null);
   dsStub.offpath.mockReset();
@@ -308,6 +322,32 @@ describe("ViewElement", () => {
     w.unmount();
   });
 
+  it("auto-opens the annotator when visual_annotate is requested in the hash query", async () => {
+    window.location.hash = "#/s/sess-1/chat?visual_annotate=1";
+    dsStub.semanticMap.mockResolvedValue(SIDECAR);
+    const w = renderWithSession({
+      Kind: "media",
+      MediaHandle: "slidey-edit#1",
+      MediaKind: "slideshow",
+    });
+    await flushPromises();
+    expect(w.find('[data-testid="media-annotate-panel"]').exists()).toBe(true);
+    expect(w.find('[data-testid="artifact-annotator"]').exists()).toBe(true);
+    w.unmount();
+  });
+
+  it("auto-opens only the matching media handle when visual_annotate names a handle", async () => {
+    window.location.hash = "#/s/sess-1/chat?visual_annotate=other%231";
+    const w = renderWithSession({
+      Kind: "media",
+      MediaHandle: "slidey-edit#1",
+      MediaKind: "slideshow",
+    });
+    await flushPromises();
+    expect(w.find('[data-testid="media-annotate-panel"]').exists()).toBe(false);
+    w.unmount();
+  });
+
   it("media unknown MIME renders a labeled <a> download link", () => {
     const w = render({
       Kind: "media",
@@ -423,8 +463,12 @@ describe("ViewElement", () => {
     await w.find('[data-testid="media-annotate"]').trigger("click");
     await flushPromises();
     // Click a marker → SemanticOverlay emits → ArtifactAnnotator emits anchor →
-    // ViewElement dispatches it via ds.offpath with the serialized anchor.
+    // ViewElement stages it in the composer; Send dispatches it via ds.offpath
+    // with the serialized anchor.
     await w.find('[data-testid="so-marker-1/card_0"]').trigger("click");
+    await flushPromises();
+    expect(w.find('[data-testid="media-annotate-composer"]').exists()).toBe(true);
+    await w.find('[data-testid="media-annotate-send"]').trigger("click");
     await flushPromises();
     expect(dsStub.offpath).toHaveBeenCalledTimes(1);
     const [sid, , , anchor] = dsStub.offpath.mock.calls[0];

@@ -58,6 +58,8 @@ const props = defineProps<{
    * `mediaHandle` (correct when the media itself is an image).
    */
   posterHandle?: string;
+  /** Use the producer's live embedded picker instead of sidecar/poster overlay. */
+  liveEmbed?: boolean;
   /** The route the capture happens on (rides on the emitted anchor). */
   route?: string;
   /** Optional recorded rrweb events for the rrweb kind (else fetched lazily). */
@@ -255,7 +257,7 @@ let _teardownPick: (() => void) | null = null;
 /** The live-embed substrate is used for a `slidey` deck — a multi-scene producer
  *  that speaks the embed protocol on its own live surface. The poster/overlay and
  *  iframe+picker branches remain for non-embed slidey-mapped artifacts. */
-const useLiveEmbed = computed<boolean>(() => props.mediaKind === "slidey");
+const useLiveEmbed = computed<boolean>(() => props.mediaKind === "slidey" && props.liveEmbed === true);
 
 function onEmbedLoad(): void {
   // Ask the deck to enter annotation mode once it has booted.

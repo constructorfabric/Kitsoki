@@ -1564,6 +1564,9 @@ func defaultVisualRegions(kind VisualKind) []VisualRegion {
 		return []VisualRegion{
 			{ID: "full", Label: "Full surface", Description: "The full web surface."},
 			{ID: "chat", Label: "Chat", Description: "Conversation and composer region when visible."},
+			{ID: "media", Label: "Media", Description: "Rendered media artifact region when visible."},
+			{ID: "deck", Label: "Deck", Description: "Rendered slide/deck frame when visible."},
+			{ID: "annotation", Label: "Annotation", Description: "Open artifact annotation panel when visible."},
 			{ID: "trace", Label: "Trace", Description: "Trace/timeline region when visible."},
 		}
 	}

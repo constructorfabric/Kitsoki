@@ -1,10 +1,10 @@
 # Tooling: `story-qa` — a Claude agent that QAs a story by using it
 
-**Status:** Draft v1. Not implemented as proposed. The current repo has the
-MCP studio substrate and a reusable human-run story QA guide in
-`docs/stories/story-qa.md`, plus separate `kitsoki-ui-qa` / `kitsoki-ui-review`
-skills. It does not yet have a `.agents/skills/story-qa/` agent that takes a
-persona + scenario and drives a story through MCP studio turn-by-turn.
+**Status:** Draft v1. Partially implemented locally. The current repo has the
+MCP studio substrate, a reusable human-run story QA guide in
+`docs/stories/story-qa.md`, and a new `.agents/skills/story-qa/` scaffold plus
+`tools/story-qa/run.py` wrapper. The remaining gap is the full live MCP turn-by-
+turn loop and its scenario/report automation.
 **Kind:**   tooling (agent skill)
 **Epic:**   [story-qa-agent.md](story-qa-agent.md) (slice 4)
 

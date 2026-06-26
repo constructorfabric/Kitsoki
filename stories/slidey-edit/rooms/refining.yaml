@@ -17,7 +17,7 @@ states:
 
   refining:
     description: "Refining the scene behind the annotation anchor."
-    relevant_world: [annotation, refine_feedback, refine_result, deck, addressed, cycle, deck_handle, current_scene, scene_index, scene_label, refine_gate]
+    relevant_world: [annotation, refine_feedback, refine_result, deck, addressed, cycle, deck_handle, current_scene, scene_index, scene_label, scene_json, refine_gate]
     view:
       - heading: "Slidey deck editor · refining"
       - kv:
@@ -53,6 +53,7 @@ states:
           scene_index: scene_index
           scene_label: scene_label
           scene:       scene
+          scene_json:  scene_json
         on_error: reviewing
 
       - invoke: host.agent.task
@@ -73,6 +74,7 @@ states:
               scene_index:     "{{ world.scene_index }}"
               scene_label:     "{{ world.scene_label }}"
               scene:           "{{ world.scene }}"
+              scene_json:      "{{ world.scene_json }}"
         bind:
           refine_result: submitted
         on_error: reviewing
@@ -148,6 +150,7 @@ states:
                 current_scene:   ""
                 scene_index:     -1
                 scene:           {}
+                scene_json:      ""
                 scene_label:     ""
                 refine_gate:     false
                 refine_message:  ""

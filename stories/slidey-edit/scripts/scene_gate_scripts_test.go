@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	starlarkhost "kitsoki/internal/host/starlark"
@@ -67,6 +68,10 @@ func TestResolveScene_ViewedSceneWins(t *testing.T) {
 	// to edit. Proves the reviser would receive THIS slide's content.
 	if title, _ := scene["title"].(string); title != "Cat Wrangling" {
 		t.Fatalf("scene 9 title = %q, want \"Cat Wrangling\"", title)
+	}
+	sceneJSON, _ := out["scene_json"].(string)
+	if sceneJSON == "" || !strings.Contains(sceneJSON, `"Cat Wrangling"`) {
+		t.Fatalf("scene_json = %q, want serialized scene content", sceneJSON)
 	}
 }
 

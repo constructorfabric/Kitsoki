@@ -43,6 +43,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -94,6 +95,10 @@ type Spec struct {
 	// Query appends SPA query parameters to the hash route. It is intentionally
 	// route-agnostic so callers can deep-link browser affordances like focused
 	// chat context without teaching webshot about those features.
+	//
+	// The reserved key "route" overrides the hash route itself. This lets MCP
+	// callers screenshot a live session's drive/chat/review surface (for example
+	// "/s/<id>/chat") without adding a new tool for every SPA route.
 	Query map[string]string
 
 	// AssertText, when non-empty, asks the browser helper to verify each string
@@ -284,16 +289,28 @@ func TargetURL(base string, spec Spec) (string, error) {
 	}
 	// Hash routing lives in the fragment; build it explicitly so url.Parse does
 	// not swallow the SPA route into Path.
-	if spec.live() {
+	q := url.Values{}
+	routeOverride := ""
+	if len(spec.Query) > 0 {
+		for k, v := range spec.Query {
+			if k == "route" {
+				routeOverride = v
+				continue
+			}
+			q.Set(k, v)
+		}
+	}
+	if routeOverride != "" {
+		if !strings.HasPrefix(routeOverride, "/") {
+			return "", fmt.Errorf("webshot: route query override must start with / (got %q)", routeOverride)
+		}
+		u.Fragment = routeOverride
+	} else if spec.live() {
 		u.Fragment = "/s/" + spec.SessionID
 	} else {
 		u.Fragment = "/"
 	}
-	if len(spec.Query) > 0 {
-		q := url.Values{}
-		for k, v := range spec.Query {
-			q.Set(k, v)
-		}
+	if len(q) > 0 {
 		u.Fragment += "?" + q.Encode()
 	}
 	return u.String(), nil

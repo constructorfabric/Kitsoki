@@ -1,0 +1,53 @@
+{
+  "program": "Product journey evaluator",
+  "targets": [
+    {
+      "id": "gears-rust",
+      "label": "constructorfabric/gears-rust",
+      "stack": "rust",
+      "manifest": "tools/bugfix-bakeoff/external/projects/gears-rust/manifest.yaml",
+      "local_repo_env": "GEARS_RUST_REPO",
+      "run_command": "GEARS_RUST_REPO=<path> make gears-bakeoff",
+      "run_mode": "external-benchmark",
+      "pilot_bugs": ["bug1", "bug4", "bug5", "bug9"],
+      "status": "validated",
+      "notes": "Sister project and first production slice. Uses existing external manifest + suite."
+    },
+    {
+      "id": "postgresql",
+      "label": "postgresql/postgresql",
+      "stack": "c",
+      "local_repo_env": "POSTGRESQL_REPO",
+      "local_repo_path": "/Users/brad/code/postgresql",
+      "validation_command": "bash tools/product-journey/checks/postgresql-oracle.sh",
+      "run_mode": "local-oracle",
+      "status": "validated",
+      "notes": "Perspective validated with a deterministic local oracle built from the real ALTER DOMAIN VALIDATE CONSTRAINT fix."
+    },
+    {
+      "id": "kubernetes",
+      "label": "kubernetes/kubernetes",
+      "stack": "go",
+      "local_repo_env": "KUBERNETES_REPO",
+      "local_repo_path": "/Users/brad/code/kubernetes",
+      "validation_command": "bash tools/product-journey/checks/kubernetes-oracle.sh",
+      "run_mode": "local-oracle",
+      "status": "validated",
+      "notes": "Perspective validated with a deterministic local oracle built from the real nil-Memory guard fix."
+    }
+  ],
+  "perspectives": [
+    {
+      "id": "postgresql",
+      "owner": "sre",
+      "status": "validated",
+      "description": "Evaluate journey behavior for PostgreSQL project structures and docs + issue-to-fix corpus readiness"
+    },
+    {
+      "id": "kubernetes",
+      "owner": "platform",
+      "status": "validated",
+      "description": "Evaluate journey behavior for Kubernetes-style repos (monorepo/docs+CRD complexity)"
+    }
+  ]
+}

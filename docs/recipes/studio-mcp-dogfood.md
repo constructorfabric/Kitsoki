@@ -130,6 +130,31 @@ After any story edit, the driver should run MCP-native deterministic gates:
 - `story.test`
 - `render.tui` or `render.web` when the claim is visual
 
+For visual/web claims, add a visual MCP pass before accepting the result:
+
+1. Open the live web surface, not the generic observer page. Use the reserved
+   `route` query key when the target is a session route:
+
+   ```json
+   {
+     "kind": "web",
+     "session_id": "<session>",
+     "query": {
+       "route": "/s/<session>/chat",
+       "visual_annotate": "1"
+     }
+   }
+   ```
+
+2. Run `visual.observe` and check that the returned regions match the task. A
+   Slidey deck annotation/refine scenario should expose `media`, `deck`, and
+   `annotation` regions, not just `chat` or `trace`.
+3. If the workflow depends on pointing at an element, confirm that the observed
+   surface exposes actionable semantic handles or anchors. A screenshot alone is
+   not sufficient proof for a spatial-edit workflow.
+4. Re-check the downstream prompt/trace for the anchor payload. In Slidey refine
+   flows the target scene should render as JSON, not a Go/template object string.
+
 The supervisor should independently verify the worktree or commit as well. Do
 not accept "the driver says it passed" as the proof. Check the trace, the diff,
 untracked files, and the relevant tests. A common failure pattern is "green on
@@ -258,6 +283,8 @@ The clean rule is:
 - [ ] Every surprising outcome was checked against `session.trace`.
 - [ ] Story edits went through `story.write`, then `story.validate` and
       `story.test`.
+- [ ] Visual claims were checked with `visual.open` / `visual.observe` on the
+      real target route, with task-relevant regions and anchors present.
 - [ ] Live behavior was converted to deterministic flow/cassette coverage when
       useful.
 - [ ] MCP gaps were filed through `issue.create`.

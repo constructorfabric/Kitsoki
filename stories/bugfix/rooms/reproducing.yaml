@@ -177,6 +177,16 @@ states:
           reproduction_artifact: submitted
         on_error: idle
 
+      # NOTE: the DETERMINISTIC GREEN→RED gate does NOT live here. The reproducer
+      # is a host.agent.task whose reproduction_artifact bind + file write are
+      # durable only a TURN LATER (async task; under the collapsed autonomous
+      # chain not even at proposing) — a host.run reading repro_command here sees
+      # a stale/empty artifact. The gate therefore runs in `implementing/on_enter`,
+      # right after the reproducer's RED test is committed as the discrete pre-fix
+      # tip and strictly BEFORE the implementer spends any maker budget. See
+      # implementing.yaml ("DETERMINISTIC GREEN→RED gate") and
+      # .context/green-red-green-repro-gate.md.
+
       # 2. Conditionally: run the LLM judge against the artifact.
       #    Skipped in human mode (operator IS the judge).
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
@@ -251,6 +261,10 @@ states:
                 bf_autostart_attempted: false
                 # Clear the once: bind so on_enter re-runs the agent.
                 reproduction_artifact:  {}
+                # Re-arm the deterministic GREEN→RED gate for the fresh artifact.
+                repro_gate_ran:         false
+                repro_gate_ok:          false
+                repro_gate_summary:     ""
 
       # restart_from re-enters this phase fresh; nothing earlier to
       # rewind to from reproducing.
@@ -267,6 +281,10 @@ states:
                 bf_autostart_attempted: false
                 # Clear the once: bind so on_enter re-runs the agent fresh.
                 reproduction_artifact: {}
+                # Re-arm the deterministic GREEN→RED gate.
+                repro_gate_ran:        false
+                repro_gate_ok:         false
+                repro_gate_summary:    ""
 
       # jump_to skips ahead. Audited via world.unsafe_jumps_made.
       jump_to:

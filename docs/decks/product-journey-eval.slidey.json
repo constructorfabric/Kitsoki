@@ -1,0 +1,165 @@
+{
+    "_comment": "Run scaffolding deck for the exploratory product-journey pilot.",
+    "meta": {
+        "title": "Product Journey Eval",
+        "resolution": {
+            "width": 1920,
+            "height": 1080
+        },
+        "theme": "rose-pine-moon"
+    },
+    "scenes": [
+        {
+            "type": "title",
+            "eyebrow": "Kitsoki evaluation",
+            "title": "Product Journey Eval",
+            "subtitle": "Local harness complete; three project lanes validated; product-site journey remains next",
+            "narration": "Pilot implementation landed in a worktree under .worktrees so the branch stays isolated and reviewable.",
+            "hold": 2000
+        },
+        {
+            "type": "objectives",
+            "title": "Objective status",
+            "items": [
+                {
+                    "label": "Harness objective",
+                    "status": "done",
+                    "detail": "tools/product-journey/run.py gives one local entrypoint and project catalog."
+                },
+                {
+                    "label": "Project lanes",
+                    "status": "done",
+                    "detail": "gears-rust, PostgreSQL, and Kubernetes each have deterministic local oracles."
+                },
+                {
+                    "label": "No-cost automation",
+                    "status": "done",
+                    "detail": "Checks are no-LLM by default and rerunnable from a local checkout."
+                },
+                {
+                    "label": "Proposal cleanup",
+                    "status": "done",
+                    "detail": "Finished epic proposal was removed; durable evidence moved into docs and .context logs."
+                },
+                {
+                    "label": "Product-site journey",
+                    "status": "next",
+                    "detail": "Run the production web build and use it for skeptical-operator walkthroughs."
+                }
+            ],
+            "caption": "Objective state: the local deterministic eval harness is complete; remaining work is the product-site journey.",
+            "narration": "The objective is complete for the local deterministic harness and project-lane oracles. The next product work is to run the site journey itself.",
+            "hold": 2600
+        },
+        {
+            "type": "objectives",
+            "title": "Verified lanes",
+            "items": [
+                {
+                    "label": "gears-rust",
+                    "status": "done",
+                    "detail": "External benchmark fixtures: cached validated pass, with recheck available as an opt-in."
+                },
+                {
+                    "label": "PostgreSQL",
+                    "status": "done",
+                    "detail": "ALTER DOMAIN VALIDATE CONSTRAINT oracle: baseline red, fix green."
+                },
+                {
+                    "label": "Kubernetes",
+                    "status": "done",
+                    "detail": "nil-Memory guard oracle: baseline panic, fix green."
+                }
+            ],
+            "caption": "The report's headline is not 'we ran tools'; it is that every planned lane now has deterministic evidence.",
+            "hold": 2300
+        },
+        {
+            "type": "evidence",
+            "title": "Latest check state",
+            "items": [
+                {
+                    "label": "gears-rust",
+                    "status": "validated",
+                    "detail": "Cached external benchmark pass; heavy recheck stays explicit.",
+                    "refType": "command",
+                    "ref": "GEARS_RUST_RECHECK=1 GEARS_RUST_REPO=<path> make gears-bakeoff",
+                    "note": "opt-in"
+                },
+                {
+                    "label": "PostgreSQL",
+                    "status": "validated",
+                    "detail": "ALTER DOMAIN VALIDATE CONSTRAINT oracle proves baseline red and fix green.",
+                    "refType": "command",
+                    "ref": "bash tools/product-journey/checks/postgresql-oracle.sh"
+                },
+                {
+                    "label": "Kubernetes",
+                    "status": "validated",
+                    "detail": "nil-Memory guard oracle proves baseline panic and fix green.",
+                    "refType": "command",
+                    "ref": "bash tools/product-journey/checks/kubernetes-oracle.sh"
+                }
+            ],
+            "caption": "Each lane has a concrete no-LLM check path; expensive refreshes remain operator-triggered.",
+            "hold": 2200
+        },
+        {
+            "type": "evidence",
+            "title": "Local execution artifacts",
+            "items": [
+                {
+                    "label": "Proposal",
+                    "status": "implemented",
+                    "detail": "The finished epic proposal was removed after the implementation landed.",
+                    "refType": "doc",
+                    "ref": "docs/proposals/product-journey-eval.md"
+                },
+                {
+                    "label": "Run log",
+                    "status": "implemented",
+                    "detail": "Chronological record of harness setup, lane validation, and cleanup.",
+                    "refType": "log",
+                    "ref": ".context/product-journey-runlog.md"
+                },
+                {
+                    "label": "Deck source",
+                    "status": "implemented",
+                    "detail": "Committed Slidey report source for VS Code preview and deterministic rendering.",
+                    "refType": "path",
+                    "ref": "docs/decks/product-journey-eval.slidey.json"
+                }
+            ],
+            "caption": "The finished proposal was removed; durable evidence is now docs plus .context logs.",
+            "hold": 2300
+        },
+        {
+            "type": "objectives",
+            "title": "Next moves",
+            "narration": "The remaining work is operational: run the product site from a production build for A/B journeys, refresh heavy evidence only on demand, and keep transient notes in dot-context.",
+            "hold": 2100,
+            "items": [
+                {
+                    "label": "Site journey",
+                    "status": "next",
+                    "detail": "Stage with make web, then serve 127.0.0.1:7777 for product-site A/B checks."
+                },
+                {
+                    "label": "Fresh evidence",
+                    "status": "next",
+                    "detail": "Re-run individual lanes when needed; keep gears-rust heavy recheck explicit."
+                },
+                {
+                    "label": "Review trail",
+                    "status": "done",
+                    "detail": ".context/product-journey-runlog.md records the chronological job state."
+                },
+                {
+                    "label": "QA summary",
+                    "status": "done",
+                    "detail": ".context/story-qa-run.md carries the latest per-lane verdicts."
+                }
+            ]
+        }
+    ]
+}

@@ -8,5 +8,6 @@ inputs:
 outputs:
   scene_index: { type: int }
   scene:       { type: object }
+  scene_json:  { type: string }
   scene_label: { type: string }
   scene_count: { type: int }

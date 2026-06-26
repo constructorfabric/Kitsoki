@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from "vue";
+import { computed, ref, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRoute } from "vue-router";
 import { installEmbedViewListener } from "../lib/embedView.js";
 import type { ViewElement } from "../types.js";
@@ -30,6 +30,7 @@ function onKeydown(ev: KeyboardEvent): void {
 onMounted(() => {
   _teardownEmbedView = installEmbedViewListener((view) => _run.setEmbedView(view));
   window.addEventListener("keydown", onKeydown);
+  void maybeAutoOpenAnnotate();
 });
 onBeforeUnmount(() => {
   _teardownEmbedView?.();
@@ -211,6 +212,19 @@ async function openAnnotate(): Promise<void> {
   }
   annotateKind.value = kind;
   annotateOpen.value = true;
+}
+
+function shouldAutoOpenAnnotate(): boolean {
+  if (typeof window === "undefined") return false;
+  const raw = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("visual_annotate");
+  if (!raw) return false;
+  return raw === "1" || raw === "true" || raw === mediaHandle.value;
+}
+
+async function maybeAutoOpenAnnotate(): Promise<void> {
+  await nextTick();
+  if (!mediaAnnotatable.value || annotateOpen.value || !shouldAutoOpenAnnotate()) return;
+  await openAnnotate();
 }
 
 function closeAnnotate(): void {
@@ -616,6 +630,7 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
           :media-handle="mediaHandle"
           :media-kind="annotateKind"
           :poster-handle="mediaHandle"
+          :live-embed="isSlideshow"
           @anchor="onAnchor"
         />
 

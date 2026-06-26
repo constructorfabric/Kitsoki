@@ -131,8 +131,9 @@ thought.
   view/navigation/intuitiveness/objective findings. Its frame composer / drive /
   shot / web-screenshot substrate **shipped** as the
   [`mcp-studio` epic](../architecture/mcp-studio.md) (the `kitsoki mcp` studio
-  server + `kitsoki drive`/`shot`/`web-shot`); only the one remaining slice is
-  owned here:
+  server + `kitsoki drive`/`shot`/`web-shot`). A local skill scaffold and
+  `tools/story-qa/run.py` wrapper now exist; the remaining slice is the live
+  persona/scenario drive loop:
   - [`qa-agent-skill.md`](qa-agent-skill.md) (tooling) — the `story-qa`
     subagent: persona + scenario → studio drive loop → scored UX rubric +
     report + screenshots + bug list.

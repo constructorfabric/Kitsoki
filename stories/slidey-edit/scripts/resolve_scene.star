@@ -15,8 +15,8 @@
 #
 # Interface (authoritative in resolve_scene.star.yaml):
 #   inputs:  spec_path (string, required), anchor_ref (string?), current_scene (string?)
-#   outputs: scene_index (int), scene (object), scene_label (string),
-#            scene_count (int)
+#   outputs: scene_index (int), scene (object), scene_json (string),
+#            scene_label (string), scene_count (int)
 
 def _scene_from_ref(ref):
     # "<scene>/<el>" → scene int, or -1 when unparseable.
@@ -36,10 +36,10 @@ def _label_for(idx, scene):
 def main(ctx):
     spec_path = (ctx.inputs.get("spec_path") or "").strip()
     if spec_path == "":
-        return {"scene_index": -1, "scene": {}, "scene_label": "(no deck)", "scene_count": 0}
+        return {"scene_index": -1, "scene": {}, "scene_json": "{}", "scene_label": "(no deck)", "scene_count": 0}
 
     if not ctx.fs.exists(spec_path):
-        return {"scene_index": -1, "scene": {}, "scene_label": "(deck not found)", "scene_count": 0}
+        return {"scene_index": -1, "scene": {}, "scene_json": "{}", "scene_label": "(deck not found)", "scene_count": 0}
 
     deck = json.decode(ctx.fs.read(spec_path))
     scenes = deck.get("scenes") or deck.get("slides") or []
@@ -59,12 +59,13 @@ def main(ctx):
 
     # No usable signal → -1 (the room asks which slide rather than guessing).
     if idx < 0 or idx >= count:
-        return {"scene_index": -1, "scene": {}, "scene_label": "(no slide identified)", "scene_count": count}
+        return {"scene_index": -1, "scene": {}, "scene_json": "{}", "scene_label": "(no slide identified)", "scene_count": count}
 
     scene = scenes[idx]
     return {
         "scene_index": idx,
         "scene": scene,
+        "scene_json": json.encode(scene),
         "scene_label": _label_for(idx, scene),
         "scene_count": count,
     }

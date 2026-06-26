@@ -67,6 +67,9 @@ const ACTION_LIMIT = 80;
 
 const REGION_DEFS = [
   { id: "chat", label: "Chat", selectors: ["[data-testid='chat-section']", "[data-testid='surface-chat']", "[data-testid='chat-transcript']"] },
+  { id: "media", label: "Media", selectors: ["[data-testid='media-element']", "[data-testid='media-slideshow-frame']", "[data-testid='artifact-annotator']"] },
+  { id: "deck", label: "Deck", selectors: ["[data-testid='media-slideshow-frame']", "[data-testid='aa-slidey']", "[data-testid='artifact-annotator']"] },
+  { id: "annotation", label: "Annotation", selectors: ["[data-testid='media-annotate-panel']", "[data-testid='artifact-annotator']", "[data-testid='media-annotate-composer']"] },
   { id: "graph", label: "Graph", selectors: ["[data-testid='surface-graph']", "[data-testid='trace-diagram']"] },
   { id: "trace", label: "Trace", selectors: ["[data-testid='surface-trace']", "[data-testid='trace-timeline']"] },
   { id: "inbox", label: "Inbox", selectors: ["[data-testid='inbox-panel']", "[data-testid='inbox-badge']"] },
