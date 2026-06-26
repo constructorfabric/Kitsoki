@@ -95,6 +95,9 @@ It should say:
 - `Arming: verified`
 - selected cells equal the intended matrix size
 - missing cells equal the live cells that still need model attempts
+- stale result cells are selected result artifacts whose recorded baseline does
+  not match the current manifest; rerun or remove the stale cell before trusting
+  readiness
 - prepared cells equal the no-drive handoffs already written
 - stale prepared cells point at missing prompt/worktree/preflight paths; rerun
   the listed `drive_cell.sh --no-drive` commands before trusting those handoffs

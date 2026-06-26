@@ -120,8 +120,9 @@ When it passes, it also writes a review artifact at
 `.artifacts/external-bakeoff/readiness/gears-rust.md` and a machine-readable
 audit index at `.artifacts/external-bakeoff/readiness/gears-rust.json` with
 preflight status, the selected live-cell commands, existing scored/pending
-cells, missing cells, prepared/stale/unprepared handoff counts, pending-cell
-command templates for true provider/profile blockers, and the next action. It
+cells, missing cells, stale result artifacts, prepared/stale/unprepared handoff
+counts, pending-cell command templates for true provider/profile blockers, and
+the next action. It
 also writes `.artifacts/external-bakeoff/readiness/gears-rust-handoffs.md` and
 `.artifacts/external-bakeoff/readiness/gears-rust-handoffs.json`, which audit
 the prepared MCP prompts before spend. That audit fails if the prompt lacks the

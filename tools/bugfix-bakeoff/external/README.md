@@ -195,7 +195,9 @@ tools/bugfix-bakeoff/external/prepare_handoffs.sh \
 
 The readiness report separates missing scored results from handoff prep:
 `Missing cells` still need `drive_cell.sh --score` or an honest `pending`
-record. `Unprepared cells` need `drive_cell.sh --no-drive` if you want their
+record. `Stale result cells` are selected result artifacts whose recorded
+baseline does not match the current manifest, so they are not counted as scored.
+`Unprepared cells` need `drive_cell.sh --no-drive` if you want their
 prompt/worktree/trace metadata reviewed before spend. `Stale prepared cells`
 have metadata already, but it points at missing prompt/worktree/preflight paths;
 rerun the listed `--no-drive` command before trusting that handoff.

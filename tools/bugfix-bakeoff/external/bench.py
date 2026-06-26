@@ -244,6 +244,8 @@ def pending_cell(m, bug_id, candidate, reason, out, candidates_path=None, treatm
     cell = {
         "project": m["project"]["id"],
         "bug": bug["id"],
+        "baseline_sha": bug.get("baseline_sha", ""),
+        "fix_sha": bug.get("fix_sha", ""),
         "candidate": candidate,
         "treatment": treatment,
         "model": cm.get("model", ""),
@@ -440,6 +442,16 @@ def collect_cells(results_dir):
         cell["_path"] = str(f)
         cells.append(cell)
     return cells, cells_dir
+
+
+def result_stale_reason(cell, bug):
+    expected = bug.get("baseline_sha", "")
+    actual = cell.get("baseline_sha", "")
+    if expected and not actual:
+        return f"missing baseline_sha; expected {expected}"
+    if expected and actual != expected:
+        return f"baseline_sha {actual} != expected {expected}"
+    return ""
 
 
 def collect_prepared(results_dir, project, selected):
@@ -685,10 +697,17 @@ def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=No
     cells, cells_dir = collect_cells(results_dir)
     selected = {(cmd["bug"], cmd["candidate"]) for cmd in plan["commands"]}
     matching = []
+    stale_results = []
+    bugs_by_id = {b.get("id"): b for b in m.get("bugs", [])}
     for cell in cells:
         key = (cell.get("bug"), cell.get("candidate"))
         if key in selected and cell.get("project") == m["project"]["id"]:
-            matching.append(cell)
+            reason = result_stale_reason(cell, bugs_by_id.get(cell.get("bug"), {}))
+            if reason:
+                cell["stale_reason"] = reason
+                stale_results.append(cell)
+            else:
+                matching.append(cell)
     completed = {(c.get("bug"), c.get("candidate")) for c in matching}
     prepared, stale_prepared, prepared_dir = collect_prepared(results_dir, m["project"]["id"], selected)
     prepared_keys = {(p.get("bug"), p.get("candidate")) for p in prepared}
@@ -724,6 +743,7 @@ def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=No
         "selected_cells": len(plan["commands"]),
         "scored_cells": len(matching),
         "missing_cells": len(missing),
+        "stale_result_cells": len(stale_results),
         "prepared_cells": len(prepared),
         "stale_prepared_cells": len(stale_prepared),
         "unprepared_cells": len(unprepared),
@@ -757,6 +777,7 @@ def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=No
         },
         "unprepared": unprepared,
         "missing": missing,
+        "stale_results": stale_results,
         "next_actions": next_actions,
     }
     if markdown:
@@ -785,6 +806,7 @@ def write_readiness_markdown(report, markdown):
         f"Selected cells: {selected_cells}",
         f"Scored cells: {scored_cells}",
         f"Missing cells: {missing_cells}",
+        f"Stale result cells: {results.get('stale_result_cells', 0)}",
         f"Prepared cells: {results.get('prepared_cells', 0)}",
         f"Stale prepared cells: {results.get('stale_prepared_cells', 0)}",
         f"Unprepared cells: {results.get('unprepared_cells', 0)}",
@@ -876,6 +898,15 @@ def write_readiness_markdown(report, markdown):
         lines.append("")
         for m in report["missing"]:
             lines.append(f"- `{m['bug']}` x `{m['candidate']}`: `{m['pending_command']}`")
+    if report.get("stale_results"):
+        lines.extend(["", "## Stale Result Artifacts", ""])
+        lines.append("These selected result artifacts do not match the current manifest baseline and are not counted as scored:")
+        lines.append("")
+        for cell in report["stale_results"]:
+            lines.append(
+                f"- `{cell.get('bug')}` x `{cell.get('candidate')}`: "
+                f"`{cell.get('_path')}` ({cell.get('stale_reason')})"
+            )
     lines.extend(["", "## Next Actions", ""])
     lines.extend(f"- {a}" for a in report.get("next_actions", []))
     markdown.write_text("\n".join(lines) + "\n")
@@ -952,6 +983,8 @@ def score(m, bug, tree, out, candidate, treatment, trace=None, candidates_path=N
             Path(out).write_text(json.dumps({
                 "project": m["project"]["id"],
                 "bug": bug["id"],
+                "baseline_sha": bug.get("baseline_sha", ""),
+                "fix_sha": bug.get("fix_sha", ""),
                 "candidate": candidate,
                 "treatment": treatment,
                 "model": cm.get("model", ""),

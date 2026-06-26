@@ -237,6 +237,14 @@ def test_readiness_reports_missing_and_scored_cells():
         out_cell = results / "cells" / "demo-bug1-ready-kitsoki.json"
         with redirect_stdout(io.StringIO()):
             bench.pending_cell(manifest, "bug1", "ready", "provider blocked", str(out_cell))
+        stale_cell = results / "cells" / "demo-bug2-ready-kitsoki.json"
+        stale_cell.write_text(json.dumps({
+            "project": "demo",
+            "bug": "bug2",
+            "candidate": "ready",
+            "treatment": "kitsoki",
+            "outcome": {"quality": "solved"},
+        }))
         prepared = root / "prepared" / "demo-bug2-ready.json"
         prepared.parent.mkdir(parents=True)
         (root / "cells" / "demo-bug2-ready").mkdir(parents=True)
@@ -285,6 +293,7 @@ def test_readiness_reports_missing_and_scored_cells():
         assert report["results"]["selected_cells"] == 2
         assert report["results"]["scored_cells"] == 1
         assert report["results"]["missing_cells"] == 1
+        assert report["results"]["stale_result_cells"] == 1
         assert report["results"]["prepared_cells"] == 1
         assert report["results"]["stale_prepared_cells"] == 1
         assert report["results"]["unprepared_cells"] == 1
@@ -295,10 +304,13 @@ def test_readiness_reports_missing_and_scored_cells():
         assert "--no-drive" in report["prepared"]["stale"][0]["command"]
         assert "/../" not in report["prepared"]["cells"][0]["_path"]
         assert report["missing"][0]["bug"] == "bug2"
+        assert report["stale_results"][0]["bug"] == "bug2"
+        assert "missing baseline_sha" in report["stale_results"][0]["stale_reason"]
         assert "bench.py pending" in report["missing"][0]["pending_command"]
         text = markdown.read_text()
         assert "Preflight: ready" in text
         assert "Arming: verified" in text
+        assert "Stale result cells: 1" in text
         assert "Prepared cells: 1" in text
         assert "Stale prepared cells: 1" in text
         assert "Unprepared cells: 1" in text
@@ -316,6 +328,8 @@ def test_readiness_reports_missing_and_scored_cells():
         assert "`bug2` x `ready`" in text
         assert "## Pending Alternatives" in text
         assert "--reason \"<reason>\"" in text
+        assert "## Stale Result Artifacts" in text
+        assert "demo-bug2-ready-kitsoki.json" in text
 
 
 def test_readiness_markdown_uses_singular_missing_cell_wording():
