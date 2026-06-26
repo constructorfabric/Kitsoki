@@ -239,25 +239,32 @@ states:
             - set:
                 abandon_reason: "reproducing_cycle_budget_exhausted"
                 status:         "abandoned"
-        - target: reproducing
+        - target: idle
           effects:
             - set:
                 refine_feedback:        "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 reproducing_cycle:      "{{ world.reproducing_cycle + 1 }}"
                 cycle:                  "{{ world.cycle + 1 }}"
+                # Leave and re-enter via idle so reproducing.on_enter fires again.
+                # A same-state reproducing -> reproducing transition only applied
+                # these effects and left the artifact pending with no agent job.
+                bf_autostart_attempted: false
                 # Clear the once: bind so on_enter re-runs the agent.
                 reproduction_artifact:  {}
 
       # restart_from re-enters this phase fresh; nothing earlier to
       # rewind to from reproducing.
       restart_from:
-        - target: reproducing
+        - target: idle
           effects:
             - set:
                 restart_from_stage:    "{{ slots.stage ?? 'reproducing' }}"
                 refine_feedback:       ""
                 reproducing_cycle:     0
                 cycle:                 0
+                # Re-arm idle's auto-start so the fresh reproducing room is
+                # actually entered and its on_enter agent call re-runs.
+                bf_autostart_attempted: false
                 # Clear the once: bind so on_enter re-runs the agent fresh.
                 reproduction_artifact: {}
 

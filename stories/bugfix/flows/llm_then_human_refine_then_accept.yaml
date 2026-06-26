@@ -1,23 +1,15 @@
 # llm_then_human_refine_then_accept — judge_mode=llm_then_human with an
-# LLM verdict that says `refine` (insufficient artifact). The runtime
-# auto-fires `refine` via emit_intent from reproducing.on_enter, which
-# self-transitions back to reproducing and increments the cycle counter.
+# LLM verdict that says `refine` (insufficient artifact).
 #
-# Original two-state behaviour (Wave 1): proceed → _awaiting_reply →
-# judge → emit refine → back to _executing → on_enter re-fires → judge
-# returns refine again → loops until budget. The runtime's cascade made
-# this look like one user turn that produced multiple cycles.
+# Regression for GitHub #27: the merged reproducing room originally handled
+# `refine` as a same-state transition. The effects cleared
+# reproduction_artifact, but on_enter did not re-fire, leaving the room with a
+# pending artifact and no running host.agent.task.
 #
-# Merged-state behaviour (now): refine is a self-transition (target:
-# reproducing from reproducing). The engine deliberately does NOT
-# re-fire on_enter on self-transitions (see machine.go's "newly
-# entered" gate), so the autonomous cascade lands a single cycle per
-# operator turn. That's the property tested here: emit_intent fires
-# refine once, cycle becomes 1.
-#
-# The cycle-budget bound is still enforced (refine_budget_exhaust_*.yaml
-# and budget_exhaust_llm_then_human.yaml cover that). Here we just
-# verify that the emit_intent → refine arc completes a single round-trip.
+# Expected behaviour now: refine exits through idle with auto-start re-armed,
+# so reproducing.on_enter runs again. With the judge stubbed to keep returning
+# refine, the autonomous cascade performs real reproducer reruns until the
+# reproducing budget is exhausted, then exits abandoned for human review.
 
 test_kind: flow
 app: ../app.yaml
@@ -74,15 +66,22 @@ host_handlers:
         confidence: 0.9
 
 turns:
-  # start enters reproducing; on_enter runs the artifact agent, then
-  # the judge agent (binds llm_verdict={verdict:refine,...}), then
-  # emit_intent fires `refine`. The refine arc self-transitions, sets
-  # refine_feedback, and increments reproducing_cycle. Net landing:
-  # reproducing with cycle=1.
+  # start enters reproducing; on_enter runs the artifact agent, then the judge
+  # agent (binds llm_verdict={verdict:refine,...}), then emit_intent fires
+  # `refine`. Each refine must re-enter and dispatch a fresh reproducer task.
+  # With the current budget guard, the fourth reproducer run happens before the
+  # fourth refine verdict sees reproducing_cycle == reproducing_budget and parks
+  # at the human-review/abandoned exit.
   - intent: { name: start, slots: {} }
-    expect_state: reproducing
+    expect_state: __exit__abandoned
+    expect_host_calls:
+      - handler: host.agent.task
+        times: 4
     expect_world:
-      reproducing_cycle: 1
+      reproducing_cycle: 3
       refine_feedback:   "Need a deterministic reproducer rather than a shell trace."
+      abandon_reason:    "reproducing_cycle_budget_exhausted"
+      status:            "abandoned"
 
+expect_terminal: true
 expect_no_errors: true
