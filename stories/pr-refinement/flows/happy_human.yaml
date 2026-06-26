@@ -24,6 +24,17 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.run:
+    by_call:
+      pr_refinement_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/pr-refinement/142/report.md"
+            summary_path: ".artifacts/pr-refinement/142/summary.json"
+            deck_path: ".artifacts/pr-refinement/142/deck.slidey.json"
+            summary: "142 merged at deadbeef."
   # iface.vcs.* → host.git.<op>. prefix-fallback lets one stub cover
   # open_pr (returns url+pr_id), pr_status (returns state+checks+comments),
   # commit (returns ok+sha), push, merge (returns sha).
@@ -85,6 +96,7 @@ turns:
     expect_world:
       status: "merged"
       pr_url: "https://example/pr/142"
+      deck_path: ".artifacts/pr-refinement/142/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true

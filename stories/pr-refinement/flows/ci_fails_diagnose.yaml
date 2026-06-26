@@ -27,6 +27,17 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.run:
+    by_call:
+      pr_refinement_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/pr-refinement/143/report.md"
+            summary_path: ".artifacts/pr-refinement/143/summary.json"
+            deck_path: ".artifacts/pr-refinement/143/deck.slidey.json"
+            summary: "143 merged at feedface."
   # All host.git stub calls return ok=true, but ci_monitoring's call to
   # iface.vcs.pr_status returns state: "failure" — that's what drives
   # the branch into diagnose_executing.
@@ -109,6 +120,7 @@ turns:
     expect_world:
       status: "merged"
       pr_url: "https://example/pr/143"
+      deck_path: ".artifacts/pr-refinement/143/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true

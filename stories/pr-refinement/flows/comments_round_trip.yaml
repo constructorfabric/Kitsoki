@@ -27,6 +27,17 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.run:
+    by_call:
+      pr_refinement_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/pr-refinement/144/report.md"
+            summary_path: ".artifacts/pr-refinement/144/summary.json"
+            deck_path: ".artifacts/pr-refinement/144/deck.slidey.json"
+            summary: "144 merged at cafebabe."
   host.git:
     data:
       ok:    true
@@ -88,6 +99,7 @@ turns:
     expect_state: __exit__merged
     expect_world:
       status: "merged"
+      deck_path: ".artifacts/pr-refinement/144/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true

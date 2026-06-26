@@ -69,6 +69,8 @@ states:
             PR:           "{{ world.pr_id }}"
             "Merge SHA":  '{{ world.merge_sha|default:"(unknown)" }}'
             "PR url":     '{{ world.pr_url|default:"(unknown)" }}'
+            Report:       '{{ world.report_path|default:"(pending)" }}'
+            Deck:         '{{ world.deck_path|default:"(pending)" }}'
       - when: "(world.llm_verdict.verdict ?? '') != ''"
         kv:
           pairs:
@@ -92,7 +94,7 @@ states:
             - label:  "quit"
               hint:   "abandon the pipeline"
               intent: quit
-    relevant_world: [judge_mode, pr_id, pr_url, merge_sha, llm_verdict]
+    relevant_world: [judge_mode, pr_id, pr_url, merge_sha, llm_verdict, report_path, deck_path]
     on_enter:
       - invoke: iface.transport.post
         with:
@@ -107,6 +109,39 @@ states:
           thread:  "{{ world.thread }}"
           state:   merge_awaiting_reply
           body:    "PR {{ world.pr_id }} merged at {{ world.merge_sha }}."
+      - invoke: host.run
+        id: pr_refinement_report
+        with:
+          cmd: python3
+          args:
+            - "stories/pr-refinement/scripts/pr_report.py"
+            - "--ticket-id"
+            - "{{ world.ticket_id }}"
+            - "--ticket-title"
+            - "{{ world.ticket_title }}"
+            - "--feature-branch"
+            - "{{ world.feature_branch }}"
+            - "--pr-id"
+            - "{{ world.pr_id }}"
+            - "--pr-url"
+            - "{{ world.pr_url }}"
+            - "--ci-state"
+            - "{{ world.ci_state }}"
+            - "--ci-failed-checks"
+            - "{{ world.ci_failed_checks }}"
+            - "--pr-comments"
+            - "{{ world.pr_comments }}"
+            - "--pending-comments"
+            - "{{ world.pending_comments }}"
+            - "--diagnose-artifact"
+            - "{{ world.diagnose_artifact }}"
+            - "--merge-sha"
+            - "{{ world.merge_sha }}"
+        bind:
+          report_path:  "stdout_json.report_path"
+          summary_path: "stdout_json.summary_path"
+          deck_path:    "stdout_json.deck_path"
+        on_error: merge_awaiting_reply
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
         id: merge_judge

@@ -67,6 +67,7 @@ app:
 hosts:
   - host.inbox.add
   - host.agent.decide
+  - host.run
 
 # Persona table (agent-split proposal §3.5).
 #
@@ -223,6 +224,9 @@ world:
   # ── Story-level "done" sink for standalone runs / parent handoff ──
   status:           { type: string, default: "open" }  # open | merged | abandoned
   merge_sha:        { type: string, default: "" }
+  report_path:      { type: string, default: "" }
+  summary_path:     { type: string, default: "" }
+  deck_path:        { type: string, default: "" }
 
 # Intent vocabulary.
 intents:

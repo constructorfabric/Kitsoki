@@ -80,6 +80,16 @@ in `app.yaml`'s `world:` block so the child loads standalone for tests.
 | `status` | string | `"merged"` after `@exit:merged`; `"open"` on `@exit:abandoned`. |
 | `cycle` | int | Total diagnose / refine cycles consumed. |
 | `diagnose_artifact` | object | Last CI-failure diagnosis. |
+| `report_path` | string | Markdown PR close-out report under `.artifacts/pr-refinement/<run>/report.md`. |
+| `summary_path` | string | Structured report data consumed by the deterministic Slidey deck generator. |
+| `deck_path` | string | Deterministic Slidey report deck under `.artifacts/pr-refinement/<run>/deck.slidey.json`. |
+
+On merge close-out, `merge_awaiting_reply` invokes
+`stories/pr-refinement/scripts/pr_report.py`. The script consumes only
+typed story world fields and schema-validated artifacts, writes review
+artifacts under `.artifacts/pr-refinement/<run>/`, and builds the
+Slidey deck through `tools/report-deck/deterministic_deck.py`; no LLM
+is asked to draft the deck.
 
 ### Intent surface
 
