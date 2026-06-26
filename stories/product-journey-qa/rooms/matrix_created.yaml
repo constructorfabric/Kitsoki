@@ -1,7 +1,7 @@
 states:
   matrix_created:
     description: "A product-journey GitHub matrix exists; waiting for assignment runs."
-    relevant_world: [seed, matrix_id, matrix_dir, matrix_personas, target_proof_file, deck_path, rollup_path, rollup_deck_path, rollup_markdown_path, rollup_runs_found, rollup_assignments, rollup_reviewed_runs, rollup_ready_runs, rollup_missing_assignment_count, rollup_present_evidence_count, rollup_required_evidence_count, rollup_persona_outcomes, rollup_scenario_outcomes, rollup_driver_journal_rows, rollup_driver_journal_events, rollup_driver_journal_evidence_refs, rollup_driver_journal_blocked_events, rollup_quality_gate_satisfied_runs, rollup_quality_gate_total_runs, rollup_quality_gate_proof_minimum_evidence_count, rollup_quality_gate_minimum_evidence_count, rollup_missing_proof_evidence_rows, rollup_quality_gate_missing_proof_evidence_count, rollup_missing_proof_handoff_summary, validation_status, validation_errors, validation_warnings, validation_issue_summary, status]
+    relevant_world: [seed, matrix_id, matrix_dir, matrix_personas, matrix_target_count, matrix_assignment_count, matrix_scenario_count, matrix_persona_mode, target_proof_file, target_proof_id, target_proof_checked_at, target_proof_passed, target_proof_failed, target_proof_errors, target_proof_ready, deck_path, rollup_path, rollup_deck_path, rollup_markdown_path, rollup_runs_found, rollup_assignments, rollup_reviewed_runs, rollup_ready_runs, rollup_missing_assignment_count, rollup_present_evidence_count, rollup_required_evidence_count, rollup_persona_outcomes, rollup_scenario_outcomes, rollup_driver_journal_rows, rollup_driver_journal_events, rollup_driver_journal_evidence_refs, rollup_driver_journal_blocked_events, rollup_quality_gate_satisfied_runs, rollup_quality_gate_total_runs, rollup_quality_gate_proof_minimum_evidence_count, rollup_quality_gate_minimum_evidence_count, rollup_missing_proof_evidence_rows, rollup_quality_gate_missing_proof_evidence_count, rollup_missing_proof_handoff_summary, validation_status, validation_errors, validation_warnings, validation_issue_summary, status]
     view:
       - banner:
           text: "MATRIX CREATED"
@@ -12,7 +12,10 @@ states:
             Matrix: '{{ world.matrix_id|default:"(pending)" }}'
             Seed: "{{ world.seed }}"
             Personas: "{{ world.matrix_personas }}"
+            Matrix scale: "{{ world.matrix_target_count }} targets; {{ world.matrix_assignment_count }} assignments; {{ world.matrix_scenario_count }} scenarios each; mode {{ world.matrix_persona_mode }}"
             Target proof: '{{ world.target_proof_file|default:"(not refreshed)" }}'
+            Target proof readiness: '{{ world.target_proof_ready|default:"no" }}; {{ world.target_proof_passed }} passed, {{ world.target_proof_failed }} failed, {{ world.target_proof_errors }} errors'
+            Target proof checked: '{{ world.target_proof_checked_at|default:"(not refreshed)" }}'
             Matrix dir: '{{ world.matrix_dir|default:"(pending)" }}'
             Deck: '{{ world.deck_path|default:"(pending)" }}'
             Rollup: '{{ world.rollup_deck_path|default:"(pending)" }}'
@@ -89,6 +92,16 @@ states:
                 matrix_id: "stdout_json.matrix_id"
                 matrix_dir: "stdout_json.matrix_dir"
                 deck_path: "stdout_json.deck_path"
+                matrix_target_count: "stdout_json.target_count"
+                matrix_assignment_count: "stdout_json.assignment_count"
+                matrix_scenario_count: "stdout_json.scenario_count"
+                matrix_persona_mode: "stdout_json.persona_mode"
+                target_proof_id: "stdout_json.target_proof_id"
+                target_proof_checked_at: "stdout_json.target_proof_checked_at"
+                target_proof_passed: "stdout_json.target_proof_passed"
+                target_proof_failed: "stdout_json.target_proof_failed"
+                target_proof_errors: "stdout_json.target_proof_errors"
+                target_proof_ready: "stdout_json.target_proof_ready"
               on_error: matrix_created
             - set:
                 status: "matrix_created"

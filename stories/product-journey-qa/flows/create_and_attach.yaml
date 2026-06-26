@@ -67,6 +67,12 @@ host_handlers:
             assignment_count: 10
             scenario_count: 6
             persona_mode: primary
+            target_proof_id: proof-123
+            target_proof_checked_at: "2026-06-26T00:00:00+00:00"
+            target_proof_passed: 10
+            target_proof_failed: 0
+            target_proof_errors: 0
+            target_proof_ready: "yes"
             target_proof:
               proof_id: proof-123
               created_at: "2026-06-26T00:00:00+00:00"
@@ -332,6 +338,17 @@ turns:
       matrix_id: matrix-123
       matrix_dir: .artifacts/product-journey/matrices/matrix-123
       deck_path: .artifacts/product-journey/matrices/matrix-123/deck.slidey.json
+      matrix_target_count: 10
+      matrix_assignment_count: 10
+      matrix_scenario_count: 6
+      matrix_persona_mode: primary
+      target_proof_id: proof-123
+      target_proof_checked_at: "2026-06-26T00:00:00+00:00"
+      target_proof_passed: 10
+      target_proof_failed: 0
+      target_proof_errors: 0
+      target_proof_ready: "yes"
+    expect_view_matches: "Matrix scale[\\s\\S]*10 targets; 10 assignments; 6 scenarios each; mode[\\s\\S]*primary[\\s\\S]*Target proof readiness[\\s\\S]*yes; 10 passed, 0 failed, 0 errors"
     expect_host_calls:
       - handler: host.run
         args: { call: emit_product_journey_matrix }

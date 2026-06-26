@@ -130,6 +130,16 @@ states:
                 matrix_id: "stdout_json.matrix_id"
                 matrix_dir: "stdout_json.matrix_dir"
                 deck_path: "stdout_json.deck_path"
+                matrix_target_count: "stdout_json.target_count"
+                matrix_assignment_count: "stdout_json.assignment_count"
+                matrix_scenario_count: "stdout_json.scenario_count"
+                matrix_persona_mode: "stdout_json.persona_mode"
+                target_proof_id: "stdout_json.target_proof_id"
+                target_proof_checked_at: "stdout_json.target_proof_checked_at"
+                target_proof_passed: "stdout_json.target_proof_passed"
+                target_proof_failed: "stdout_json.target_proof_failed"
+                target_proof_errors: "stdout_json.target_proof_errors"
+                target_proof_ready: "stdout_json.target_proof_ready"
               on_error: idle
             - set:
                 status: "matrix_created"

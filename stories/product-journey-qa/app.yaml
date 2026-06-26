@@ -15,10 +15,19 @@ world:
   matrix_id:      { type: string, default: "" }
   matrix_dir:     { type: string, default: "" }
   matrix_personas: { type: string, default: "primary" }
+  matrix_target_count: { type: int, default: 0 }
+  matrix_assignment_count: { type: int, default: 0 }
+  matrix_scenario_count: { type: int, default: 0 }
+  matrix_persona_mode: { type: string, default: "" }
   target_proof_id: { type: string, default: "" }
   target_proof_dir: { type: string, default: "" }
   target_proof_file: { type: string, default: "" }
   target_proof_summary: { type: object, default: {} }
+  target_proof_checked_at: { type: string, default: "" }
+  target_proof_passed: { type: int, default: 0 }
+  target_proof_failed: { type: int, default: 0 }
+  target_proof_errors: { type: int, default: 0 }
+  target_proof_ready: { type: string, default: "" }
   rollup_run_dir: { type: string, default: "" }
   rollup_path:    { type: string, default: "" }
   rollup_deck_path: { type: string, default: "" }

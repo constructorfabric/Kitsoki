@@ -6678,13 +6678,22 @@ def main() -> None:
     if args.emit_matrix:
         github_targets_for_matrix = merge_target_proofs(github_targets, load_target_proof(args.target_proof_file))
         matrix_dir, matrix = build_matrix_bundle(github_targets_for_matrix, personas, scenarios, args.seed, args.matrix_personas)
+        target_proof = matrix.get("target_proof", {})
+        target_proof_summary = target_proof.get("summary", {})
+        target_proof_ready = bool(target_proof) and target_proof_summary.get("failed", 0) == 0 and target_proof_summary.get("errors", 0) == 0
         if args.json_output:
             print(json.dumps({
                 "status": "matrix_created",
                 "matrix_id": matrix["matrix_id"],
                 "matrix_dir": str(matrix_dir),
                 "deck_path": str(matrix_dir / "deck.slidey.json"),
-                "target_proof": matrix.get("target_proof", {}),
+                "target_proof": target_proof,
+                "target_proof_id": target_proof.get("proof_id", ""),
+                "target_proof_checked_at": target_proof.get("created_at", ""),
+                "target_proof_passed": target_proof_summary.get("passed", 0),
+                "target_proof_failed": target_proof_summary.get("failed", 0),
+                "target_proof_errors": target_proof_summary.get("errors", 0),
+                "target_proof_ready": "yes" if target_proof_ready else "no",
                 "target_count": matrix["target_count"],
                 "assignment_count": matrix["assignment_count"],
                 "scenario_count": matrix["scenario_count"],
