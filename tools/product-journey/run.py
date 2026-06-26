@@ -28,6 +28,7 @@ PERSONAS = ROOT / "tools" / "product-journey" / "personas.json"
 SCENARIOS = ROOT / "tools" / "product-journey" / "scenarios.json"
 GITHUB_TARGETS = ROOT / "tools" / "product-journey" / "github-targets.json"
 SCHEMA = ROOT / "tools" / "product-journey" / "schema.json"
+DRIVER_AGENT = ROOT / ".agents" / "agents" / "product-journey-qa-driver.md"
 LOG = ROOT / ".context" / "product-journey-runlog.md"
 ARTIFACT_ROOT = ROOT / ".artifacts" / "product-journey"
 MATRIX_ROOT = ARTIFACT_ROOT / "matrices"
@@ -1051,6 +1052,31 @@ def validate_story_driver_contract_bindings(issues: list[dict]) -> None:
         )
 
 
+def validate_driver_agent_contract(issues: list[dict]) -> None:
+    if not DRIVER_AGENT.exists():
+        add_corpus_issue(issues, "error", "driver-agent-contract", "Product journey QA driver agent is missing", str(DRIVER_AGENT))
+        return
+    text = DRIVER_AGENT.read_text(encoding="utf-8")
+    required_tokens = [
+        "last_result.driver_scenarios",
+        "last_result.missing_proof_evidence",
+        "last_result.driver_final_gates",
+        "last_result.next_driver_capture",
+        "last_result.next_driver_attach_command",
+        "last_result.next_driver_blocker_command",
+        "record the honest blocker",
+    ]
+    missing = [token for token in required_tokens if token not in text]
+    if missing:
+        add_corpus_issue(
+            issues,
+            "error",
+            "driver-agent-contract",
+            "Product journey QA driver agent does not describe the MCP-visible driver contract",
+            ", ".join(missing),
+        )
+
+
 def validate_journey_corpus(personas: list[dict], scenarios: list[dict], github_targets: dict) -> dict:
     schema = read_json(SCHEMA)
     issues: list[dict] = []
@@ -1149,6 +1175,7 @@ def validate_journey_corpus(personas: list[dict], scenarios: list[dict], github_
             add_corpus_issue(issues, "warn", "target-bug-query", "GitHub target bug query does not include an explicit bug term or bug label", f"{target_id}: {target.get('bug_query', '')}")
 
     validate_story_driver_contract_bindings(issues)
+    validate_driver_agent_contract(issues)
 
     errors = sum(1 for issue in issues if issue["severity"] == "error")
     warnings = sum(1 for issue in issues if issue["severity"] == "warn")

@@ -30,10 +30,12 @@ world `last_result.driver_scenarios`, `last_result.missing_proof_evidence`, and
 `last_result.driver_final_gates`; those are the MCP-visible copy of the bundle
 contract. Use `last_result.next_driver_capture` to identify the first proof slot
 and `last_result.next_driver_attach_command` as the first attach command when it
-is present, then continue through `missing_proof_evidence`. Do not invent
-missing scenario contracts. If the bundle is missing the
-brief/plan/evidence contract, record that as a blocker finding through the
-product-journey story if a story session exists.
+is present. If that slot was attempted but cannot be captured, use
+`last_result.next_driver_blocker_command` to record the honest blocker, then
+continue through `missing_proof_evidence`. Do not invent missing scenario
+contracts. If the bundle is missing the brief/plan/evidence contract, record
+that as a blocker finding through the product-journey story if a story session
+exists.
 
 ## Transport Discipline
 
