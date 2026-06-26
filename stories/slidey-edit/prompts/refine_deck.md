@@ -46,11 +46,14 @@ The operator's annotation anchor and instruction:
 - Instruction: {{ args.refine_feedback|default:args.annotation.instruction|default:"(none — infer from the anchor)" }}
 
 {% if args.visual.anchor %}
-The capturing surface also attached the live anchor as `args.visual.anchor`
-(the AnnotationAnchor union — `semantic_element` | `region` | `point`). Prefer it
-when present; it is the precise placement the operator drew on the frame.
+The operator pointed at a SPECIFIC element on the LIVE slide — this is the
+authoritative target. PREFER it over everything above.
 
+- Element you must edit: `{{ args.visual.anchor.semantic_element.ref|default:"(see live anchor)" }}` ({{ args.visual.anchor.semantic_element.plugin|default:"slidey" }})
 - Live anchor: {{ args.visual.anchor }}
+
+Edit exactly this element (its ref is `<sceneIndex>/<field>`); it is on the slide
+named above. Do not edit any other element or slide.
 {% endif %}
 
 ## Resolving the anchor → scene element
