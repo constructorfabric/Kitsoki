@@ -8,7 +8,7 @@
 #   fixing     interpretive:  host.agent.task applies one group's minimal fix
 #   verifying  deterministic: host.run re-audits; host.starlark.run computes delta
 #   showcase   deterministic: host.contact_sheet (or host.slidey.render) + host.artifacts_dir
-#   done       gallery of before/after artifacts
+#   done       deterministic: report/deck summary plus gallery of before/after artifacts
 
 app:
   id: ui-fix
@@ -58,6 +58,14 @@ world:
   fixed:           { type: object,  default: {} }  # { items:[{group, media_handle}] }
   skipped:         { type: object,  default: {} }  # { items:[{group, reason}] }
   still_failing:   { type: object,  default: {} }  # { items:[...] }
+  fixed_report_lines:         { type: string, default: "" } # id|title|media_handle per line
+  skipped_report_lines:       { type: string, default: "" } # id|title|reason per line
+  still_failing_report_lines: { type: string, default: "" } # id|title|reason per line
+
+  # terminal report artifacts
+  report_path:     { type: string,  default: "" }
+  summary_path:    { type: string,  default: "" }
+  deck_path:       { type: string,  default: "" }
 
   # per-group refine loop
   refine_feedback: { type: string,  default: "" }

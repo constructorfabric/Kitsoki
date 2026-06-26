@@ -2,7 +2,8 @@
 
 Review a `kitsoki-ui-review` audit into root-cause groups, fix each group with a
 scoped agent agent, prove each fix cleared with a deterministic re-audit, and
-record a before/after media artifact per group.
+record a before/after media artifact per group, and emit a deterministic
+report/deck bundle for terminal review.
 
 ## Entry
 
@@ -22,7 +23,7 @@ world_in:
 
 | Name | Meaning | World keys populated |
 |---|---|---|
-| `done` | All groups processed (cursor past end, or no findings at floor). | `fixed`, `skipped`, `still_failing` |
+| `done` | All groups processed (cursor past end, or no findings at floor). | `fixed`, `skipped`, `still_failing`, `report_path`, `summary_path`, `deck_path` |
 | `abandoned` | Operator typed `quit`. | `abandon_reason` |
 
 ## Rooms
@@ -47,13 +48,13 @@ idle → review → fixing ←────────────────�
 | `fixing` | `host.agent.task` applies the minimal fix for one group (scoped to `src_root`). Checkpoint: `accept` / `refine feedback=…` / `skip` / `quit`. |
 | `verifying` | `host.run` re-runs capture.sh (geometry+axe only, no LLM). `host.starlark.run verify_delta.star` checks if all member fingerprints cleared. Routes to `showcase` (cleared) or back to `fixing` (regressed). |
 | `showcase` | `host.contact_sheet` (slideshow) or `host.slidey.render` (video) produces a before/after media artifact. `host.artifacts_dir` emits it and returns a stable handle. Rendered inline via `media` view element. |
-| `done` | Gallery of all fixed groups (before/after media), skipped groups, still-failing groups. Points at `kitsoki-ui-review` for a full re-review. |
+| `done` | Writes `.artifacts/ui-fix/<run>/report.md`, `summary.json`, and `deck.slidey.json`, then shows the gallery of fixed groups (before/after media), skipped groups, and still-failing groups. Points at `kitsoki-ui-review` for a full re-review. |
 
 ## Host requirements
 
 | Handler | Used in |
 |---|---|
-| `host.run` | idle (cat verdict.json), verifying (capture.sh, cat audit.json) |
+| `host.run` | idle (cat verdict.json), verifying (capture.sh, cat audit.json), done (deterministic report/deck script) |
 | `host.starlark.run` | idle (dedupe_findings.star), verifying (verify_delta.star), fixing/showcase/verifying (get_current, accumulate, manage_groups) |
 | `host.agent.decide` | review (identify_patterns.md) |
 | `host.agent.task` | fixing (apply_fix.md) |

@@ -104,6 +104,7 @@ states:
                   reason:     refine_budget_exhausted
               bind:
                 skipped: bucket
+                skipped_report_lines: report_lines
             - set:
                 cursor:          "{{ world.cursor + 1 }}"
                 current:         {}
@@ -122,6 +123,7 @@ states:
                   reason:     refine_budget_exhausted
               bind:
                 skipped: bucket
+                skipped_report_lines: report_lines
             - set:
                 cursor:          "{{ world.cursor + 1 }}"
                 current:         {}
@@ -148,6 +150,7 @@ states:
                   reason:     skipped
               bind:
                 skipped: bucket
+                skipped_report_lines: report_lines
             - set:
                 cursor:          "{{ world.cursor + 1 }}"
                 current:         {}
@@ -164,6 +167,7 @@ states:
                   reason:     skipped
               bind:
                 skipped: bucket
+                skipped_report_lines: report_lines
             - set:
                 cursor:          "{{ world.cursor + 1 }}"
                 current:         {}

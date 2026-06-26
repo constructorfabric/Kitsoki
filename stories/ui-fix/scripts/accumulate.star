@@ -4,7 +4,7 @@
 # Interface (authoritative in accumulate.star.yaml):
 #   inputs:  bucket_key (string), media_handle (string?), reason (string?)
 #   world:   <bucket_key>, current
-#   outputs: bucket (object)
+#   outputs: bucket (object), report_lines (string)
 
 def main(ctx):
     bucket_key = ctx.inputs["bucket_key"]
@@ -20,4 +20,13 @@ def main(ctx):
         "reason":       ctx.inputs.get("reason", ""),
     }
     items.append(entry)
-    return {"bucket": {"items": items}}
+
+    line_key = bucket_key + "_report_lines"
+    existing = ctx.world.get(line_key) or ""
+    group_id = str(current.get("id") or "")
+    title = str(current.get("title") or group_id or "group")
+    artifact = str(ctx.inputs.get("media_handle") or ctx.inputs.get("reason") or "")
+    line = group_id + "|" + title.replace("|", "/") + "|" + artifact.replace("\n", " ")
+    if existing:
+        line = existing.rstrip("\n") + "\n" + line
+    return {"bucket": {"items": items}, "report_lines": line + "\n"}

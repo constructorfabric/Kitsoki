@@ -102,6 +102,7 @@ states:
                   reason:     verify_budget_exhausted
               bind:
                 still_failing: bucket
+                still_failing_report_lines: report_lines
             - set:
                 cursor:        "{{ world.cursor + 1 }}"
                 current:       {}
@@ -120,6 +121,7 @@ states:
                   reason:     verify_budget_exhausted
               bind:
                 still_failing: bucket
+                still_failing_report_lines: report_lines
             - set:
                 cursor:        "{{ world.cursor + 1 }}"
                 current:       {}

@@ -7,7 +7,7 @@ states:
 
   done:
     description: "Fix pipeline complete. Gallery of before/after media per fixed group."
-    relevant_world: [fixed, skipped, still_failing, groups]
+    relevant_world: [fixed, skipped, still_failing, groups, report_path, summary_path, deck_path]
     view:
       - prose: "UI fix pipeline · done"
       - kv:
@@ -16,6 +16,8 @@ states:
             Skipped:      '{{ world.skipped.items|length|default:0 }}'
             Still failing: '{{ world.still_failing.items|length|default:0 }}'
             Total groups: '{{ world.groups.items|length|default:0 }}'
+            Report:       '{{ world.report_path|default:"(pending)" }}'
+            Deck:         '{{ world.deck_path|default:"(pending)" }}'
       - heading: "Fixed — before/after"
       - template: |
           {% if world.fixed.items %}
@@ -53,6 +55,28 @@ states:
           items:
             - label: "look"
               hint:  "re-render"
+    on_enter:
+      - invoke: host.run
+        id: ui_fix_report
+        with:
+          cmd: python3
+          args:
+            - "stories/ui-fix/scripts/ui_fix_report.py"
+            - "--fixed-lines"
+            - "{{ world.fixed_report_lines }}"
+            - "--skipped-lines"
+            - "{{ world.skipped_report_lines }}"
+            - "--still-failing-lines"
+            - "{{ world.still_failing_report_lines }}"
+            - "--verdict-path"
+            - "{{ world.verdict_path }}"
+            - "--frames-dir"
+            - "{{ world.frames_dir }}"
+        bind:
+          report_path:  "stdout_json.report_path"
+          summary_path: "stdout_json.summary_path"
+          deck_path:    "stdout_json.deck_path"
+        on_error: done
     on:
       look:
         - target: .

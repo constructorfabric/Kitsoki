@@ -28,6 +28,9 @@ host_handlers:
         strict: false
         server: ""
         summary: { total: 5, error: 2, warn: 2, info: 1 }
+        report_path: ".artifacts/ui-fix/flow/report.md"
+        summary_path: ".artifacts/ui-fix/flow/summary.json"
+        deck_path: ".artifacts/ui-fix/flow/deck.slidey.json"
         findings:
           - { source: "geometry", check: "tap-target",       severity: "error", surface: "trace-view",   viewport: "mobile",  frame: "01-trace@mobile.png",  detail: "tap target 19x16px", recommendation: "Add min 44px",   selector: ".trace-filter-chip",         count: 1, frames: ["01-trace@mobile.png"] }
           - { source: "geometry", check: "tap-target",       severity: "error", surface: "trace-view",   viewport: "tablet",  frame: "01-trace@tablet.png",  detail: "tap target 19x16px", recommendation: "Add min 44px",   selector: ".trace-filter-chip",         count: 1, frames: ["01-trace@tablet.png"] }
@@ -68,6 +71,7 @@ host_handlers:
       bucket:
         items:
           - { group: { id: "tap-target-trace-chips" }, media_handle: "ui-fix-tap-target#1", reason: "fixed" }
+      report_lines: "tap-target-trace-chips|Trace chip tap target too small|ui-fix-tap-target#1\n"
       groups:
         items: []
 
@@ -160,6 +164,8 @@ turns:
     expect_state: done
     expect_world:
       cursor: 2
+      deck_path: ".artifacts/ui-fix/flow/deck.slidey.json"
+      report_path: ".artifacts/ui-fix/flow/report.md"
 
 expect_terminal: false
 expect_no_errors: true
