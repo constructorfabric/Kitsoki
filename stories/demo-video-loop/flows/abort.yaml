@@ -13,7 +13,16 @@ initial_world:
   last_error:    "host.agent.task: maker session abandoned without successful submit"
 
 host_handlers:
-  host.run:           { data: { ok: true } }
+  host.run:
+    by_call:
+      demo-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/demo-video-loop/test/report.md"
+            summary_path: ".artifacts/demo-video-loop/test/summary.json"
+            deck_path: ".artifacts/demo-video-loop/test/deck.slidey.json"
   host.agent.task:   { data: { submitted: { summary: "(unused)" } } }
   host.artifacts_dir: { data: { ok: true } }
 
@@ -23,6 +32,7 @@ turns:
     expect_world:
       terminal_reason: "aborted"
       abandon_reason:  "operator aborted"
+      deck_path: ".artifacts/demo-video-loop/test/deck.slidey.json"
     expect_no_host_calls: [host.agent.task, host.artifacts_dir]
 
 expect_terminal: true

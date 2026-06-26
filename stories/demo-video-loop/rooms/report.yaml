@@ -1,0 +1,88 @@
+states:
+  report:
+    description: "Final demo-video-loop report deck."
+    relevant_world: [feature_slug, terminal_reason, report_path, summary_path, deck_path,
+                     video_path, frames_dir, chapters_path, feature_md_path, scenarios_path]
+    on_enter:
+      - invoke: host.run
+        id: demo-report
+        with:
+          cmd: python3
+          args:
+            - "stories/demo-video-loop/scripts/demo_report.py"
+            - "--feature-slug"
+            - "{{ world.feature_slug }}"
+            - "--terminal-reason"
+            - "{{ world.terminal_reason }}"
+            - "--iteration"
+            - "{{ world.iteration }}"
+            - "--iteration-budget"
+            - "{{ world.iteration_budget }}"
+            - "--maker-summary"
+            - "{{ world.maker_summary }}"
+            - "--video-path"
+            - "{{ world.video_path }}"
+            - "--frames-dir"
+            - "{{ world.frames_dir }}"
+            - "--chapters-path"
+            - "{{ world.chapters_path }}"
+            - "--feature-md-path"
+            - "{{ world.feature_md_path }}"
+            - "--scenarios-path"
+            - "{{ world.scenarios_path }}"
+            - "--video-valid"
+            - "{{ world.video_valid }}"
+            - "--video-validate-reason"
+            - "{{ world.video_validate_reason }}"
+            - "--qa-ok"
+            - "{{ world.qa_ok }}"
+            - "--qa-exit-code"
+            - "{{ world.qa_exit_code }}"
+            - "--qa-report"
+            - "{{ world.qa_report }}"
+        bind:
+          report_path:  "stdout_json.report_path"
+          summary_path: "stdout_json.summary_path"
+          deck_path:    "stdout_json.deck_path"
+        on_error: report
+      - when: "world.terminal_reason == 'achieved'"
+        emit_intent: exit_achieved
+      - when: "world.terminal_reason == 'iteration_budget' || world.terminal_reason == 'cost_budget'"
+        emit_intent: exit_exhausted
+      - when: "world.terminal_reason == 'aborted'"
+        emit_intent: exit_abandoned
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - banner:
+              text:     "REPORT"
+              subtitle: "Deterministic Slidey report deck"
+              color:    "#10B981"
+          - kv:
+              pairs:
+                Feature: "{{ world.feature_slug }}"
+                Status: "{{ world.terminal_reason }}"
+                Report: '{{ world.report_path|default:"(pending)" }}'
+                Deck: '{{ world.deck_path|default:"(pending)" }}'
+                Video: '{{ world.video_path|default:"(none)" }}'
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+    on:
+      exit_achieved:
+        - target: "@exit:achieved"
+          effects:
+            - set: { terminal_reason: "achieved" }
+      exit_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - set: { terminal_reason: "{{ world.terminal_reason }}" }
+      exit_abandoned:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+      look:
+        - target: .

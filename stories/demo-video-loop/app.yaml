@@ -110,6 +110,9 @@ world:
   last_error:      { type: string, default: "" }
   terminal_reason: { type: string, default: "" }   # achieved | iteration_budget | cost_budget | aborted
   abandon_reason:  { type: string, default: "" }
+  report_path:     { type: string, default: "" }
+  summary_path:    { type: string, default: "" }
+  deck_path:       { type: string, default: "" }
 
 intents:
   # Internal routing intents, emitted from on_enter once a gate result is bound.
@@ -134,6 +137,18 @@ intents:
   mark_looped:
     description: "(internal) re-enter the maker after a gate loop-back."
     examples: ["mark_looped"]
+    priority: 1
+  exit_achieved:
+    description: "(internal) report written → achieved exit."
+    examples: []
+    priority: 1
+  exit_exhausted:
+    description: "(internal) report written → exhausted exit."
+    examples: []
+    priority: 1
+  exit_abandoned:
+    description: "(internal) report written → abandoned exit."
+    examples: []
     priority: 1
   loop_again:
     description: "(internal) gate failed, budget remains — loop with feedback."

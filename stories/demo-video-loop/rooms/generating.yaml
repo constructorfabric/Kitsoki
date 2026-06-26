@@ -160,11 +160,11 @@ states:
             - set:
                 video_validate_reason: "{{ slots.feedback }}"
       mark_cost_exhausted:
-        - target: "@exit:exhausted"
+        - target: report
           effects:
             - set: { terminal_reason: "cost_budget" }
       mark_iter_exhausted:
-        - target: "@exit:exhausted"
+        - target: report
           effects:
             - set: { terminal_reason: "iteration_budget" }
       retry:
@@ -172,7 +172,7 @@ states:
           effects:
             - set: { last_error: "" }
       abort:
-        - target: "@exit:abandoned"
+        - target: report
           effects:
             - set: { terminal_reason: "aborted", abandon_reason: "operator aborted" }
       look:

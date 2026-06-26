@@ -25,6 +25,14 @@ host_handlers:
       validate-1:     { data: { ok: true, exit_code: 0, stdout: "video gate PASS — existing demo re-recorded this turn" } }
       qa-1:           { data: { ok: true, exit_code: 0, stdout: "PASS" } }
       read-qa-report: { data: { ok: true, exit_code: 0, stdout: "(no failures)" } }
+      demo-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/demo-video-loop/test/report.md"
+            summary_path: ".artifacts/demo-video-loop/test/summary.json"
+            deck_path: ".artifacts/demo-video-loop/test/deck.slidey.json"
   host.agent.task:
     by_call:
       maker-1:
@@ -51,6 +59,7 @@ turns:
       video_valid:       true
       qa_ok:             true
       maker_summary:     "Refined the existing agent-actions tour: tightened pacing, re-recorded at watch-speed."
+      deck_path:         ".artifacts/demo-video-loop/test/deck.slidey.json"
     expect_host_calls:
       - handler: host.agent.task
         args: { call: maker-1 }

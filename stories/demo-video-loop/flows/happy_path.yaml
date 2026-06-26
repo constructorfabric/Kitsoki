@@ -23,6 +23,14 @@ host_handlers:
       # read-qa-report is unguarded (it fires every QA turn — see qa.yaml note);
       # on a PASS its output binds qa_report but is never consumed.
       read-qa-report: { data: { ok: true, exit_code: 0, stdout: "(no failures)" } }
+      demo-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/demo-video-loop/test/report.md"
+            summary_path: ".artifacts/demo-video-loop/test/summary.json"
+            deck_path: ".artifacts/demo-video-loop/test/deck.slidey.json"
   host.agent.task:
     by_call:
       maker-1:
@@ -52,6 +60,7 @@ turns:
       qa_ok:           true
       maker_summary:   "Recorded the agent-actions tour at watch-speed."
       video_path:      ".artifacts/tour/agent-actions.mp4"
+      deck_path:       ".artifacts/demo-video-loop/test/deck.slidey.json"
     expect_host_calls:
       - handler: host.run
         args: { call: compute-diff }
@@ -73,6 +82,9 @@ turns:
         times: 1
       - handler: host.run
         args: { call: qa-1 }
+        times: 1
+      - handler: host.run
+        args: { call: demo-report }
         times: 1
 
 expect_terminal: true

@@ -20,6 +20,14 @@ host_handlers:
       qa-1:           { data: { ok: false, exit_code: 1, stdout: "BLOCK: still failing" } }
       qa-2:           { data: { ok: false, exit_code: 1, stdout: "BLOCK: still failing" } }
       read-qa-report: { data: { ok: true, exit_code: 0, stdout: "QA FAIL: scenario not shown." } }
+      demo-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/demo-video-loop/test/report.md"
+            summary_path: ".artifacts/demo-video-loop/test/summary.json"
+            deck_path: ".artifacts/demo-video-loop/test/deck.slidey.json"
   host.agent.task:
     by_call:
       maker-1: { data: { submitted: { summary: "cut 1", video_path: ".artifacts/tour/aa.mp4", frames_dir: ".artifacts/tour/frames", chapters_path: ".artifacts/tour/aa.chapters.json", feature_md_path: ".artifacts/ui-qa/feature.md", scenarios_path: ".artifacts/ui-qa/scenarios.yaml" } } }
@@ -32,6 +40,7 @@ turns:
     expect_world:
       terminal_reason: "iteration_budget"
       iteration:       2
+      deck_path: ".artifacts/demo-video-loop/test/deck.slidey.json"
     expect_host_calls:
       - handler: host.agent.task
         args: { call: maker-1 }

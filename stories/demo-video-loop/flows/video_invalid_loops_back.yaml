@@ -21,6 +21,14 @@ host_handlers:
       validate-2:   { data: { ok: true,  exit_code: 0, stdout: "" } }
       qa-2:         { data: { ok: true,  exit_code: 0, stdout: "PASS" } }
       read-qa-report: { data: { ok: true, exit_code: 0, stdout: "(no failures)" } }
+      demo-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/demo-video-loop/test/report.md"
+            summary_path: ".artifacts/demo-video-loop/test/summary.json"
+            deck_path: ".artifacts/demo-video-loop/test/deck.slidey.json"
   host.agent.task:
     by_call:
       maker-1: { data: { submitted: { summary: "fast cut (no good)", video_path: ".artifacts/tour/aa.fast.mp4", frames_dir: ".artifacts/tour/frames", chapters_path: ".artifacts/tour/aa.chapters.json", feature_md_path: ".artifacts/ui-qa/feature.md", scenarios_path: ".artifacts/ui-qa/scenarios.yaml" } } }
@@ -36,6 +44,7 @@ turns:
       video_valid:     true
       qa_ok:           true
       maker_summary:   "watch-speed cut"
+      deck_path:       ".artifacts/demo-video-loop/test/deck.slidey.json"
     expect_host_calls:
       - handler: host.agent.task
         args: { call: maker-1 }
