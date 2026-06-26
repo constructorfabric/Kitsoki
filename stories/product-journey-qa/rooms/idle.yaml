@@ -282,6 +282,7 @@ states:
                 proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
                 minimum_evidence_count: "stdout_json.minimum_evidence_count"
                 missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
                 review_status: "stdout_json.review_status"
                 review_summary: "stdout_json.review_summary"
                 review_passed_count: "stdout_json.review_passed_count"

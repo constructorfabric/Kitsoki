@@ -85,6 +85,7 @@ world:
   proof_minimum_evidence_count: { type: int, default: 0 }
   minimum_evidence_count: { type: int, default: 0 }
   missing_proof_summary: { type: string, default: "" }
+  driver_contract_summary: { type: string, default: "" }
   scenario:       { type: string, default: "" }
   evidence_kind:  { type: string, default: "" }
   evidence_path:  { type: string, default: "" }

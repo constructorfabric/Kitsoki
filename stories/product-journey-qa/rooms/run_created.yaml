@@ -1,7 +1,7 @@
 states:
   run_created:
     description: "A product-journey QA run bundle exists; waiting for captured evidence."
-    relevant_world: [project, persona, seed, run_id, run_dir, deck_path, execution_plan_path, driver_plan_path, driver_journal_path, agent_brief_path, driver_handoff_path, media_manifest_path, scenario_outcomes_path, persona_starting_surface, persona_first_question, persona_evidence_emphasis, persona_escalation_trigger, persona_finding_bias, proof_evidence_count, demo_evidence_count, missing_evidence_count, missing_proof_evidence_count, proof_minimum_evidence_count, minimum_evidence_count, missing_proof_summary, scenario, evidence_kind, evidence_path, evidence_source, finding_kind, finding_title, driver_event_id, dispatch_mode, driver_status, driver_summary, review_status, review_summary, review_passed_count, review_failed_count, review_warning_count, review_total_count, review_backlog_summary, validation_status, validation_errors, validation_warnings, validation_issue_summary, status]
+    relevant_world: [project, persona, seed, run_id, run_dir, deck_path, execution_plan_path, driver_plan_path, driver_journal_path, agent_brief_path, driver_handoff_path, media_manifest_path, scenario_outcomes_path, persona_starting_surface, persona_first_question, persona_evidence_emphasis, persona_escalation_trigger, persona_finding_bias, proof_evidence_count, demo_evidence_count, missing_evidence_count, missing_proof_evidence_count, proof_minimum_evidence_count, minimum_evidence_count, missing_proof_summary, driver_contract_summary, scenario, evidence_kind, evidence_path, evidence_source, finding_kind, finding_title, driver_event_id, dispatch_mode, driver_status, driver_summary, review_status, review_summary, review_passed_count, review_failed_count, review_warning_count, review_total_count, review_backlog_summary, validation_status, validation_errors, validation_warnings, validation_issue_summary, status]
     view:
       - banner:
           text: "RUN CREATED"
@@ -41,6 +41,7 @@ states:
             Validation issues: '{{ world.validation_issue_summary|default:"(none)" }}'
             Status: "{{ world.status }}"
       - prose: '{{ world.missing_proof_summary|default:"Open driver-handoff.md for the Missing Proof Evidence backlog." }}'
+      - prose: '{{ world.driver_contract_summary|default:"Use driver-plan.md for the scenario contract; loaded runs also expose last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates." }}'
       - prose: '{{ world.review_backlog_summary|default:"Run review to see actionable review checks." }}'
       - choice:
           mode: single

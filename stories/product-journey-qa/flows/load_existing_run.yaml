@@ -36,6 +36,7 @@ host_handlers:
             proof_minimum_evidence_count: 1
             minimum_evidence_count: 25
             missing_proof_summary: "product-discovery: checkpoint_rating, navigation_trace, page_url; project-onboarding: generated_config_diff, onboarding_smoke_result, rendered_tui_frame, session_trace"
+            driver_contract_summary: "Driver contract: 7 scenarios (product-discovery, project-onboarding, dependency-bugfix, prd-design, feature-implementation, +2 more); 7 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
             review_status: needs_evidence
             review_summary: "needs_evidence: 16/18 checks passed, 1 warnings, 1 failures"
             review_passed_count: 16
@@ -63,7 +64,8 @@ turns:
       review_status: needs_evidence
       review_passed_count: 16
       review_total_count: 18
-    expect_view_matches: "RUN CREATED[\\s\\S]*Driver handoff[\\s\\S]*driver-handoff.md[\\s\\S]*Starting surface[\\s\\S]*visual-first[\\s\\S]*Review checks[\\s\\S]*16 / 18 passed[\\s\\S]*project-onboarding"
+      driver_contract_summary: "Driver contract: 7 scenarios (product-discovery, project-onboarding, dependency-bugfix, prd-design, feature-implementation, +2 more); 7 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
+    expect_view_matches: "RUN CREATED[\\s\\S]*Driver handoff[\\s\\S]*driver-handoff.md[\\s\\S]*Starting surface[\\s\\S]*visual-first[\\s\\S]*Review checks[\\s\\S]*16 / 18 passed[\\s\\S]*Driver contract: 7 scenarios[\\s\\S]*last_result\\.driver_scenarios[\\s\\S]*last_result\\.driver_final_gates[\\s\\S]*project-onboarding"
     expect_host_calls:
       - handler: host.run
         args: { call: load_product_journey_run }
