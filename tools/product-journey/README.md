@@ -163,8 +163,11 @@ up each scenario's minimum-evidence coverage and current outcome for review.
 `--validate-run` checks that `execution-plan.json` and `driver-plan.json`
 include one actionable `--attach-evidence` command for every declared evidence
 slot, and that the execution plan, agent brief, driver plan, and handoff retain
-the final `--review-run` and `--validate-run` commands. A valid bundle should be
-directly usable by the driver.
+the final `--review-run` and `--validate-run` commands. It also enforces the
+driver action contract: every scenario must keep the ordered
+`open_surface -> read_current_frame -> act_as_persona -> capture_required_evidence -> journal_attempt`
+sequence with the required fields and an auditable `journal_attempt` recording
+path. A valid bundle should be directly usable by the driver.
 
 Attach evidence captured by a live or cassette-backed MCP run:
 

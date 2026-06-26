@@ -37,6 +37,8 @@
   "driver_plan": {
     "required": ["run_id", "driver_agent", "project", "persona", "scenarios", "final_gates"],
     "scenario_required": ["scenario", "label", "primary_story", "harness", "visual_surface", "required_mcp", "resolved_mcp_tools", "evidence", "success_criteria", "quality_gate", "driver_actions", "persona_lens", "attach_commands", "record_finding_command", "record_blocker_command", "journal_command"],
+    "driver_action_required": ["id", "goal", "tools", "resolved_tools", "evidence", "record"],
+    "driver_action_ids": ["open_surface", "read_current_frame", "act_as_persona", "capture_required_evidence", "journal_attempt"],
     "persona_lens_required": ["starting_surface", "first_question", "evidence_emphasis", "escalation_trigger", "finding_bias"],
     "quality_gate_required": ["minimum_evidence", "done_when", "block_if"]
   },

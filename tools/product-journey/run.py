@@ -3249,6 +3249,37 @@ def validate_run_bundle(run_dir: Path) -> dict:
         })
         if missing_driver_actions:
             add_validation_issue(issues, "error", "driver-plan-actions", "driver-plan.json scenarios are missing driver_actions", ", ".join(missing_driver_actions))
+        required_action_keys = schema["driver_plan"].get("driver_action_required", [])
+        required_action_ids = schema["driver_plan"].get("driver_action_ids", [])
+        invalid_action_keys = []
+        invalid_action_order = []
+        invalid_journal_actions = []
+        for index, scenario in enumerate(driver_scenarios, start=1):
+            scenario_id = scenario.get("scenario", f"driver-scenario-{index}")
+            actions = scenario.get("driver_actions", [])
+            action_ids = [action.get("id", "") for action in actions]
+            if required_action_ids and action_ids != required_action_ids:
+                invalid_action_order.append(
+                    f"{scenario_id}: expected={','.join(required_action_ids)} actual={','.join(action_ids)}"
+                )
+            for action in actions:
+                action_id = action.get("id", "action")
+                for key in required_action_keys:
+                    if key not in action:
+                        invalid_action_keys.append(f"{scenario_id}/{action_id}/{key}")
+                if action_id == "journal_attempt":
+                    journal_tools = " ".join(action.get("tools", []))
+                    journal_record = action.get("record", "")
+                    if "story.driver_event" not in journal_tools and "--record-driver-event" not in journal_tools:
+                        invalid_journal_actions.append(f"{scenario_id}/{action_id}: missing recording tool")
+                    if not journal_record.strip():
+                        invalid_journal_actions.append(f"{scenario_id}/{action_id}: missing record instruction")
+        if invalid_action_keys:
+            add_validation_issue(issues, "error", "driver-plan-action-contract", "driver-plan.json driver_actions are missing required keys", ", ".join(invalid_action_keys))
+        if invalid_action_order:
+            add_validation_issue(issues, "error", "driver-plan-action-order", "driver-plan.json driver_actions do not match the required driver sequence", "; ".join(invalid_action_order))
+        if invalid_journal_actions:
+            add_validation_issue(issues, "error", "driver-plan-journal-action", "driver-plan.json journal_attempt actions cannot record driver events", "; ".join(invalid_journal_actions))
         missing_resolved_tools = sorted({
             scenario.get("scenario", f"driver-scenario-{index}")
             for index, scenario in enumerate(driver_scenarios, start=1)

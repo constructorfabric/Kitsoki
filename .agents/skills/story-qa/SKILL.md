@@ -165,7 +165,11 @@ command, journal command, and final gates. `--validate-run` checks that
 `execution-plan.json` and `driver-plan.json` include one actionable
 `--attach-evidence` command for every declared evidence slot, and that the
 execution plan, agent brief, driver plan, and handoff retain the final
-`--review-run` and `--validate-run` commands.
+`--review-run` and `--validate-run` commands. It also checks that every
+scenario keeps the ordered
+`open_surface -> read_current_frame -> act_as_persona -> capture_required_evidence -> journal_attempt`
+driver sequence with the required action fields and an auditable journal
+recording path.
 Captured screenshots, videos, traces, and documents are indexed in
 `media-manifest.json`; the generated Slidey deck uses that manifest for
 playback-ready media entries and standalone `Playback evidence` scenes for
