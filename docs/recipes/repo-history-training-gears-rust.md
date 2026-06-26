@@ -50,6 +50,7 @@ Run preflight before arming or driving. It is deterministic and no-cost:
 ```sh
 python3 tools/bugfix-bakeoff/external/bench.py preflight \
   --project gears-rust \
+  --bug bug1,bug4,bug5,bug9 \
   --repo-dir /Users/brad/code/gears-rust \
   --candidate opus-4.8
 ```
@@ -59,6 +60,9 @@ first: missing local checkout, unknown candidate, unconfigured profile, absent
 historical commits, or missing oracle files. `warnings` are audit friction, not
 hard blockers; a tracked-dirty target checkout is warned because the harness
 uses disposable mirrors/worktrees, but clean source state is easier to review.
+Use the same bug list you plan to run in the matrix. A one-bug smoke should pass
+`--bug bug1`; the drivable `repo-bakeoff` story does this automatically from
+`world.bugs`.
 
 ## Deterministic Arming
 
@@ -83,8 +87,18 @@ The `prepare` room calls:
 python3 bench.py verify --project gears-rust --repo-dir /Users/brad/code/gears-rust
 ```
 
-That is the gate. If any fixture is not RED at baseline and GREEN after the real
-fix, do not run live cells; fix or demote the fixture first.
+That is the full-corpus gate. For a scoped smoke or a smaller matrix, add the
+same comma-separated bug list:
+
+```sh
+python3 bench.py verify \
+  --project gears-rust \
+  --bug bug1 \
+  --repo-dir /Users/brad/code/gears-rust
+```
+
+If any selected fixture is not RED at baseline and GREEN after the real fix, do
+not run live cells; fix or demote the fixture first.
 
 ## Free Cell Preparation
 

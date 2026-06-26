@@ -190,6 +190,7 @@ candidate key, and whether the candidate's Kitsoki profile is configured.
 ```sh
 python3 tools/bugfix-bakeoff/external/bench.py preflight \
   --project gears-rust \
+  --bug bug1,bug4,bug5,bug9 \
   --repo-dir ~/code/gears-rust \
   --candidate opus-4.8
 ```
@@ -199,13 +200,16 @@ Repeat `--candidate` or pass a comma-separated list to check the full matrix:
 ```sh
 python3 tools/bugfix-bakeoff/external/bench.py preflight \
   --project gears-rust \
+  --bug bug1,bug4,bug5,bug9 \
   --repo-dir ~/code/gears-rust \
   --candidate opus-4.8,gpt-5.3-spark
 ```
 
 `ok: true` means the repo is ready for deterministic arming and a cost-bearing
-cell. Missing profiles or commits fail here, before `drive_cell.sh` prepares a
-worktree or invokes Studio MCP.
+cell. Pass the same `--bug` list as the matrix you plan to run; `repo-bakeoff`
+does this automatically from `world.bugs`, so a one-bug smoke does not verify the
+whole manifest. Missing profiles or commits fail here, before `drive_cell.sh`
+prepares a worktree or invokes Studio MCP.
 
 See [`docs/case-studies/query-string-bakeoff.md`](../../../docs/case-studies/query-string-bakeoff.md)
 for the worked GPT-5.5-vs-GLM-5.2 study.

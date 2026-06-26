@@ -55,6 +55,35 @@ def bug_of(m, bug_id):
     sys.exit(f"unknown bug {bug_id} in {m['project']['id']}")
 
 
+def split_csv(values):
+    if values is None:
+        return []
+    if isinstance(values, str):
+        values = [values]
+    return [part.strip() for value in values for part in str(value).split(",")
+            if part.strip()]
+
+
+def selected_bugs(m, bug_ids=None):
+    ids = split_csv(bug_ids)
+    if not ids:
+        return [b for b in m.get("bugs", []) if not b.get("reference_only")]
+    wanted = set(ids)
+    out = []
+    seen = set()
+    for bug_id in ids:
+        b = bug_of(m, bug_id)
+        if b.get("reference_only"):
+            sys.exit(f"bug {bug_id} is reference_only in {m['project']['id']}; promote it before arming")
+        if bug_id not in seen:
+            out.append(b)
+            seen.add(bug_id)
+    missing = wanted - seen
+    if missing:
+        sys.exit(f"unknown bug(s) {', '.join(sorted(missing))} in {m['project']['id']}")
+    return out
+
+
 def sh(cmd, cwd, env=None, quiet=False):
     r = subprocess.run(cmd, cwd=cwd, shell=isinstance(cmd, str),
                        env={**os.environ, **(env or {})},
@@ -201,26 +230,21 @@ def git_tracked_dirty(repo):
     return bool(r.stdout.strip())
 
 
-def preflight(m, repo_dir=None, candidate=None, candidates_path=None):
+def preflight(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=None):
     """No-cost readiness check for a repo-history bake-off cell/sweep."""
     proj = m["project"]
     errors = []
     warnings = []
     local_only = bool(proj.get("local_only", False))
     repo_path = Path(repo_dir).expanduser() if repo_dir else None
-    candidates = []
-    if isinstance(candidate, str):
-        candidates = [candidate]
-    elif candidate:
-        candidates = list(candidate)
-    candidates = [part.strip() for value in candidates for part in str(value).split(",")
-                  if part.strip()]
+    candidates = split_csv(candidate)
     candidate_infos = []
+    bugs = selected_bugs(m, bug_ids)
 
-    if not m.get("bugs"):
+    if not bugs:
         errors.append("manifest has no bugs")
 
-    for b in m.get("bugs", []):
+    for b in bugs:
         oracle = m["_dir"] / b.get("oracle_test", "")
         if b.get("reference_only"):
             continue
@@ -269,7 +293,7 @@ def preflight(m, repo_dir=None, candidate=None, candidates_path=None):
             warnings.append(f"could not inspect git status for {repo_path}")
         elif dirty:
             warnings.append(f"tracked changes present in {repo_path}; source checkout is not mutated, but verify from a clean tree is easier to audit")
-        for b in m.get("bugs", []):
+        for b in bugs:
             if not b.get("baseline_sha"):
                 continue
             if not git_commit_exists(repo_path, b["baseline_sha"]):
@@ -279,10 +303,11 @@ def preflight(m, repo_dir=None, candidate=None, candidates_path=None):
                 errors.append(f"{b['id']}: fix {fix_sha} not present in {repo_path}")
 
     repo_arg = f" --repo-dir {repo_path}" if repo_path else ""
+    bug_arg = f" --bug {','.join(b['id'] for b in bugs)}" if bugs else ""
     cell_candidate_arg = f" --candidate {candidates[0]}" if len(candidates) == 1 else " --candidate <candidate>"
     commands = {
-        "verify": f"python3 bench.py verify --project {proj['id']}{repo_arg}",
-        "preflight": f"python3 bench.py preflight --project {proj['id']}{repo_arg} {candidate_arg}".rstrip(),
+        "verify": f"python3 bench.py verify --project {proj['id']}{bug_arg}{repo_arg}",
+        "preflight": f"python3 bench.py preflight --project {proj['id']}{bug_arg}{repo_arg} {candidate_arg}".rstrip(),
         "dry_run_cell": f"tools/bugfix-bakeoff/external/drive_cell.sh --project {proj['id']} --bug <bug>{cell_candidate_arg}{repo_arg} --no-drive",
         "drive_cell": f"tools/bugfix-bakeoff/external/drive_cell.sh --project {proj['id']} --bug <bug>{cell_candidate_arg}{repo_arg} --score",
         "summarize": f"python3 bench.py summarize --project {proj['id']} --results ../../../.artifacts/external-bakeoff/results --deck ../../../.artifacts/external-bakeoff/report/deck.slidey.json --markdown ../../../.artifacts/external-bakeoff/report/report.md",
@@ -292,7 +317,7 @@ def preflight(m, repo_dir=None, candidate=None, candidates_path=None):
         "project": proj["id"],
         "local_only": local_only,
         "repo_dir": str(repo_path) if repo_path else "",
-        "bugs": [b.get("id") for b in m.get("bugs", []) if not b.get("reference_only")],
+        "bugs": [b.get("id") for b in bugs],
         "reference_only": [b.get("id") for b in m.get("bugs", []) if b.get("reference_only")],
         "candidates": candidate_infos,
         "candidate": candidate_infos[0] if len(candidate_infos) == 1 else {},
@@ -410,6 +435,7 @@ def score(m, bug, tree, out, candidate, treatment, trace=None, candidates_path=N
 def verify(m, only_bug, repo_dir):
     """Clone (or reuse), and for each fixture assert RED@baseline, GREEN@fix."""
     proj = m["project"]
+    bugs = selected_bugs(m, only_bug)
     tmp = None
     if repo_dir:
         # Never operate directly on a caller's checkout. The GREEN proof checks
@@ -431,7 +457,6 @@ def verify(m, only_bug, repo_dir):
 
     ok = True
     try:
-        bugs = [b for b in m["bugs"] if (not only_bug or b["id"] == only_bug)]
         # fetch all needed commits + install once
         if not repo_dir:
             for b in bugs:
@@ -655,10 +680,13 @@ def main():
                    help="candidates.yaml for model/effort/provider lookup by --candidate")
     v = sub.add_parser("verify")
     v.add_argument("--project", required=True)
-    v.add_argument("--bug")
+    v.add_argument("--bug", action="append",
+                   help="bug id to verify; repeat or pass comma-separated ids to scope the matrix")
     v.add_argument("--repo-dir", help="prebuilt clone with node_modules to reuse")
     pf = sub.add_parser("preflight")
     pf.add_argument("--project", required=True)
+    pf.add_argument("--bug", action="append",
+                    help="bug id to preflight; repeat or pass comma-separated ids to scope the matrix")
     pf.add_argument("--repo-dir", help="local checkout for private/local_only projects")
     pf.add_argument("--candidate", action="append",
                     help="candidate key from candidates.yaml to check profile readiness; repeat to check a matrix")
@@ -684,7 +712,7 @@ def main():
     m = load(a.project)
     if a.cmd == "preflight":
         sys.exit(preflight(m, repo_dir=a.repo_dir, candidate=a.candidate,
-                           candidates_path=a.candidates))
+                           candidates_path=a.candidates, bug_ids=a.bug))
     if a.cmd == "score":
         sys.exit(score(m, bug_of(m, a.bug), a.tree, a.out, a.candidate, a.treatment,
                        trace=a.trace, candidates_path=a.candidates))

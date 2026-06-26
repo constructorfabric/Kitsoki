@@ -99,6 +99,46 @@ def test_preflight_candidate_profile_and_local_repo_checks():
         assert "DEMO_REPO" in text
 
 
+def test_preflight_scopes_to_selected_bugs():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        candidates = root / "candidates.yaml"
+        candidates.write_text(
+            "candidates:\n"
+            "  - key: ready\n"
+            "    profile: ready-profile\n"
+        )
+        (root / ".kitsoki.yaml").write_text(
+            "harness_profiles:\n"
+            "  ready-profile:\n"
+            "    backend: replay\n"
+        )
+        manifest_dir = root / "projects" / "demo"
+        oracle_dir = manifest_dir / "oracles"
+        oracle_dir.mkdir(parents=True)
+        (oracle_dir / "bug1.test").write_text("oracle")
+        manifest = {
+            "project": {"id": "demo"},
+            "bugs": [
+                {"id": "bug1", "baseline_sha": "abc123", "fix_sha": "def456", "oracle_test": "oracles/bug1.test"},
+                {"id": "bug2", "baseline_sha": "abc123", "fix_sha": "def456", "oracle_test": "oracles/missing.test"},
+            ],
+            "_dir": manifest_dir,
+        }
+        old_root = bench.REPO_ROOT
+        bench.REPO_ROOT = root
+        try:
+            out = io.StringIO()
+            with redirect_stdout(out):
+                rc = bench.preflight(manifest, candidate="ready", candidates_path=str(candidates), bug_ids="bug1")
+        finally:
+            bench.REPO_ROOT = old_root
+        assert rc == 0
+        text = out.getvalue()
+        assert '"bugs": [\n    "bug1"\n  ]' in text
+        assert "missing.test" not in text
+
+
 def main():
     fails = 0
     for name, fn in sorted(globals().items()):
