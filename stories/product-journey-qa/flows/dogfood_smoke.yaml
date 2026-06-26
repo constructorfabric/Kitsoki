@@ -24,8 +24,8 @@ host_handlers:
             corpus_validation_status: valid
             corpus_validation_errors: 0
             corpus_validation_warnings: 0
-            review_status: ready
-            review_summary: "ready: 13/15 checks passed, 2 warnings, 0 failures"
+            review_status: needs_evidence
+            review_summary: "needs_evidence: 12/15 checks passed, 2 warnings, 1 failures"
             review_warnings: 2
             run_validation_status: valid
             run_validation_warnings: 1
@@ -54,8 +54,8 @@ turns:
       matrix_dir: .artifacts/product-journey/matrices/matrix-123
       run_dir: .artifacts/product-journey/run-123
       deck_path: .artifacts/product-journey/dogfood/dogfood-123/deck.slidey.json
-      review_status: ready
-      review_summary: "ready: 13/15 checks passed, 2 warnings, 0 failures"
+      review_status: needs_evidence
+      review_summary: "needs_evidence: 12/15 checks passed, 2 warnings, 1 failures"
       dogfood_review_warnings: 2
       validation_status: valid
       validation_warnings: 1

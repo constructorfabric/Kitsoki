@@ -64,7 +64,9 @@ validates the matrix, and writes a smoke report under
 `.artifacts/product-journey/dogfood/<dogfood-id>/`. It also emits a smoke-level
 Slidey deck plus the normal run, matrix, and rollup decks. The demo evidence
 proves aggregation, driver-journal wiring, and deck shape only; live visual MCP
-or cassette evidence is still required before making product claims.
+or cassette evidence is still required before making product claims. Because
+seeded demo artifacts are not proof evidence, the smoke command can pass while
+the seeded run review remains `needs_evidence` with an unsatisfied quality gate.
 
 This writes `.artifacts/product-journey/matrices/<matrix-id>/` with
 `matrix.json`, `matrix.md`, and `deck.slidey.json`. The source target list lives
@@ -103,7 +105,7 @@ to pick up the run without extra flags. The rollup includes per-scenario
 outcome totals so repeated onboarding, bugfix, PRD/design, implementation, and
 product-bug gaps are visible across runs. It also aggregates scenario
 `quality_gate` coverage so the matrix deck shows which journeys have enough
-minimum evidence to count as completed.
+proof-source minimum evidence to count as completed.
 Validate a generated matrix before using it as the sweep contract:
 
 ```sh

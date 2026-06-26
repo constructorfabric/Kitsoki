@@ -92,7 +92,9 @@ That single command composes the normal pieces: a 10-repo matrix, one concrete
 assignment run, representative demo evidence, review, run validation, matrix
 rollup, matrix validation, and a smoke-level Slidey deck under
 `.artifacts/product-journey/dogfood/<dogfood-id>/`. Treat it as an artifact-loop
-proof only; it does not replace live visual MCP or cassette evidence.
+proof only; it does not replace live visual MCP or cassette evidence. A passing
+smoke may still report the seeded run review as `needs_evidence` because demo
+artifacts do not satisfy proof-source quality gates.
 
 Use `--matrix-personas all` when every persona should run against every target.
 The matrix is a no-LLM assignment plan; before a live scored sweep, refresh each
@@ -119,8 +121,8 @@ That writes `.artifacts/product-journey/<run-id>/`, including
 want to update `docs/decks/product-journey-eval.slidey.json`.
 The rollup aggregates `scenario-outcomes.json` across runs so repeated weak
 scenarios stay visible at matrix-review time. It also aggregates each run's
-`quality_gate` rows so the matrix deck shows cross-run minimum-evidence
-coverage.
+`quality_gate` rows so the matrix deck shows cross-run proof-source
+minimum-evidence coverage.
 Validate generated matrices before using them as the shared sweep contract:
 
 ```sh
