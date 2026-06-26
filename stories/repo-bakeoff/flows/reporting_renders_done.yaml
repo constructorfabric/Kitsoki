@@ -1,0 +1,69 @@
+# reporting_renders_done — reporting -> slideshow -> done preserves evidence.
+#
+# The story's final deliverable is the rendered Slidey report deck. This flow
+# proves the deterministic render/artifact path reaches done and keeps the
+# completion verdict visible for final review.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reporting
+initial_world:
+  project: gears-rust
+  completion_status: complete-with-pending
+  completion_markdown: .artifacts/external-bakeoff/report/completion.md
+  summary:
+    project: gears-rust
+    cells:
+      - project: gears-rust
+        bug: bug1
+        candidate: opus-4.8
+        outcome:
+          quality: pending
+  deck:
+    spec_path: stories/repo-bakeoff/baked/deck.json
+    summary: "gears-rust bake-off: 0/0 attempted solved; 1 pending"
+  report_markdown: .artifacts/external-bakeoff/report/report.md
+
+host_handlers:
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: stories/repo-bakeoff/baked/deck.html
+          semantic_path: stories/repo-bakeoff/baked/deck.semantic.json
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data:
+          ok: true
+          handle:
+            id: repo-bakeoff#1
+            kind: slideshow
+            mime: text/html
+          path: stories/repo-bakeoff/baked/deck.html
+      emit_semantic:
+        data:
+          ok: true
+          handle:
+            id: repo-bakeoff-semantic#1
+            kind: data
+            mime: application/json
+          path: stories/repo-bakeoff/baked/deck.semantic.json
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      completion_status: complete-with-pending
+      completion_markdown: .artifacts/external-bakeoff/report/completion.md
+      deck_handle: repo-bakeoff#1
+      semantic_handle: repo-bakeoff-semantic#1
+    expect_view_matches: "Completion:         complete-with-pending"
+
+  - intent: { name: accept, slots: {} }
+    expect_state: "__exit__done"
+
+expect_terminal: true
+expect_no_errors: true
