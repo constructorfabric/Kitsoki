@@ -81,13 +81,9 @@ const STEPS = [
     caption: (c, evidence) => `${c.subtitle}. Evidence: ${evidence.sourceURL}`,
     narration: (c) => `${c.title}: real GitHub thread.`,
   },
-  {
-    id: "app-comment",
-    file: "02-app-comment.rrweb.json",
-    title: "App-authenticated kitsoki comment",
-    caption: (_c, evidence) => `kitsoki comments back with a public run link: ${evidence.runURL}`,
-    narration: () => "App comment with the run link.",
-  },
+  // The github-thread tour already zooms the App-authenticated kitsoki comment
+  // and its run link, so a standalone app-comment video just replays the same
+  // issue page. It was dropped to avoid a duplicate beat in every case.
   {
     id: "run-page",
     file: "03-run-page.rrweb.json",

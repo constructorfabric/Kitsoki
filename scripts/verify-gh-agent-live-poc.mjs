@@ -689,6 +689,10 @@ function checkDeck(args, report) {
   }
   for (const c of CASES) {
     for (const step of STEPS) {
+      // app-comment is captured as evidence but intentionally not embedded in
+      // the deck: the github-thread tour already zooms the App comment + run
+      // link, so a standalone app-comment scene just replays the same page.
+      if (step.id === "app-comment") continue;
       if (!haystack.includes(`${c.slug}/${step.file}`)) {
         report.fail(`deck does not reference ${c.slug}/${step.file}`);
       }
