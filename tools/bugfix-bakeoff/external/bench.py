@@ -277,6 +277,18 @@ def pending_cell(m, bug_id, candidate, reason, out, candidates_path=None, treatm
     return 0
 
 
+def pending_command(project, bug_id, candidate, reason="<reason>"):
+    out = (
+        ".artifacts/external-bakeoff/results/cells/"
+        f"{project}-{bug_id}-{candidate}-kitsoki.json"
+    )
+    return (
+        "python3 tools/bugfix-bakeoff/external/bench.py pending "
+        f"--project {project} --bug {bug_id} --candidate {candidate} "
+        f"--reason \"{reason}\" --out {out}"
+    )
+
+
 def configured_profiles(root=None):
     """Return harness profile names from the checked-in and local kitsoki config.
 
@@ -468,7 +480,12 @@ def readiness(m, repo_dir=None, candidate=None, candidates_path=None, bug_ids=No
             matching.append(cell)
     completed = {(c.get("bug"), c.get("candidate")) for c in matching}
     missing = [
-        {"bug": cmd["bug"], "candidate": cmd["candidate"], "command": cmd["command"]}
+        {
+            "bug": cmd["bug"],
+            "candidate": cmd["candidate"],
+            "command": cmd["command"],
+            "pending_command": pending_command(m["project"]["id"], cmd["bug"], cmd["candidate"]),
+        }
         for cmd in plan["commands"]
         if (cmd["bug"], cmd["candidate"]) not in completed
     ]
@@ -548,6 +565,12 @@ def write_readiness_markdown(report, markdown):
             lines.append(f"- `{m['bug']}` x `{m['candidate']}`: `{m['command']}`")
     else:
         lines.append("All selected cells have scored or pending results.")
+    if report.get("missing"):
+        lines.extend(["", "## Pending Alternatives", ""])
+        lines.append("Use these only when a provider/profile/infrastructure blocker prevents a real model attempt:")
+        lines.append("")
+        for m in report["missing"]:
+            lines.append(f"- `{m['bug']}` x `{m['candidate']}`: `{m['pending_command']}`")
     lines.extend(["", "## Next Actions", ""])
     lines.extend(f"- {a}" for a in report.get("next_actions", []))
     markdown.write_text("\n".join(lines) + "\n")

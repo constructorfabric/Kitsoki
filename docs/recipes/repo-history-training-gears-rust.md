@@ -101,7 +101,8 @@ stale flow fixtures, or drive commands that no longer match the harness.
 When it passes, it also writes a review artifact at
 `.artifacts/external-bakeoff/readiness/gears-rust.md` with preflight status,
 the selected live-cell commands, existing scored/pending cells, missing cells,
-and the next action. The first selected cell is prepared under
+pending-cell command templates for true provider/profile blockers, and the next
+action. The first selected cell is prepared under
 `.artifacts/external-bakeoff/cells/`, with the delegated MCP prompt under
 `.artifacts/external-bakeoff/drive-prompts/`, so the operator can inspect the
 exact setup before spending on a live drive. Set `HISTORY_PREPARE_FIRST_CELL=0`

@@ -259,10 +259,13 @@ def test_readiness_reports_missing_and_scored_cells():
         assert report["results"]["missing_cells"] == 1
         assert report["arming"]["verified"] is True
         assert report["missing"][0]["bug"] == "bug2"
+        assert "bench.py pending" in report["missing"][0]["pending_command"]
         text = markdown.read_text()
         assert "Preflight: ready" in text
         assert "Arming: verified" in text
         assert "`bug2` x `ready`" in text
+        assert "## Pending Alternatives" in text
+        assert "--reason \"<reason>\"" in text
 
 
 def json_load(raw):

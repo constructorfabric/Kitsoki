@@ -187,7 +187,8 @@ python3 tools/bugfix-bakeoff/external/bench.py readiness \
 
 The readiness report is an audit index, not a substitute for arming or scoring:
 it shows preflight errors/warnings, exact drive commands, existing scored cells,
-missing cells, and the next action.
+missing cells, pending-cell command templates for blocked providers, and the
+next action.
 Pass `--armed` only when the selected fixtures were just verified, for example
 by `make history-smoke` or `bench.py verify`.
 
