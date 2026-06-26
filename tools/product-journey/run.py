@@ -2340,6 +2340,76 @@ def deck_scene_eyebrows(deck: dict) -> set[str]:
     }
 
 
+def validate_slidey_deck_shape(deck: dict, media_manifest: dict, issues: list[dict]) -> None:
+    if not deck:
+        return
+    meta = deck.get("meta", {})
+    if not isinstance(meta, dict):
+        add_validation_issue(issues, "error", "deck-meta", "deck.slidey.json meta must be an object")
+        meta = {}
+    for key in ["title", "mode", "phase", "resolution"]:
+        if key not in meta:
+            add_validation_issue(issues, "error", "deck-meta", "deck.slidey.json meta is missing required keys", key)
+    resolution = meta.get("resolution", {})
+    if not isinstance(resolution, dict) or not resolution.get("width") or not resolution.get("height"):
+        add_validation_issue(issues, "error", "deck-resolution", "deck.slidey.json meta.resolution must include width and height")
+
+    scenes = deck.get("scenes", [])
+    if not isinstance(scenes, list) or not scenes:
+        add_validation_issue(issues, "error", "deck-scenes", "deck.slidey.json scenes must be a non-empty list")
+        return
+    allowed_scene_types = {"title", "narrative", "video", "cards", "quote", "table"}
+    missing_scene_keys = []
+    invalid_scene_types = []
+    malformed_media = []
+    for index, scene in enumerate(scenes, start=1):
+        if not isinstance(scene, dict):
+            add_validation_issue(issues, "error", "deck-scene-shape", "deck.slidey.json scenes must be objects", f"scene={index}")
+            continue
+        if scene.get("type", "") not in allowed_scene_types:
+            invalid_scene_types.append(f"{index}:{scene.get('type', '')}")
+        if not scene.get("title"):
+            missing_scene_keys.append(f"{index}/title")
+        if scene.get("type") != "title" and "body" not in scene and "media" not in scene and "video" not in scene and "image" not in scene and "cards" not in scene:
+            missing_scene_keys.append(f"{index}/content")
+        if "media" in scene:
+            if not isinstance(scene.get("media"), list):
+                malformed_media.append(f"{index}:media-not-list")
+            else:
+                for media_index, media in enumerate(scene.get("media", []), start=1):
+                    if not isinstance(media, dict):
+                        malformed_media.append(f"{index}.{media_index}:media-not-object")
+                    elif not media.get("path") or not media.get("media_kind"):
+                        malformed_media.append(f"{index}.{media_index}:missing-path-or-kind")
+    if invalid_scene_types:
+        add_validation_issue(issues, "error", "deck-scene-type", "deck.slidey.json has unsupported scene types", ", ".join(invalid_scene_types))
+    if missing_scene_keys:
+        add_validation_issue(issues, "error", "deck-scene-required", "deck.slidey.json scenes are missing title or content", ", ".join(missing_scene_keys))
+    if malformed_media:
+        add_validation_issue(issues, "error", "deck-media-shape", "deck.slidey.json media entries are malformed", ", ".join(malformed_media))
+
+    manifest_playback_paths = {
+        item.get("path", "")
+        for item in media_manifest.get("items", [])
+        if item.get("playback") and item.get("path")
+    } if media_manifest else set()
+    deck_media_paths = {
+        media.get("path", "")
+        for scene in scenes
+        if isinstance(scene, dict)
+        for media in scene.get("media", [])
+        if isinstance(media, dict) and media.get("path")
+    }
+    standalone_playback_paths = {
+        scene.get("video") or scene.get("image") or scene.get("rrweb") or ""
+        for scene in scenes
+        if isinstance(scene, dict) and scene.get("eyebrow") == "Playback evidence"
+    }
+    missing_playback_paths = sorted(manifest_playback_paths - deck_media_paths - standalone_playback_paths)
+    if missing_playback_paths:
+        add_validation_issue(issues, "error", "deck-playback-coverage", "deck.slidey.json does not reference all playback manifest paths", ", ".join(missing_playback_paths))
+
+
 def validate_run_bundle(run_dir: Path) -> dict:
     schema = read_json(SCHEMA)
     issues: list[dict] = []
@@ -2632,6 +2702,7 @@ def validate_run_bundle(run_dir: Path) -> dict:
         if invalid_check_statuses:
             add_validation_issue(issues, "error", "review-check-status", "review.json has unknown check statuses", ", ".join(invalid_check_statuses))
 
+    validate_slidey_deck_shape(deck, media_manifest, issues)
     scene_eyebrows = deck_scene_eyebrows(deck)
     for expected in ["Driver plan", "Video playback", "Scenario outcomes", "Proof gates"]:
         if deck and expected not in scene_eyebrows:
