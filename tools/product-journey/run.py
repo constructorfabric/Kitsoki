@@ -716,6 +716,7 @@ def main() -> None:
         help="Status for --attach-evidence",
     )
     parser.add_argument("--notes", default="", help="Notes for --attach-evidence")
+    parser.add_argument("--json-output", action="store_true", help="Print machine-readable JSON for story/host.run callers")
     parser.add_argument(
         "--publish-deck",
         action="store_true",
@@ -750,6 +751,18 @@ def main() -> None:
             args.notes,
             publish_deck,
         )
+        if args.json_output:
+            print(json.dumps({
+                "status": "attached",
+                "run_dir": str(run_dir),
+                "scenario": args.scenario,
+                "evidence_kind": args.evidence_kind,
+                "evidence_path": args.evidence_path,
+                "deck_path": str(run_dir / "deck.slidey.json"),
+                "published_deck_path": str(publish_deck) if publish_deck is not None else "",
+            }, sort_keys=True))
+            append_log(f"Attached evidence {args.scenario}/{args.evidence_kind} to {run_dir.name}")
+            return
         print(f"Attached evidence: {args.scenario}/{args.evidence_kind}")
         print(f"Artifacts: {run_dir}")
         print(f"Deck: {run_dir / 'deck.slidey.json'}")
@@ -761,6 +774,16 @@ def main() -> None:
     if args.emit_run:
         publish_deck = DEFAULT_DECK if args.publish_deck else None
         run_dir, run_json = build_run_bundle(catalog, personas, scenarios, args.project, args.persona, args.seed, "dry-run", publish_deck)
+        if args.json_output:
+            print(json.dumps({
+                "status": "created",
+                "run_id": run_json["run_id"],
+                "run_dir": str(run_dir),
+                "deck_path": str(run_dir / "deck.slidey.json"),
+                "published_deck_path": str(publish_deck) if publish_deck is not None else "",
+            }, sort_keys=True))
+            append_log(f"Emitted dry-run bundle {run_json['run_id']}")
+            return
         print(f"Product journey run: {run_json['run_id']}")
         print(f"Artifacts: {run_dir}")
         print(f"Deck: {run_dir / 'deck.slidey.json'}")

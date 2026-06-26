@@ -1,0 +1,62 @@
+app:
+  id: product-journey-qa
+  version: 0.1.0
+  title: "Product journey QA"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+
+world:
+  project:        { type: string, default: "gears-rust" }
+  persona:        { type: string, default: "core-maintainer" }
+  seed:           { type: string, default: "default" }
+  run_id:         { type: string, default: "" }
+  run_dir:        { type: string, default: "" }
+  deck_path:      { type: string, default: "" }
+  scenario:       { type: string, default: "" }
+  evidence_kind:  { type: string, default: "" }
+  evidence_path:  { type: string, default: "" }
+  notes:          { type: string, default: "" }
+  last_result:    { type: object, default: {} }
+  status:         { type: string, default: "idle" }
+
+intents:
+  start:
+    description: "Create a deterministic product-journey QA run bundle."
+    examples: ["start", "create a product journey run", "begin qa run"]
+    priority: 90
+    slots:
+      project: { type: string, required: false }
+      persona: { type: string, required: false }
+      seed: { type: string, required: false }
+  attach:
+    description: "Attach captured evidence to the current product-journey run."
+    examples: ["attach evidence", "add bugfix video", "record trace evidence"]
+    priority: 85
+    slots:
+      scenario: { type: string, required: true }
+      evidence_kind: { type: string, required: true }
+      evidence_path: { type: string, required: true }
+      notes: { type: string, required: false }
+  accept:
+    description: "Accept the current report bundle and finish."
+    examples: ["accept", "done", "looks good"]
+    priority: 70
+  quit:
+    description: "Abandon the product-journey QA wrapper."
+    examples: ["quit", "abort", "stop"]
+    priority: 40
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "status", "show me"]
+    priority: 10
+
+exports:
+  intents: [start, attach, accept, quit, look]
+
+root: idle
+
+include:
+  - rooms/*.yaml

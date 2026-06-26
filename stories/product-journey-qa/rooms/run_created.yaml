@@ -1,0 +1,78 @@
+states:
+  run_created:
+    description: "A product-journey QA run bundle exists; waiting for captured evidence."
+    relevant_world: [project, persona, seed, run_id, run_dir, deck_path, scenario, evidence_kind, evidence_path, status]
+    view:
+      - banner:
+          text: "RUN CREATED"
+          subtitle: "Attach evidence from visual MCP, studio MCP, oracle checks, or generated artifacts."
+          color: "#2563EB"
+      - kv:
+          pairs:
+            Run: '{{ world.run_id|default:"(pending)" }}'
+            Project: "{{ world.project }}"
+            Persona: "{{ world.persona }}"
+            Run dir: '{{ world.run_dir|default:"(pending)" }}'
+            Deck: '{{ world.deck_path|default:"(pending)" }}'
+            Last evidence: '{{ world.scenario|default:"(none)" }} / {{ world.evidence_kind|default:"" }}'
+            Status: "{{ world.status }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "attach scenario=... evidence_kind=... evidence_path=..."
+              hint: "mark one scenario evidence slot captured and regenerate the deck"
+              intent: attach
+            - label: "accept"
+              hint: "finish with the current run bundle"
+              intent: accept
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      attach:
+        - target: run_created
+          guard_hint: "create a run before attaching evidence"
+          effects:
+            - set:
+                scenario: "{{ slots.scenario }}"
+                evidence_kind: "{{ slots.evidence_kind }}"
+                evidence_path: "{{ slots.evidence_path }}"
+                notes: "{{ slots.notes ?? '' }}"
+                status: "attaching"
+            - invoke: host.run
+              id: attach_product_journey_evidence
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --attach-evidence
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --scenario
+                  - "{{ slots.scenario }}"
+                  - --evidence-kind
+                  - "{{ slots.evidence_kind }}"
+                  - --evidence-path
+                  - "{{ slots.evidence_path }}"
+                  - --notes
+                  - "{{ slots.notes ?? '' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                deck_path: "stdout_json.deck_path"
+              on_error: run_created
+            - set:
+                status: "evidence_attached"
+      accept:
+        - target: done
+          effects:
+            - set: { status: "done" }
+      quit:
+        - target: abandoned
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .

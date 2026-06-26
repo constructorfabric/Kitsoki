@@ -1,0 +1,59 @@
+states:
+  idle:
+    description: "Waiting to create a product-journey QA run bundle."
+    relevant_world: [project, persona, seed, status]
+    view:
+      - banner:
+          text: "PRODUCT JOURNEY QA"
+          subtitle: "Create repeatable persona/scenario bundles for visual MCP and Kitsoki MCP evidence."
+          color: "#7C3AED"
+      - kv:
+          pairs:
+            Project: "{{ world.project }}"
+            Persona: "{{ world.persona }}"
+            Seed: "{{ world.seed }}"
+            Status: "{{ world.status }}"
+      - prose: "Create a no-LLM run bundle, then attach visual/MCP evidence as scenarios play out."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start project=... persona=... seed=..."
+              hint: "emit a run bundle under .artifacts/product-journey"
+              intent: start
+            - label: "look"
+              intent: look
+    on:
+      start:
+        - target: run_created
+          effects:
+            - set:
+                project: "{{ slots.project ?? world.project }}"
+                persona: "{{ slots.persona ?? world.persona }}"
+                seed: "{{ slots.seed ?? world.seed }}"
+                status: "creating"
+            - invoke: host.run
+              id: emit_product_journey_run
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --emit-run
+                  - --json-output
+                  - --project
+                  - "{{ slots.project ?? world.project }}"
+                  - --persona
+                  - "{{ slots.persona ?? world.persona }}"
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                run_id: "stdout_json.run_id"
+                run_dir: "stdout_json.run_dir"
+                deck_path: "stdout_json.deck_path"
+              on_error: idle
+            - set:
+                status: "run_created"
+      look:
+        - target: .

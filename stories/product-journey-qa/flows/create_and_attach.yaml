@@ -1,0 +1,69 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: created
+            run_id: run-123
+            run_dir: .artifacts/product-journey/run-123
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      attach_product_journey_evidence:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: attached
+            run_dir: .artifacts/product-journey/run-123
+            scenario: bugfix
+            evidence_kind: key_interaction_video
+            evidence_path: media/bugfix.mp4
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+
+turns:
+  - intent:
+      name: start
+      slots:
+        project: gears-rust
+        persona: core-maintainer
+        seed: flow
+    expect_state: run_created
+    expect_world:
+      status: run_created
+      run_id: run-123
+      run_dir: .artifacts/product-journey/run-123
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_product_journey_run }
+
+  - intent:
+      name: attach
+      slots:
+        scenario: bugfix
+        evidence_kind: key_interaction_video
+        evidence_path: media/bugfix.mp4
+        notes: visual MCP capture placeholder
+    expect_state: run_created
+    expect_world:
+      status: evidence_attached
+      scenario: bugfix
+      evidence_kind: key_interaction_video
+      evidence_path: media/bugfix.mp4
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+    expect_host_calls:
+      - handler: host.run
+        args: { call: attach_product_journey_evidence }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      status: done
+
+expect_no_errors: true

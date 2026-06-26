@@ -1,0 +1,42 @@
+states:
+  done:
+    description: "The product-journey QA bundle is ready for review."
+    relevant_world: [run_id, run_dir, deck_path, status]
+    view:
+      - banner:
+          text: "PRODUCT JOURNEY QA READY"
+          subtitle: "Review the run bundle and Slidey deck."
+          color: "#059669"
+      - kv:
+          pairs:
+            Run: "{{ world.run_id }}"
+            Run dir: "{{ world.run_dir }}"
+            Deck: "{{ world.deck_path }}"
+            Status: "{{ world.status }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on:
+      look:
+        - target: .
+
+  abandoned:
+    description: "The product-journey QA wrapper was abandoned."
+    relevant_world: [status]
+    view:
+      - banner:
+          text: "PRODUCT JOURNEY QA ABANDONED"
+          subtitle: "No further action will be taken."
+          color: "#B45309"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "look"
+              intent: look
+    on:
+      look:
+        - target: .
