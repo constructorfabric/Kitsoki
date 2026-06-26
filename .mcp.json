@@ -3,6 +3,10 @@
     "kitsoki": {
       "command": "kitsoki",
       "args": ["mcp", "--stories-dir", "stories"]
+    },
+    "slidey": {
+      "command": "node",
+      "args": ["/Users/brad/code/slidey/src/mcp.js", "--root", "/Users/brad/code/Kitsoki"]
     }
   }
 }
