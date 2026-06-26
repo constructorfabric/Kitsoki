@@ -112,7 +112,9 @@ captured, blocked, or validated. It also aggregates scenario
 `quality_gate` coverage so the matrix deck shows which journeys have enough
 proof-source minimum evidence to count as completed, plus a missing-proof
 evidence backlog that names the evidence kinds still needing live visual MCP or
-cassette-backed capture.
+cassette-backed capture. Each missing-proof row also lists affected run IDs,
+project/persona pairs, and `driver-handoff.md` paths so the next capture pass
+can jump directly from the rollup into the per-run proof backlog.
 Validate a generated matrix before using it as the sweep contract:
 
 ```sh

@@ -126,6 +126,9 @@ evidence, findings, and proof coverage. It also aggregates each run's
 `quality_gate` rows so the matrix deck shows cross-run proof-source
 minimum-evidence coverage and a missing-proof evidence backlog for the live
 visual MCP or cassette captures still needed before the sweep is representative.
+Each missing-proof row links back to the affected run IDs and their
+`driver-handoff.md` paths so the next driver pass can continue from the matrix
+review deck.
 Validate generated matrices before using them as the shared sweep contract:
 
 ```sh

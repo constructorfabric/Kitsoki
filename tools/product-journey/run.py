@@ -3777,6 +3777,32 @@ def validate_matrix_bundle(matrix_dir: Path) -> dict:
                     "rollup summary quality_gate_missing_proof_evidence_count does not match missing proof rows",
                     f"summary={summary.get('quality_gate_missing_proof_evidence_count')}, rows={expected_missing_proof}",
                 )
+            missing_affected_runs = []
+            stale_affected_counts = []
+            for row in missing_proof_evidence:
+                affected_runs = row.get("affected_runs", [])
+                if len(affected_runs) != row.get("missing_runs", 0):
+                    stale_affected_counts.append(
+                        f"{row.get('scenario', '')}/{row.get('evidence_kind', '')}: expected={row.get('missing_runs', 0)}, actual={len(affected_runs)}"
+                    )
+                for run in affected_runs:
+                    missing_keys = [
+                        key for key in ["run_id", "project", "persona", "run_dir", "driver_handoff_path"]
+                        if not run.get(key)
+                    ]
+                    if missing_keys:
+                        missing_affected_runs.append(
+                            f"{row.get('scenario', '')}/{row.get('evidence_kind', '')}: {', '.join(missing_keys)}"
+                        )
+                    handoff_path = run.get("driver_handoff_path", "")
+                    if handoff_path and not Path(handoff_path).exists():
+                        missing_affected_runs.append(
+                            f"{row.get('scenario', '')}/{row.get('evidence_kind', '')}: missing handoff {handoff_path}"
+                        )
+            if stale_affected_counts:
+                add_validation_issue(issues, "error", "rollup-missing-proof-affected-count", "rollup missing proof affected_runs counts are stale", "; ".join(stale_affected_counts))
+            if missing_affected_runs:
+                add_validation_issue(issues, "error", "rollup-missing-proof-affected-runs", "rollup missing proof affected_runs are not actionable", "; ".join(missing_affected_runs))
             rollup_deck = load_json_for_validation(matrix_dir / "rollup.slidey.json", issues)
             validate_slidey_deck_shape(rollup_deck, {"items": []}, issues)
             if rollup_deck and quality_gates and "Quality gates" not in deck_scene_eyebrows(rollup_deck):
@@ -4023,6 +4049,7 @@ def summarize_run_for_rollup(run_dir: Path) -> dict:
         "review_summary": review.get("summary", ""),
         "deck_path": str(run_dir / "deck.slidey.json"),
         "execution_plan_path": str(run_dir / "execution-plan.md"),
+        "driver_handoff_path": str(run_dir / "driver-handoff.md"),
         "present_evidence_count": metrics.get("present_evidence_count", evidence.get("summary", {}).get("present", 0)),
         "required_evidence_count": metrics.get("required_evidence_count", evidence.get("summary", {}).get("required", 0)),
         "findings_count": metrics.get("findings_count", len(findings.get("items", []))),
@@ -4238,19 +4265,35 @@ def aggregate_driver_journal(runs: list[dict]) -> list[dict]:
     ]
 
 
-def aggregate_missing_proof_evidence(quality_gates: list[dict]) -> list[dict]:
-    rows = []
+def aggregate_missing_proof_evidence(quality_gates: list[dict], runs: list[dict]) -> list[dict]:
+    rows_by_key: dict[tuple[str, str], dict] = {}
     for gate in quality_gates:
-        missing = gate.get("missing_proof_minimum_evidence", {})
-        for evidence_kind, count in missing.items():
-            rows.append({
+        for evidence_kind, count in gate.get("missing_proof_minimum_evidence", {}).items():
+            rows_by_key[(gate.get("scenario", ""), evidence_kind)] = {
                 "scenario": gate.get("scenario", ""),
                 "label": gate.get("label", gate.get("scenario", "")),
                 "evidence_kind": evidence_kind,
                 "missing_runs": count,
                 "runs": gate.get("runs", 0),
-            })
-    return sorted(rows, key=lambda row: (-row["missing_runs"], row["scenario"], row["evidence_kind"]))
+                "affected_runs": [],
+            }
+
+    for run in runs:
+        for gate in run.get("quality_gates", []):
+            scenario_id = gate.get("scenario", "")
+            for evidence_kind in gate.get("missing_proof_minimum_evidence", []):
+                row = rows_by_key.get((scenario_id, evidence_kind))
+                if row is None:
+                    continue
+                row["affected_runs"].append({
+                    "run_id": run.get("run_id", ""),
+                    "project": run.get("project", {}).get("id", ""),
+                    "persona": run.get("persona", {}).get("id", ""),
+                    "run_dir": run.get("run_dir", ""),
+                    "driver_handoff_path": run.get("driver_handoff_path", ""),
+                })
+
+    return sorted(rows_by_key.values(), key=lambda row: (-row["missing_runs"], row["scenario"], row["evidence_kind"]))
 
 
 def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
@@ -4264,7 +4307,7 @@ def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
     persona_outcomes = aggregate_persona_outcomes(runs)
     quality_gates = aggregate_quality_gates(runs)
     driver_journal = aggregate_driver_journal(runs)
-    missing_proof_evidence = aggregate_missing_proof_evidence(quality_gates)
+    missing_proof_evidence = aggregate_missing_proof_evidence(quality_gates, runs)
     totals = {
         "runs_found": len(runs),
         "assignments": assignment_count,
@@ -4430,6 +4473,13 @@ def render_rollup_summary(rollup: dict) -> str:
             lines.append(
                 f"- `{row['scenario']}` / `{row['evidence_kind']}`: missing in {row['missing_runs']} / {row['runs']} runs"
             )
+            for run in row.get("affected_runs", [])[:5]:
+                lines.append(
+                    f"  - `{run.get('project', '')}` / `{run.get('persona', '')}`: "
+                    f"`{run.get('run_id', '')}`; handoff `{run.get('driver_handoff_path', '')}`"
+                )
+            if len(row.get("affected_runs", [])) > 5:
+                lines.append(f"  - +{len(row.get('affected_runs', [])) - 5} more runs")
     else:
         lines.append("- (none)")
     return "\n".join(lines) + "\n"
@@ -4465,7 +4515,14 @@ def render_rollup_deck(rollup: dict) -> dict:
         for row in rollup.get("quality_gates", [])[:12]
     ]
     missing_proof_lines = [
-        f"{row['scenario']} / {row['evidence_kind']}: missing {row['missing_runs']}/{row['runs']} runs"
+        (
+            f"{row['scenario']} / {row['evidence_kind']}: missing {row['missing_runs']}/{row['runs']} runs"
+            + (
+                f" - start {row.get('affected_runs', [{}])[0].get('project', '')}/"
+                f"{row.get('affected_runs', [{}])[0].get('persona', '')}"
+                if row.get("affected_runs") else ""
+            )
+        )
         for row in rollup.get("missing_proof_evidence", [])[:16]
     ]
     return {
