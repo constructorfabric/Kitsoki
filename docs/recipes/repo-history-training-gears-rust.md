@@ -84,6 +84,18 @@ GEARS_HISTORY_CANDIDATES=opus-4.8,gpt-5.3-spark \
 make gears-history-smoke
 ```
 
+Before calling the reference path product-ready for the current gears-rust
+corpus, run the full armable-fixture smoke:
+
+```sh
+GEARS_RUST_REPO=/Users/brad/code/gears-rust make gears-history-full-smoke
+```
+
+That verifies `bug1,bug4,bug5,bug9` RED@baseline/GREEN@fix, renders the full
+live command matrix, prepares the first cell prompt/worktree, writes readiness,
+and validates the `repo-bakeoff` story flows. It is still no-LLM, but it runs
+more cargo work than the one-bug smoke.
+
 For another repo, use the generic target directly after adding a manifest and
 oracles under `tools/bugfix-bakeoff/external/projects/<name>/`:
 

@@ -172,6 +172,15 @@ The free first-cell preparation writes the baseline worktree under
 `.artifacts/external-bakeoff/drive-prompts/`; set
 `HISTORY_PREPARE_FIRST_CELL=0` to skip it.
 
+For the full gears-rust reference corpus, run:
+
+```sh
+GEARS_RUST_REPO=~/code/gears-rust make gears-history-full-smoke
+```
+
+That uses the same generic smoke over the four armable fixtures
+`bug1,bug4,bug5,bug9`.
+
 To regenerate that readiness report without rerunning RED/GREEN arming, call the
 harness directly. This is useful after adding scored or pending cell JSON:
 

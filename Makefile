@@ -48,7 +48,7 @@ BASESTORIES_STAMP := internal/basestories/.embed-stamp
 BASESKILLS_DIR    := internal/baseskills/assets
 BASESKILLS_STAMP  := internal/baseskills/.embed-stamp
 
-.PHONY: all setup build install uninstall test test-flows onboard-smoke onboard-sisters qs-bakeoff gears-bakeoff history-smoke history-pending-smoke gears-history-smoke starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories embed-skills e2e-docker \
+.PHONY: all setup build install uninstall test test-flows onboard-smoke onboard-sisters qs-bakeoff gears-bakeoff history-smoke history-pending-smoke gears-history-smoke gears-history-full-smoke starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories embed-skills e2e-docker \
 	fetch-models fetch-llama-server demo-tour demo-tour-fast demo-tour-qa cost-report cost-report-test mining-test \
 	vscode-e2e vscode-e2e-fast vscode-qa vscode-theming-sidebyside vscode-package vscode-install-local
 
@@ -346,6 +346,14 @@ GEARS_HISTORY_CANDIDATES ?= opus-4.8
 gears-history-smoke:
 	@test -n "$(GEARS_RUST_REPO)" || (echo "GEARS_RUST_REPO must point at a local gears-rust checkout"; exit 1)
 	$(MAKE) history-smoke HISTORY_PROJECT=gears-rust HISTORY_REPO_DIR="$(GEARS_RUST_REPO)" HISTORY_BUGS="$(GEARS_HISTORY_BUGS)" HISTORY_CANDIDATES="$(GEARS_HISTORY_CANDIDATES)"
+
+# gears-history-full-smoke is the no-cost full-corpus proof for the armable
+# gears-rust fixtures. It verifies all four RED/GREEN oracles, renders the full
+# live command matrix, prepares the first cell prompt/worktree, and runs the
+# repo-bakeoff flow checks.
+gears-history-full-smoke:
+	@test -n "$(GEARS_RUST_REPO)" || (echo "GEARS_RUST_REPO must point at a local gears-rust checkout"; exit 1)
+	$(MAKE) history-smoke HISTORY_PROJECT=gears-rust HISTORY_REPO_DIR="$(GEARS_RUST_REPO)" HISTORY_BUGS="bug1,bug4,bug5,bug9" HISTORY_CANDIDATES="$(GEARS_HISTORY_CANDIDATES)"
 
 # cost-report builds the per-story cost-savings report (the reusable form of
 # docs/case-studies/git-ops-cost.md): the deterministic story cost (agent spend
