@@ -2227,11 +2227,371 @@
     },
     {
       "type": "narrative",
-      "eyebrow": "Proof from dogfood",
-      "body": "The bakeoff became a story-improvement harness.",
-      "lede": "It started as a comparison: Kitsoki bugfix pipeline versus a single prompt. It turned into a repeatable way to mine real bugs, arm hidden oracles, drive live cells, score outcomes, and feed story changes back into the system.",
-      "hold": 210,
-      "narration": "The bakeoff started as a comparison. It became a repeatable story improvement harness."
+      "eyebrow": "Dogfood path",
+      "body": "Use it the way a customer would.",
+      "lede": "Start by onboarding the repo through Kitsoki MCP. Read the status and next steps. Then drive planning, bugfix, git ops, and story improvement through the same governed surface. The bakeoff and harness slides are the proof that the loop works.",
+      "hold": 220,
+      "narration": "The dogfood path is the customer path: onboard through MCP, read the readiness status, drive real tasks, then use the bakeoff harness as proof."
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Onboard through MCP",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/dev-story/app.yaml",
+      "prompt": "use kitsoki-mcp-drive to onboard gears-rust, infer the project profile, prove the workflow can render, route, and validate before we spend on live work",
+      "calls": [
+        {
+          "tool": "studio.work",
+          "args": "{ include_quiet: false, limit: 20 }",
+          "result": "finds active repos, stories, and handoffs"
+        },
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/dev-story/app.yaml\", harness: \"live\", trace: \"gears-rust-real.trace.jsonl\" }",
+          "result": "handle=onboard-gears"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"onboard gears-rust and draft the project profile\"",
+          "result": "deterministic discovery + LLM profile draft"
+        },
+        {
+          "tool": "session.status",
+          "args": "{ handle: \"onboard-gears\" }",
+          "result": "state + last_error without dumping world"
+        }
+      ],
+      "outcome": {
+        "status": "readiness surfaced",
+        "ref": ".artifacts/onboarding-live-20260625-202740/",
+        "lines": [
+          "inferred rust stack, make dev/test/build, and repo identity",
+          "found a stale-binary validator bug and fixed KITSOKI_BIN support",
+          "next external LLM draft is gated by explicit approval or a private provider"
+        ]
+      },
+      "caption": "Onboarding is a workflow run with artifacts and gates, not a prompt preamble.",
+      "hold": 245,
+      "instant": true,
+      "narration": "Onboarding itself is driven through MCP. It produces a status, artifacts, a trace, and concrete next steps before expensive work starts."
+    },
+    {
+      "type": "evidence",
+      "title": "Onboarding status",
+      "items": [
+        {
+          "label": "Discovery path",
+          "status": "validated",
+          "detail": "gears-rust resolved to a Rust project with make dev, make test, and make build",
+          "refType": "artifact",
+          "ref": "onboarding-live-20260625 traces"
+        },
+        {
+          "label": "MCP live draft",
+          "status": "validated",
+          "detail": "host.agent.decide returned a schema-shaped project profile through the live Studio MCP path",
+          "refType": "artifact",
+          "ref": "agent prompt + response JSON"
+        },
+        {
+          "label": "Validator bug",
+          "status": "implemented",
+          "detail": "init_validate_profile.py now honors KITSOKI_BIN so live dogfood can use current code",
+          "refType": "test",
+          "ref": "dev-story init_llm_profile_draft flow"
+        },
+        {
+          "label": "Live continuation",
+          "status": "next",
+          "detail": "rerun the draft with approved repo-data sharing or a local/private model provider",
+          "refType": "test",
+          "ref": "operator approval required"
+        }
+      ],
+      "caption": "This is the honest onboarding readout: what is proven, what was fixed, and what is still gated.",
+      "hold": 230,
+      "instant": true,
+      "narration": "The onboarding status is honest: discovery and profile drafting worked, one environment bug was fixed, and the next live LLM call needs explicit approval or a private provider."
+    },
+    {
+      "type": "evidence",
+      "title": "Onboarding next steps",
+      "items": [
+        {
+          "label": "Promote replay",
+          "status": "next",
+          "detail": "turn the successful discovery and validator-fix path into a no-LLM flow fixture",
+          "refType": "path",
+          "ref": "stories/dev-story/flows/"
+        },
+        {
+          "label": "Private-provider path",
+          "status": "next",
+          "detail": "rerun profile drafting against a local/private model for sensitive repo data",
+          "refType": "doc",
+          "ref": "harness profile"
+        },
+        {
+          "label": "Readiness gate",
+          "status": "next",
+          "detail": "block live marathons until profile, test command, worktree policy, and oracle plan are explicit",
+          "refType": "doc",
+          "ref": "dev-story onboarding"
+        },
+        {
+          "label": "Cheaper MCP reads",
+          "status": "next",
+          "detail": "teach drivers to prefer session.status and session.world before heavy inspect",
+          "refType": "doc",
+          "ref": "driver efficiency finding"
+        }
+      ],
+      "caption": "The next step is not more demo polish. It is turning onboarding into a reusable readiness gate for every repo.",
+      "hold": 225,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Use it from Claude Code",
+      "agent": "kitsoki-mcp-drive",
+      "story": "workspace story router",
+      "prompt": "use kitsoki-mcp-drive to onboard the repo, show readiness, then drive the next task through the right Kitsoki story",
+      "calls": [
+        {
+          "tool": "studio.work",
+          "args": "{ include_quiet: false, limit: 20 }",
+          "result": "shows active repos, sessions, stories, and follow-ups"
+        },
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/kitsoki-dev/app.yaml\", harness: \"live\" }",
+          "result": "opens the governed operator workflow"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"plan, fix, commit, and file workflow gaps\"",
+          "result": "routes natural language into story phases"
+        },
+        {
+          "tool": "session.trace",
+          "args": "{ handle: \"work-1\", limit: 80 }",
+          "result": "keeps proof for review and training"
+        }
+      ],
+      "outcome": {
+        "status": "same surface, many jobs",
+        "ref": "story state + trace",
+        "lines": [
+          "the operator prompt stays natural",
+          "the runtime chooses phases, gates, tools, and artifacts",
+          "failures become traceable follow-up work instead of lost context"
+        ]
+      },
+      "caption": "After onboarding, the same MCP surface drives the day-to-day work.",
+      "hold": 230,
+      "instant": true,
+      "narration": "After onboarding, the same MCP surface drives planning, bugfix, git operations, and story improvement."
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Planning through MCP",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/kitsoki-dev/app.yaml",
+      "prompt": "use kitsoki-mcp-drive agent to propose and implement the spatial oracle feature I described in the markdown",
+      "calls": [
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/kitsoki-dev/app.yaml\", harness: \"live\", profile: \"codex\" }",
+          "result": "handle=plan-spatial-oracle"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"propose and implement the spatial oracle feature...\"",
+          "result": "routes to planning / proposal workflow"
+        },
+        {
+          "tool": "session.status",
+          "args": "{ handle: \"plan-spatial-oracle\" }",
+          "result": "reads state and allowed intents cheaply"
+        },
+        {
+          "tool": "session.trace",
+          "args": "{ handle: \"plan-spatial-oracle\", kinds: [\"host.call\", \"machine.transition\"] }",
+          "result": "captures the decision trail"
+        }
+      ],
+      "outcome": {
+        "status": "proposal ready",
+        "ref": ".context/spatial-oracle-plan.md",
+        "lines": [
+          "scope is explicit before writes",
+          "approval gate separates design from implementation",
+          "trace records why the plan exists"
+        ]
+      },
+      "hold": 230,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Bugfix through MCP",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/bugfix/app.yaml",
+      "prompt": "fix the flaky screenshot diff bug from the issue, prove the regression red first, then ship the smallest safe change",
+      "calls": [
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/bugfix/app.yaml\", harness: \"live\" }",
+          "result": "handle=bugfix-128"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"fix the flaky screenshot diff bug...\"",
+          "result": "triage -> reproduce -> plan"
+        },
+        {
+          "tool": "render.tui_png",
+          "args": "{ handle: \"bugfix-128\", cols: 120, rows: 38 }",
+          "result": "visual proof for operator review"
+        },
+        {
+          "tool": "session.status",
+          "args": "{ handle: \"bugfix-128\" }",
+          "result": "state=testing · gate running"
+        }
+      ],
+      "outcome": {
+        "status": "fix gated",
+        "ref": "trace: bugfix-128.jsonl",
+        "lines": [
+          "reproduction before code",
+          "tests run as deterministic gates",
+          "review sees a working diff instead of an agent claim"
+        ]
+      },
+      "hold": 230,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Git operations through MCP",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/git-ops/app.yaml",
+      "prompt": "merge the finished work back to main, handle conflicts if needed, commit only my changes, and leave unrelated dirt alone",
+      "calls": [
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/git-ops/app.yaml\", key: \"ship-spatial-oracle\" }",
+          "result": "handle=git-ship-1"
+        },
+        {
+          "tool": "studio.work",
+          "args": "{ include_quiet: false, limit: 20 }",
+          "result": "finds active handoff / conflict work"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"merge the finished work back to main...\"",
+          "result": "routes to conflict-aware git ops"
+        },
+        {
+          "tool": "session.trace",
+          "args": "{ handle: \"git-ship-1\", limit: 60 }",
+          "result": "records every handoff decision"
+        }
+      ],
+      "outcome": {
+        "status": "handoff preserved",
+        "ref": "commit + trace",
+        "lines": [
+          "worktree policy stays explicit",
+          "dirty unrelated files are not reverted",
+          "operator can reacquire any blocked step"
+        ]
+      },
+      "hold": 230,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Self-improvement loop",
+      "agent": "kitsoki-mcp-drive",
+      "story": "studio issue.create",
+      "prompt": "this story stalled after the operator chose an on-disk ticket; file a GitHub issue with the trace and a screenshot so we can fix the workflow",
+      "calls": [
+        {
+          "tool": "session.trace",
+          "args": "{ handle: \"bugfix-room\", limit: 80 }",
+          "result": "captures the stale transition and host calls"
+        },
+        {
+          "tool": "render.tui_png",
+          "args": "{ handle: \"bugfix-room\", cols: 120, rows: 36 }",
+          "result": "writes visual evidence under .artifacts"
+        },
+        {
+          "tool": "issue.create",
+          "args": "{ repo: \"constructorfabric/Kitsoki\", include_trace: true, assets: [...] }",
+          "result": "GitHub issue + source-autonomous label"
+        },
+        {
+          "tool": "studio.work",
+          "args": "{ include_quiet: false }",
+          "result": "new issue appears as follow-up work"
+        }
+      ],
+      "outcome": {
+        "status": "gap captured",
+        "ref": "GitHub #new",
+        "lines": [
+          "the agent cannot silently drop MCP gaps",
+          "evidence is bundled at filing time",
+          "the bug becomes input to the next story improvement run"
+        ]
+      },
+      "hold": 240,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Story improvement harness",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/slidey-bugfix/app.yaml",
+      "prompt": "run the story improvement harness over failed traces, promote the fixed behavior into replay tests, and show the story diff that makes the next run better",
+      "calls": [
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/slidey-bugfix/app.yaml\", harness: \"replay\" }",
+          "result": "handle=story-train-1"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"improve this story from failed traces\"",
+          "result": "collects failures and candidate story diff"
+        },
+        {
+          "tool": "story.validate",
+          "args": "{ dir: \"stories/slidey-bugfix\" }",
+          "result": "schema and transition invariants pass"
+        },
+        {
+          "tool": "story.test",
+          "args": "{ dir: \"stories/slidey-bugfix\" }",
+          "result": "flow fixtures replay without LLM spend"
+        }
+      ],
+      "outcome": {
+        "status": "story retrained",
+        "ref": "flows + prompt diff",
+        "lines": [
+          "failed runs become fixtures",
+          "prompt and gate changes are tested like code",
+          "the next marathon starts from a stronger workflow"
+        ]
+      },
+      "caption": "The harness trains stories with traces, gates, and replayable proof, not isolated prompt snippets.",
+      "hold": 240,
+      "instant": true
     },
     {
       "type": "diagram-svg",
@@ -3003,333 +3363,86 @@
       "instant": true
     },
     {
-      "type": "mcp-drive",
-      "title": "Project onboarding harness",
-      "agent": "kitsoki-mcp-drive",
-      "story": "stories/kitsoki-dev/app.yaml",
-      "prompt": "onboard this repo and prove the workflow can find the right story, tools, gates, and project conventions before live work starts",
-      "calls": [
+      "type": "evidence",
+      "title": "What the evidence says",
+      "items": [
         {
-          "tool": "session.new",
-          "args": "{ story_path: \"stories/kitsoki-dev/app.yaml\", harness: \"replay\" }",
-          "result": "handle=onboard-1 · state=main.foyer"
+          "label": "gears-rust marathon",
+          "status": "validated",
+          "detail": "ten real merged-fix baselines re-solved through Kitsoki, each independently verified by hidden PR oracles",
+          "refType": "artifact",
+          "ref": ".context/gears-marathon-log.md"
         },
         {
-          "tool": "session.drive",
-          "args": "\"onboard this project for delivery work\"",
-          "result": "routes to discovery + project profile"
+          "label": "query-string bakeoff",
+          "status": "validated",
+          "detail": "three external parser bugs solved by gpt-5.5 through Kitsoki with oracle and suite pass",
+          "refType": "artifact",
+          "ref": "tools/bugfix-bakeoff/external/results/summary.json"
         },
         {
-          "tool": "render.tui_png",
-          "args": "{ handle: \"onboard-1\", cols: 120, rows: 36 }",
-          "result": "captures the operator view for QA"
+          "label": "hard-case stress",
+          "status": "validated",
+          "detail": "multi-file cases passed, H1 exposed near-side assertion risk, H4 exposed a stalled-call watchdog gap",
+          "refType": "doc",
+          "ref": ".context/gears-hard-cases-report.md"
         },
         {
-          "tool": "session.trace",
-          "args": "{ handle: \"onboard-1\", limit: 40 }",
-          "result": "trace becomes a reusable fixture candidate"
+          "label": "methodology",
+          "status": "validated",
+          "detail": "RED baseline, hidden oracle, hermetic worktree, explicit trace, score before story hardening",
+          "refType": "doc",
+          "ref": "tools/bugfix-bakeoff/external/README.md"
         }
       ],
-      "outcome": {
-        "status": "project profile armed",
-        "ref": ".artifacts/onboarding-harness/",
-        "lines": [
-          "detects repo conventions and available stories",
-          "checks the workflow can render and route without live LLM spend",
-          "turns onboarding failures into story/runtime improvements"
-        ]
-      },
-      "caption": "Before a bugfix marathon, Kitsoki can test whether the project is actually ready to be driven.",
-      "hold": 230,
+      "caption": "The proof is credible because misses are preserved as product findings, not edited out of the score.",
+      "hold": 245,
       "instant": true
     },
     {
       "type": "evidence",
-      "title": "Onboarding proof artifacts",
+      "title": "What becomes possible",
       "items": [
         {
-          "label": "Story selection",
+          "label": "Repo readiness",
           "status": "validated",
-          "detail": "routes planning, bugfix, and git handoff to explicit stories",
-          "refType": "test",
-          "ref": "session.drive + session.status",
-          "note": "no LLM"
+          "detail": "onboarding becomes a gate: profile, commands, worktree policy, story route, oracle plan",
+          "refType": "doc",
+          "ref": "dev-story onboarding"
         },
         {
-          "label": "Project profile",
+          "label": "Model ladders",
           "status": "validated",
-          "detail": "records repo root, worktree policy, test commands, and docs paths",
+          "detail": "run cheap-to-expensive candidates and stop once a hidden oracle reaches solved",
+          "refType": "command",
+          "ref": "external/escalate.sh"
+        },
+        {
+          "label": "Story training",
+          "status": "validated",
+          "detail": "a failed run produces trace evidence, a story diff, and replay coverage for the next run",
           "refType": "artifact",
-          "ref": "session.inspect world snapshot"
+          "ref": "trace -> fixture -> story diff"
         },
         {
-          "label": "Operator surface",
+          "label": "Customer proof",
           "status": "validated",
-          "detail": "renders the exact TUI/web room state the driver sees",
+          "detail": "the same harness can answer: should I trust Kitsoki on my repo, with my tests, at this cost?",
           "refType": "artifact",
-          "ref": "render.tui_png / render_web"
-        },
-        {
-          "label": "Regression fixture",
-          "status": "next",
-          "detail": "interesting onboarding traces can be promoted to flow tests",
-          "refType": "path",
-          "ref": "stories/*/flows/*.yaml"
+          "ref": "deterministic Slidey report"
         }
       ],
-      "caption": "Onboarding is tested as a workflow, not treated as a one-time prompt preamble.",
-      "hold": 220,
-      "instant": true
-    },
-    {
-      "type": "mcp-drive",
-      "title": "How to use it",
-      "agent": "kitsoki-mcp-drive",
-      "story": "workspace story router",
-      "prompt": "use kitsoki-mcp-drive to plan the work, fix the bug, handle git, and file follow-up issues when the workflow itself needs improvement",
-      "calls": [
-        {
-          "tool": "studio.work",
-          "args": "{ include_quiet: false, limit: 20 }",
-          "result": "finds active repo work and handoffs"
-        },
-        {
-          "tool": "session.new",
-          "args": "{ story_path: \"stories/kitsoki-dev/app.yaml\", harness: \"live\" }",
-          "result": "opens a governed workflow session"
-        },
-        {
-          "tool": "session.drive",
-          "args": "\"plan, implement, test, commit, and improve the story\"",
-          "result": "routes natural language into story phases"
-        },
-        {
-          "tool": "session.trace",
-          "args": "{ handle: \"work-1\", limit: 80 }",
-          "result": "keeps proof for review and training"
-        }
-      ],
-      "outcome": {
-        "status": "work stays driven",
-        "ref": "story state + trace",
-        "lines": [
-          "the operator prompt stays natural",
-          "the runtime chooses phases, gates, tools, and artifacts",
-          "failures become traceable follow-up work instead of lost context"
-        ]
-      },
-      "caption": "The next slides show the same loop for planning, bugfix, git ops, and story improvement.",
-      "hold": 230,
-      "instant": true
-    },
-    {
-      "type": "mcp-drive",
-      "title": "Planning through MCP",
-      "agent": "kitsoki-mcp-drive",
-      "story": "stories/kitsoki-dev/app.yaml",
-      "prompt": "use kitsoki-mcp-drive agent to propose and implement the spatial oracle feature I described in the markdown",
-      "calls": [
-        {
-          "tool": "session.new",
-          "args": "{ story_path: \"stories/kitsoki-dev/app.yaml\", harness: \"live\", profile: \"codex\" }",
-          "result": "handle=plan-spatial-oracle"
-        },
-        {
-          "tool": "session.drive",
-          "args": "\"propose and implement the spatial oracle feature...\"",
-          "result": "routes to planning / proposal workflow"
-        },
-        {
-          "tool": "session.inspect",
-          "args": "{ handle: \"plan-spatial-oracle\", max_value_len: 240 }",
-          "result": "reads state, world, allowed intents"
-        },
-        {
-          "tool": "session.trace",
-          "args": "{ handle: \"plan-spatial-oracle\", kinds: [\"host.call\", \"machine.transition\"] }",
-          "result": "captures the decision trail"
-        }
-      ],
-      "outcome": {
-        "status": "proposal ready",
-        "ref": ".context/spatial-oracle-plan.md",
-        "lines": [
-          "scope is explicit before writes",
-          "approval gate separates design from implementation",
-          "trace records why the plan exists"
-        ]
-      },
-      "hold": 230,
-      "instant": true
-    },
-    {
-      "type": "mcp-drive",
-      "title": "Bugfix through MCP",
-      "agent": "kitsoki-mcp-drive",
-      "story": "stories/bugfix/app.yaml",
-      "prompt": "fix the flaky screenshot diff bug from the issue, prove the regression red first, then ship the smallest safe change",
-      "calls": [
-        {
-          "tool": "session.new",
-          "args": "{ story_path: \"stories/bugfix/app.yaml\", harness: \"live\" }",
-          "result": "handle=bugfix-128"
-        },
-        {
-          "tool": "session.drive",
-          "args": "\"fix the flaky screenshot diff bug...\"",
-          "result": "triage -> reproduce -> plan"
-        },
-        {
-          "tool": "render.tui_png",
-          "args": "{ handle: \"bugfix-128\", cols: 120, rows: 38 }",
-          "result": "visual proof for operator review"
-        },
-        {
-          "tool": "session.status",
-          "args": "{ handle: \"bugfix-128\" }",
-          "result": "state=testing · gate running"
-        }
-      ],
-      "outcome": {
-        "status": "fix gated",
-        "ref": "trace: bugfix-128.jsonl",
-        "lines": [
-          "reproduction before code",
-          "tests run as deterministic gates",
-          "review sees a working diff instead of an agent claim"
-        ]
-      },
-      "hold": 230,
-      "instant": true
-    },
-    {
-      "type": "mcp-drive",
-      "title": "Git operations through MCP",
-      "agent": "kitsoki-mcp-drive",
-      "story": "stories/git-ops/app.yaml",
-      "prompt": "merge the finished work back to main, handle conflicts if needed, commit only my changes, and leave unrelated dirt alone",
-      "calls": [
-        {
-          "tool": "session.new",
-          "args": "{ story_path: \"stories/git-ops/app.yaml\", key: \"ship-spatial-oracle\" }",
-          "result": "handle=git-ship-1"
-        },
-        {
-          "tool": "studio.work",
-          "args": "{ include_quiet: false, limit: 20 }",
-          "result": "finds active handoff / conflict work"
-        },
-        {
-          "tool": "session.drive",
-          "args": "\"merge the finished work back to main...\"",
-          "result": "routes to conflict-aware git ops"
-        },
-        {
-          "tool": "session.trace",
-          "args": "{ handle: \"git-ship-1\", limit: 60 }",
-          "result": "records every handoff decision"
-        }
-      ],
-      "outcome": {
-        "status": "handoff preserved",
-        "ref": "commit + trace",
-        "lines": [
-          "worktree policy stays explicit",
-          "dirty unrelated files are not reverted",
-          "operator can reacquire any blocked step"
-        ]
-      },
-      "hold": 230,
-      "instant": true
-    },
-    {
-      "type": "mcp-drive",
-      "title": "Self-improvement loop",
-      "agent": "kitsoki-mcp-drive",
-      "story": "studio issue.create",
-      "prompt": "this story stalled after the operator chose an on-disk ticket; file a GitHub issue with the trace and a screenshot so we can fix the workflow",
-      "calls": [
-        {
-          "tool": "session.trace",
-          "args": "{ handle: \"bugfix-room\", limit: 80 }",
-          "result": "captures the stale transition and host calls"
-        },
-        {
-          "tool": "render.tui_png",
-          "args": "{ handle: \"bugfix-room\", cols: 120, rows: 36 }",
-          "result": "writes visual evidence under .artifacts"
-        },
-        {
-          "tool": "issue.create",
-          "args": "{ repo: \"constructorfabric/Kitsoki\", include_trace: true, assets: [...] }",
-          "result": "GitHub issue + source-autonomous label"
-        },
-        {
-          "tool": "studio.work",
-          "args": "{ include_quiet: false }",
-          "result": "new issue appears as follow-up work"
-        }
-      ],
-      "outcome": {
-        "status": "gap captured",
-        "ref": "GitHub #new",
-        "lines": [
-          "the agent cannot silently drop MCP gaps",
-          "evidence is bundled at filing time",
-          "the bug becomes input to the next story improvement run"
-        ]
-      },
-      "hold": 240,
-      "instant": true
-    },
-    {
-      "type": "mcp-drive",
-      "title": "Story improvement harness",
-      "agent": "kitsoki-mcp-drive",
-      "story": "stories/slidey-bugfix/app.yaml",
-      "prompt": "run the story improvement harness over the latest failed traces and promote the fixed behavior into replay tests",
-      "calls": [
-        {
-          "tool": "session.new",
-          "args": "{ story_path: \"stories/slidey-bugfix/app.yaml\", harness: \"replay\" }",
-          "result": "handle=story-train-1"
-        },
-        {
-          "tool": "session.drive",
-          "args": "\"improve this story from failed traces\"",
-          "result": "collects failures and candidate story diff"
-        },
-        {
-          "tool": "story.validate",
-          "args": "{ dir: \"stories/slidey-bugfix\" }",
-          "result": "schema and transition invariants pass"
-        },
-        {
-          "tool": "story.test",
-          "args": "{ dir: \"stories/slidey-bugfix\" }",
-          "result": "flow fixtures replay without LLM spend"
-        }
-      ],
-      "outcome": {
-        "status": "story retrained",
-        "ref": "flows + prompt diff",
-        "lines": [
-          "failed runs become fixtures",
-          "prompt changes are tested like code",
-          "the next marathon starts from a stronger workflow"
-        ]
-      },
-      "caption": "The harness trains stories with traces, gates, and replayable proof, not isolated prompt snippets.",
-      "hold": 240,
+      "caption": "This is the customer story: Kitsoki is not a smarter prompt. It is a measurable improvement loop around real work.",
+      "hold": 245,
       "instant": true
     },
     {
       "type": "narrative",
-      "eyebrow": "What changed",
-      "body": "The demo is no longer a claim about agents. It is an evidence loop.",
-      "lede": "Kitsoki can take a real project, mine or curate cases, prove each case is armed, run candidate models through the same workflow, score the result, and turn the failures into story improvements without hiding cost or regressions.",
-      "hold": 220,
-      "narration": "The point is the evidence loop. Real projects, armed cases, live candidate runs, scored outcomes, and story improvements."
+      "eyebrow": "Close the loop",
+      "body": "The demo becomes an operating system for improvement.",
+      "lede": "A customer can onboard a repo, run governed tasks through MCP, score real outcomes against hidden oracles, and watch misses turn into story/runtime changes. That is the thing prompts alone do not give them.",
+      "hold": 230,
+      "narration": "The demo becomes an operating system for improvement: onboard, drive, score, learn, and rerun."
     },
     {
       "type": "thread",
