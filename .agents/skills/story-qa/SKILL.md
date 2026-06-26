@@ -66,6 +66,16 @@ use:
 python3 tools/product-journey/run.py --emit-run --project gears-rust --persona core-maintainer --seed demo
 ```
 
+For a 10-repo GitHub natural-usage sweep, start with the deterministic matrix:
+
+```sh
+python3 tools/product-journey/run.py --emit-matrix --seed demo
+```
+
+Use `--matrix-personas all` when every persona should run against every target.
+The matrix is a no-LLM assignment plan; before a live scored sweep, refresh each
+target's current open bug count from its `bug_query`.
+
 That writes `.artifacts/product-journey/<run-id>/`, including
 `deck.slidey.json`, without calling a live LLM. Add `--publish-deck` when you
 want to update `docs/decks/product-journey-eval.slidey.json`.

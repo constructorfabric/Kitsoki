@@ -1,7 +1,7 @@
 states:
   idle:
     description: "Waiting to create a product-journey QA run bundle."
-    relevant_world: [project, persona, seed, status]
+    relevant_world: [project, persona, seed, matrix_personas, status]
     view:
       - banner:
           text: "PRODUCT JOURNEY QA"
@@ -12,8 +12,9 @@ states:
             Project: "{{ world.project }}"
             Persona: "{{ world.persona }}"
             Seed: "{{ world.seed }}"
+            Matrix personas: "{{ world.matrix_personas }}"
             Status: "{{ world.status }}"
-      - prose: "Create a no-LLM run bundle, then attach visual/MCP evidence as scenarios play out."
+      - prose: "Create a no-LLM run bundle or a 10-repo GitHub matrix, then attach visual/MCP evidence as scenarios play out."
       - choice:
           mode: single
           prompt: "Actions"
@@ -21,9 +22,40 @@ states:
             - label: "start project=... persona=... seed=..."
               hint: "emit a run bundle under .artifacts/product-journey"
               intent: start
+            - label: "matrix seed=... matrix_personas=primary"
+              hint: "emit the 10-repo GitHub matrix under .artifacts/product-journey/matrices"
+              intent: matrix
             - label: "look"
               intent: look
     on:
+      matrix:
+        - target: matrix_created
+          effects:
+            - set:
+                seed: "{{ slots.seed ?? world.seed }}"
+                matrix_personas: "{{ slots.matrix_personas ?? world.matrix_personas }}"
+                status: "creating_matrix"
+            - invoke: host.run
+              id: emit_product_journey_matrix
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --emit-matrix
+                  - --json-output
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                  - --matrix-personas
+                  - "{{ slots.matrix_personas ?? world.matrix_personas }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                matrix_id: "stdout_json.matrix_id"
+                matrix_dir: "stdout_json.matrix_dir"
+                deck_path: "stdout_json.deck_path"
+              on_error: idle
+            - set:
+                status: "matrix_created"
       start:
         - target: run_created
           effects:

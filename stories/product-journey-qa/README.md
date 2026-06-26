@@ -5,6 +5,8 @@ the standard persona/scenario evidence workflow inside Kitsoki.
 
 It is intentionally no-LLM:
 
+- `matrix` calls `tools/product-journey/run.py --emit-matrix --json-output` to
+  create the 10-repo GitHub assignment plan.
 - `start` calls `tools/product-journey/run.py --emit-run --json-output`.
 - `attach` calls `tools/product-journey/run.py --attach-evidence --json-output`.
 - `record` calls `tools/product-journey/run.py --record-finding --json-output`

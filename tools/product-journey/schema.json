@@ -14,6 +14,11 @@
     "required": ["run_id", "created_at", "mode", "project", "persona", "stages", "scenarios", "artifacts"],
     "artifacts": ["run.json", "journey.md", "metrics.json", "bugs.json", "findings.json", "evidence.json", "scenarios.json", "review.json", "deck.slidey.json"]
   },
+  "matrix_result": {
+    "required": ["matrix_id", "created_at", "seed", "target_count", "assignment_count", "scenario_count", "targets", "assignments", "artifacts"],
+    "artifacts": ["matrix.json", "matrix.md", "deck.slidey.json"],
+    "target_count": 10
+  },
   "stage_statuses": ["planned", "ready", "captured", "cached_validated", "validated", "blocked", "error"],
   "scenario": {
     "required": ["id", "label", "stage", "task", "primary_story", "required_mcp", "evidence", "success_criteria"]

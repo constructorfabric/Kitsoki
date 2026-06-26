@@ -44,6 +44,16 @@ live LLM usage:
 python3 tools/product-journey/run.py --emit-run --project gears-rust --persona core-maintainer --seed demo
 ```
 
+To plan the broader 10-repo GitHub sweep requested for natural usage:
+
+```sh
+python3 tools/product-journey/run.py --emit-matrix --seed demo
+```
+
+Use `--matrix-personas all` when every persona should be assigned to every
+target. The matrix is a planning artifact; refresh current GitHub bug counts
+from each target's `bug_query` before a live scored run.
+
 Add `--publish-deck` when the generated deck should replace
 `docs/decks/product-journey-eval.slidey.json`.
 

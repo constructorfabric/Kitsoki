@@ -22,8 +22,10 @@ ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / "tools" / "product-journey" / "catalog.json"
 PERSONAS = ROOT / "tools" / "product-journey" / "personas.json"
 SCENARIOS = ROOT / "tools" / "product-journey" / "scenarios.json"
+GITHUB_TARGETS = ROOT / "tools" / "product-journey" / "github-targets.json"
 LOG = ROOT / ".context" / "product-journey-runlog.md"
 ARTIFACT_ROOT = ROOT / ".artifacts" / "product-journey"
+MATRIX_ROOT = ARTIFACT_ROOT / "matrices"
 DEFAULT_DECK = ROOT / "docs" / "decks" / "product-journey-eval.slidey.json"
 STAGES = [
     "discover_product",
@@ -46,6 +48,10 @@ def load_personas(path: Path):
 
 def load_scenarios(path: Path):
     return json.loads(path.read_text())["scenarios"]
+
+
+def load_github_targets(path: Path):
+    return json.loads(path.read_text())
 
 
 def append_log(message: str):
@@ -311,6 +317,80 @@ def build_run_bundle(
         publish_deck.parent.mkdir(parents=True, exist_ok=True)
         write_json(publish_deck, deck)
     return run_dir, run_json
+
+
+def build_matrix_bundle(
+    github_targets: dict,
+    personas: list[dict],
+    scenarios: list[dict],
+    seed: str,
+    persona_mode: str,
+) -> tuple[Path, dict]:
+    created_at = now_utc()
+    matrix_id = f"{slug_timestamp()}-github-10-{seed}"
+    matrix_dir = MATRIX_ROOT / matrix_id
+    matrix_dir.mkdir(parents=True, exist_ok=False)
+    targets = github_targets["targets"]
+    if len(targets) != 10:
+        raise SystemExit(f"GitHub matrix requires exactly 10 targets, found {len(targets)}")
+
+    scenario_ids = [scenario["id"] for scenario in scenarios]
+    assignments = []
+    for index, target in enumerate(targets):
+        if persona_mode == "all":
+            assigned_personas = personas
+        else:
+            assigned_personas = [select_persona(personas, "", f"{seed}:{target['id']}")]
+        for persona in assigned_personas:
+            assignment_id = f"{target['id']}--{persona['id']}"
+            assignments.append({
+                "id": assignment_id,
+                "target": target,
+                "persona": persona,
+                "scenarios": scenario_ids,
+                "seed": f"{seed}-{index + 1:02d}-{persona['id']}",
+                "status": "planned",
+                "evidence_dir": f"evidence/{assignment_id}",
+                "run_hint": (
+                    "Create a product-journey run with this target/persona, drive the listed scenarios "
+                    "through Kitsoki and visual MCP, attach evidence, record findings, then review the bundle."
+                ),
+            })
+
+    matrix = {
+        "matrix_id": matrix_id,
+        "created_at": created_at,
+        "seed": seed,
+        "persona_mode": persona_mode,
+        "selection_contract": github_targets["selection_contract"],
+        "target_count": len(targets),
+        "persona_count": len(personas) if persona_mode == "all" else 1,
+        "assignment_count": len(assignments),
+        "scenario_count": len(scenario_ids),
+        "targets": targets,
+        "personas": personas,
+        "scenarios": [
+            {
+                "id": scenario["id"],
+                "label": scenario["label"],
+                "stage": scenario["stage"],
+                "required_mcp": scenario["required_mcp"],
+                "evidence": scenario["evidence"],
+                "success_criteria": scenario["success_criteria"],
+            }
+            for scenario in scenarios
+        ],
+        "assignments": assignments,
+        "artifacts": {
+            "matrix": "matrix.json",
+            "summary": "matrix.md",
+            "deck": "deck.slidey.json",
+        },
+    }
+    write_json(matrix_dir / "matrix.json", matrix)
+    (matrix_dir / "matrix.md").write_text(render_matrix_summary(matrix), encoding="utf-8")
+    write_json(matrix_dir / "deck.slidey.json", render_matrix_deck(matrix))
+    return matrix_dir, matrix
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -659,6 +739,117 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
     }
 
 
+def render_matrix_summary(matrix: dict) -> str:
+    lines = [
+        "# Product journey GitHub matrix",
+        "",
+        f"- Matrix: `{matrix['matrix_id']}`",
+        f"- Seed: `{matrix['seed']}`",
+        f"- Targets: {matrix['target_count']}",
+        f"- Assignments: {matrix['assignment_count']}",
+        f"- Scenarios per assignment: {matrix['scenario_count']}",
+        "",
+        "## Selection Contract",
+        "",
+        f"- Host: {matrix['selection_contract']['host']}",
+        f"- Open bug floor: {matrix['selection_contract']['open_bug_floor']}",
+        f"- Refresh: {matrix['selection_contract']['refresh_note']}",
+        "",
+        "## Targets",
+        "",
+    ]
+    for target in matrix["targets"]:
+        lines.extend([
+            f"### {target['label']}",
+            "",
+            f"- Repo: {target['repo']}",
+            f"- Stack: {target['stack']}",
+            f"- Bug query: {target['bug_query']}",
+            f"- Status: {target['status']}",
+            f"- Notes: {target['notes']}",
+            "",
+        ])
+    lines.extend([
+        "## Assignments",
+        "",
+    ])
+    for assignment in matrix["assignments"]:
+        lines.append(
+            f"- `{assignment['id']}`: {assignment['target']['label']} as "
+            f"{assignment['persona']['label']} ({len(assignment['scenarios'])} scenarios)"
+        )
+    lines.extend([
+        "",
+        "## Execution Loop",
+        "",
+        "1. Refresh each target's open bug count from its `bug_query` before a live scored sweep.",
+        "2. Create one product-journey run per assignment.",
+        "3. Drive scenarios through Kitsoki and visual MCP using the assigned persona.",
+        "4. Attach evidence, record findings, and run the review gate.",
+        "5. Review the per-run Slidey deck plus this matrix deck.",
+    ])
+    return "\n".join(lines) + "\n"
+
+
+def render_matrix_deck(matrix: dict) -> dict:
+    target_lines = [
+        f"{target['label']} - {target['stack']} - bug floor {target['open_bug_floor']}+"
+        for target in matrix["targets"]
+    ]
+    assignment_lines = [
+        f"{assignment['target']['label']} / {assignment['persona']['label']}"
+        for assignment in matrix["assignments"][:16]
+    ]
+    scenario_lines = [
+        f"{scenario['label']}: {', '.join(scenario['required_mcp'])}"
+        for scenario in matrix["scenarios"]
+    ]
+    return {
+        "meta": {
+            "mode": "report",
+            "title": "Product Journey GitHub Matrix",
+            "phase": "planning",
+            "resolution": {"width": 1920, "height": 1080},
+        },
+        "scenes": [
+            {
+                "type": "title",
+                "title": "GitHub Product Journey Matrix",
+                "subtitle": f"{matrix['target_count']} repos · {matrix['assignment_count']} assignments",
+                "narration": "A repeatable no-LLM plan for natural product journey QA across popular GitHub projects.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Selection",
+                "title": "Popular GitHub repos with large bug queues",
+                "body": "\n".join(target_lines),
+                "narration": "Each target is selected for public GitHub usage, popularity, and a large bug-labeled issue corpus.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Personas",
+                "title": matrix["persona_mode"],
+                "body": "\n".join(assignment_lines),
+                "narration": "The matrix assigns personas deterministically so results are repeatable across reruns.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Scenarios",
+                "title": "MCP evidence contract",
+                "body": "\n".join(scenario_lines),
+                "narration": "Every assignment uses the same scenario set and evidence contract.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Execution",
+                "title": "From matrix to reviewable deck",
+                "body": "Create runs\nDrive Kitsoki and visual MCP\nAttach evidence\nRecord findings\nRun review gate\nReview per-run and matrix Slidey decks",
+                "narration": "The matrix is a planning artifact; each assignment still produces its own evidence-backed bundle.",
+            },
+        ],
+    }
+
+
 def render_journey(run_json: dict) -> str:
     lines = [
         "# Product journey dry run",
@@ -981,6 +1172,13 @@ def main() -> None:
     parser.add_argument("--seed", default="default", help="Deterministic run seed")
     parser.add_argument("--run-log", action="store_true", help="Force a timestamped run log entry")
     parser.add_argument("--emit-run", action="store_true", help="Write a no-LLM run artifact bundle and Slidey deck")
+    parser.add_argument("--emit-matrix", action="store_true", help="Write a no-LLM 10-repo GitHub journey matrix")
+    parser.add_argument(
+        "--matrix-personas",
+        default="primary",
+        choices=["primary", "all"],
+        help="primary: one deterministic persona per target; all: every persona for every target",
+    )
     parser.add_argument("--attach-evidence", action="store_true", help="Attach one evidence artifact to an existing run bundle")
     parser.add_argument("--record-finding", action="store_true", help="Record one strength, weakness, issue, or fix in an existing run bundle")
     parser.add_argument("--seed-demo-evidence", action="store_true", help="Attach deterministic demo evidence and findings to an existing run bundle")
@@ -1022,6 +1220,30 @@ def main() -> None:
     catalog = load_catalog(CATALOG)
     personas = load_personas(PERSONAS)
     scenarios = load_scenarios(SCENARIOS)
+    github_targets = load_github_targets(GITHUB_TARGETS)
+
+    if args.emit_matrix:
+        matrix_dir, matrix = build_matrix_bundle(github_targets, personas, scenarios, args.seed, args.matrix_personas)
+        if args.json_output:
+            print(json.dumps({
+                "status": "matrix_created",
+                "matrix_id": matrix["matrix_id"],
+                "matrix_dir": str(matrix_dir),
+                "deck_path": str(matrix_dir / "deck.slidey.json"),
+                "target_count": matrix["target_count"],
+                "assignment_count": matrix["assignment_count"],
+                "scenario_count": matrix["scenario_count"],
+                "persona_mode": matrix["persona_mode"],
+            }, sort_keys=True))
+            append_log(f"Emitted GitHub matrix {matrix['matrix_id']}")
+            return
+        print(f"Product journey GitHub matrix: {matrix['matrix_id']}")
+        print(f"Artifacts: {matrix_dir}")
+        print(f"Deck: {matrix_dir / 'deck.slidey.json'}")
+        print(f"Targets: {matrix['target_count']}")
+        print(f"Assignments: {matrix['assignment_count']}")
+        append_log(f"Emitted GitHub matrix {matrix['matrix_id']}")
+        return
 
     if args.review_run:
         if not args.run_dir:
