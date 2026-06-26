@@ -200,6 +200,9 @@ Each scenario also carries a `quality_gate` with `minimum_evidence`,
 gate before calling a scenario done, or record a blocker tied to the matching
 condition. The generated Slidey deck includes a `Proof gates` scene that rolls
 up each scenario's minimum-evidence coverage and current outcome for review.
+Every representative scenario includes `key_interaction_video` in its minimum
+evidence so the final review deck can show playback of the important operator
+path instead of only static traces or written artifacts.
 `--validate-run` checks that `execution-plan.json` and `driver-plan.json`
 include one actionable `--attach-evidence` command for every declared evidence
 slot, and that the execution plan, agent brief, driver plan, and handoff retain

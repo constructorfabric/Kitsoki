@@ -30,7 +30,7 @@ host_handlers:
             review_total: 18
             review_warnings: 2
             review_failed: 1
-            review_backlog_summary: "fail: quality-gates (bugfix (3/5)); warn: non-demo-evidence (proof=0, demo=25)"
+            review_backlog_summary: "fail: quality-gates (product-discovery (5/5), project-onboarding (5/5), bugfix (5/5), prd-design (5/5), feature-implementation (5/5), evidence-backed-product-bug (5/5)); warn: non-demo-evidence (proof=0, demo=30)"
             run_validation_status: valid
             run_validation_warnings: 1
             run_validation_issue_summary: "warn: artifact-ref-exists (artifacts/bugfix.mp4)"
@@ -66,7 +66,7 @@ turns:
       dogfood_review_total: 18
       dogfood_review_warnings: 2
       dogfood_review_failed: 1
-      dogfood_review_backlog_summary: "fail: quality-gates (bugfix (3/5)); warn: non-demo-evidence (proof=0, demo=25)"
+      dogfood_review_backlog_summary: "fail: quality-gates (product-discovery (5/5), project-onboarding (5/5), bugfix (5/5), prd-design (5/5), feature-implementation (5/5), evidence-backed-product-bug (5/5)); warn: non-demo-evidence (proof=0, demo=30)"
       validation_status: valid
       validation_warnings: 1
       validation_issue_summary: "warn: artifact-ref-exists (artifacts/bugfix.mp4)"

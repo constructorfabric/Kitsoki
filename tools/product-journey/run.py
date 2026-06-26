@@ -866,7 +866,7 @@ def evidence_capture_hint(kind: str) -> str:
 def scenario_quality_gate(scenario_id: str) -> dict:
     gates = {
         "product-discovery": {
-            "minimum_evidence": ["browser_screenshot", "page_url", "navigation_trace", "checkpoint_rating"],
+            "minimum_evidence": ["browser_screenshot", "page_url", "navigation_trace", "checkpoint_rating", "key_interaction_video"],
             "done_when": "The persona can state what Kitsoki is, who it is for, and one credible next action from visible product-site evidence.",
             "block_if": [
                 "The local product site cannot be opened or observed.",
@@ -875,7 +875,7 @@ def scenario_quality_gate(scenario_id: str) -> dict:
             ],
         },
         "project-onboarding": {
-            "minimum_evidence": ["session_trace", "rendered_tui_frame", "generated_config_diff", "onboarding_smoke_result"],
+            "minimum_evidence": ["session_trace", "rendered_tui_frame", "generated_config_diff", "onboarding_smoke_result", "key_interaction_video"],
             "done_when": "The persona can identify the generated project profile, the relevant commands/files, and the next Kitsoki story to launch.",
             "block_if": [
                 "The onboarding story cannot be opened or rendered.",
@@ -893,7 +893,7 @@ def scenario_quality_gate(scenario_id: str) -> dict:
             ],
         },
         "prd-design": {
-            "minimum_evidence": ["session_trace", "prd_artifact", "design_artifact", "review_notes"],
+            "minimum_evidence": ["session_trace", "prd_artifact", "design_artifact", "review_notes", "key_interaction_video"],
             "done_when": "The PRD/design artifact cites real repo files or commands, is reviewably scoped, and exposes open questions.",
             "block_if": [
                 "The planning/design path requires live LLM authorization and no cassette exists.",
@@ -902,7 +902,7 @@ def scenario_quality_gate(scenario_id: str) -> dict:
             ],
         },
         "feature-implementation": {
-            "minimum_evidence": ["session_trace", "implementation_diff", "targeted_test_result", "review_summary"],
+            "minimum_evidence": ["session_trace", "implementation_diff", "targeted_test_result", "review_summary", "key_interaction_video"],
             "done_when": "The implementation follows an accepted design slice and has a targeted deterministic test result or explicit blocker.",
             "block_if": [
                 "No accepted design slice is available.",
@@ -911,7 +911,7 @@ def scenario_quality_gate(scenario_id: str) -> dict:
             ],
         },
         "evidence-backed-product-bug": {
-            "minimum_evidence": ["bug_report_markdown", "screenshot_or_tui_png", "trace_reference", "reproduction_steps"],
+            "minimum_evidence": ["bug_report_markdown", "screenshot_or_tui_png", "trace_reference", "reproduction_steps", "key_interaction_video"],
             "done_when": "A product bug report includes expected vs actual behavior, reproduction context, visual/TUI evidence, and trace reference.",
             "block_if": [
                 "No product issue, weakness, or confusing behavior was observed.",

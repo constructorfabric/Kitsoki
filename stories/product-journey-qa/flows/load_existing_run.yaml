@@ -31,10 +31,10 @@ host_handlers:
             persona_finding_bias: "Favor visible-state, affordance, and navigation findings."
             proof_evidence_count: 1
             demo_evidence_count: 0
-            missing_evidence_count: 24
-            missing_proof_evidence_count: 24
+            missing_evidence_count: 29
+            missing_proof_evidence_count: 29
             proof_minimum_evidence_count: 1
-            minimum_evidence_count: 25
+            minimum_evidence_count: 30
             missing_proof_summary: "product-discovery: checkpoint_rating, navigation_trace, page_url; project-onboarding: generated_config_diff, onboarding_smoke_result, rendered_tui_frame, session_trace"
             driver_contract_summary: "Driver contract: 7 scenarios (product-discovery, project-onboarding, dependency-bugfix, prd-design, feature-implementation, +2 more); 7 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
             next_driver_capture: "Next capture: product-discovery/checkpoint_rating. Rate whether the persona could proceed without private context."
@@ -62,7 +62,7 @@ turns:
       seed: driver-load
       driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
       proof_evidence_count: 1
-      missing_proof_evidence_count: 24
+      missing_proof_evidence_count: 29
       review_status: needs_evidence
       review_passed_count: 16
       review_total_count: 18

@@ -11,7 +11,8 @@
         "browser_screenshot",
         "page_url",
         "navigation_trace",
-        "checkpoint_rating"
+        "checkpoint_rating",
+        "key_interaction_video"
       ],
       "success_criteria": [
         "Persona can identify the product category without private repo context.",
@@ -30,7 +31,8 @@
         "session_trace",
         "rendered_tui_frame",
         "generated_config_diff",
-        "onboarding_smoke_result"
+        "onboarding_smoke_result",
+        "key_interaction_video"
       ],
       "success_criteria": [
         "Generated project config names real commands and relevant project files.",
@@ -69,7 +71,8 @@
         "session_trace",
         "prd_artifact",
         "design_artifact",
-        "review_notes"
+        "review_notes",
+        "key_interaction_video"
       ],
       "success_criteria": [
         "Artifacts cite real repository files and commands.",
@@ -88,7 +91,8 @@
         "session_trace",
         "implementation_diff",
         "targeted_test_result",
-        "review_summary"
+        "review_summary",
+        "key_interaction_video"
       ],
       "success_criteria": [
         "Implementation follows the design artifact.",
@@ -107,7 +111,8 @@
         "bug_report_markdown",
         "screenshot_or_tui_png",
         "trace_reference",
-        "reproduction_steps"
+        "reproduction_steps",
+        "key_interaction_video"
       ],
       "success_criteria": [
         "Report includes expected versus actual behavior.",
