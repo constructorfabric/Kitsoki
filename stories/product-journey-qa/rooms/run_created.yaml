@@ -1,7 +1,7 @@
 states:
   run_created:
     description: "A product-journey QA run bundle exists; waiting for captured evidence."
-    relevant_world: [project, persona, seed, run_id, run_dir, deck_path, execution_plan_path, driver_plan_path, driver_journal_path, agent_brief_path, driver_handoff_path, media_manifest_path, scenario_outcomes_path, scenario, evidence_kind, evidence_path, evidence_source, finding_kind, finding_title, driver_event_id, dispatch_mode, driver_status, driver_summary, review_status, review_summary, validation_status, validation_errors, validation_warnings, status]
+    relevant_world: [project, persona, seed, run_id, run_dir, deck_path, execution_plan_path, driver_plan_path, driver_journal_path, agent_brief_path, driver_handoff_path, media_manifest_path, scenario_outcomes_path, persona_starting_surface, persona_first_question, persona_evidence_emphasis, persona_escalation_trigger, persona_finding_bias, proof_evidence_count, demo_evidence_count, missing_evidence_count, missing_proof_evidence_count, proof_minimum_evidence_count, minimum_evidence_count, missing_proof_summary, scenario, evidence_kind, evidence_path, evidence_source, finding_kind, finding_title, driver_event_id, dispatch_mode, driver_status, driver_summary, review_status, review_summary, validation_status, validation_errors, validation_warnings, status]
     view:
       - banner:
           text: "RUN CREATED"
@@ -21,6 +21,15 @@ states:
             Driver handoff: '{{ world.driver_handoff_path|default:"(pending)" }}'
             Media manifest: '{{ world.media_manifest_path|default:"(pending)" }}'
             Scenario outcomes: '{{ world.scenario_outcomes_path|default:"(pending)" }}'
+            Starting surface: '{{ world.persona_starting_surface|default:"(open agent brief)" }}'
+            First question: '{{ world.persona_first_question|default:"(open agent brief)" }}'
+            Evidence emphasis: '{{ world.persona_evidence_emphasis|default:"(open driver plan)" }}'
+            Escalate when: '{{ world.persona_escalation_trigger|default:"(open driver plan)" }}'
+            Finding bias: '{{ world.persona_finding_bias|default:"(open driver plan)" }}'
+            Proof evidence: "{{ world.proof_evidence_count }} attached; minimum {{ world.proof_minimum_evidence_count }} / {{ world.minimum_evidence_count }}"
+            Demo evidence: "{{ world.demo_evidence_count }}"
+            Missing evidence: "{{ world.missing_evidence_count }}"
+            Missing proof: "{{ world.missing_proof_evidence_count }}"
             Last evidence: '{{ world.scenario|default:"(none)" }} / {{ world.evidence_kind|default:"" }}'
             Last finding: '{{ world.finding_kind|default:"(none)" }} / {{ world.finding_title|default:"" }}'
             Last driver event: '{{ world.driver_event_id|default:"(none)" }} / {{ world.driver_status|default:"" }}'
@@ -29,6 +38,7 @@ states:
             Validation errors: "{{ world.validation_errors }}"
             Validation warnings: "{{ world.validation_warnings }}"
             Status: "{{ world.status }}"
+      - prose: '{{ world.missing_proof_summary|default:"Open driver-handoff.md for the Missing Proof Evidence backlog." }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -110,6 +120,18 @@ states:
                 driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
                 evidence_source: "stdout_json.evidence_source"
               on_error: run_created
             - set:
@@ -161,6 +183,18 @@ states:
                 driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
               on_error: run_created
             - set:
                 status: "finding_recorded"
@@ -207,6 +241,18 @@ states:
                 driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
               on_error: run_created
             - set:
                 status: "blocker_recorded"
@@ -259,6 +305,18 @@ states:
                 deck_path: "stdout_json.deck_path"
                 driver_journal_path: "stdout_json.driver_journal_path"
                 driver_handoff_path: "stdout_json.driver_handoff_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
               on_error: run_created
             - set:
                 status: "driver_event_recorded"
@@ -291,6 +349,18 @@ states:
                 driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
               on_error: run_created
             - set:
                 status: "demo_seeded"
@@ -325,6 +395,18 @@ states:
                 driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
               on_error: run_created
             - set:
                 status: "reviewed"
@@ -354,6 +436,18 @@ states:
                 driver_handoff_path: "stdout_json.driver_handoff_path"
                 media_manifest_path: "stdout_json.media_manifest_path"
                 scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
               on_error: run_created
             - set:
                 status: "handoff_ready"

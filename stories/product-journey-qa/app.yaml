@@ -47,6 +47,18 @@ world:
   driver_handoff_path: { type: string, default: "" }
   media_manifest_path: { type: string, default: "" }
   scenario_outcomes_path: { type: string, default: "" }
+  persona_starting_surface: { type: string, default: "" }
+  persona_first_question: { type: string, default: "" }
+  persona_evidence_emphasis: { type: string, default: "" }
+  persona_escalation_trigger: { type: string, default: "" }
+  persona_finding_bias: { type: string, default: "" }
+  proof_evidence_count: { type: int, default: 0 }
+  demo_evidence_count: { type: int, default: 0 }
+  missing_evidence_count: { type: int, default: 0 }
+  missing_proof_evidence_count: { type: int, default: 0 }
+  proof_minimum_evidence_count: { type: int, default: 0 }
+  minimum_evidence_count: { type: int, default: 0 }
+  missing_proof_summary: { type: string, default: "" }
   scenario:       { type: string, default: "" }
   evidence_kind:  { type: string, default: "" }
   evidence_path:  { type: string, default: "" }

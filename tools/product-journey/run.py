@@ -2280,7 +2280,7 @@ def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None)
 def prepare_driver_handoff(run_dir: Path, publish_deck: Optional[Path] = None) -> dict:
     update_derived_artifacts(run_dir, publish_deck)
     handoff = read_json(run_dir / "driver-handoff.json")
-    return {
+    result = {
         "status": "driver_handoff_ready",
         "run_id": handoff["run_id"],
         "run_dir": str(run_dir),
@@ -2298,6 +2298,36 @@ def prepare_driver_handoff(run_dir: Path, publish_deck: Optional[Path] = None) -
         "suggested_prompt": handoff["suggested_prompt"],
         "missing_evidence_count": handoff["status"]["missing_evidence_count"],
         "published_deck_path": str(publish_deck) if publish_deck is not None else "",
+    }
+    result.update(run_story_summary(run_dir))
+    return result
+
+
+def run_story_summary(run_dir: Path) -> dict:
+    metrics = read_json(run_dir / "metrics.json") if (run_dir / "metrics.json").exists() else {}
+    handoff = read_json(run_dir / "driver-handoff.json") if (run_dir / "driver-handoff.json").exists() else {}
+    agent_brief = read_json(run_dir / "agent-brief.json") if (run_dir / "agent-brief.json").exists() else {}
+    lens = agent_brief.get("persona_contract", {}).get("lens", {})
+    missing_proof_rows = handoff.get("missing_proof_evidence", [])
+    missing_proof_summary = []
+    for row in missing_proof_rows[:3]:
+        missing = ", ".join(row.get("missing_proof_evidence", []))
+        missing_proof_summary.append(f"{row.get('scenario', '')}: {missing}")
+    if len(missing_proof_rows) > 3:
+        missing_proof_summary.append(f"+{len(missing_proof_rows) - 3} more scenarios")
+    return {
+        "persona_starting_surface": lens.get("starting_surface", ""),
+        "persona_first_question": lens.get("first_question", ""),
+        "persona_evidence_emphasis": lens.get("evidence_emphasis", ""),
+        "persona_escalation_trigger": lens.get("escalation_trigger", ""),
+        "persona_finding_bias": lens.get("finding_bias", ""),
+        "proof_evidence_count": metrics.get("proof_evidence_count", 0),
+        "demo_evidence_count": metrics.get("demo_evidence_count", 0),
+        "missing_evidence_count": metrics.get("missing_evidence_count", handoff.get("status", {}).get("missing_evidence_count", 0)),
+        "missing_proof_evidence_count": handoff.get("status", {}).get("missing_proof_evidence_count", 0),
+        "proof_minimum_evidence_count": handoff.get("status", {}).get("proof_minimum_evidence_count", 0),
+        "minimum_evidence_count": handoff.get("status", {}).get("minimum_evidence_count", 0),
+        "missing_proof_summary": "; ".join(missing_proof_summary),
     }
 
 
@@ -2560,7 +2590,7 @@ def seed_demo_evidence(run_dir: Path, publish_deck: Optional[Path]) -> dict:
     driver_events_added = seed_demo_driver_journal(run_dir, run_json, evidence)
     update_derived_artifacts(run_dir, publish_deck=publish_deck)
     metrics = read_json(run_dir / "metrics.json")
-    return {
+    result = {
         "status": "seeded",
         "run_dir": str(run_dir),
         "deck_path": str(run_dir / "deck.slidey.json"),
@@ -2579,6 +2609,8 @@ def seed_demo_evidence(run_dir: Path, publish_deck: Optional[Path]) -> dict:
         "findings_count": metrics.get("findings_count", 0),
         "published_deck_path": str(publish_deck) if publish_deck is not None else "",
     }
+    result.update(run_story_summary(run_dir))
+    return result
 
 
 def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
@@ -2802,7 +2834,7 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
     if publish_deck is not None:
         publish_deck.parent.mkdir(parents=True, exist_ok=True)
         write_json(publish_deck, deck)
-    return {
+    result = {
         "status": "reviewed",
         "review_status": status,
         "summary": summary,
@@ -2823,6 +2855,8 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
         "checks": checks,
         "published_deck_path": str(publish_deck) if publish_deck is not None else "",
     }
+    result.update(run_story_summary(run_dir))
+    return result
 
 
 def add_validation_issue(issues: list[dict], severity: str, check_id: str, message: str, detail: str = "") -> None:
@@ -5271,7 +5305,7 @@ def main() -> None:
             publish_deck,
         )
         if args.json_output:
-            print(json.dumps({
+            result = {
                 "status": "driver_event_recorded",
                 "run_dir": str(run_dir),
                 "event_id": event["id"],
@@ -5283,7 +5317,9 @@ def main() -> None:
                 "deck_path": str(run_dir / "deck.slidey.json"),
                 "driver_handoff_path": str(run_dir / "driver-handoff.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
-            }, sort_keys=True))
+            }
+            result.update(run_story_summary(run_dir))
+            print(json.dumps(result, sort_keys=True))
             append_log(f"Recorded driver event for {run_dir.name}: {event['scenario']} / {event['status']}")
             return
         print(f"Recorded driver event: {event['id']}")
@@ -5311,7 +5347,7 @@ def main() -> None:
         run_dir = run_dir_from_arg(args.run_dir)
         record_blocker(run_dir, args.scenario, args.title, args.summary, args.evidence_path, publish_deck)
         if args.json_output:
-            print(json.dumps({
+            result = {
                 "status": "blocker_recorded",
                 "run_dir": str(run_dir),
                 "scenario": args.scenario,
@@ -5325,7 +5361,9 @@ def main() -> None:
                 "media_manifest_path": str(run_dir / "media-manifest.json"),
                 "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
-            }, sort_keys=True))
+            }
+            result.update(run_story_summary(run_dir))
+            print(json.dumps(result, sort_keys=True))
             append_log(f"Recorded blocker for {run_dir.name}: {args.scenario} / {args.title}")
             return
         print(f"Recorded blocker: {args.scenario} / {args.title}")
@@ -5365,7 +5403,7 @@ def main() -> None:
             publish_deck,
         )
         if args.json_output:
-            print(json.dumps({
+            result = {
                 "status": "recorded",
                 "run_dir": str(run_dir),
                 "finding_kind": args.finding_kind,
@@ -5380,7 +5418,9 @@ def main() -> None:
                 "media_manifest_path": str(run_dir / "media-manifest.json"),
                 "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
-            }, sort_keys=True))
+            }
+            result.update(run_story_summary(run_dir))
+            print(json.dumps(result, sort_keys=True))
             append_log(f"Recorded {args.finding_kind} finding for {run_dir.name}: {args.title}")
             return
         print(f"Recorded finding: {args.finding_kind} / {args.title}")
@@ -5421,7 +5461,7 @@ def main() -> None:
         )
         source = normalize_evidence_source(args.evidence_source, args.evidence_path, args.notes)
         if args.json_output:
-            print(json.dumps({
+            result = {
                 "status": "attached",
                 "run_dir": str(run_dir),
                 "scenario": args.scenario,
@@ -5437,7 +5477,9 @@ def main() -> None:
                 "media_manifest_path": str(run_dir / "media-manifest.json"),
                 "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
-            }, sort_keys=True))
+            }
+            result.update(run_story_summary(run_dir))
+            print(json.dumps(result, sort_keys=True))
             append_log(f"Attached evidence {args.scenario}/{args.evidence_kind} to {run_dir.name}")
             return
         print(f"Attached evidence: {args.scenario}/{args.evidence_kind}")
@@ -5466,7 +5508,7 @@ def main() -> None:
             publish_deck,
         )
         if args.json_output:
-            print(json.dumps({
+            result = {
                 "status": "created",
                 "run_id": run_json["run_id"],
                 "run_dir": str(run_dir),
@@ -5479,7 +5521,9 @@ def main() -> None:
                 "media_manifest_path": str(run_dir / "media-manifest.json"),
                 "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
                 "published_deck_path": str(publish_deck) if publish_deck is not None else "",
-            }, sort_keys=True))
+            }
+            result.update(run_story_summary(run_dir))
+            print(json.dumps(result, sort_keys=True))
             append_log(f"Emitted dry-run bundle {run_json['run_id']}")
             return
         print(f"Product journey run: {run_json['run_id']}")
