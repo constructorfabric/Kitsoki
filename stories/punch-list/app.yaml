@@ -56,6 +56,8 @@ world:
   verify_status:        { type: string, default: "" }
   punch_results:        { type: object, default: { items: [] } }
   report_path:          { type: string, default: "" }
+  report_summary_path:  { type: string, default: "" }
+  report_deck_path:     { type: string, default: "" }
   report_summary:       { type: string, default: "" }
   board_route:          { type: string, default: "" }
   auto_start_next:      { type: bool,   default: false }

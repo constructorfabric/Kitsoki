@@ -1,12 +1,13 @@
 states:
   report:
     description: "Write the punch-list report."
-    relevant_world: [report_path, report_summary, punch_results]
+    relevant_world: [report_path, report_summary, report_deck_path, punch_results]
     view:
       - heading: "Punch-list · report"
       - kv:
           pairs:
             Report: '{{ world.report_path|default:"(pending)" }}'
+            Deck: '{{ world.report_deck_path|default:"(pending)" }}'
             Summary: '{{ world.report_summary|default:"(pending)" }}'
       - choice:
           mode: single
@@ -25,6 +26,8 @@ states:
             - "{{ world.state_path }}"
         bind:
           report_path: "stdout_json.report_path"
+          report_summary_path: "stdout_json.summary_path"
+          report_deck_path: "stdout_json.deck_path"
           report_summary: "stdout_json.summary"
         on_error: needs_human
     on:

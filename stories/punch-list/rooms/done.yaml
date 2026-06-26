@@ -1,13 +1,14 @@
 states:
   done:
     description: "Punch-list run complete."
-    relevant_world: [report_path, report_summary]
+    relevant_world: [report_path, report_deck_path, report_summary]
     view:
       - heading: "Punch-list · done"
       - prose: "{{ world.report_summary }}"
       - kv:
           pairs:
             Report: "{{ world.report_path }}"
+            Deck: "{{ world.report_deck_path }}"
     on:
       look:
         - target: .
