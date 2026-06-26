@@ -219,6 +219,365 @@
       "narration": "Kitsoki makes the three roots executable: open systems define the boundary, constructal law improves flow, and cognition preserves the loop."
     },
     {
+      "type": "diagram-svg",
+      "title": "Continuous improvement needs a process",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1480 560",
+          "nodes": [
+            {
+              "id": "define",
+              "label": "Define",
+              "sub": "good defined",
+              "lines": [
+                "goal",
+                "boundary"
+              ],
+              "x": 30,
+              "y": 170,
+              "w": 240,
+              "h": 130,
+              "style": "primary"
+            },
+            {
+              "id": "measure",
+              "label": "Measure",
+              "sub": "what happened",
+              "lines": [
+                "trace",
+                "evidence"
+              ],
+              "x": 320,
+              "y": 170,
+              "w": 240,
+              "h": 130
+            },
+            {
+              "id": "analyze",
+              "label": "Analyze",
+              "sub": "flow breaks",
+              "lines": [
+                "friction",
+                "variance"
+              ],
+              "x": 610,
+              "y": 170,
+              "w": 240,
+              "h": 130
+            },
+            {
+              "id": "improve",
+              "label": "Improve",
+              "sub": "system change",
+              "lines": [
+                "story",
+                "gate"
+              ],
+              "x": 900,
+              "y": 170,
+              "w": 240,
+              "h": 130
+            },
+            {
+              "id": "control",
+              "label": "Control",
+              "sub": "kept stable",
+              "lines": [
+                "replay",
+                "tests"
+              ],
+              "x": 1190,
+              "y": 170,
+              "w": 240,
+              "h": 130,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "define",
+              "to": "measure"
+            },
+            {
+              "from": "measure",
+              "to": "analyze"
+            },
+            {
+              "from": "analyze",
+              "to": "improve"
+            },
+            {
+              "from": "improve",
+              "to": "control"
+            },
+            {
+              "from": "control",
+              "to": "define",
+              "style": "back",
+              "bus": 30,
+              "lift": -105,
+              "land": 30
+            }
+          ]
+        }
+      ],
+      "caption": "Lean and Six Sigma work because the process is explicit enough to observe, measure, change, and hold stable.",
+      "hold": 210,
+      "narration": "Continuous improvement needs a process. Lean and Six Sigma work because the process is explicit enough to measure, change, and hold stable."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Prompts are not enough",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1420 650",
+          "nodes": [
+            {
+              "id": "prompt",
+              "label": "Prompt-only",
+              "sub": "better wording + examples",
+              "lines": [
+                "nudges the model"
+              ],
+              "x": 80,
+              "y": 80,
+              "w": 500,
+              "h": 170,
+              "style": "primary"
+            },
+            {
+              "id": "agent",
+              "label": "Agent behavior",
+              "sub": "still probabilistic",
+              "lines": [
+                "hidden decisions"
+              ],
+              "x": 80,
+              "y": 390,
+              "w": 500,
+              "h": 170
+            },
+            {
+              "id": "story",
+              "label": "Workflow",
+              "sub": "typed phases",
+              "lines": [
+                "owned state"
+              ],
+              "x": 840,
+              "y": 40,
+              "w": 500,
+              "h": 150,
+              "style": "primary"
+            },
+            {
+              "id": "gate",
+              "label": "Gate",
+              "sub": "objective check",
+              "lines": [
+                "tests + review"
+              ],
+              "x": 840,
+              "y": 250,
+              "w": 500,
+              "h": 150
+            },
+            {
+              "id": "feedback",
+              "label": "Feedback",
+              "sub": "attached evidence",
+              "lines": [
+                "trace + failure reason"
+              ],
+              "x": 840,
+              "y": 460,
+              "w": 500,
+              "h": 150,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "prompt",
+              "to": "agent"
+            },
+            {
+              "from": "story",
+              "to": "gate"
+            },
+            {
+              "from": "gate",
+              "to": "feedback"
+            },
+            {
+              "from": "feedback",
+              "to": "story",
+              "style": "back",
+              "bus": 1360,
+              "lift": -22,
+              "land": 22
+            }
+          ]
+        }
+      ],
+      "caption": "Prompts can improve the agent. Structured workflows improve the system around the agent.",
+      "hold": 210,
+      "narration": "Prompts can improve agent behavior, but behavior is hard to control with prompts alone. Structured workflows give us phases, gates, traces, and tests."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Every decision becomes training data",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1320 620",
+          "nodes": [
+            {
+              "id": "operator",
+              "label": "Operator",
+              "sub": "human · LLM · script",
+              "lines": [
+                "typed decision"
+              ],
+              "x": 80,
+              "y": 220,
+              "w": 330,
+              "h": 170,
+              "style": "primary"
+            },
+            {
+              "id": "record",
+              "label": "Record",
+              "sub": "input + output",
+              "lines": [
+                "operator attached"
+              ],
+              "x": 495,
+              "y": 220,
+              "w": 330,
+              "h": 170
+            },
+            {
+              "id": "dataset",
+              "label": "Dataset",
+              "sub": "labeled by design",
+              "lines": [
+                "ready to review"
+              ],
+              "x": 910,
+              "y": 220,
+              "w": 330,
+              "h": 170,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "operator",
+              "to": "record"
+            },
+            {
+              "from": "record",
+              "to": "dataset"
+            }
+          ]
+        }
+      ],
+      "caption": "Because every decision is recorded with its operator, input, and output, a running story creates its own supervised dataset.",
+      "hold": 210,
+      "narration": "Every Kitsoki decision is recorded with the operator, input, and output. That means a running story produces labeled training data as a side effect."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Train the story like a model",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1320 700",
+          "nodes": [
+            {
+              "id": "trace",
+              "label": "Trace",
+              "sub": "real usage",
+              "lines": [
+                "misses + repeats"
+              ],
+              "x": 95,
+              "y": 70,
+              "w": 320,
+              "h": 160,
+              "style": "primary"
+            },
+            {
+              "id": "promote",
+              "label": "Promote",
+              "sub": "story diff",
+              "lines": [
+                "YAML + tests"
+              ],
+              "x": 500,
+              "y": 70,
+              "w": 320,
+              "h": 160
+            },
+            {
+              "id": "replay",
+              "label": "Replay",
+              "sub": "zero-cost",
+              "lines": [
+                "sharper behavior"
+              ],
+              "x": 905,
+              "y": 70,
+              "w": 320,
+              "h": 160,
+              "style": "secondary"
+            },
+            {
+              "id": "effect",
+              "label": "Less LLM",
+              "sub": "more determinism",
+              "lines": [
+                "improvement you can read"
+              ],
+              "x": 350,
+              "y": 420,
+              "w": 620,
+              "h": 170,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "trace",
+              "to": "promote"
+            },
+            {
+              "from": "promote",
+              "to": "replay"
+            },
+            {
+              "from": "replay",
+              "to": "effect"
+            },
+            {
+              "from": "effect",
+              "to": "trace",
+              "style": "back",
+              "bus": 60,
+              "lift": -20,
+              "land": 20
+            }
+          ]
+        }
+      ],
+      "caption": "The learned behavior lives in git as YAML, tests, and knowledge, not in opaque model weights.",
+      "hold": 210,
+      "narration": "Training a Kitsoki story means reading the trace, promoting repeated decisions into story structure, replaying the result, and keeping the learned behavior in git."
+    },
+    {
       "type": "narrative",
       "eyebrow": "The setting",
       "body": "You have a workflow. People drive it by chatting where the work already lives.",
