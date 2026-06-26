@@ -1,0 +1,40 @@
+# scoring_blocks_empty_results — do not generate a 0-cell report by accident.
+#
+# The running room is the human/operator handoff for cost-bearing cells. If the
+# operator accepts before any scored cell JSON exists, scoring must route back to
+# running instead of producing a misleading "0/0 solved" report.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: running
+initial_world:
+  project: gears-rust
+  repo_dir: /Users/brad/code/gears-rust
+  results_dir: ../../../.artifacts/external-bakeoff/empty-results
+  report_dir: ../../../.artifacts/external-bakeoff/report
+  bugs: [bug1]
+  candidates: [opus-4.8]
+  cells_total: 1
+  preflight_ready: true
+  oracles_armed: true
+
+host_handlers:
+  host.run:
+    by_call:
+      summarize:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: |
+            {"ok": false, "project": "gears-rust", "error": "no scored cells", "hint": "run drive_cell.sh --score for at least one matrix cell before scoring"}
+        error: "host.run: command exited 1"
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: running
+    expect_host_calls:
+      - handler: host.run
+        id: summarize
+    expect_view_matches: "Bake-off · running"
+
+expect_no_errors: false

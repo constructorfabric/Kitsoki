@@ -1,7 +1,9 @@
 # scoring — DETERMINISTIC (no LLM). Roll up the per-cell verdicts the harness
 # wrote (world.results_dir/cells/*.json) into a by-candidate summary via host.run →
-# `bench.py summarize` (free). We call the script; we never reimplement scoring.
-# `once: true` keyed on summary → reload-safe.
+# `bench.py summarize` (free). It fails when no scored cell JSON exists, routing
+# back to running instead of producing a misleading 0-cell report. We call the
+# script; we never reimplement scoring. `once: true` keyed on summary →
+# reload-safe.
 states:
   scoring:
     description: "Rolling up the cell verdicts into a summary (host.run → bench.py summarize)."
@@ -14,7 +16,7 @@ states:
             Results: '{{ world.results_dir }}'
             Report:  '{{ world.report_dir }}'
             Cells:   "{{ world.summary.cells|length }}"
-      - prose: "bench.py summarize rolls the per-cell verdicts from the live-driver artifact directory up by candidate and writes a project-specific Markdown report plus Slidey deck spec. Deterministic — no LLM."
+      - prose: "bench.py summarize rolls the per-cell verdicts from the live-driver artifact directory up by candidate and writes a project-specific Markdown report plus Slidey deck spec. If no scored cell JSON exists yet, scoring returns to running so the report cannot claim a 0-cell result. Deterministic — no LLM."
     on_enter:
       - invoke: host.run
         id: summarize

@@ -139,6 +139,19 @@ def test_preflight_scopes_to_selected_bugs():
         assert "missing.test" not in text
 
 
+def test_summarize_empty_results_fails_loudly_by_default():
+    with tempfile.TemporaryDirectory() as td:
+        manifest = {"project": {"id": "demo"}, "bugs": [], "_dir": Path(td)}
+        rel = os.path.relpath(Path(td) / "empty-results", bench.HERE)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            rc = bench.summarize(manifest, rel)
+        assert rc == 1
+        text = out.getvalue()
+        assert '"error": "no scored cells"' in text
+        assert "drive_cell.sh --score" in text
+
+
 def main():
     fails = 0
     for name, fn in sorted(globals().items()):

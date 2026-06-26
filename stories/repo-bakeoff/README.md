@@ -37,7 +37,7 @@ idle ─start─▶ configure ─accept─▶ prepare ─accept─▶ running �
 | `configure` | deterministic | Declare the matrix (bugs × candidates); compute the cell roster; optionally carry `repo_dir` for private/local repos. |
 | `prepare` | **deterministic · free · real** | `host.run → bench.py preflight --bug <world.bugs> [--repo-dir ...]` checks setup, then `bench.py verify --bug <world.bugs> [--repo-dir ...]` arms the selected hidden oracles (RED@baseline / GREEN@real-fix) — proves the bake-off is valid **before** any LLM is spent. |
 | `running` | stub | Tracks the roster. The cost-bearing per-cell drive (`drive_cell.sh --candidate <m> --score`) is run **manually** — the only cost-bearing step. |
-| `scoring` | deterministic | `host.run → bench.py summarize --results <artifact-results-dir> --deck <report-dir>/deck.slidey.json --markdown <report-dir>/report.md` rolls the per-cell verdicts up and writes project-specific report artifacts. |
+| `scoring` | deterministic | `host.run → bench.py summarize --results <artifact-results-dir> --deck <report-dir>/deck.slidey.json --markdown <report-dir>/report.md` rolls the per-cell verdicts up and writes project-specific report artifacts. If no scored cell JSON exists, it routes back to `running` instead of producing a misleading 0-cell report. |
 | `reporting` | deterministic | Present the generated report markdown path and Slidey deck spec. |
 | `slideshow` | deterministic | `host.slidey.render` → static-HTML deck + sidecar to `host.artifacts_dir` (exactly slidey-edit's rendering room). |
 | `done` | gallery | The rendered report deck + the headline rollup. |
@@ -74,4 +74,7 @@ By default `drive_cell.sh` writes generated results under
 same directory, expressed relative to `harness_dir`, so `scoring` summarizes the
 actual live-driver output instead of the checked-in reference results. `scoring`
 also writes `.artifacts/external-bakeoff/report/report.md` and
-`.artifacts/external-bakeoff/report/deck.slidey.json`.
+`.artifacts/external-bakeoff/report/deck.slidey.json`. Accepting `running`
+before at least one `results/cells/*.json` exists returns to `running`; run a
+cell with `drive_cell.sh --score` or explicitly use `bench.py summarize
+--allow-empty` outside the story if you are testing empty-report rendering.

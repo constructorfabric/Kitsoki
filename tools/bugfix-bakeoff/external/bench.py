@@ -497,7 +497,7 @@ def verify(m, only_bug, repo_dir):
     return 0 if ok else 1
 
 
-def summarize(m, results_dir, deck=None, markdown=None):
+def summarize(m, results_dir, deck=None, markdown=None, allow_empty=False):
     """Roll up every results/cells/<bug>-<cand>-*.json into a by-candidate summary
     (solved/partial/failed counts + solve_rate). Free, deterministic — consumed by
     the repo-bakeoff story's scoring room and the report/deck builder."""
@@ -508,6 +508,15 @@ def summarize(m, results_dir, deck=None, markdown=None):
             cells.append(json.loads(f.read_text()))
         except Exception:
             continue
+    if not cells and not allow_empty:
+        print(json.dumps({
+            "ok": False,
+            "project": m["project"]["id"],
+            "error": "no scored cells",
+            "cells_dir": str(cells_dir),
+            "hint": "run drive_cell.sh --score for at least one matrix cell before scoring",
+        }))
+        return 1
     by = {}
     for c in cells:
         cand = c.get("candidate", "?")
@@ -702,12 +711,15 @@ def main():
     sm.add_argument("--results", default="results", help="results dir (cells/ under it)")
     sm.add_argument("--deck", help="optional Slidey JSON report spec")
     sm.add_argument("--markdown", help="optional Markdown review index")
+    sm.add_argument("--allow-empty", action="store_true",
+                    help="write an empty 0-cell summary instead of failing when no cell JSON exists")
     a = ap.parse_args()
 
     if a.cmd == "cost":
         sys.exit(trace_cost(a.trace))
     if a.cmd == "summarize":
-        sys.exit(summarize(load(a.project), a.results, a.deck, a.markdown))
+        sys.exit(summarize(load(a.project), a.results, a.deck, a.markdown,
+                           allow_empty=a.allow_empty))
 
     m = load(a.project)
     if a.cmd == "preflight":

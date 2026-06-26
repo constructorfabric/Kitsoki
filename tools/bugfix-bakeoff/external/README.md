@@ -225,7 +225,11 @@ python3 bench.py summarize --project query-string \
   --markdown ../../../.artifacts/query-string-bakeoff/2026-06-26t00-00-00z/report.md
 ```
 
-The external summarizer writes a compact deterministic Slidey spec and Markdown
+The external summarizer fails by default when `results/cells/` has no scored cell
+JSON. That keeps `repo-bakeoff` from producing a misleading "0/0 solved" report;
+the story routes back to `running` until at least one `drive_cell.sh --score`
+artifact exists. Use `--allow-empty` only for explicit empty-report rendering
+tests. The summarizer writes a compact deterministic Slidey spec and Markdown
 report directly from `results/summary.json`. Generated deck specs, HTML/MP4
 renders, and review artifacts should stay under `.artifacts/<job>/<run>/` so
 reruns do not clobber older reports.
