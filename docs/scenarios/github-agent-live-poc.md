@@ -116,6 +116,8 @@ A run is acceptable only when:
   disconnected pages.
 - Each narrated rrweb beat has a precise visual annotation target. Broad fallback
   targets such as the whole page or main content region do not satisfy the gate.
+- Text-heavy evidence beats use readable zoom overlays so GitHub comments, run
+  metadata, and API JSON can be read directly in the Slidey deck.
 - `scripts/verify-gh-agent-live-poc.mjs` passes without requiring an HTML viewer
   or MP4 export.
 

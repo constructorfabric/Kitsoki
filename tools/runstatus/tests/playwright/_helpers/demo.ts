@@ -183,6 +183,93 @@ export async function makeSpotlight(page: Page): Promise<Spotlight> {
   };
 }
 
+export type ReadableZoomOptions = {
+  title?: string;
+  maxWidth?: string;
+  maxHeight?: string;
+  fontSize?: number;
+};
+
+export type ReadableZoom = (selector: string | null, options?: ReadableZoomOptions) => Promise<boolean>;
+
+/**
+ * Install a capture-only readable zoom overlay and return a `zoom(selector)`
+ * mover. The helper clones the target's rendered text/HTML into a fixed panel,
+ * keeps the original page visible behind the dimmed backdrop, and leaves a
+ * pointer-events:none overlay that rrweb captures as ordinary DOM.
+ *
+ * Use this when the real evidence is a dense comment, code block, JSON payload,
+ * or metadata panel that is authentic but too small for a narrated demo. The
+ * source page is not destructively modified: the original target remains on the
+ * page and can still be spotlighted separately.
+ */
+export async function makeReadableZoom(page: Page): Promise<ReadableZoom> {
+  await page.addStyleTag({
+    content:
+      `#demo-readable-zoom{position:fixed;right:34px;bottom:32px;z-index:100000;` +
+      `box-sizing:border-box;width:min(760px,52vw);max-height:62vh;overflow:auto;` +
+      `background:#f8fafc;color:#0f172a;border:2px solid #fbbf24;border-radius:14px;` +
+      `box-shadow:0 24px 80px rgba(2,6,23,.42);padding:18px 22px;opacity:0;` +
+      `transform:translateY(14px) scale(.98);transition:opacity .25s,transform .25s;` +
+      `pointer-events:none;font:500 20px/1.45 ui-sans-serif,system-ui,sans-serif}` +
+      `#demo-readable-zoom.show{opacity:1;transform:translateY(0) scale(1)}` +
+      `#demo-readable-zoom .rz-title{font:800 17px/1.2 ui-sans-serif,system-ui,sans-serif;` +
+      `text-transform:uppercase;letter-spacing:.06em;color:#475569;margin-bottom:10px}` +
+      `#demo-readable-zoom .rz-body{white-space:pre-wrap;overflow-wrap:anywhere}` +
+      `#demo-readable-zoom pre,#demo-readable-zoom code{font:600 18px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;` +
+      `white-space:pre-wrap;overflow-wrap:anywhere;background:#e2e8f0;border-radius:8px;padding:2px 5px}` +
+      `#demo-readable-zoom a{color:#075985;text-decoration:underline}` +
+      `#demo-readable-zoom mark{background:#fde68a;color:#111827;border-radius:4px;padding:0 3px}`,
+  });
+  await page.evaluate(() => {
+    if (document.getElementById("demo-readable-zoom")) return;
+    const el = document.createElement("div");
+    el.id = "demo-readable-zoom";
+    el.setAttribute("aria-hidden", "true");
+    el.innerHTML = `<div class="rz-title"></div><div class="rz-body"></div>`;
+    document.body.appendChild(el);
+  });
+  return async (selector, options = {}) => {
+    const shown = await page.evaluate(
+      ({ sel, opts }) => {
+        const panel = document.getElementById("demo-readable-zoom");
+        if (!panel) return false;
+        if (!sel) {
+          panel.classList.remove("show");
+          return true;
+        }
+        const target = document.querySelector<HTMLElement>(sel);
+        if (!target) {
+          panel.classList.remove("show");
+          return false;
+        }
+        const title = panel.querySelector<HTMLElement>(".rz-title");
+        const body = panel.querySelector<HTMLElement>(".rz-body");
+        if (!title || !body) return false;
+        const text = (target.innerText || target.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
+        const html = target.matches("pre, code") ? `<pre>${escapeHTML(text)}</pre>` : target.innerHTML;
+        title.textContent = opts.title || "Readable zoom";
+        body.innerHTML = html || escapeHTML(text);
+        panel.style.width = opts.maxWidth || "min(760px,52vw)";
+        panel.style.maxHeight = opts.maxHeight || "62vh";
+        panel.style.fontSize = `${opts.fontSize || 20}px`;
+        requestAnimationFrame(() => panel.classList.add("show"));
+        return true;
+
+        function escapeHTML(value: string): string {
+          return value
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        }
+      },
+      { sel: selector, opts: options },
+    );
+    await page.waitForTimeout(300);
+    return shown;
+  };
+}
+
 /**
  * Wire crash + pageerror to <artifactDir>/ERROR.txt and return a `mark(step)`
  * breadcrumb. Because the harness eats Playwright's stdout, this file (plus the

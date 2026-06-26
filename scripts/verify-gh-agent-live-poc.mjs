@@ -42,10 +42,10 @@ const CASES = [
 ];
 
 const STEPS = [
-  { id: "github-thread", file: "01-github-thread.rrweb.json", minAnnotations: 4 },
-  { id: "app-comment", file: "02-app-comment.rrweb.json", minAnnotations: 2 },
-  { id: "run-page", file: "03-run-page.rrweb.json", minAnnotations: 3 },
-  { id: "run-api", file: "04-run-api.rrweb.json", minAnnotations: 2 },
+  { id: "github-thread", file: "01-github-thread.rrweb.json", minAnnotations: 4, minReadableZooms: 1 },
+  { id: "app-comment", file: "02-app-comment.rrweb.json", minAnnotations: 2, minReadableZooms: 1 },
+  { id: "run-page", file: "03-run-page.rrweb.json", minAnnotations: 3, minReadableZooms: 2 },
+  { id: "run-api", file: "04-run-api.rrweb.json", minAnnotations: 2, minReadableZooms: 1 },
 ];
 
 const DEFAULT_EVIDENCE_DIR = ".context";
@@ -453,6 +453,16 @@ function checkRrwebLog(file, step, report, label) {
   if (fallbackTargets.length > 0) {
     report.fail(`${label} has ${fallbackTargets.length} broad fallback annotation target(s) instead of precise callouts`);
   }
+  const readableZooms = events.filter((event) => event?.type === 5 && event?.data?.tag === "kitsoki.readable_zoom");
+  if (readableZooms.length < step.minReadableZooms) {
+    report.fail(
+      `${label} has ${readableZooms.length} readable zoom marker(s), expected at least ${step.minReadableZooms}`,
+    );
+  }
+  const missingReadableZooms = readableZooms.filter((event) => !event?.data?.payload?.shown);
+  if (missingReadableZooms.length > 0) {
+    report.fail(`${label} has readable zoom marker(s) that did not show an overlay`);
+  }
   return true;
 }
 
@@ -505,7 +515,7 @@ function checkMedia(args, c, report) {
       if (!args.allowMissingMedia) report.fail(`${c.slug}: missing rrweb log ${rrwebPath}`);
       continue;
     }
-    const step = STEPS.find((candidate) => candidate.id === id) || { id, minAnnotations: 1 };
+    const step = STEPS.find((candidate) => candidate.id === id) || { id, minAnnotations: 1, minReadableZooms: 0 };
     checkRrwebLog(rrwebPath, step, report, `${c.slug} ${id} rrweb`);
   }
 }

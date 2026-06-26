@@ -21,7 +21,17 @@ import {
   SETTLE_MS,
 } from "./_helpers/server.js";
 import { cameraContext } from "./_helpers/camera.js";
-import { captureDiagnostics, installCurtain, liftCurtain, makeCaption, makeSpotlight, type Beat, type Spotlight } from "./_helpers/demo.js";
+import {
+  captureDiagnostics,
+  installCurtain,
+  liftCurtain,
+  makeCaption,
+  makeReadableZoom,
+  makeSpotlight,
+  type Beat,
+  type ReadableZoom,
+  type Spotlight,
+} from "./_helpers/demo.js";
 import { dumpCapture, installCapture, type CaptureViewport, type RrwebEvent } from "./_helpers/rrweb-replay.js";
 
 type CaptureStep = {
@@ -43,6 +53,7 @@ const DEFAULT_PLAN = path.join(repoRoot, ".artifacts", "github-agent-live", "cap
 const SPEC_REF = "tools/runstatus/tests/playwright/github-agent-live-capture.spec.ts";
 const CHAPTER_TAG = "slidey.chapter";
 const ANNOTATION_TAG = "kitsoki.annotation";
+const ZOOM_TAG = "kitsoki.readable_zoom";
 
 function loadPlan(): CapturePlan {
   const planPath = process.env.KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN || DEFAULT_PLAN;
@@ -118,6 +129,15 @@ async function tryMakeSpotlight(page: Page): Promise<Spotlight> {
   } catch (e) {
     console.warn(`[live-capture] spotlight disabled: ${String(e).slice(0, 240)}`);
     return async () => undefined;
+  }
+}
+
+async function tryMakeReadableZoom(page: Page): Promise<ReadableZoom> {
+  try {
+    return await makeReadableZoom(page);
+  } catch (e) {
+    console.warn(`[live-capture] readable zoom disabled: ${String(e).slice(0, 240)}`);
+    return async () => false;
   }
 }
 
@@ -295,7 +315,33 @@ async function annotatedTextBeat(
   await caption(title, sub, holdMs);
 }
 
-async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+async function zoomBeat(
+  page: Page,
+  caption: Beat,
+  zoom: ReadableZoom,
+  selector: string | null,
+  title: string,
+  sub: string,
+  holdMs: number,
+): Promise<void> {
+  const shown = selector
+    ? await zoom(selector, { title, fontSize: selector.includes("api-json") ? 17 : 20 })
+    : false;
+  await page.evaluate(
+    ({ tag, title: eventTitle, selector: eventSelector, shown: eventShown }) => {
+      const rrweb = (window as unknown as { rrweb?: { record?: { addCustomEvent?: (tag: string, payload: unknown) => void } } }).rrweb;
+      rrweb?.record?.addCustomEvent?.(tag, {
+        title: eventTitle,
+        selector: eventSelector,
+        shown: eventShown,
+      });
+    },
+    { tag: ZOOM_TAG, title, selector, shown },
+  );
+  await caption(title, sub, holdMs);
+}
+
+async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom): Promise<void> {
   const title = await markFirstSelector(page, "issue-title", [
     "[data-testid='issue-title']",
     "bdi.js-issue-title",
@@ -326,6 +372,15 @@ async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, sp
     "The App-authenticated response is the handoff from GitHub into the hosted run.",
     2800,
   );
+  await zoomBeat(
+    page,
+    caption,
+    zoom,
+    "[data-kitsoki-demo-target=\"app-comment\"]",
+    "Read the App response",
+    "The zoomed copy makes the story, state, job id, and run URL readable without losing the live GitHub context.",
+    3200,
+  );
   await dwell(page, 1800);
 
   await annotatedTextBeat(
@@ -340,7 +395,7 @@ async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, sp
   await dwell(page, 1500);
 }
 
-async function tourAppComment(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+async function tourAppComment(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom): Promise<void> {
   await annotatedTextBeat(
     page,
     caption,
@@ -349,6 +404,15 @@ async function tourAppComment(page: Page, step: CaptureStep, caption: Beat, spot
     step.title,
     "The URL opens directly on the App response, not just the original mention.",
     2600,
+  );
+  await zoomBeat(
+    page,
+    caption,
+    zoom,
+    "[data-kitsoki-demo-target=\"app-comment-anchor\"]",
+    "Readable App comment",
+    "This is the exact GitHub comment a requester sees, enlarged for review.",
+    3200,
   );
   await dwell(page, 1700);
 
@@ -364,7 +428,7 @@ async function tourAppComment(page: Page, step: CaptureStep, caption: Beat, spot
   await dwell(page, 1700);
 }
 
-async function tourRunPage(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+async function tourRunPage(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom): Promise<void> {
   const heading = await markFirstSelector(page, "run-heading", ["h1", "main h2", "body"]);
   await annotatedBeat(
     page,
@@ -386,6 +450,15 @@ async function tourRunPage(page: Page, step: CaptureStep, caption: Beat, spotlig
     "The page exposes the route, state, source, and run URL a reviewer needs.",
     2600,
   );
+  await zoomBeat(
+    page,
+    caption,
+    zoom,
+    "[data-kitsoki-demo-target=\"run-state\"]",
+    "Readable job state",
+    "The run page state is enlarged so the proof status is legible in the deck.",
+    2600,
+  );
   await page.mouse.wheel(0, 360).catch(() => undefined);
   await dwell(page, 1800);
 
@@ -398,10 +471,19 @@ async function tourRunPage(page: Page, step: CaptureStep, caption: Beat, spotlig
     "The hosted view ties the job back to the original issue or PR.",
     2300,
   );
+  await zoomBeat(
+    page,
+    caption,
+    zoom,
+    "[data-kitsoki-demo-target=\"run-source\"]",
+    "Readable source link",
+    "The source link ties the hosted run back to the exact GitHub issue or PR.",
+    2600,
+  );
   await dwell(page, 1600);
 }
 
-async function tourRunAPI(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+async function tourRunAPI(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom): Promise<void> {
   const pre = await markFirstSelector(page, "api-json", ["pre", "body"]);
   await annotatedBeat(
     page,
@@ -411,6 +493,15 @@ async function tourRunAPI(page: Page, step: CaptureStep, caption: Beat, spotligh
     step.title,
     "The same proof is machine-readable for verification and automation.",
     2600,
+  );
+  await zoomBeat(
+    page,
+    caption,
+    zoom,
+    pre,
+    "Readable API payload",
+    "The JSON proof is enlarged so the job id, state, source URL, and run URL are reviewable.",
+    3600,
   );
   await dwell(page, 1600);
 
@@ -427,25 +518,26 @@ async function tourRunAPI(page: Page, step: CaptureStep, caption: Beat, spotligh
   await dwell(page, 1800);
 }
 
-async function runStepTour(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
+async function runStepTour(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom): Promise<void> {
   switch (step.id) {
     case "github-thread":
-      await tourGithubThread(page, step, caption, spotlight);
+      await tourGithubThread(page, step, caption, spotlight, zoom);
       break;
     case "app-comment":
-      await tourAppComment(page, step, caption, spotlight);
+      await tourAppComment(page, step, caption, spotlight, zoom);
       break;
     case "run-page":
-      await tourRunPage(page, step, caption, spotlight);
+      await tourRunPage(page, step, caption, spotlight, zoom);
       break;
     case "run-api":
-      await tourRunAPI(page, step, caption, spotlight);
+      await tourRunAPI(page, step, caption, spotlight, zoom);
       break;
     default:
       await caption(step.title, step.caption || step.url, step.dwellMs ?? 5000);
       break;
   }
   await spotlight(null);
+  await zoom(null);
 }
 
 async function resetRrwebCapture(page: Page): Promise<void> {
@@ -495,6 +587,7 @@ async function captureRrwebStep(
   step: CaptureStep,
   caption: Beat,
   spotlight: Spotlight,
+  zoom: ReadableZoom,
 ): Promise<void> {
   await resetRrwebCapture(page);
   await installCapture(page);
@@ -505,7 +598,7 @@ async function captureRrwebStep(
     },
     { id: step.id, label: step.title, specPath: SPEC_REF, tag: CHAPTER_TAG },
   );
-  await runStepTour(page, step, caption, spotlight);
+  await runStepTour(page, step, caption, spotlight, zoom);
   await page.evaluate(() => {
     const rrweb = (window as unknown as { rrweb?: { record?: { addCustomEvent?: (tag: string, payload: unknown) => void } } }).rrweb;
     rrweb?.record?.addCustomEvent?.("slidey.end", {});
@@ -559,8 +652,9 @@ test("capture live GitHub-agent evidence", async () => {
       await tryLiftCurtain(page);
       const caption = await tryMakeCaption(page);
       const spotlight = await tryMakeSpotlight(page);
+      const zoom = await tryMakeReadableZoom(page);
       diag.mark(`step ${step.id}: rrweb-tour`);
-      await captureRrwebStep(page, artifactDir, idx, step, caption, spotlight);
+      await captureRrwebStep(page, artifactDir, idx, step, caption, spotlight, zoom);
       diag.mark(`step ${step.id}: screenshot`);
       await shot(page, step.id);
     }

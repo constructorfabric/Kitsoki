@@ -60,6 +60,14 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > region, and show the handoff the user would actually perform. If the source
 > surface is not the kitsoki SPA, use the portable `makeCaption` +
 > `makeSpotlight` helpers so the rrweb log still contains guided motion.
+>
+> **Make dense evidence readable with capture-only DOM overlays.** For comments,
+> JSON, code blocks, ticket metadata, and other small text boxes, use
+> `makeReadableZoom(page)` from `tools/runstatus/tests/playwright/_helpers/demo.ts`.
+> It clones the target's rendered content into a fixed, enlarged overlay while
+> leaving the real page visible underneath. Stamp or verify a marker when the
+> zoom is part of the evidence contract; a demo should not ask reviewers to read
+> 12px text from a full-page capture.
 
 ## Start from a real dogfood trace (generate the flow + cassette — don't hand-author)
 
@@ -153,7 +161,8 @@ them.** The reference spec is `tests/playwright/diagram-showcase.spec.ts`.
   it — e.g. `judge_mode: human`.)
 - **Captions/overlays must be `pointer-events: none`** or they silently
   intercept clicks on the UI beneath (an opaque banner over the tab bar = every
-  tab click times out). `makeCaption(page)` already is; so is the curtain.
+  tab click times out). `makeCaption(page)` already is; so are the curtain,
+  `makeSpotlight(page)`, and `makeReadableZoom(page)`.
 - **Playwright's default `actionTimeout` is 0 (INFINITE)** — a click on a
   missing/covered element hangs the whole run with no error. The config now caps
   it (15s); keep it. Don't write un-timeouted `.click()` in a loop.
@@ -279,6 +288,18 @@ conversation. `kitsoki-ui-qa` now **fails** a demo that breaks any of these
 - **No overlapping tour labels.** A coachmark/popover/tooltip must never sit on top
   of the chat. Dismiss any onboarding/tour overlay before driving, and keep
   spotlight popovers off the conversation.
+- **Zoom dense text instead of hoping it is readable.** If the evidence is a
+  long GitHub comment, a JSON block, a code block, or a metadata panel, use the
+  readable-zoom helper after spotlighting the real element:
+  ```ts
+  const zoom = await makeReadableZoom(page);
+  await zoom('[data-testid="run-json"]', {
+    title: "Readable API payload",
+    fontSize: 17,
+  });
+  ```
+  Keep the zoom temporary and capture-only. It should clarify the real evidence,
+  not invent alternate content.
 - **Word intents naturally — never the raw `_` names.** Drive via natural language
   in the composer where the deterministic router allows; never type or surface the
   underscored internal intent names (`core__prd__start`). Visible labels (buttons,
