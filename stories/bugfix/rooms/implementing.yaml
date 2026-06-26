@@ -98,16 +98,16 @@ states:
       # ── SYNTHESISE the regression gate (autonomous from a bare bug report) ──
       # When the ticket carried NO repro_command (gate_command empty), the
       # reproducer authored a RED test (a prior phase) and emitted a structured
-      # repro_command + repro_test_paths. DERIVE the gate from it here; the test
-      # itself is committed as a discrete pre-fix commit AFTER the implementer
-      # agent runs (below) — NOT before. Why after: the maker agents run on the
-      # codex/claude backend in their own sandbox and their file writes sync back
-      # to the worktree at an UNBOUNDED later moment, so the reproducer's RED test
-      # is not reliably on disk early in this room (three earlier placements —
-      # reproducing's accept arc, proposing/on_enter, and here-before-the-agent —
-      # all raced the sync-back and the commit no-op'd). The implementer agent
-      # itself reads+writes the same worktree, so once IT completes the sync-back
-      # is provably done and the test is durable. Guarded on gate_command=='' so a
+      # repro_command + repro_test_paths. DERIVE the gate from it here, then commit
+      # the test as a discrete pre-fix commit (commit_repro_test below) and run the
+      # deterministic GREEN→RED gate — all BEFORE the implementer agent. This is now
+      # safe because host.agent.task carries a DURABILITY BARRIER
+      # (internal/host/agent_task.go waitForAgentWorktreeWrites) that blocks the
+      # reproducer call until the maker backend's file writes have synced back to
+      # the worktree, so the reproducer's RED test is provably on disk by the time
+      # this room runs. (Historically the writes synced back at an UNBOUNDED later
+      # moment, so the commit had to wait for the implementer or hand-roll a poll —
+      # the barrier removes that race.) Guarded on gate_command=='' so a
       # ticket-supplied repro_command is untouched; latched (one-shot). The latch
       # is unconditional: if the test never becomes a discrete pre-fix commit,
       # testing's HEAD~1 gate finds it GREEN → @exit:needs-human — never a false
@@ -125,14 +125,14 @@ states:
       # the implementer applies the fix, so the only dirty change is the test and
       # `git add -A` captures it whatever path the reproducer actually wrote (the
       # reproducer's reported repro_test_paths proved unreliable — a path-specific
-      # `git add` silently no-op'd while the file WAS on disk). Two hard problems
-      # this solves that a plain iface.vcs.commit couldn't:
-      #   (1) the maker backend (codex) flushes the reproducer's just-written file
-      #       to the worktree at an UNBOUNDED later moment — so we POLL git status
-      #       (up to ~12s) for any non-owner change before staging;
-      #   (2) the reported test path may not match the real one — so we stage ALL
-      #       (minus the .kitsoki-owner sentinel), which is safe because nothing
-      #       else is dirty yet (the implementer hasn't run).
+      # `git add` silently no-op'd while the file WAS on disk). We stage ALL (minus
+      # the .kitsoki-owner sentinel), safe because nothing else is dirty yet (the
+      # implementer hasn't run).
+      # NOTE: the old per-call poll loop (POLL git status up to ~12s for the maker
+      # backend's unbounded file flush) is GONE — host.agent.task now carries a
+      # DURABILITY BARRIER (internal/host/agent_task.go waitForAgentWorktreeWrites)
+      # that blocks the reproducer call until its writes are durable on disk before
+      # reproducing/on_enter returns, so by here the test file is provably present.
       # Synthesis path only (repro_committed latched above). A stray no-commit is
       # caught by testing's HEAD~1 gate (GREEN → needs-human) — never a false ship.
       - when: "world.repro_committed && world.workdir != ''"
@@ -146,11 +146,6 @@ states:
               set +e
               export GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
               WT="{{ world.workdir }}"
-              for i in $(seq 1 60); do
-                DIRTY=$(git -C "$WT" status --porcelain 2>/dev/null | grep -v '\.kitsoki-owner')
-                [ -n "$DIRTY" ] && break
-                sleep 0.2
-              done
               cd "$WT" || { printf '{"sha":"","committed":false}\n'; exit 0; }
               git add -A
               git reset -q -- .kitsoki-owner 2>/dev/null

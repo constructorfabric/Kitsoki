@@ -41,6 +41,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -106,6 +108,11 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 	}
 	ctx, agent = applyProvider(ctx, args, agent)
 
+	// Resolve the worktree up front so the durability barrier below can run on
+	// either dispatch path (plugin or subprocess).
+	workingDir, _ := args["working_dir"].(string)
+	workingDir = appendDefaultCwd(workingDir, agent)
+
 	// B-7: If an agent plugin registry is wired in context, route through
 	// host.Dispatch. For task the prompt is the context.prompt field.
 	withArgs, _ := args["with"].(map[string]any)
@@ -119,6 +126,10 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		if pluginErr != nil {
 			return Result{Error: pluginErr.Error()}, nil
 		}
+		// Durability barrier: the maker backend reports completion before its
+		// Edit/Write mutations sync back to the worktree, so block until they
+		// are durable on disk before returning (write-capable agents only).
+		waitForAgentWorktreeWrites(ctx, agent, workingDir, agentName, "plugin")
 		return pluginRes, nil
 	}
 
@@ -136,9 +147,8 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		maxRetries = defaultTaskMaxRetries
 	}
 
-	// ── Working directory ─────────────────────────────────────────────────
-	workingDir, _ := args["working_dir"].(string)
-	workingDir = appendDefaultCwd(workingDir, agent)
+	// workingDir was resolved above (before the plugin dispatch) so the
+	// durability barrier runs on both paths.
 
 	// ── Resolve binary ────────────────────────────────────────────────────
 	bin, binErr := resolveAgentBin(ctx)
@@ -420,6 +430,14 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 		}
 	}
 
+	// Durability barrier: the maker backend (e.g. codex) reports the task
+	// complete before its Edit/Write mutations have synced back to the worktree.
+	// Block until they are durable on disk so downstream on_enter steps (commits,
+	// the GREEN→RED gate) observe a true tree — and so captureFinalDiff /
+	// captureFilesChanged below reflect the real changes rather than racing the
+	// flush. Write-capable agents only; bounded; never fails the task.
+	waitForAgentWorktreeWrites(ctx, agent, workingDir, agentName, "subprocess")
+
 	// ── Capture final state ───────────────────────────────────────────────
 	finalDiff := captureFinalDiff(ctx, workingDir)
 	filesChanged := captureFilesChanged(ctx, workingDir)
@@ -460,6 +478,90 @@ func AgentTaskHandler(ctx context.Context, args map[string]any) (Result, error) 
 			"replay_mode":   string(replayMode),
 		},
 	}, nil
+}
+
+// defaultWorktreeDurabilityWaitMS bounds how long the durability barrier blocks
+// waiting for a write-capable agent's file mutations to sync back to the
+// worktree before returning. The maker backend (codex) reports task completion
+// before its Edit/Write writes land on disk; this barrier makes them durable-on-
+// return so downstream on_enter steps can trust the tree. Overridable via
+// KITSOKI_TASK_DURABILITY_WAIT_MS (0 disables the wait).
+const defaultWorktreeDurabilityWaitMS = 15000
+
+// agentHasWriteTools reports whether the agent declares any file-mutating tool
+// (Edit / Write / NotebookEdit). Read-only agents (proposer, judge) never write
+// to the worktree, so the durability barrier skips them.
+func agentHasWriteTools(agent Agent) bool {
+	for _, t := range agent.Tools {
+		if mutationTools[t] {
+			return true
+		}
+	}
+	return false
+}
+
+// waitForAgentWorktreeWrites blocks until a write-capable agent's mutations are
+// durable in workingDir, or a bounded deadline elapses. It NEVER fails the task:
+// a write-capable agent that legitimately wrote nothing simply waits out the
+// deadline (the no-writes case is logged so it is visible in the trace). The
+// previous design forced every downstream consumer (e.g. implementing's
+// commit_repro_test) to hand-roll its own poll loop; centralising it here makes
+// host.agent.task synchronous through to file durability.
+func waitForAgentWorktreeWrites(ctx context.Context, agent Agent, workingDir, agentName, dispatch string) {
+	if workingDir == "" || !agentHasWriteTools(agent) {
+		return
+	}
+	deadlineMS := defaultWorktreeDurabilityWaitMS
+	if v := strings.TrimSpace(os.Getenv("KITSOKI_TASK_DURABILITY_WAIT_MS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			deadlineMS = n
+		}
+	}
+	if deadlineMS == 0 {
+		return
+	}
+	start := time.Now()
+	deadline := start.Add(time.Duration(deadlineMS) * time.Millisecond)
+	for {
+		if worktreeHasNonOwnerChanges(ctx, workingDir) {
+			slog.InfoContext(ctx, "agent.task.worktree_durable",
+				"agent", agentName, "dispatch", dispatch,
+				"waited_ms", time.Since(start).Milliseconds())
+			return
+		}
+		if time.Now().After(deadline) {
+			// No writes landed within the budget. Not necessarily an error — a
+			// write-capable agent may legitimately have written nothing — but
+			// surface it so a genuine never-flushed case is diagnosable.
+			slog.WarnContext(ctx, "agent.task.no_worktree_writes",
+				"agent", agentName, "dispatch", dispatch, "working_dir", workingDir,
+				"waited_ms", time.Since(start).Milliseconds())
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+}
+
+// worktreeHasNonOwnerChanges reports whether `git status --porcelain` in
+// workingDir shows any change other than the .kitsoki-owner sentinel (the
+// session-ownership marker, which is not an agent write).
+func worktreeHasNonOwnerChanges(ctx context.Context, workingDir string) bool {
+	out, err := exec.CommandContext(ctx, "git", "-C", workingDir, "status", "--porcelain").Output()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, ".kitsoki-owner") {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // parseTaskAcceptance extracts the acceptance: block from handler args.
