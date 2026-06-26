@@ -66,10 +66,11 @@ story `blocker` intent. Do not silently substitute a fake pass.
 
 For each scenario in the bundle:
 
-1. Read the scenario task, primary story, required MCP tools, evidence slots, and
-   success criteria. Treat the scenario `quality_gate` in `driver-plan.json` as
-   the minimum proof contract: capture its `minimum_evidence`, satisfy
-   `done_when`, or record a blocker matching one of the `block_if` conditions.
+1. Read the scenario task, primary story, `driver_actions`, required MCP tools,
+   evidence slots, and success criteria. Treat the scenario `quality_gate` in
+   `driver-plan.json` as the minimum proof contract: capture its
+   `minimum_evidence`, satisfy `done_when`, or record a blocker matching one of
+   the `block_if` conditions.
 2. Open or attach the appropriate Kitsoki session:
    - product discovery: visual web surface for the local product site;
    - onboarding / PRD / design / feature: `stories/dev-story/app.yaml`;
@@ -79,14 +80,18 @@ For each scenario in the bundle:
 3. Act as the assigned persona. Use natural operator text where route quality is
    under test; otherwise prefer deterministic `session.submit` / `visual.act`
    action handles.
-4. Capture every requested evidence slot with an artifact reference:
+4. Follow the generated `driver_actions` in order: open the surface, read the
+   current frame, act as the persona, capture required evidence, and journal the
+   attempt. If one action cannot proceed, record the exact blocker and still
+   journal the attempt.
+5. Capture every requested evidence slot with an artifact reference:
    - visual state: retained `image_id`, screenshot path, or web frame reference;
    - TUI state: `render.tui` text or `render.tui_png` path;
    - session behavior: trace path or trace event range;
    - bugfix or implementation: candidate diff plus deterministic oracle/test
      output;
    - PRD/design: generated artifact path plus review notes.
-5. Record concrete findings:
+6. Record concrete findings:
    - `strength` when the journey worked and why it is credible;
    - `weakness` when the surface is confusing but not clearly broken;
    - `issue` when behavior is incorrect, blocked, or misleading;
@@ -94,8 +99,8 @@ For each scenario in the bundle:
    - use the blocker command when a scenario was genuinely attempted but cannot
      proceed without live authorization, a missing cassette, unavailable repo
      state, or another external prerequisite.
-6. Append a driver journal event for the scenario with
-   `tools/product-journey/run.py --record-driver-event`, naming the dispatch
+7. Append a driver journal event for the scenario using the generated
+   `journal_command` or the `driver_event` story intent, naming the dispatch
    mode, MCP tools used, evidence references produced, blockers observed, and a
    short summary. This journal is the audit trail for what the driver actually
    tried; do not rely on final findings alone.

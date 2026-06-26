@@ -145,9 +145,9 @@ For a live/cassette dogfood pass, delegate the bundle to
 the brief, drive Kitsoki Studio MCP and visual MCP, attach evidence, record
 findings or blockers, then run review and validation gates.
 `driver-plan.md` is the driver's machine-readable companion rendered for human
-review: it lists each scenario's harness, visual surface, action sequence,
-evidence slots, attach commands, finding command, blocker command, and final
-gates.
+review: it lists each scenario's harness, visual surface, ordered
+`driver_actions`, evidence slots, attach commands, finding command, blocker
+command, journal command, and final gates.
 Captured screenshots, videos, traces, and documents are indexed in
 `media-manifest.json`; the generated Slidey deck uses that manifest for
 playback-ready media entries and standalone `Playback evidence` scenes for

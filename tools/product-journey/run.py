@@ -1098,6 +1098,69 @@ def driver_action_sequence(required_mcp: list[str]) -> list[str]:
     return sequence
 
 
+def driver_actions(scenario: dict, run_json: dict, evidence_items: list[dict]) -> list[dict]:
+    scenario_id = scenario["id"]
+    evidence_dir = scenario.get(
+        "evidence_dir",
+        f"evidence/{run_json['project']['id']}--{run_json['persona']['id']}/{scenario_id}",
+    )
+    required_mcp = scenario.get("required_mcp", [])
+    return [
+        {
+            "id": "open_surface",
+            "goal": "Open or attach the Kitsoki/product surface named by the scenario.",
+            "tools": [
+                tool for tool in ["session.open", "visual.open"]
+                if tool in required_mcp
+            ] or ["session.status"],
+            "evidence": [],
+            "record": "Record the handle, URL, or reason this surface could not be opened.",
+        },
+        {
+            "id": "read_current_frame",
+            "goal": "Observe the exact operator-visible state before acting.",
+            "tools": [
+                tool for tool in ["session.status", "render.tui", "visual.observe"]
+                if tool == "session.status" or tool in required_mcp
+            ],
+            "evidence": [
+                item["kind"]
+                for item in evidence_items
+                if item["kind"] in {"browser_screenshot", "rendered_tui_frame", "screenshot_or_tui_png"}
+            ],
+            "record": f"Save frame evidence under {evidence_dir}/ before evaluating usability.",
+        },
+        {
+            "id": "act_as_persona",
+            "goal": "Take the next natural persona action and preserve route/interaction evidence.",
+            "tools": [
+                tool for tool in ["session.submit", "session.drive", "visual.act", "session.trace"]
+                if tool in {"session.submit", "session.trace"} or tool in required_mcp
+            ],
+            "evidence": [
+                item["kind"]
+                for item in evidence_items
+                if item["kind"] in {"navigation_trace", "session_trace", "key_interaction_video", "trace_reference"}
+            ],
+            "record": "Prefer natural phrasing when route quality is under test; otherwise use deterministic action handles.",
+        },
+        {
+            "id": "capture_required_evidence",
+            "goal": "Attach every minimum-evidence slot or record the matching quality-gate blocker.",
+            "tools": ["visual.observe", "render.tui", "session.trace"],
+            "evidence": [item["kind"] for item in evidence_items],
+            "record": "Use attach commands for captured evidence; use blocker command for honest gaps.",
+        },
+        {
+            "id": "journal_attempt",
+            "goal": "Append the driver's actual attempt, tools used, evidence references, and blockers.",
+            "tools": ["story.driver_event", "tools/product-journey/run.py --record-driver-event"],
+            "evidence": ["driver-journal.md"],
+            "record": "Journal the attempt even when the scenario only produced a blocker.",
+        },
+    ]
+
+
 def media_kind(evidence_kind: str, artifact_path: str) -> str:
     value = f"{evidence_kind} {artifact_path}".lower()
     suffix = Path(artifact_path).suffix.lower()
@@ -1468,6 +1531,7 @@ def build_driver_plan(run_json: dict, evidence: dict, execution_plan: dict) -> d
             "visual_surface": driver_visual_surface(scenario["primary_story"], required_mcp),
             "required_mcp": required_mcp,
             "action_sequence": driver_action_sequence(required_mcp),
+            "driver_actions": driver_actions(scenario, run_json, evidence_items),
             "persona_prompts": [
                 f"Act as {run_json['persona']['label']}: {run_json['persona']['description']}",
                 f"Risk focus: {', '.join(run_json['persona'].get('risk_focus', []))}",
@@ -1500,6 +1564,17 @@ def build_driver_plan(run_json: dict, evidence: dict, execution_plan: dict) -> d
                 "--title <blocker-title> --summary <why-this-scenario-could-not-be-captured> "
                 "--evidence-path <trace-or-frame-path>"
             )),
+            "journal_command": (
+                "python3 tools/product-journey/run.py --record-driver-event "
+                f"--run-dir {run_dir_arg} "
+                f"--scenario {scenario_id} "
+                "--dispatch-mode <replay|record|live> "
+                "--driver-status <attempted|captured|blocked|validated> "
+                "--mcp-tools <comma-separated-tools-used> "
+                "--evidence-refs <comma-separated-paths-or-retained-ids> "
+                "--blockers <comma-separated-blockers-if-any> "
+                "--summary <what-the-driver-actually-tried>"
+            ),
         })
     return {
         "run_id": run_json["run_id"],
@@ -1542,6 +1617,19 @@ def render_driver_plan(plan: dict) -> str:
         ])
         for action in scenario["action_sequence"]:
             lines.append(f"- {action}")
+        lines.extend(["", "### Driver Actions", ""])
+        for action in scenario.get("driver_actions", []):
+            tools = ", ".join(action.get("tools", [])) or "(none)"
+            evidence_refs = ", ".join(action.get("evidence", [])) or "(none)"
+            lines.extend([
+                f"#### {action['id']}",
+                "",
+                f"- Goal: {action['goal']}",
+                f"- Tools: {tools}",
+                f"- Evidence: {evidence_refs}",
+                f"- Record: {action['record']}",
+                "",
+            ])
         lines.extend(["", "### Persona Prompts", ""])
         for prompt in scenario["persona_prompts"]:
             lines.append(f"- {prompt}")
@@ -1568,6 +1656,8 @@ def render_driver_plan(plan: dict) -> str:
         lines.append(f"```sh\n{scenario['record_finding_command']}\n```")
         lines.extend(["", "### Blocker Command", ""])
         lines.append(f"```sh\n{scenario['record_blocker_command']}\n```")
+        lines.extend(["", "### Journal Command", ""])
+        lines.append(f"```sh\n{scenario['journal_command']}\n```")
         lines.extend(["", "### Success Criteria", ""])
         for criterion in scenario["success_criteria"]:
             lines.append(f"- {criterion}")
@@ -2668,6 +2758,20 @@ def validate_run_bundle(run_dir: Path) -> dict:
                 invalid_gate_evidence.append(f"{scenario_id}: {', '.join(extra)}")
         if invalid_gate_evidence:
             add_validation_issue(issues, "error", "driver-plan-quality-gate-evidence", "Quality gate minimum evidence is not declared by the scenario", "; ".join(invalid_gate_evidence))
+        missing_driver_actions = sorted({
+            scenario.get("scenario", f"driver-scenario-{index}")
+            for index, scenario in enumerate(driver_scenarios, start=1)
+            if not scenario.get("driver_actions")
+        })
+        if missing_driver_actions:
+            add_validation_issue(issues, "error", "driver-plan-actions", "driver-plan.json scenarios are missing driver_actions", ", ".join(missing_driver_actions))
+        missing_journal_commands = sorted({
+            scenario.get("scenario", f"driver-scenario-{index}")
+            for index, scenario in enumerate(driver_scenarios, start=1)
+            if "--record-driver-event" not in scenario.get("journal_command", "")
+        })
+        if missing_journal_commands:
+            add_validation_issue(issues, "error", "driver-plan-journal-command", "driver-plan.json scenarios are missing record-driver-event journal commands", ", ".join(missing_journal_commands))
     if driver_journal:
         missing_event_keys = [
             f"{event.get('id', f'event-{index}')}/{key}"

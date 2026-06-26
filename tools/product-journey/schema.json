@@ -34,7 +34,7 @@
   },
   "driver_plan": {
     "required": ["run_id", "driver_agent", "project", "persona", "scenarios", "final_gates"],
-    "scenario_required": ["scenario", "label", "primary_story", "harness", "visual_surface", "required_mcp", "evidence", "success_criteria", "quality_gate", "attach_commands", "record_finding_command", "record_blocker_command"],
+    "scenario_required": ["scenario", "label", "primary_story", "harness", "visual_surface", "required_mcp", "evidence", "success_criteria", "quality_gate", "driver_actions", "attach_commands", "record_finding_command", "record_blocker_command", "journal_command"],
     "quality_gate_required": ["minimum_evidence", "done_when", "block_if"]
   },
   "driver_handoff": {
