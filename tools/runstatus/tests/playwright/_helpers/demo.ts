@@ -183,6 +183,123 @@ export async function makeSpotlight(page: Page): Promise<Spotlight> {
   };
 }
 
+export type TextBreathOptions = {
+  pattern?: string;
+  className?: string;
+  eventTag?: string;
+  context?: string;
+};
+
+export type TextBreathResult = {
+  count: number;
+  texts: string[];
+};
+
+export type TextBreath = (rootSelector?: string | null, options?: TextBreathOptions) => Promise<TextBreathResult>;
+
+/**
+ * Install a capture-only breathing emphasis helper and return `breath(root, opts)`.
+ * It wraps matched text occurrences inside the selected root with animated spans
+ * that briefly grow/bold/glow, then settle back down. This is for drawing the
+ * viewer's eye to a real mention/keyword without replacing the source content.
+ */
+export async function makeTextBreath(page: Page): Promise<TextBreath> {
+  await page.addStyleTag({
+    content:
+      `.kitsoki-text-breath{display:inline-block;position:relative;z-index:1;padding:.02em .18em;margin:0 .02em;` +
+      `border-radius:.34em;color:#58a6ff!important;background:linear-gradient(90deg,rgba(251,191,36,.28),rgba(56,189,248,.2));` +
+      `font-weight:900!important;transform:scale(1);transform-origin:center;` +
+      `transition:transform .38s cubic-bezier(.2,.78,.25,1),filter .38s cubic-bezier(.2,.78,.25,1),` +
+      `box-shadow .38s cubic-bezier(.2,.78,.25,1),background .38s cubic-bezier(.2,.78,.25,1)}` +
+      `.kitsoki-text-breath.kitsoki-text-breath--big{transform:scale(1.28);filter:drop-shadow(0 0 10px rgba(251,191,36,.9));` +
+      `box-shadow:0 0 0 3px rgba(251,191,36,.34),0 0 24px rgba(251,191,36,.82);` +
+      `background:linear-gradient(90deg,rgba(251,191,36,.46),rgba(56,189,248,.28))}` +
+      `.kitsoki-text-breath.kitsoki-text-breath--small{transform:scale(.94);filter:drop-shadow(0 0 2px rgba(251,191,36,.45));` +
+      `box-shadow:0 0 0 1px rgba(251,191,36,.2)}`,
+  });
+  return async (rootSelector = "body", options = {}) => {
+    const result = await page.evaluate(
+      ({ rootSel, opts }) => {
+        const pattern = new RegExp(opts.pattern || "@kitsoki", "gi");
+        const className = opts.className || "kitsoki-text-breath";
+        const root = rootSel ? document.querySelector<HTMLElement>(rootSel) : document.body;
+        if (!root) return { count: 0, texts: [] };
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+          acceptNode(node) {
+            const text = node.textContent || "";
+            pattern.lastIndex = 0;
+            if (!pattern.test(text)) return NodeFilter.FILTER_REJECT;
+            const parent = node.parentElement;
+            if (!parent) return NodeFilter.FILTER_REJECT;
+            if (parent.closest("#demo-caption,#demo-spot,#demo-readable-zoom,.kitsoki-text-breath")) return NodeFilter.FILTER_REJECT;
+            const style = window.getComputedStyle(parent);
+            if (style.display === "none" || style.visibility === "hidden") return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        });
+        const nodes: Text[] = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+        for (const node of nodes) {
+          const text = node.textContent || "";
+          pattern.lastIndex = 0;
+          const fragment = document.createDocumentFragment();
+          let last = 0;
+          let match: RegExpExecArray | null;
+          while ((match = pattern.exec(text)) !== null) {
+            if (match.index > last) fragment.appendChild(document.createTextNode(text.slice(last, match.index)));
+            const span = document.createElement("span");
+            span.className = className;
+            span.dataset.kitsokiTextBreath = "true";
+            span.textContent = match[0];
+            fragment.appendChild(span);
+            last = match.index + match[0].length;
+          }
+          if (last < text.length) fragment.appendChild(document.createTextNode(text.slice(last)));
+          node.parentNode?.replaceChild(fragment, node);
+        }
+        const mentions = Array.from(root.querySelectorAll<HTMLElement>(`.${className}`));
+        mentions[0]?.scrollIntoView({ block: "center", inline: "nearest" });
+        const payload = {
+          context: opts.context || "",
+          pattern: opts.pattern || "@kitsoki",
+          count: mentions.length,
+          texts: mentions.map((el) => el.textContent || "").slice(0, 12),
+        };
+        const rrweb = (window as unknown as { rrweb?: { record?: { addCustomEvent?: (tag: string, payload: unknown) => void } } }).rrweb;
+        const eventTag = opts.eventTag || "kitsoki.text_breath";
+        const emit = (phase: "start" | "peak" | "small" | "settle") => {
+          rrweb?.record?.addCustomEvent?.(eventTag, { ...payload, phase });
+        };
+        emit("start");
+        if (mentions.length > 0) {
+          requestAnimationFrame(() => {
+            for (const mention of mentions) {
+              mention.classList.add(`${className}--big`);
+              mention.classList.remove(`${className}--small`);
+            }
+            emit("peak");
+          });
+          window.setTimeout(() => {
+            for (const mention of mentions) {
+              mention.classList.remove(`${className}--big`);
+              mention.classList.add(`${className}--small`);
+            }
+            emit("small");
+          }, 650);
+          window.setTimeout(() => {
+            for (const mention of mentions) mention.classList.remove(`${className}--small`);
+            emit("settle");
+          }, 1180);
+        }
+        return { count: payload.count, texts: payload.texts };
+      },
+      { rootSel: rootSelector, opts: options },
+    );
+    await page.waitForTimeout(350);
+    return result;
+  };
+}
+
 export type ReadableZoomOptions = {
   title?: string;
   maxWidth?: string;

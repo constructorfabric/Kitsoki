@@ -7,6 +7,7 @@ import { repoRoot } from "./_helpers/server.js";
 const MEDIA_ROOT = path.join(repoRoot, ".artifacts", "github-agent-live");
 const OUT_DIR = path.join(repoRoot, ".artifacts", "github-agent-live-zoom-qa");
 const CASES = ["bug-issue", "feature-issue", "guidance", "pr-status"] as const;
+const MENTION_BREATH_TAG = "kitsoki.mention_breath";
 
 type RrwebEvent = {
   type?: number;
@@ -21,6 +22,10 @@ type RrwebEvent = {
       resolvedSourceKind?: string;
       sourceRect?: { width?: number; height?: number };
       finalRect?: { width?: number; height?: number };
+      count?: number;
+      context?: string;
+      phase?: "start" | "peak" | "small" | "settle";
+      texts?: string[];
       styleSignature?: {
         pageBackgroundColor?: string;
         backgroundColor?: string;
@@ -90,9 +95,42 @@ test("live GitHub readable zooms replay with correct colors", async ({ page }) =
       const events = (Array.isArray(raw) ? raw : raw.events ?? []) as RrwebEvent[];
       const firstTimestamp = events.find((event) => Number.isFinite(event.timestamp))?.timestamp ?? 0;
       const zoomEvents = events.filter((event) => event.type === 5 && event.data?.tag === "kitsoki.readable_zoom");
-      if (zoomEvents.length === 0) continue;
+      const mentionEvents = events.filter((event) => event.type === 5 && event.data?.tag === MENTION_BREATH_TAG);
+      if (zoomEvents.length === 0 && mentionEvents.length === 0) continue;
 
       await mountReplay(page, events);
+      if (/01-github-thread/.test(file)) {
+        expect(mentionEvents.length, `${caseSlug}/${file} should stamp @kitsoki breathing emphasis`).toBeGreaterThan(0);
+        const peakEvents = mentionEvents.filter((event) => event.data?.payload?.phase === "peak");
+        const smallEvents = mentionEvents.filter((event) => event.data?.payload?.phase === "small");
+        expect(peakEvents.length, `${caseSlug}/${file} should stamp @kitsoki breathing peak phase`).toBeGreaterThan(0);
+        expect(smallEvents.length, `${caseSlug}/${file} should stamp @kitsoki breathing shrink phase`).toBeGreaterThan(0);
+        for (let i = 0; i < peakEvents.length; i += 1) {
+          const mention = peakEvents[i];
+          const seekMs = Math.max(0, (mention.timestamp ?? firstTimestamp) - firstTimestamp + 520);
+          await seekReplay(page, seekMs);
+          const out = path.join(OUT_DIR, `${caseSlug}-${file.replace(".rrweb.json", "")}-mention-peak-${i + 1}.png`);
+          await page.screenshot({ path: out, fullPage: false });
+          const state = await readMentionBreathState(page);
+          expect(mention.data?.payload?.count ?? 0, `${caseSlug}/${file} mention event should report at least one mention`).toBeGreaterThan(0);
+          expect(state.count, `${caseSlug}/${file} should replay visible breathing mention spans; screenshot ${out}`).toBeGreaterThan(0);
+          expect(state.maxFontWeight, `${caseSlug}/${file} breathing mention should be bold; screenshot ${out}`).toBeGreaterThanOrEqual(800);
+          expect(state.hasHighlightBackground, `${caseSlug}/${file} breathing mention should be highlighted; screenshot ${out}`).toBeTruthy();
+          expect(state.hasPeakClass, `${caseSlug}/${file} breathing mention should carry peak class; screenshot ${out}`).toBeTruthy();
+          expect(state.maxScale, `${caseSlug}/${file} breathing mention should grow during the sampled frame; screenshot ${out}`).toBeGreaterThan(1.04);
+        }
+        for (let i = 0; i < smallEvents.length; i += 1) {
+          const mention = smallEvents[i];
+          const seekMs = Math.max(0, (mention.timestamp ?? firstTimestamp) - firstTimestamp + 260);
+          await seekReplay(page, seekMs);
+          const out = path.join(OUT_DIR, `${caseSlug}-${file.replace(".rrweb.json", "")}-mention-small-${i + 1}.png`);
+          await page.screenshot({ path: out, fullPage: false });
+          const state = await readMentionBreathState(page);
+          expect(state.count, `${caseSlug}/${file} should replay visible breathing mention spans; screenshot ${out}`).toBeGreaterThan(0);
+          expect(state.hasSmallClass, `${caseSlug}/${file} breathing mention should carry shrink class; screenshot ${out}`).toBeTruthy();
+          expect(state.minScale, `${caseSlug}/${file} breathing mention should shrink during the sampled frame; screenshot ${out}`).toBeLessThan(1);
+        }
+      }
       for (let i = 0; i < zoomEvents.length; i += 1) {
         const zoom = zoomEvents[i];
         const seekMs = Math.max(0, (zoom.timestamp ?? firstTimestamp) - firstTimestamp + 1100);
@@ -140,6 +178,73 @@ test("live GitHub readable zooms replay with correct colors", async ({ page }) =
   expect(checked, "expected at least one readable zoom in live rrweb logs").toBeGreaterThan(0);
   console.log(`[github-agent-live-zoom-qa] checked ${checked} zoom frame(s); screenshots in ${OUT_DIR}`);
 });
+
+async function readMentionBreathState(page: Page): Promise<{
+  count: number;
+  animationNames: string[];
+  maxFontWeight: number;
+  hasHighlightBackground: boolean;
+  maxScale: number;
+  minScale: number;
+  hasPeakClass: boolean;
+  hasSmallClass: boolean;
+}> {
+  return await page.evaluate(() => {
+    const iframe = document.querySelector<HTMLIFrameElement>("#replay-host iframe");
+    const doc = iframe?.contentDocument;
+    if (!doc) throw new Error("missing replay iframe document");
+    const mentions = Array.from(doc.querySelectorAll<HTMLElement>(".kitsoki-text-breath"));
+    const animationNames = new Set<string>();
+    let maxFontWeight = 0;
+    let hasHighlightBackground = false;
+    let maxScale = 1;
+    let minScale = Number.POSITIVE_INFINITY;
+    let hasPeakClass = false;
+    let hasSmallClass = false;
+    for (const mention of mentions) {
+      const style = doc.defaultView!.getComputedStyle(mention);
+      animationNames.add(style.animationName);
+      maxFontWeight = Math.max(maxFontWeight, Number(style.fontWeight) || 0);
+      hasHighlightBackground ||= style.backgroundImage !== "none" || !isTransparentColor(style.backgroundColor);
+      const scale = matrixScale(style.transform);
+      maxScale = Math.max(maxScale, scale);
+      minScale = Math.min(minScale, scale);
+      hasPeakClass ||= mention.classList.contains("kitsoki-text-breath--big");
+      hasSmallClass ||= mention.classList.contains("kitsoki-text-breath--small");
+    }
+    return {
+      count: mentions.length,
+      animationNames: Array.from(animationNames),
+      maxFontWeight,
+      hasHighlightBackground,
+      maxScale,
+      minScale: Number.isFinite(minScale) ? minScale : 1,
+      hasPeakClass,
+      hasSmallClass,
+    };
+    function matrixScale(value: string): number {
+      if (!value || value === "none") return 1;
+      const match2d = value.match(/^matrix\(([^)]+)\)$/);
+      if (match2d) {
+        const [a, b] = match2d[1].split(",").slice(0, 2).map((part) => Number(part.trim()));
+        return Math.sqrt(a * a + b * b);
+      }
+      const match3d = value.match(/^matrix3d\(([^)]+)\)$/);
+      if (match3d) {
+        const parts = match3d[1].split(",").map((part) => Number(part.trim()));
+        return Math.sqrt(parts[0] * parts[0] + parts[1] * parts[1]);
+      }
+      return 1;
+    }
+    function isTransparentColor(value: string): boolean {
+      if (!value || value === "transparent") return true;
+      const match = value.match(/rgba?\(([^)]+)\)/);
+      if (!match) return false;
+      const parts = match[1].split(",").map((part) => part.trim());
+      return parts.length >= 4 && Number(parts[3]) <= 0.01;
+    }
+  });
+}
 
 async function mountReplay(page: Page, events: RrwebEvent[]): Promise<void> {
   await page.setViewportSize({ width: 1600, height: 900 });

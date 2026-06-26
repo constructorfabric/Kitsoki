@@ -61,6 +61,18 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > surface is not the kitsoki SPA, use the portable `makeCaption` +
 > `makeSpotlight` helpers so the rrweb log still contains guided motion.
 >
+> **Use text emphasis for the actual trigger, not a detached label.** When a demo
+> depends on a short keyword/mention that would otherwise disappear inside a
+> larger page, use `makeTextBreath(page)` from
+> `tools/runstatus/tests/playwright/_helpers/demo.ts`. It wraps the real text
+> node in place, stamps rrweb custom events for `start`, `peak`, `small`, and
+> `settle`, and records class-state mutations so replay QA can prove the cue
+> grows, bolds, highlights, shrinks, and returns. For `@kitsoki` or similar
+> trigger demos, gate the captured rrweb logs by seeking the stamped peak/shrink
+> events and inspecting the replayed iframe; do not rely on a screenshot of the
+> live capture page or on a free-running CSS animation that rrweb pause cannot
+> sample deterministically.
+>
 > **Make dense evidence readable with capture-only DOM overlays.** For comments,
 > JSON, code blocks, ticket metadata, and other small text boxes, use
 > `makeReadableZoom(page)` from `tools/runstatus/tests/playwright/_helpers/demo.ts`.

@@ -138,11 +138,17 @@ A run is acceptable only when:
   opening bug report, the requester `@kitsoki` comment, and the
   App-authenticated response with GitHub chrome intact: avatar, username, badges,
   timestamp/edit context, complete body, and visible run link.
+- Every GitHub-thread beat that contains the requester `@kitsoki` trigger must
+  emphasize the actual mention in place with the reusable text-breath cue:
+  highlighted, bold, grown, then shrunk back. The rrweb replay QA must verify
+  stamped peak and shrink phases in the captured log; a static screenshot or
+  detached callout is not sufficient.
 - `scripts/verify-gh-agent-live-poc.mjs` passes without requiring an HTML viewer
   or MP4 export.
 - `pnpm -C tools/runstatus exec playwright test github-agent-live-zoom-qa --project=chromium`
   passes against the captured rrweb logs. This gate samples the actual replayed
-  zoom frames and compares the panel text/colors to the selected source surface;
+  zoom frames and mention-emphasis frames, compares the panel text/colors to the
+  selected source surface, and verifies the mention cue's grow/shrink phases;
   helper-only screenshots or rrweb marker metadata are not sufficient sign-off.
 
 ## Non-Default Exports

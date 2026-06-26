@@ -28,9 +28,11 @@ import {
   makeCaption,
   makeReadableZoom,
   makeSpotlight,
+  makeTextBreath,
   type Beat,
   type ReadableZoom,
   type Spotlight,
+  type TextBreath,
 } from "./_helpers/demo.js";
 import { dumpCapture, installCapture, type CaptureViewport, type RrwebEvent } from "./_helpers/rrweb-replay.js";
 
@@ -55,6 +57,7 @@ const CHAPTER_TAG = "slidey.chapter";
 const ANNOTATION_TAG = "kitsoki.annotation";
 const ZOOM_TAG = "kitsoki.readable_zoom";
 const ZOOM_RETURN_TAG = "kitsoki.readable_zoom_return";
+const MENTION_BREATH_TAG = "kitsoki.mention_breath";
 
 function loadPlan(): CapturePlan {
   const planPath = process.env.KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN || DEFAULT_PLAN;
@@ -139,6 +142,15 @@ async function tryMakeReadableZoom(page: Page): Promise<ReadableZoom> {
   } catch (e) {
     console.warn(`[live-capture] readable zoom disabled: ${String(e).slice(0, 240)}`);
     return async () => ({ phase: "hidden", shown: false, animatedFromSource: false });
+  }
+}
+
+async function tryMakeTextBreath(page: Page): Promise<TextBreath> {
+  try {
+    return await makeTextBreath(page);
+  } catch (e) {
+    console.warn(`[live-capture] text breath disabled: ${String(e).slice(0, 240)}`);
+    return async () => ({ count: 0, texts: [] });
   }
 }
 
@@ -534,7 +546,8 @@ async function zoomBeat(
   );
 }
 
-async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom): Promise<void> {
+async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom, textBreath: TextBreath): Promise<void> {
+  await textBreath("body", { pattern: "@kitsoki", eventTag: MENTION_BREATH_TAG, context: `${step.id}:thread` });
   const title = await markFirstSelector(page, "issue-title", [
     "[data-testid='issue-title']",
     "bdi.js-issue-title",
@@ -734,10 +747,10 @@ async function tourRunAPI(page: Page, step: CaptureStep, caption: Beat, spotligh
   await dwell(page, 1800);
 }
 
-async function runStepTour(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom): Promise<void> {
+async function runStepTour(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight, zoom: ReadableZoom, textBreath: TextBreath): Promise<void> {
   switch (step.id) {
     case "github-thread":
-      await tourGithubThread(page, step, caption, spotlight, zoom);
+      await tourGithubThread(page, step, caption, spotlight, zoom, textBreath);
       break;
     case "app-comment":
       await tourAppComment(page, step, caption, spotlight, zoom);
@@ -804,6 +817,7 @@ async function captureRrwebStep(
   caption: Beat,
   spotlight: Spotlight,
   zoom: ReadableZoom,
+  textBreath: TextBreath,
 ): Promise<void> {
   await resetRrwebCapture(page);
   await installCapture(page);
@@ -814,7 +828,7 @@ async function captureRrwebStep(
     },
     { id: step.id, label: step.title, specPath: SPEC_REF, tag: CHAPTER_TAG },
   );
-  await runStepTour(page, step, caption, spotlight, zoom);
+  await runStepTour(page, step, caption, spotlight, zoom, textBreath);
   await page.evaluate(() => {
     const rrweb = (window as unknown as { rrweb?: { record?: { addCustomEvent?: (tag: string, payload: unknown) => void } } }).rrweb;
     rrweb?.record?.addCustomEvent?.("slidey.end", {});
@@ -869,8 +883,9 @@ test("capture live GitHub-agent evidence", async () => {
       const caption = await tryMakeCaption(page);
       const spotlight = await tryMakeSpotlight(page);
       const zoom = await tryMakeReadableZoom(page);
+      const textBreath = await tryMakeTextBreath(page);
       diag.mark(`step ${step.id}: rrweb-tour`);
-      await captureRrwebStep(page, artifactDir, idx, step, caption, spotlight, zoom);
+      await captureRrwebStep(page, artifactDir, idx, step, caption, spotlight, zoom, textBreath);
       diag.mark(`step ${step.id}: screenshot`);
       await shot(page, step.id);
     }
