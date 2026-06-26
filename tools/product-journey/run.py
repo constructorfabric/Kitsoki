@@ -300,6 +300,120 @@ def write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def read_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def run_dir_from_arg(value: str) -> Path:
+    path = Path(value)
+    if not path.is_absolute():
+        path = ROOT / path
+    return path
+
+
+def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None) -> None:
+    run_json = read_json(run_dir / "run.json")
+    evidence = read_json(run_dir / "evidence.json")
+    bugs = read_json(run_dir / "bugs.json")
+
+    evidence_items = evidence.get("items", [])
+    present_items = [item for item in evidence_items if item.get("status") in {"captured", "validated"}]
+    scenario_status: dict[str, str] = {}
+    for scenario in run_json["scenarios"]:
+        items = [item for item in evidence_items if item.get("scenario") == scenario["id"]]
+        present = [item for item in items if item.get("status") in {"captured", "validated"}]
+        validated = [item for item in items if item.get("status") == "validated"]
+        if items and len(validated) == len(items):
+            status = "validated"
+        elif present:
+            status = "captured"
+        else:
+            status = "planned"
+        scenario["evidence_status"] = status
+        scenario["status"] = status
+        scenario_status[scenario["id"]] = status
+
+    for stage in run_json["stages"]:
+        statuses = [scenario_status.get(scenario_id, "planned") for scenario_id in stage.get("scenarios", [])]
+        if statuses and all(status == "validated" for status in statuses):
+            stage["status"] = "validated"
+        elif any(status in {"captured", "validated"} for status in statuses):
+            stage["status"] = "captured"
+
+    evidence["summary"] = {
+        "required": len(evidence_items),
+        "present": len(present_items),
+        "missing": len(evidence_items) - len(present_items),
+    }
+    metrics = {
+        "run_id": run_json["run_id"],
+        "stage_count": len(run_json["stages"]),
+        "scenario_count": len(run_json["scenarios"]),
+        "validated_stage_count": sum(1 for stage in run_json["stages"] if stage["status"] == "validated"),
+        "captured_stage_count": sum(1 for stage in run_json["stages"] if stage["status"] == "captured"),
+        "planned_stage_count": sum(1 for stage in run_json["stages"] if stage["status"] == "planned"),
+        "required_evidence_count": evidence["summary"]["required"],
+        "present_evidence_count": evidence["summary"]["present"],
+        "missing_evidence_count": evidence["summary"]["missing"],
+        "product_bugs_found": len(bugs.get("items", [])),
+        "oracle_results": [],
+        "checkpoint_ratings": [],
+    }
+
+    write_json(run_dir / "run.json", run_json)
+    write_json(run_dir / "evidence.json", evidence)
+    write_json(run_dir / "metrics.json", metrics)
+    write_json(run_dir / "scenarios.json", {"run_id": run_json["run_id"], "items": run_json["scenarios"]})
+    (run_dir / "journey.md").write_text(render_journey(run_json), encoding="utf-8")
+    deck = render_deck(run_json, metrics, evidence)
+    write_json(run_dir / "deck.slidey.json", deck)
+    if publish_deck is not None:
+        publish_deck.parent.mkdir(parents=True, exist_ok=True)
+        write_json(publish_deck, deck)
+
+
+def attach_evidence(
+    run_dir: Path,
+    scenario_id: str,
+    evidence_kind: str,
+    artifact_path: str,
+    status: str,
+    notes: str,
+    publish_deck: Optional[Path],
+) -> None:
+    run_json = read_json(run_dir / "run.json")
+    evidence = read_json(run_dir / "evidence.json")
+    known_scenarios = {scenario["id"] for scenario in run_json["scenarios"]}
+    if scenario_id not in known_scenarios:
+        known = ", ".join(sorted(known_scenarios))
+        raise SystemExit(f"Unknown scenario '{scenario_id}'. Known: {known}")
+    if status not in {"captured", "validated", "rejected"}:
+        raise SystemExit("Evidence status must be captured, validated, or rejected")
+
+    target = None
+    for item in evidence["items"]:
+        if item.get("scenario") == scenario_id and item.get("kind") == evidence_kind:
+            target = item
+            break
+    if target is None:
+        known = sorted(item["kind"] for item in evidence["items"] if item.get("scenario") == scenario_id)
+        raise SystemExit(f"Unknown evidence kind '{evidence_kind}' for {scenario_id}. Known: {', '.join(known)}")
+
+    target["status"] = status
+    target["path"] = artifact_path
+    target["notes"] = notes
+    target["updated_at"] = now_utc()
+
+    for scenario in run_json["scenarios"]:
+        if scenario["id"] == scenario_id:
+            scenario.setdefault("artifacts", {})[evidence_kind] = artifact_path
+            break
+
+    write_json(run_dir / "run.json", run_json)
+    write_json(run_dir / "evidence.json", evidence)
+    update_derived_artifacts(run_dir, publish_deck=publish_deck)
+
+
 def render_journey(run_json: dict) -> str:
     lines = [
         "# Product journey dry run",
@@ -345,12 +459,25 @@ def render_journey(run_json: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_deck(run_json: dict, metrics: dict) -> dict:
+def render_deck(run_json: dict, metrics: dict, evidence: Optional[dict] = None) -> dict:
     stage_lines = [f"{stage['id']}: {stage['status']}" for stage in run_json["stages"]]
     scenario_lines = [
         f"{scenario['label']}: {scenario['stage']} ({', '.join(scenario['required_mcp'])})"
         for scenario in run_json["scenarios"]
     ]
+    captured = []
+    if evidence is not None:
+        captured = [
+            f"{item['scenario']} / {item['kind']}: {item.get('path', '')}"
+            for item in evidence.get("items", [])
+            if item.get("status") in {"captured", "validated"} and item.get("path")
+        ]
+    video_lines = [line for line in captured if "video" in line]
+    if not video_lines:
+        video_body = "No clips attached yet. Expected clips: product discovery, onboarding, bugfix, PRD/design, feature implementation, and product bug filing."
+    else:
+        video_body = "\n".join(video_lines)
+    captured_body = "\n".join(captured[:12]) if captured else "No evidence attached yet."
     return {
         "meta": {
             "mode": "report",
@@ -383,15 +510,22 @@ def render_deck(run_json: dict, metrics: dict) -> dict:
                 "type": "narrative",
                 "eyebrow": "Metrics",
                 "title": "Current evidence",
-                "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nScenarios: {metrics['scenario_count']}\nEvidence present: {metrics['present_evidence_count']} / {metrics['required_evidence_count']}\nProduct bugs found: {metrics['product_bugs_found']}",
+                "body": f"Validated stages: {metrics['validated_stage_count']} / {metrics['stage_count']}\nCaptured stages: {metrics.get('captured_stage_count', 0)}\nScenarios: {metrics['scenario_count']}\nEvidence present: {metrics['present_evidence_count']} / {metrics['required_evidence_count']}\nProduct bugs found: {metrics['product_bugs_found']}",
                 "narration": "This report distinguishes validated evidence from planned stages.",
             },
             {
                 "type": "narrative",
                 "eyebrow": "Video playback",
                 "title": "Key interactions",
-                "body": "No clips attached yet. Expected clips: product discovery, onboarding, bugfix, PRD/design, feature implementation, and product bug filing.",
+                "body": video_body,
                 "narration": "Slidey scenes reserve space for key interaction playback once visual evidence is captured.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Captured evidence",
+                "title": "Attached artifacts",
+                "body": captured_body,
+                "narration": "Captured artifacts are linked back to the scenarios that produced them.",
             },
             {
                 "type": "narrative",
@@ -570,6 +704,18 @@ def main() -> None:
     parser.add_argument("--seed", default="default", help="Deterministic run seed")
     parser.add_argument("--run-log", action="store_true", help="Force a timestamped run log entry")
     parser.add_argument("--emit-run", action="store_true", help="Write a no-LLM run artifact bundle and Slidey deck")
+    parser.add_argument("--attach-evidence", action="store_true", help="Attach one evidence artifact to an existing run bundle")
+    parser.add_argument("--run-dir", default="", help="Existing .artifacts/product-journey/<run-id> directory")
+    parser.add_argument("--scenario", default="", help="Scenario id for --attach-evidence")
+    parser.add_argument("--evidence-kind", default="", help="Evidence kind for --attach-evidence")
+    parser.add_argument("--evidence-path", default="", help="Path, retained media id, URL, or trace reference for --attach-evidence")
+    parser.add_argument(
+        "--evidence-status",
+        default="captured",
+        choices=["captured", "validated", "rejected"],
+        help="Status for --attach-evidence",
+    )
+    parser.add_argument("--notes", default="", help="Notes for --attach-evidence")
     parser.add_argument(
         "--publish-deck",
         action="store_true",
@@ -580,6 +726,37 @@ def main() -> None:
     catalog = load_catalog(CATALOG)
     personas = load_personas(PERSONAS)
     scenarios = load_scenarios(SCENARIOS)
+
+    if args.attach_evidence:
+        missing = []
+        for flag, value in {
+            "--run-dir": args.run_dir,
+            "--scenario": args.scenario,
+            "--evidence-kind": args.evidence_kind,
+            "--evidence-path": args.evidence_path,
+        }.items():
+            if not value:
+                missing.append(flag)
+        if missing:
+            raise SystemExit(f"--attach-evidence requires {', '.join(missing)}")
+        publish_deck = DEFAULT_DECK if args.publish_deck else None
+        run_dir = run_dir_from_arg(args.run_dir)
+        attach_evidence(
+            run_dir,
+            args.scenario,
+            args.evidence_kind,
+            args.evidence_path,
+            args.evidence_status,
+            args.notes,
+            publish_deck,
+        )
+        print(f"Attached evidence: {args.scenario}/{args.evidence_kind}")
+        print(f"Artifacts: {run_dir}")
+        print(f"Deck: {run_dir / 'deck.slidey.json'}")
+        if publish_deck is not None:
+            print(f"Published deck: {publish_deck}")
+        append_log(f"Attached evidence {args.scenario}/{args.evidence_kind} to {run_dir.name}")
+        return
 
     if args.emit_run:
         publish_deck = DEFAULT_DECK if args.publish_deck else None

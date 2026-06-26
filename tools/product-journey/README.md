@@ -35,6 +35,20 @@ This writes `.artifacts/product-journey/<run-id>/` with `run.json`,
 and `deck.slidey.json`. Add `--publish-deck` when the generated deck should replace
 `docs/decks/product-journey-eval.slidey.json` for review.
 
+Attach evidence captured by a live or cassette-backed MCP run:
+
+```sh
+python3 tools/product-journey/run.py --attach-evidence \
+  --run-dir .artifacts/product-journey/<run-id> \
+  --scenario bugfix \
+  --evidence-kind key_interaction_video \
+  --evidence-path media/bugfix.mp4 \
+  --notes "visual MCP capture from bugfix handoff"
+```
+
+Attachment updates `evidence.json`, `scenarios.json`, `metrics.json`,
+`journey.md`, and `deck.slidey.json`.
+
 For `gears-rust`, this prints the existing external-bakeoff readiness signal and
 the local-only verification command. If you have a local checkout, it also
 emits the exact environment-required command for validation:

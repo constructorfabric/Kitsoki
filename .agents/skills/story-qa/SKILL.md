@@ -73,3 +73,13 @@ want to update `docs/decks/product-journey-eval.slidey.json`.
 The bundle's `scenarios.json` and `evidence.json` are the contract for live or
 cassette-backed MCP runs: each scenario names the story surface, required
 Kitsoki/visual MCP tools, expected evidence, and success criteria.
+
+After capturing evidence, attach it back to the bundle:
+
+```sh
+python3 tools/product-journey/run.py --attach-evidence \
+  --run-dir .artifacts/product-journey/<run-id> \
+  --scenario bugfix \
+  --evidence-kind key_interaction_video \
+  --evidence-path media/bugfix.mp4
+```

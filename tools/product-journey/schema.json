@@ -14,7 +14,7 @@
     "required": ["run_id", "created_at", "mode", "project", "persona", "stages", "scenarios", "artifacts"],
     "artifacts": ["run.json", "journey.md", "metrics.json", "bugs.json", "evidence.json", "scenarios.json", "deck.slidey.json"]
   },
-  "stage_statuses": ["planned", "ready", "cached_validated", "validated", "blocked", "error"],
+  "stage_statuses": ["planned", "ready", "captured", "cached_validated", "validated", "blocked", "error"],
   "scenario": {
     "required": ["id", "label", "stage", "task", "primary_story", "required_mcp", "evidence", "success_criteria"]
   },
