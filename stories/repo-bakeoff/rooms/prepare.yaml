@@ -1,23 +1,26 @@
-# prepare — DETERMINISTIC, FREE, and REAL. Arm the hidden oracles by calling the
-# harness's `bench.py verify`: clone the project at each bug's baseline, overlay
-# the regression test the real PR shipped, and prove it is RED at baseline / GREEN
-# at the real fix. This is the load-bearing validity check — it proves the
-# bake-off is honest BEFORE a single LLM token is spent. (Onboarding the repo
-# itself is the embedded dev-story, the human pre-step.)
+# prepare — DETERMINISTIC, FREE, and REAL. First call `bench.py preflight` to
+# catch setup blockers (local checkout, candidate profile, commits, oracles), then
+# call `bench.py verify`: clone the project at each bug's baseline, overlay the
+# regression test the real PR shipped, and prove it is RED at baseline / GREEN at
+# the real fix. This is the load-bearing validity check — it proves the bake-off
+# is honest BEFORE a single LLM token is spent. (Onboarding the repo itself is the
+# embedded dev-story, the human pre-step.)
 #
 # `once: true` keyed on its own bind → reload-safe.
 states:
   prepare:
-    description: "Arming the hidden oracles (host.run → bench.py verify; free, no LLM)."
-    relevant_world: [project, repo_dir, oracles_armed, harness_dir]
+    description: "Preflighting setup and arming the hidden oracles (host.run → bench.py preflight/verify; free, no LLM)."
+    relevant_world: [project, repo_dir, candidates, preflight_ready, oracles_armed, harness_dir]
     view:
       - heading: "Bake-off · prepare (arm oracles)"
       - kv:
           pairs:
             Project: '{{ world.project }}'
             Local repo: '{{ world.repo_dir|default:"(none)" }}'
+            Candidates: "{{ world.candidates|join:', ' }}"
+            Preflight: '{% if world.preflight_log != "" %}yes{% else %}no{% endif %}'
             Armed:   '{% if world.verify_log != "" %}yes{% else %}no{% endif %}'
-      - prose: "bench.py verify clones each baseline, overlays the PR's regression test, and confirms RED@baseline / GREEN@real-fix. Deterministic and free — it proves the bake-off is valid before any cost is incurred."
+      - prose: "bench.py preflight checks repo/candidate readiness before bench.py verify clones each baseline, overlays the PR's regression test, and confirms RED@baseline / GREEN@real-fix. Deterministic and free — it proves the bake-off is valid before any cost is incurred."
       - choice:
           mode: single
           prompt: "Actions"
@@ -29,6 +32,44 @@ states:
               hint:   "abandon"
               intent: quit
     on_enter:
+      - when: "world.repo_dir == ''"
+        invoke: host.run
+        id: preflight
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "preflight"
+            - "--project"
+            - "{{ world.project }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: true
+        bind:
+          preflight_log: stdout
+        on_error: configure
+      - when: "world.repo_dir != ''"
+        invoke: host.run
+        id: preflight_local
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "preflight"
+            - "--project"
+            - "{{ world.project }}"
+            - "--repo-dir"
+            - "{{ world.repo_dir }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: true
+        bind:
+          preflight_log: stdout
+        on_error: configure
       - when: "world.repo_dir == ''"
         invoke: host.run
         id: verify_oracles
@@ -65,7 +106,7 @@ states:
         on_error: configure
     on:
       accept:
-        - when: "world.verify_log != ''"
+        - when: "world.preflight_log != '' && world.verify_log != ''"
           target: prepared
         - target: .
       quit:
@@ -77,6 +118,7 @@ states:
     description: "Mark verified oracles as armed before entering the live-cell roster."
     on_enter:
       - set:
+          preflight_ready: true
           oracles_armed: true
       - emit_intent: accept
     on:

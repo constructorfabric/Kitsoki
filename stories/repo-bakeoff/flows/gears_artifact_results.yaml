@@ -19,6 +19,32 @@ initial_world:
 host_handlers:
   host.run:
     by_call:
+      preflight_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: |
+            {
+              "ok": true,
+              "project": "gears-rust",
+              "local_only": true,
+              "repo_dir": "/Users/brad/code/gears-rust",
+              "bugs": ["bug1"],
+              "reference_only": [],
+              "candidates": [
+                {
+                  "key": "opus-4.8",
+                  "short": "opus",
+                  "profile": "claude-native",
+                  "provider": "anthropic",
+                  "model": "opus",
+                  "effort": "high",
+                  "metered": false
+                }
+              ],
+              "errors": [],
+              "warnings": []
+            }
       verify_oracles_local:
         data:
           ok: true
@@ -80,6 +106,28 @@ turns:
   - intent: { name: accept, slots: {} }
     expect_state: prepare
     expect_world:
+      preflight_log: |
+        {
+          "ok": true,
+          "project": "gears-rust",
+          "local_only": true,
+          "repo_dir": "/Users/brad/code/gears-rust",
+          "bugs": ["bug1"],
+          "reference_only": [],
+          "candidates": [
+            {
+              "key": "opus-4.8",
+              "short": "opus",
+              "profile": "claude-native",
+              "provider": "anthropic",
+              "model": "opus",
+              "effort": "high",
+              "metered": false
+            }
+          ],
+          "errors": [],
+          "warnings": []
+        }
       verify_log: |
         [bench] gears-rust/bug1 oracle=fail suite=None -> failed
         [bench] gears-rust/bug1 oracle=pass suite=None -> solved
@@ -88,6 +136,7 @@ turns:
   - intent: { name: accept, slots: {} }
     expect_state: running
     expect_world:
+      preflight_ready: true
       oracles_armed: true
 
   - intent: { name: accept, slots: {} }

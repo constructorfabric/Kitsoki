@@ -17,9 +17,10 @@ third-party repo, fix real filed-issue bugs through the bugfix pipeline, grade
 each fix against the PR's own hidden oracle, and deck it.
 
 For a private/heavy repo, seed `repo_dir` with a local checkout path. The story's
-`prepare` room passes it to `bench.py verify --repo-dir`, so the same RED/GREEN
-arming gate works for repos that cannot be cloned from the network. `gears-rust`
-is the reference case for this path; see
+`prepare` room passes it to `bench.py preflight --repo-dir` and then
+`bench.py verify --repo-dir`, so local checkout, candidate profile, commit, oracle,
+and RED/GREEN arming gates all run before any model spend. `gears-rust` is the
+reference case for this path; see
 [`docs/recipes/repo-history-training-gears-rust.md`](../../docs/recipes/repo-history-training-gears-rust.md).
 
 ## Rooms
@@ -33,7 +34,7 @@ idle ─start─▶ configure ─accept─▶ prepare ─accept─▶ running �
 |---|---|---|
 | `idle` | deterministic | Park; `start` boots the bake-off. |
 | `configure` | deterministic | Declare the matrix (bugs × candidates); compute the cell roster; optionally carry `repo_dir` for private/local repos. |
-| `prepare` | **deterministic · free · real** | `host.run → bench.py verify [--repo-dir ...]` arms every hidden oracle (RED@baseline / GREEN@real-fix) — proves the bake-off is valid **before** any LLM is spent. |
+| `prepare` | **deterministic · free · real** | `host.run → bench.py preflight [--repo-dir ...]` checks setup, then `bench.py verify [--repo-dir ...]` arms every hidden oracle (RED@baseline / GREEN@real-fix) — proves the bake-off is valid **before** any LLM is spent. |
 | `running` | stub | Tracks the roster. The cost-bearing per-cell drive (`drive_cell.sh --candidate <m> --score`) is run **manually** — the only cost-bearing step. |
 | `scoring` | deterministic | `host.run → bench.py summarize --results <artifact-results-dir> --deck <report-dir>/deck.slidey.json --markdown <report-dir>/report.md` rolls the per-cell verdicts up and writes project-specific report artifacts. |
 | `reporting` | deterministic | Present the generated report markdown path and Slidey deck spec. |
@@ -47,7 +48,8 @@ scripts and is run by hand (AGENTS.md no-LLM rule). The story orchestrates the
 **free deterministic** pieces (`prepare` arms the oracles for real, `scoring`
 summarizes real committed verdicts, `reporting`/`slideshow` deck it) end-to-end;
 it never fabricates cell results. `prepare` is the load-bearing genuine step — it
-runs `bench.py verify` live and proves the fixtures are armed.
+runs `bench.py preflight` and `bench.py verify` live and proves the setup is
+ready and the fixtures are armed.
 
 ## The cost-bearing cells (operator-run)
 

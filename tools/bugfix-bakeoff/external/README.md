@@ -151,23 +151,28 @@ tools/bugfix-bakeoff/external/drive_cell.sh \
 ```
 
 `drive_cell.sh` reads the manifest (`bench.py meta`) + [`candidates.yaml`](candidates.yaml)
-(the model/profile axis), clones the repo once (reusing `node_modules`), bakes in
-every load-bearing `initial_world` knob (the recipe below), and delegates the live
-drive to [`tools/mcp-drive/drive.sh`](../../mcp-drive/README.md) (raw `claude -p`
-with the studio MCP attached). The **worker** model is chosen by `session.new
-{profile, harness:"live"}` — `codex-native` → GPT-5.5, `synthetic-claude` →
-GLM-5.2; the orchestrator (cheap sonnet) only advances the pipeline. The generic
-instance it drives is [`stories/bench-bugfix`](../../../stories/bench-bugfix).
+(the model/profile axis), runs the same `bench.py preflight` readiness gate the
+`repo-bakeoff` story uses, clones the repo once (reusing `node_modules`), bakes
+in every load-bearing `initial_world` knob (the recipe below), and delegates the
+live drive to [`tools/mcp-drive/drive.sh`](../../mcp-drive/README.md) (raw
+`claude -p` with the studio MCP attached). The **worker** model is chosen by
+`session.new {profile, harness:"live"}` — `codex-native` → GPT-5.5,
+`synthetic-claude` → GLM-5.2; the orchestrator (cheap sonnet) only advances the
+pipeline. The generic instance it drives is
+[`stories/bench-bugfix`](../../../stories/bench-bugfix).
 
 `--score` grades the worktree (`bench.py score`) and extracts the worker cost
 (`bench.py cost --trace …` → `cost_usd` for metered providers, token usage for
 subscription auth). Pipeline thread files are written under
-`.artifacts/external-bakeoff/threads/`, alongside the other per-cell cache/log output,
-and results land in `.artifacts/external-bakeoff/results/cells/`. The
+`.artifacts/external-bakeoff/threads/`, alongside preflight JSON under
+`.artifacts/external-bakeoff/preflight/` and the other per-cell cache/log output.
+Results land in `.artifacts/external-bakeoff/results/cells/`. The
 `repo-bakeoff` story's default `results_dir` points at that artifact directory,
 so its deterministic scoring/reporting rooms summarize live-driver output
 without copying generated files into the repo. Live runs do not create bare
-`bug*` files in the project root. The
+`bug*` files in the project root. Per-cell branch names include a stable hash of
+the artifact cell path, so repeated dry runs from different cache roots do not
+collide on the target repo's global worktree branch namespace. The
 load-bearing knobs `drive_cell.sh` sets (each learned from a failure) are tabulated in the
 [`external-repo-bakeoff` skill](../../../.agents/skills/external-repo-bakeoff/SKILL.md);
 the key one is `workspace_id:""` so the implementer edits the prepared worktree
@@ -187,6 +192,15 @@ python3 tools/bugfix-bakeoff/external/bench.py preflight \
   --project gears-rust \
   --repo-dir ~/code/gears-rust \
   --candidate opus-4.8
+```
+
+Repeat `--candidate` or pass a comma-separated list to check the full matrix:
+
+```sh
+python3 tools/bugfix-bakeoff/external/bench.py preflight \
+  --project gears-rust \
+  --repo-dir ~/code/gears-rust \
+  --candidate opus-4.8,gpt-5.3-spark
 ```
 
 `ok: true` means the repo is ready for deterministic arming and a cost-bearing

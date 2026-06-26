@@ -208,7 +208,14 @@ def preflight(m, repo_dir=None, candidate=None, candidates_path=None):
     warnings = []
     local_only = bool(proj.get("local_only", False))
     repo_path = Path(repo_dir).expanduser() if repo_dir else None
-    candidate_info = None
+    candidates = []
+    if isinstance(candidate, str):
+        candidates = [candidate]
+    elif candidate:
+        candidates = list(candidate)
+    candidates = [part.strip() for value in candidates for part in str(value).split(",")
+                  if part.strip()]
+    candidate_infos = []
 
     if not m.get("bugs"):
         errors.append("manifest has no bugs")
@@ -224,20 +231,28 @@ def preflight(m, repo_dir=None, candidate=None, candidates_path=None):
         if not b.get("fix_sha"):
             warnings.append(f"{b.get('id', '?')}: missing fix_sha; verify cannot prove GREEN")
 
-    if candidate:
-        candidate_info = candidate_by_key(candidates_path, candidate)
+    for cand in candidates:
+        candidate_info = candidate_by_key(candidates_path, cand)
         if not candidate_info:
-            errors.append(f"unknown candidate '{candidate}' in {candidates_path}")
+            errors.append(f"unknown candidate '{cand}' in {candidates_path}")
+            continue
+        candidate_infos.append(candidate_info)
+        profile = candidate_info.get("profile", "")
+        profiles = configured_profiles()
+        if not profile:
+            errors.append(f"candidate '{cand}' has no profile")
+        elif profile not in profiles:
+            errors.append(
+                f"profile '{profile}' for candidate '{cand}' is not configured "
+                "in .kitsoki.yaml/.kitsoki.local.yaml"
+            )
+
+    candidate_arg = " ".join(f"--candidate {c}" for c in candidates)
+    if not candidate_arg:
+        if len(candidate_infos) == 1:
+            candidate_arg = f"--candidate {candidate_infos[0].get('key', '<candidate>')}"
         else:
-            profile = candidate_info.get("profile", "")
-            profiles = configured_profiles()
-            if not profile:
-                errors.append(f"candidate '{candidate}' has no profile")
-            elif profile not in profiles:
-                errors.append(
-                    f"profile '{profile}' for candidate '{candidate}' is not configured "
-                    "in .kitsoki.yaml/.kitsoki.local.yaml"
-                )
+            candidate_arg = "--candidate <candidate>"
 
     if local_only:
         if not repo_path:
@@ -264,11 +279,12 @@ def preflight(m, repo_dir=None, candidate=None, candidates_path=None):
                 errors.append(f"{b['id']}: fix {fix_sha} not present in {repo_path}")
 
     repo_arg = f" --repo-dir {repo_path}" if repo_path else ""
-    candidate_arg = f" --candidate {candidate}" if candidate else " --candidate <candidate>"
+    cell_candidate_arg = f" --candidate {candidates[0]}" if len(candidates) == 1 else " --candidate <candidate>"
     commands = {
         "verify": f"python3 bench.py verify --project {proj['id']}{repo_arg}",
-        "dry_run_cell": f"tools/bugfix-bakeoff/external/drive_cell.sh --project {proj['id']} --bug <bug>{candidate_arg}{repo_arg} --no-drive",
-        "drive_cell": f"tools/bugfix-bakeoff/external/drive_cell.sh --project {proj['id']} --bug <bug>{candidate_arg}{repo_arg} --score",
+        "preflight": f"python3 bench.py preflight --project {proj['id']}{repo_arg} {candidate_arg}".rstrip(),
+        "dry_run_cell": f"tools/bugfix-bakeoff/external/drive_cell.sh --project {proj['id']} --bug <bug>{cell_candidate_arg}{repo_arg} --no-drive",
+        "drive_cell": f"tools/bugfix-bakeoff/external/drive_cell.sh --project {proj['id']} --bug <bug>{cell_candidate_arg}{repo_arg} --score",
         "summarize": f"python3 bench.py summarize --project {proj['id']} --results ../../../.artifacts/external-bakeoff/results --deck ../../../.artifacts/external-bakeoff/report/deck.slidey.json --markdown ../../../.artifacts/external-bakeoff/report/report.md",
     }
     out = {
@@ -278,7 +294,8 @@ def preflight(m, repo_dir=None, candidate=None, candidates_path=None):
         "repo_dir": str(repo_path) if repo_path else "",
         "bugs": [b.get("id") for b in m.get("bugs", []) if not b.get("reference_only")],
         "reference_only": [b.get("id") for b in m.get("bugs", []) if b.get("reference_only")],
-        "candidate": candidate_info or {},
+        "candidates": candidate_infos,
+        "candidate": candidate_infos[0] if len(candidate_infos) == 1 else {},
         "errors": errors,
         "warnings": warnings,
         "commands": commands,
@@ -643,7 +660,8 @@ def main():
     pf = sub.add_parser("preflight")
     pf.add_argument("--project", required=True)
     pf.add_argument("--repo-dir", help="local checkout for private/local_only projects")
-    pf.add_argument("--candidate", help="candidate key from candidates.yaml to check profile readiness")
+    pf.add_argument("--candidate", action="append",
+                    help="candidate key from candidates.yaml to check profile readiness; repeat to check a matrix")
     pf.add_argument("--candidates", default=str(HERE / "candidates.yaml"),
                     help="candidates.yaml for candidate/profile lookup")
     mt = sub.add_parser("meta")  # machine-readable project facts (for the Go runner)

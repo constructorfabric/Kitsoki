@@ -52,6 +52,9 @@ for c in d["candidates"]:
 ' "$HERE/candidates.yaml" "$cand" "$1"; }
 profile="$(cand_field profile)"; short="$(cand_field short)"
 [[ -n "$profile" ]] || { echo "unknown candidate '$cand' in candidates.yaml" >&2; exit 2; }
+# Key every per-cell path/identifier by project too, so two projects that reuse a
+# bug id (e.g. both define "bug9") can't collide on the same worktree/trace/branch.
+cellkey="$project-$bug-$cand"
 
 # --- fail fast (before any clone/spend) ---------------------------------------
 # local_only projects drive against an explicit local checkout. kitsoki-self can
@@ -59,16 +62,6 @@ profile="$(cand_field profile)"; short="$(cand_field short)"
 # --repo-dir or <PROJECT>_REPO / GEARS_RUST_REPO.
 local_only=""
 [[ "$(jget local_only)" == "True" || "$(jget local_only)" == "true" ]] && local_only=1
-# the candidate's profile must be configured, or session_new fails late + cryptic.
-if ! grep -qE "^  ${profile}:[[:space:]]*$" "$REPO_ROOT/.kitsoki.yaml" "$REPO_ROOT/.kitsoki.local.yaml" 2>/dev/null; then
-  if [[ "$no_drive" == 1 ]]; then
-    echo "[cell] warning: profile '$profile' (candidate $cand) is not configured; --no-drive will still prepare the cell." >&2
-  else
-  echo "[cell] profile '$profile' (candidate $cand) not found in .kitsoki.yaml/.kitsoki.local.yaml." >&2
-  echo "       Add it (see .kitsoki.local.yaml.example) before driving this candidate." >&2
-  exit 2
-  fi
-fi
 
 # rich ticket_title: pack the full bug description (the reproducer is fed only
 # ticket_id + ticket_title; no ticket file). One line, quotes stripped.
@@ -108,12 +101,29 @@ else
   fi
 fi
 
+# Keep drive_cell and the repo-bakeoff story on the same readiness contract. For
+# `--no-drive`, report preflight failures but still prepare the inspection prompt;
+# real drives fail here before a worktree or MCP session is created.
+preflight_args=(preflight --project "$project" --candidate "$cand")
+[[ -n "${repo_dir:-}" ]] && preflight_args+=(--repo-dir "$repo_dir")
+if [[ -n "$local_only" && -z "${repo_dir:-}" ]]; then
+  preflight_args+=(--repo-dir "$src")
+fi
+preflight_json="$CACHE/preflight/$cellkey.json"; mkdir -p "$(dirname "$preflight_json")"
+if ! python3 "$HERE/bench.py" "${preflight_args[@]}" > "$preflight_json"; then
+  if [[ "$no_drive" == 1 ]]; then
+    echo "[cell] warning: preflight failed; --no-drive will still prepare the prompt. See $preflight_json" >&2
+  else
+    echo "[cell] preflight failed; see $preflight_json" >&2
+    exit 2
+  fi
+fi
+
 # --- per-cell worktree at baseline on its own branch --------------------------
-# Key every per-cell path/identifier by project too, so two projects that reuse a
-# bug id (e.g. both define "bug9") can't collide on the same worktree/trace/branch.
-cellkey="$project-$bug-$cand"
 cell="$CACHE/cells/$cellkey"
-branch="bench-$project-$bug-$short"
+branch_suffix="$(python3 -c 'import hashlib,sys; print(hashlib.sha1(sys.argv[1].encode()).hexdigest()[:8])' "$cell")"
+branch="bench-$project-$bug-$short-$branch_suffix"
+git -C "$src" worktree prune
 if [[ -d "$cell" ]]; then
   git -C "$cell" reset --hard -q "$baseline"; git -C "$cell" clean -fdq
 else

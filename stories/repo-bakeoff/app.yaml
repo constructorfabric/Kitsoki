@@ -13,10 +13,11 @@
 #
 #   configure  deterministic: pick the project (projects/<name>/manifest.yaml) +
 #              the candidate models; compute the cell roster (bug × candidate).
-#   prepare    DETERMINISTIC + FREE + REAL: host.run → `bench.py verify` arms every
-#              hidden oracle (RED@baseline / GREEN@real-fix) — proves the bake-off
-#              is valid BEFORE any LLM is spent. (Onboarding the repo is the
-#              embedded dev-story; surfaced here as the human pre-step.)
+#   prepare    DETERMINISTIC + FREE + REAL: host.run → `bench.py preflight` checks
+#              repo/candidate readiness, then `bench.py verify` arms every hidden
+#              oracle (RED@baseline / GREEN@real-fix) — proves the bake-off is
+#              valid BEFORE any LLM is spent. (Onboarding the repo is the embedded
+#              dev-story; surfaced here as the human pre-step.)
 #   running    ORCHESTRATION STUB. The cost-bearing per-cell drive
 #              (external/drive_cell.sh --candidate <m> --score) is run MANUALLY,
 #              never in CI/auto (AGENTS.md no-LLM rule). Tracks the roster.
@@ -65,6 +66,8 @@ world:
   cells_ran:   { type: int,    default: 0 }
 
   # ── Prepare (arm oracles — the free deterministic proof) ─────────────────────
+  preflight_ready: { type: bool,   default: false } # bench.py preflight exit 0
+  preflight_log:   { type: string, default: "" }
   oracles_armed: { type: bool,   default: false }   # bench.py verify exit 0
   verify_log:    { type: string, default: "" }
 
