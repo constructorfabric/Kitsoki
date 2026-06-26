@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -138,12 +139,12 @@ func writeAgentBenchReportArtifacts(opts agentBenchArtifactOptions) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(opts.JSONOut, append(b, '\n'), 0o644); err != nil {
+		if err := writeAgentBenchArtifact(opts.JSONOut, append(b, '\n')); err != nil {
 			return err
 		}
 	}
 	if opts.MarkdownOut != "" {
-		if err := os.WriteFile(opts.MarkdownOut, []byte(agentbench.MarkdownReport(opts.Report)), 0o644); err != nil {
+		if err := writeAgentBenchArtifact(opts.MarkdownOut, []byte(agentbench.MarkdownReport(opts.Report))); err != nil {
 			return err
 		}
 	}
@@ -152,11 +153,18 @@ func writeAgentBenchReportArtifacts(opts agentBenchArtifactOptions) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(opts.SlideyOut, append(b, '\n'), 0o644); err != nil {
+		if err := writeAgentBenchArtifact(opts.SlideyOut, append(b, '\n')); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func writeAgentBenchArtifact(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 func printAgentBenchReport(cmd *cobra.Command, report agentbench.Report) error {

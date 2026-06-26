@@ -213,6 +213,7 @@ type Machine interface {
 	// the session forward (oncomplete / timeout) use this to learn
 	// where the chain landed.
 	RunEffectsAndState(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error)
+	RunEffectsAndStateWithOptions(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect, opts RunEffectsOptions) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error)
 
 	// DispatchPostBindEmits re-evaluates the emit_intent: effects on
 	// the entered state's on_enter chain against a post-bind world
@@ -261,6 +262,16 @@ type Machine interface {
 	// compound wrapper — which has no view block — and the operator sees
 	// an empty intro with no intents.
 	ResolveInitialLeaf(cur app.StatePath, w world.World) (app.StatePath, error)
+}
+
+// RunEffectsOptions tunes an explicit effect replay. Normal story turns use the
+// zero value; callers such as `/reload --force` can opt into authoring-only
+// behavior without changing ordinary story semantics.
+type RunEffectsOptions struct {
+	// ForceOnce ignores `once: true` cache skips for this effect run. It is used
+	// by `/reload --force` when an author intentionally wants to re-run an
+	// on_enter call whose bind target is already populated.
+	ForceOnce bool
 }
 
 // GuardDryRunResult is the result of [Machine.TryGuards] — a read-only
@@ -1435,6 +1446,10 @@ type emittedIntent struct {
 // would be a latent panic the moment a transition effect emits a non-empty
 // `say:` and the on_enter / emit-dispatch chain writes more onto it.
 func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effect, w world.World, env expr.Env) (world.World, []HostInvocation, *strings.Builder, []store.Event, []emittedIntent, error) {
+	return m.applyEffectsTracedWithOptions(ctx, effects, w, env, RunEffectsOptions{})
+}
+
+func (m *machineImpl) applyEffectsTracedWithOptions(ctx context.Context, effects []app.Effect, w world.World, env expr.Env, opts RunEffectsOptions) (world.World, []HostInvocation, *strings.Builder, []store.Event, []emittedIntent, error) {
 	newWorld := cloneWorld(w)
 	var hostCalls []HostInvocation
 	saySB := &strings.Builder{}
@@ -1569,7 +1584,7 @@ func (m *machineImpl) applyEffectsTraced(ctx context.Context, effects []app.Effe
 			// abort the rest of the on_enter chain; the engine continues to the
 			// next effect. The skip is recorded on EffectApplied so a trace
 			// shows the elision and why. See app.Effect.Once.
-			if eff.Once && allBindTargetsSet(eff.Bind, newWorld.Vars) {
+			if eff.Once && !opts.ForceOnce && allBindTargetsSet(eff.Bind, newWorld.Vars) {
 				m.logger.DebugContext(ctx, trace.EvMachineEffectApplied,
 					slog.String("type", "invoke"),
 					slog.String("namespace", eff.Invoke),
@@ -2133,12 +2148,16 @@ func (m *machineImpl) RunEffects(ctx context.Context, state app.StatePath, w wor
 // app.StatePath reflects any synthetic intent dispatches the chain
 // triggered.
 func (m *machineImpl) RunEffectsAndState(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error) {
+	return m.RunEffectsAndStateWithOptions(ctx, state, w, effects, RunEffectsOptions{})
+}
+
+func (m *machineImpl) RunEffectsAndStateWithOptions(ctx context.Context, state app.StatePath, w world.World, effects []app.Effect, opts RunEffectsOptions) (app.StatePath, world.World, []HostInvocation, string, []store.Event, error) {
 	env := expr.Env{
 		Slots: map[string]any{},
 		World: w.Vars,
 		Event: map[string]any{},
 	}
-	newWorld, hostCalls, saySB, evts, emits, err := m.applyEffectsTraced(ctx, effects, w, env)
+	newWorld, hostCalls, saySB, evts, emits, err := m.applyEffectsTracedWithOptions(ctx, effects, w, env, opts)
 	if err != nil {
 		return state, newWorld, hostCalls, saySB.String(), evts, err
 	}
@@ -2176,6 +2195,7 @@ func (m *machineImpl) RunEffectsAndState(ctx context.Context, state app.StatePat
 //     `{{ world.jira_query }}` inside a list passes through verbatim and the
 //     handler receives an unexpanded template.
 //   - Other scalars are returned as-is.
+//
 // coerceSetValue coerces a set-effect value to the declared type of world key
 // k. set-effect RHS values are expression strings (a bare YAML `true` in a
 // world_in projection arrives as the string "true"), so a rendered scalar may

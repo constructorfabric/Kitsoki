@@ -13,7 +13,7 @@ Slug: `{{ args.feature_slug }}`  ·  expectation: `{{ args.video_expectation }}`
 
 ### Proposal / change summary
 
-{{ args.proposal_text|default:"(no proposal supplied — work from the added diff below)" }}
+{{ args.proposal_text|default:"(no proposal supplied — work from the added diff below)"|reference:"proposal/change-summary" }}
 
 ### What this branch ADDED (git diff vs base, additions only)
 

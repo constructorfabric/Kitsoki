@@ -59,7 +59,7 @@ func (HelpCommand) Run(m RootModel, _ []string) (string, RootModel, tea.Cmd) {
 			{"/ide status", "show connection: editor, workspace, port"},
 			{"/open <path>", "open an artifact in $EDITOR or the OS default handler"},
 			{"/warp <state>", "developer teleport to a state"},
-			{"/reload", "reload app.yaml from disk and re-fire on_enter"},
+			{"/reload [--force]", "reload app.yaml; --force bypasses once: cache for this rerun"},
 			{"/quit, /q", "exit kitsoki"},
 		}},
 	}

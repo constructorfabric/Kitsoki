@@ -2147,7 +2147,7 @@ func (m RootModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		return m.handleWarpCommand(parts[1:])
 
 	case "/reload":
-		return m.handleReloadSlash()
+		return m.handleReloadSlash(parts[1:])
 
 	case "/workflow":
 		return handleWorkflowSlash(m, parts[1:])
@@ -3520,7 +3520,17 @@ func (m RootModel) handleMetaSendDone(msg metaSendDoneMsg) (tea.Model, tea.Cmd) 
 // trade-off is intentional — the operator explicitly asked for "redo
 // whatever actions" so that the dogfood "edit story externally,
 // observe the new behaviour" loop closes without a TUI restart.
-func (m RootModel) handleReloadSlash() (tea.Model, tea.Cmd) {
+func (m RootModel) handleReloadSlash(args []string) (tea.Model, tea.Cmd) {
+	forceOnce := false
+	for _, arg := range args {
+		switch arg {
+		case "--force", "-f":
+			forceOnce = true
+		default:
+			m.transcript.AppendSlashOutput(fmt.Sprintf("(/reload: unknown option %q; supported: --force)", arg))
+			return m, nil
+		}
+	}
 	if m.appPath == "" {
 		m.transcript.AppendSlashOutput(
 			"(/reload disabled — no app path was passed to NewRootModel; restart with `kitsoki run <app.yaml>` to enable hot-reload)")
@@ -3566,20 +3576,26 @@ func (m RootModel) handleReloadSlash() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.transcript.AppendSlashOutput("(/reload: definition reloaded — re-firing on_enter)")
+	if forceOnce {
+		m.transcript.AppendSlashOutput("(/reload --force: definition reloaded — re-firing on_enter and bypassing once: cache)")
+	} else {
+		m.transcript.AppendSlashOutput("(/reload: definition reloaded — re-firing on_enter)")
+	}
 
 	// Dispatch RerunOnEnter via the same async-turn machinery the
 	// menu uses. The resulting TurnOutcome flows back through
 	// handleTurnOutcome which renders the view and resets state.
-	return startAsyncTurn(m, "/reload", asyncRerunOnEnter(m.orch, m.sid), pendingDeterministic)
+	return startAsyncTurn(m, "/reload", asyncRerunOnEnter(m.orch, m.sid, forceOnce), pendingDeterministic)
 }
 
 // asyncRerunOnEnter returns the closure shape startAsyncTurn expects
 // for the `/reload` path. RerunOnEnter has no user-input string of
 // its own, so the closure ignores the surrounding input plumbing.
-func asyncRerunOnEnter(orch *orchestrator.Orchestrator, sid app.SessionID) func(context.Context) (*orchestrator.TurnOutcome, error) {
+func asyncRerunOnEnter(orch *orchestrator.Orchestrator, sid app.SessionID, forceOnce bool) func(context.Context) (*orchestrator.TurnOutcome, error) {
 	return func(ctx context.Context) (*orchestrator.TurnOutcome, error) {
-		return orch.RerunOnEnter(ctx, sid)
+		return orch.RerunOnEnterWithOptions(ctx, sid, orchestrator.RerunOnEnterOptions{
+			ForceOnce: forceOnce,
+		})
 	}
 }
 

@@ -745,6 +745,13 @@ Make `on_enter` idempotent with one of:
   entry-kind-agnostic — the same check protects `/reload`, self-transitions,
   and `on_error` re-entry.
 
+  During authoring, `/reload --force` bypasses this `once:` skip for that
+  single reload turn. Use it when a prompt or `on_enter` host-call edit must
+  be exercised against the current room without manually clearing bind targets.
+  The forced rerun is recorded on the reload turn (`force_once: true`) so traces
+  explain why an otherwise cached call re-fired. Plain `/reload` remains the
+  safe default.
+
   **Decide-then-write pairs** (a `decide` that binds an object, then an
   `artifacts_dir` write that binds the path) each key off their **own** bind.
   After a real run both are set, so both skip on reload; on first entry both

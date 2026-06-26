@@ -164,21 +164,11 @@ thought.
   slice (GitHub integration comes later):
   - [`gh-ticket-adapter.md`](gh-ticket-adapter.md) (runtime, deferred) — a `gh`-backed
     glue provider satisfying the `ticket` interface against GitHub issues.
-- [`github-issues-tracker.md`](github-issues-tracker.md) — **epic.** Move
-  kitsoki's own bug + feature tracker from the in-repo `issues/*.md` pile to
-  **GitHub Issues** on `constructorfabric/Kitsoki` (canonical even from a
-  personal fork). **Slices #1–#3 shipped** (the `create` op + conventions, bug
-  filing via CLI + the web Report-bug modal with developer-local `.artifacts/`
-  evidence, and the design-pipeline feature publish) — their detail now lives in
-  [`hosts.md → host.gh.ticket`](../architecture/hosts.md#hostghticket--github-issues-backed-tracker)
-  and the child proposals are deleted. **Slice #4's tooling is shipped**
-  (`kitsoki issues migrate` + the `issues/` freeze); only the **cutover** remains
-  — the real bulk migration + rebinding `kitsoki-dev` to `host.gh.ticket`. Hard
-  cutover; supersedes `bug-sync-proposal.md`. One slice left:
-  - [`issues-migration-to-github.md`](issues-migration-to-github.md) (runtime) —
-    `kitsoki issues migrate` is shipped + the `issues/` archive frozen; the
-    `kitsoki-dev` rebind to `host.gh.ticket` (the cutover) is the deferred last
-    step.
+- [`issues-migration-to-github.md`](issues-migration-to-github.md) (runtime) —
+  the GitHub Issues tracker substrate is shipped and documented in
+  [`hosts.md → host.gh.ticket`](../architecture/hosts.md#hostghticket--github-issues-backed-tracker);
+  the only remaining step is the maintainer-triggered real bulk migration of the
+  frozen `issues/` archive onto `constructorfabric/Kitsoki`.
 - [`agent-capability-model.md`](agent-capability-model.md) — **epic.**
   One capability model governing **every** agent (decide / ask / converse /
   task), unifying three ad-hoc restrictions and an overloaded boolean. Four
@@ -230,13 +220,6 @@ thought.
   per-state decider. Engine core, CLI/flow surface, and docs-review
   migration shipped; pre-bind staging and the bugfix-story migration
   remain (§8).
-- [`idempotent-on-enter.md`](idempotent-on-enter.md) — an opt-in `once:`
-  flag on `invoke:` effects so the engine skips an on_enter host call whose
-  `bind:` target is already populated — making `/reload` (and re-entry)
-  idempotent without per-room `when:` guards. **`once:` shipped** (see
-  `docs/stories/state-machine.md` §"`on_enter` must be idempotent"; the
-  `proposal_*.yaml` rooms are migrated); the `/reload --force` companion to
-  bypass it during authoring (Open question 1) remains.
 - [`lifecycle-taxonomy.md`](lifecycle-taxonomy.md) — **runtime.** A YAML
   domain model for the early project lifecycle: composable **Features**
   (media / help / tutorials / acceptance criteria at every level) →
@@ -294,11 +277,7 @@ thought.
   `runstatus` trace viewing (inspired by a Langfuse comparison) while leaning
   into the decision-provenance moat: co-equal view modes, decision-first
   detail, recorded decide alternatives, human annotation, and single-call
-  operator replay. Nothing implemented yet; decomposed into six slices:
-  - [`trace-observation-kinds.md`](trace-observation-kinds.md) (tracing) — a
-    derived semantic kind taxonomy over `EventKind` (decision / agent-call /
-    host-call / narration / world-mutation / routing / lifecycle) so every
-    consumer badges, colors, and collapses by category; no wire change.
+  operator replay. Observation kinds shipped; remaining slices:
   - [`trace-decision-detail.md`](trace-decision-detail.md) (tui) — hero the
     gate/routing detail with the decision (available → chosen → confidence-vs-
     threshold → reason → bailed) and demote prompt/response to an evidence

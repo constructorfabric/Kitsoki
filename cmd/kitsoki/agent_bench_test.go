@@ -9,9 +9,9 @@ import (
 
 func TestAgentBenchScoreCommand(t *testing.T) {
 	dir := t.TempDir()
-	jsonOut := filepath.Join(dir, "report.json")
-	markdownOut := filepath.Join(dir, "report.md")
-	slideyOut := filepath.Join(dir, "deck.slidey.json")
+	jsonOut := filepath.Join(dir, "nested", "reports", "report.json")
+	markdownOut := filepath.Join(dir, "nested", "reports", "report.md")
+	slideyOut := filepath.Join(dir, "nested", "decks", "deck.slidey.json")
 	trace := filepath.Join(dir, "trace.jsonl")
 	if err := os.WriteFile(trace, []byte(`{"ts":"2026-06-26T01:00:00Z","kind":"agent.stream","state_path":"rooms/decompose","payload":{"tool":"mcp__validator__submit"}}
 {"ts":"2026-06-26T01:00:01Z","kind":"agent.stream","state_path":"rooms/lint","payload":{"type":"result","input_tokens":100,"output_tokens":20,"total_cost_usd":0.001}}

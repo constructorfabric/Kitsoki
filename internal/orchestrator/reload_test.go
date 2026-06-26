@@ -235,6 +235,62 @@ func TestRerunOnEnter_OnceSkipsCachedInvoke(t *testing.T) {
 		"the cached verdict must survive reload (never overwritten by the stub's 'fresh')")
 }
 
+func TestRerunOnEnter_ForceOnceBypassesCachedInvoke(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "once-reload-force-test", Title: "once-reload-force-test"},
+		Root:  "start",
+		Hosts: []string{"host.expensive"},
+		World: map[string]app.VarDef{
+			"result": {Type: "object", Default: map[string]any{"verdict": "continue"}},
+		},
+		Intents: map[string]app.Intent{"look": {Title: "Look"}},
+		States: map[string]*app.State{
+			"start": {
+				View: app.LegacyView("result={{ world.result.verdict }}"),
+				OnEnter: []app.Effect{
+					{
+						Invoke: "host.expensive",
+						Once:   true,
+						Bind:   map[string]string{"result": "submitted"},
+					},
+				},
+				On: map[string][]app.Transition{"look": {{Target: "."}}},
+			},
+		},
+	}
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	var calls atomic.Int64
+	reg := host.NewRegistry()
+	reg.Register("host.expensive", func(_ context.Context, _ map[string]any) (host.Result, error) {
+		calls.Add(1)
+		return host.Result{Data: map[string]any{"submitted": map[string]any{"verdict": "fresh"}}}, nil
+	})
+
+	orch := orchestrator.New(def, m, s, noopHarness{},
+		orchestrator.WithHostRegistry(reg))
+
+	ctx := t.Context()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+	require.NoError(t, orch.RunInitialOnEnter(ctx, sid))
+	require.Equal(t, int64(0), calls.Load())
+
+	_, err = orch.RerunOnEnterWithOptions(ctx, sid, orchestrator.RerunOnEnterOptions{ForceOnce: true})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), calls.Load(),
+		"forced reload must bypass once: and invoke the host call")
+
+	w := orch.CurrentWorld(sid)
+	require.Equal(t, "fresh", w.Vars["result"].(map[string]any)["verdict"],
+		"forced reload must replace the cached value with the fresh host result")
+}
+
 // TestRerunOnEnter_NoOnEnter_StillRenders covers the "edited a view
 // template only" path: a state without on_enter should still produce a
 // rendered view so callers don't need a separate render-only branch.
