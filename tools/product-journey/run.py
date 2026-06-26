@@ -4893,7 +4893,9 @@ def render_dogfood_smoke_summary(report: dict) -> str:
         f"- Review: {review['review_status']} - {review['summary']}",
         f"- Driver journal events: {report['run'].get('driver_event_count', 0)}",
         f"- Run validation: {validation['run']['status']} ({validation['run']['errors']} errors, {validation['run']['warnings']} warnings)",
+        f"- Run validation issues: {validation['run'].get('validation_issue_summary') or '(none)'}",
         f"- Matrix validation: {validation['matrix']['status']} ({validation['matrix']['errors']} errors, {validation['matrix']['warnings']} warnings)",
+        f"- Matrix validation issues: {validation['matrix'].get('validation_issue_summary') or '(none)'}",
         f"- Rollup runs: {rollup['runs_found']} / {rollup['assignments']}",
         f"- Rollup evidence: {rollup['present_evidence_count']} / {rollup['required_evidence_count']}",
         "",
@@ -4923,8 +4925,10 @@ def render_dogfood_smoke_deck(report: dict) -> dict:
         f"Review: {review['review_status']}",
         f"Review checks: {review['passed']}/{review['total']} passed, {review['warnings']} warnings, {review['failed']} failures",
         f"Review backlog: {review.get('review_backlog_summary', '(none)') or '(none)'}",
-        f"Run validation: {validation['run']['status']} ({validation['run']['errors']} errors)",
+        f"Run validation: {validation['run']['status']} ({validation['run']['errors']} errors, {validation['run']['warnings']} warnings)",
+        f"Run validation issues: {validation['run'].get('validation_issue_summary') or '(none)'}",
         f"Matrix validation: {validation['matrix']['status']} ({validation['matrix']['errors']} errors, {validation['matrix']['warnings']} warnings)",
+        f"Matrix validation issues: {validation['matrix'].get('validation_issue_summary') or '(none)'}",
         f"Rollup runs: {rollup['runs_found']} / {rollup['assignments']}",
     ])
     return {
