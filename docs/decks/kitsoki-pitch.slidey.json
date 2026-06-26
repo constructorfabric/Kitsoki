@@ -2234,85 +2234,6 @@
       "narration": "The bakeoff started as a comparison. It became a repeatable story improvement harness."
     },
     {
-      "type": "mcp-drive",
-      "title": "Project onboarding harness",
-      "agent": "kitsoki-mcp-drive",
-      "story": "stories/kitsoki-dev/app.yaml",
-      "prompt": "onboard this repo and prove the workflow can find the right story, tools, gates, and project conventions before live work starts",
-      "calls": [
-        {
-          "tool": "session.new",
-          "args": "{ story_path: \"stories/kitsoki-dev/app.yaml\", harness: \"replay\" }",
-          "result": "handle=onboard-1 · state=main.foyer"
-        },
-        {
-          "tool": "session.drive",
-          "args": "\"onboard this project for delivery work\"",
-          "result": "routes to discovery + project profile"
-        },
-        {
-          "tool": "render.tui_png",
-          "args": "{ handle: \"onboard-1\", cols: 120, rows: 36 }",
-          "result": "captures the operator view for QA"
-        },
-        {
-          "tool": "session.trace",
-          "args": "{ handle: \"onboard-1\", limit: 40 }",
-          "result": "trace becomes a reusable fixture candidate"
-        }
-      ],
-      "outcome": {
-        "status": "project profile armed",
-        "ref": ".artifacts/onboarding-harness/",
-        "lines": [
-          "detects repo conventions and available stories",
-          "checks the workflow can render and route without live LLM spend",
-          "turns onboarding failures into story/runtime improvements"
-        ]
-      },
-      "caption": "Before a bugfix marathon, Kitsoki can test whether the project is actually ready to be driven.",
-      "hold": 230,
-      "instant": true
-    },
-    {
-      "type": "evidence",
-      "title": "Onboarding proof artifacts",
-      "items": [
-        {
-          "label": "Story selection",
-          "status": "validated",
-          "detail": "routes planning, bugfix, and git handoff to explicit stories",
-          "refType": "test",
-          "ref": "session.drive + session.status",
-          "note": "no LLM"
-        },
-        {
-          "label": "Project profile",
-          "status": "validated",
-          "detail": "records repo root, worktree policy, test commands, and docs paths",
-          "refType": "artifact",
-          "ref": "session.inspect world snapshot"
-        },
-        {
-          "label": "Operator surface",
-          "status": "validated",
-          "detail": "renders the exact TUI/web room state the driver sees",
-          "refType": "artifact",
-          "ref": "render.tui_png / render_web"
-        },
-        {
-          "label": "Regression fixture",
-          "status": "next",
-          "detail": "interesting onboarding traces can be promoted to flow tests",
-          "refType": "path",
-          "ref": "stories/*/flows/*.yaml"
-        }
-      ],
-      "caption": "Onboarding is tested as a workflow, not treated as a one-time prompt preamble.",
-      "hold": 220,
-      "instant": true
-    },
-    {
       "type": "diagram-svg",
       "title": "How runs become reusable tests",
       "panels": [
@@ -3079,6 +3000,85 @@
       "caption": "The training example is not a prompt snippet. It is the whole loop: trace, oracle, outcome, story diff, and replayable proof.",
       "hold": 240,
       "narration": "Stories train like models, but the training example is operational: trace, oracle, outcome, story diff, and replayable proof.",
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Project onboarding harness",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/kitsoki-dev/app.yaml",
+      "prompt": "onboard this repo and prove the workflow can find the right story, tools, gates, and project conventions before live work starts",
+      "calls": [
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/kitsoki-dev/app.yaml\", harness: \"replay\" }",
+          "result": "handle=onboard-1 · state=main.foyer"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"onboard this project for delivery work\"",
+          "result": "routes to discovery + project profile"
+        },
+        {
+          "tool": "render.tui_png",
+          "args": "{ handle: \"onboard-1\", cols: 120, rows: 36 }",
+          "result": "captures the operator view for QA"
+        },
+        {
+          "tool": "session.trace",
+          "args": "{ handle: \"onboard-1\", limit: 40 }",
+          "result": "trace becomes a reusable fixture candidate"
+        }
+      ],
+      "outcome": {
+        "status": "project profile armed",
+        "ref": ".artifacts/onboarding-harness/",
+        "lines": [
+          "detects repo conventions and available stories",
+          "checks the workflow can render and route without live LLM spend",
+          "turns onboarding failures into story/runtime improvements"
+        ]
+      },
+      "caption": "Before a bugfix marathon, Kitsoki can test whether the project is actually ready to be driven.",
+      "hold": 230,
+      "instant": true
+    },
+    {
+      "type": "evidence",
+      "title": "Onboarding proof artifacts",
+      "items": [
+        {
+          "label": "Story selection",
+          "status": "validated",
+          "detail": "routes planning, bugfix, and git handoff to explicit stories",
+          "refType": "test",
+          "ref": "session.drive + session.status",
+          "note": "no LLM"
+        },
+        {
+          "label": "Project profile",
+          "status": "validated",
+          "detail": "records repo root, worktree policy, test commands, and docs paths",
+          "refType": "artifact",
+          "ref": "session.inspect world snapshot"
+        },
+        {
+          "label": "Operator surface",
+          "status": "validated",
+          "detail": "renders the exact TUI/web room state the driver sees",
+          "refType": "artifact",
+          "ref": "render.tui_png / render_web"
+        },
+        {
+          "label": "Regression fixture",
+          "status": "next",
+          "detail": "interesting onboarding traces can be promoted to flow tests",
+          "refType": "path",
+          "ref": "stories/*/flows/*.yaml"
+        }
+      ],
+      "caption": "Onboarding is tested as a workflow, not treated as a one-time prompt preamble.",
+      "hold": 220,
       "instant": true
     },
     {
