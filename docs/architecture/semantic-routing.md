@@ -238,6 +238,35 @@ arc, so a bare `discuss` keeps working when the room is folded under an
 alias (`core__discuss`). Trace event: `turn.default_routed`
 (`routed_by: "default"`).
 
+### 1.6 App-level free-form fallback
+
+Workbench stories can declare one canonical work-intake room and let strict
+menu rooms fall back to it when no command-like tier matches. This is the
+`dev-story` / `kitsoki-dev` behavior: a broad engineering request typed from a
+ticket picker, bugfix checkpoint, imported pipeline room, or any other
+non-conversational room is routed to the landing workbench agent before the
+main-turn LLM can guess a nearby command such as `quit`.
+
+```yaml
+routing:
+  free_form_fallback:
+    state: landing
+    intent: work
+```
+
+The fallback intent has the same shape as `default_intent`: exactly one
+required string slot receives the whole utterance. At load time the fallback
+transition is copied onto every non-terminal state that does not already
+declare `default_intent` or `agent_off_ramp`, including states folded in from
+imports. The copied transition targets the canonical fallback state, so an
+imported child room such as `core.bf.idle` lands on `core.landing`, not a
+relative sibling.
+
+If `routing.free_form_fallback` is omitted, the loader auto-detects a
+`landing.work` transition when present. This keeps dev-story-style apps working
+without repeating the same fallback arc in every room. Trace provenance is
+recorded as `routed_by: "fallback"` with `match_type: "free_text"`.
+
 ## 2. Per-app routing config
 
 ```yaml

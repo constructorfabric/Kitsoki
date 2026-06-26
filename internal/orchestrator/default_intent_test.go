@@ -9,6 +9,8 @@ package orchestrator_test
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -283,6 +285,105 @@ func TestFreeFormFallback_NamedNavigationStillWins(t *testing.T) {
 	history, err := s.LoadHistory(sid)
 	require.NoError(t, err)
 	assertRoutedBy(t, history, "semantic")
+}
+
+// TestFreeFormFallback_ImportedNestedRoomRoutesToWorkbench models the
+// kitsoki-dev shape: dev-story is imported under an alias, and the operator is
+// sitting in a nested imported pipeline room. Unmatched engineering prose must
+// still hit the imported landing workbench, not the main-turn LLM.
+func TestFreeFormFallback_ImportedNestedRoomRoutesToWorkbench(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	childDir := filepath.Join(root, "dev-story")
+	parentDir := filepath.Join(root, "kitsoki-dev")
+	require.NoError(t, os.MkdirAll(childDir, 0o755))
+	require.NoError(t, os.MkdirAll(parentDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(childDir, "app.yaml"), []byte(`
+app:
+  id: dev-story-test
+  version: 0.1.0
+world:
+  landing_request: { type: string, default: "" }
+  landing_note: { type: object, default: {} }
+routing:
+  enabled: true
+intents:
+  work:
+    title: "Work"
+    slots:
+      request: { type: string, required: true }
+root: landing
+states:
+  landing:
+    view: "landing request={{ world.landing_request }} summary={{ world.landing_note.summary }}"
+    on_enter:
+      - when: "world.landing_request != ''"
+        invoke: host.agent.task
+        with:
+          acceptance:
+            schema: schemas/note.json
+        bind:
+          landing_note: submitted
+    on:
+      work:
+        - target: landing
+          effects:
+            - set:
+                landing_request: "{{ slots.request }}"
+                landing_note: {}
+  bf:
+    type: compound
+    initial: idle
+    states:
+      idle:
+        view: "bugfix idle"
+`), 0o644))
+
+	require.NoError(t, os.WriteFile(filepath.Join(parentDir, "app.yaml"), []byte(`
+app:
+  id: kitsoki-dev-test
+  version: 0.1.0
+hosts:
+  - host.agent.task
+root: core.bf.idle
+imports:
+  core:
+    source: ../dev-story
+    entry: landing
+`), 0o644))
+
+	def, err := app.Load(filepath.Join(parentDir, "app.yaml"))
+	require.NoError(t, err)
+	m, err := machine.New(def)
+	require.NoError(t, err)
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	reg := host.NewRegistry()
+	reg.Register("host.agent.task", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		return host.Result{Data: map[string]any{
+			"submitted": map[string]any{"summary": "imported workbench handled it"},
+		}}, nil
+	})
+	h := &countingHarness{fall: staticHarness{intentName: "__unexpected_main_turn__"}}
+	orch := orchestrator.New(def, m, s, h, orchestrator.WithHostRegistry(reg))
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+	out, err := orch.Turn(ctx, sid, "I want to improve kitsoki itself here")
+	require.NoError(t, err)
+
+	require.EqualValues(t, 0, h.calls.Load(), "imported fallback must avoid the main-turn LLM")
+	require.Equal(t, app.StatePath("core.landing"), out.NewState)
+	require.Contains(t, out.View, "request=I want to improve kitsoki itself here")
+	require.Contains(t, out.View, "summary=imported workbench handled it")
+
+	history, err := s.LoadHistory(sid)
+	require.NoError(t, err)
+	assertRoutedBy(t, history, "fallback")
 }
 
 func assertRoutedBy(t *testing.T, history []store.Event, want string) {

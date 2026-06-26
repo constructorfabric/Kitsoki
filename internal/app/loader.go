@@ -1055,13 +1055,12 @@ func applyFreeFormFallback(def *AppDef) {
 	if !ok || src == nil || len(src.On[intentName]) == 0 {
 		return
 	}
-	fallbackParent := parentStatePath(statePath)
 	fallback := cloneTransitions(src.On[intentName])
+	for i := range fallback {
+		fallback[i].Target = statePath
+	}
 	walkStates(def.States, "", func(path string, s *State) {
 		if s == nil || path == statePath || s.Terminal {
-			return
-		}
-		if parentStatePath(path) != fallbackParent {
 			return
 		}
 		if s.DefaultIntent != "" || s.AgentOffRamp != nil {

@@ -105,4 +105,32 @@ describe("ViewElement scene-aware refine dispatch", () => {
       "*",
     );
   });
+
+  it("reloads a re-rendered deck at the last viewed scene transition", async () => {
+    const w = mountSlideshow();
+    const store = useRunStore();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "embed:view", producer: "slidey", scope: "9", step: 2, label: "Cat Wrangling" },
+      }),
+    );
+    await w.vm.$nextTick();
+    expect(store.embedScope).toBe("9");
+    expect(store.embedStep).toBe("2");
+
+    await w.setProps({
+      element: {
+        Kind: "media",
+        MediaKind: "slideshow",
+        MediaHandle: "slidey-edit#def",
+        Mime: "text/html",
+        AnnotateIntent: "refine",
+        AnnotateFeedbackSlot: "feedback",
+      } as never,
+    });
+
+    const frame = w.find('[data-testid="media-slideshow-frame"]');
+    expect(frame.attributes("src")).toBe("/artifact/slidey-edit%23def?scene=9&step=2");
+  });
 });

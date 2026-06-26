@@ -9,6 +9,10 @@ the deck default position. If the operator was viewing a later slide or reveal
 transition, the annotation overlay appeared on slide 1 instead of the exact
 visual state they were reviewing.
 
+After the edit completed, the re-rendered main deck iframe had the same problem:
+the new content-addressed deck handle booted at slide 1, so the requested change
+was not immediately visible at the slide/transition the operator just edited.
+
 ## Fix
 
 - Kitsoki now stores `embed:view.step` alongside the existing opaque
@@ -18,6 +22,11 @@ visual state they were reviewing.
 - Slidey now publishes `step` with every `embed:view` message.
 - Slidey now honors `scope + step` on `embed:annotate` by navigating the fresh
   annotation iframe before drawing pick markers.
+- Kitsoki now appends `?scene=<scope>&step=<step>` to the main slideshow iframe
+  URL when it has a last viewed deck position, so a newly rendered handle opens
+  where the operator was looking.
+- Slidey now consumes `scene + step` query params on initial load for bundled,
+  `?spec=`, and CLI workspace viewer paths.
 
 ## Regression Coverage
 
@@ -28,10 +37,12 @@ visual state they were reviewing.
   - verifies the live deck iframe receives the continuity payload
 - `tools/runstatus/tests/unit/view-element-scene-dispatch.test.ts`
   - verifies the media card preserves scene + transition when opening Annotate
+  - verifies a re-rendered deck handle opens at the last viewed scene + step
 - `/Users/brad/code/slidey/test/embed-annotate.test.js`
   - verifies Slidey restores requested scene + transition before drawing markers
 - `/Users/brad/code/slidey/test/useDeck-embed-scene.test.js`
   - verifies normal embedded navigation publishes both scene and step
+  - verifies the initial-view query parser preserves scene + step on boot
 
 ## Visual MCP QA
 

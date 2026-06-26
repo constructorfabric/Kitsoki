@@ -36,6 +36,18 @@ host_handlers:
     data: { ok: true, log: "" }
   host.local:
     data: { ok: true, state: "success", log: "" }
+  host.run:
+    by_call:
+      repro_det_gate:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ran: true
+            baseline_green: true
+            test_red: true
+            ok: true
+            summary: "GREEN->RED proven with project test_cmd"
   host.agent.task:
     data:
       ok: true
