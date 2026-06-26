@@ -169,7 +169,10 @@ It also writes a review artifact under
 `.artifacts/external-bakeoff/readiness/<project>.md`.
 The free first-cell preparation writes the baseline worktree under
 `.artifacts/external-bakeoff/cells/` and the delegated Studio MCP prompt under
-`.artifacts/external-bakeoff/drive-prompts/`; set
+`.artifacts/external-bakeoff/drive-prompts/`. It also writes
+`.artifacts/external-bakeoff/prepared/<project>-<bug>-<candidate>.json`, a
+machine-readable handoff with the worktree, branch, trace, prompt, preflight,
+and future score-result paths. Set
 `HISTORY_PREPARE_FIRST_CELL=0` to skip it.
 
 For the full gears-rust reference corpus, run:
@@ -226,7 +229,7 @@ live under a candidate model, grade it, extract cost — is **one command**:
 ```sh
 tools/bugfix-bakeoff/external/drive_cell.sh \
     --project query-string --bug qs1 --candidate gpt-5.5 --score
-#   --no-drive  prepares the worktree + prints the prompt only (free, for review)
+#   --no-drive  prepares the worktree + writes prompt/metadata only (free)
 ```
 
 For a matrix, print the exact commands first:

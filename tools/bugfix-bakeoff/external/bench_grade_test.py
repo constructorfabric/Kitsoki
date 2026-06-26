@@ -329,6 +329,13 @@ def test_drive_cell_preflight_scopes_to_requested_bug():
             preflight = json_load((cache / "preflight" / f"{project}-bug1-opus-4.8.json").read_text())
             assert preflight["bugs"] == ["bug1"]
             assert preflight["errors"] == []
+            prepared = json_load((cache / "prepared" / f"{project}-bug1-opus-4.8.json").read_text())
+            assert prepared["project"] == project
+            assert prepared["bug"] == "bug1"
+            assert prepared["candidate"] == "opus-4.8"
+            assert Path(prepared["worktree"]).exists()
+            assert Path(prepared["prompt"]).exists()
+            assert prepared["preflight"].endswith(f"{project}-bug1-opus-4.8.json")
         finally:
             shutil.rmtree(manifest_dir, ignore_errors=True)
 

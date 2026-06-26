@@ -176,10 +176,23 @@ Report: final state; trace path; source modified (y/n) + fix SHA; 1-line fix; re
 EOF
 )"
 pf="$CACHE/drive-prompts/$cellkey.md"; mkdir -p "$(dirname "$pf")"; printf '%s\n' "$prompt" > "$pf"
+prep="$CACHE/prepared/$cellkey.json"; mkdir -p "$(dirname "$prep")"
+python3 - "$prep" "$project" "$bug" "$cand" "$profile" "$src" "$cell" "$branch" "$baseline" "$trace" "$thread_file" "$pf" "$preflight_json" "$CACHE/results/cells/$cellkey-kitsoki.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+keys = [
+    "project", "bug", "candidate", "profile", "repo_dir", "worktree",
+    "branch", "baseline_sha", "trace", "thread", "prompt", "preflight",
+    "score_result",
+]
+Path(sys.argv[1]).write_text(json.dumps(dict(zip(keys, sys.argv[2:])), indent=2) + "\n")
+PY
 echo "[cell] project=$project bug=$bug candidate=$cand profile=$profile" >&2
 echo "[cell] worktree=$cell branch=$branch trace=$trace" >&2
 
-if [[ "$no_drive" == 1 ]]; then echo "[cell] --no-drive: prompt at $pf"; exit 0; fi
+if [[ "$no_drive" == 1 ]]; then echo "[cell] --no-drive: prompt at $pf"; echo "[cell] prepared metadata at $prep"; exit 0; fi
 
 # --- drive (COST) -------------------------------------------------------------
 log="$CACHE/drive-logs/$cellkey.json"

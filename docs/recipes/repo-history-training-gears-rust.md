@@ -120,9 +120,11 @@ the selected live-cell commands, existing scored/pending cells, missing cells,
 pending-cell command templates for true provider/profile blockers, and the next
 action. The first selected cell is prepared under
 `.artifacts/external-bakeoff/cells/`, with the delegated MCP prompt under
-`.artifacts/external-bakeoff/drive-prompts/`, so the operator can inspect the
-exact setup before spending on a live drive. Set `HISTORY_PREPARE_FIRST_CELL=0`
-to skip that free preparation step.
+`.artifacts/external-bakeoff/drive-prompts/`. The same step writes
+`.artifacts/external-bakeoff/prepared/<project>-<bug>-<candidate>.json` with the
+worktree, branch, trace, prompt, preflight, and score-result paths, so the
+operator can inspect or hand off the exact setup before spending on a live
+drive. Set `HISTORY_PREPARE_FIRST_CELL=0` to skip that free preparation step.
 
 Regenerate that readiness report after adding results without rerunning the
 cargo-backed RED/GREEN arming step:
@@ -204,8 +206,9 @@ tools/bugfix-bakeoff/external/drive_cell.sh \
   --no-drive
 ```
 
-This should prepare a worktree and print an artifact prompt path under
-`.artifacts/external-bakeoff/drive-prompts/`. It should not modify the source
+This should prepare a worktree, print an artifact prompt path under
+`.artifacts/external-bakeoff/drive-prompts/`, and write prepared-cell metadata
+under `.artifacts/external-bakeoff/prepared/`. It should not modify the source
 checkout.
 
 ## Live Drive
