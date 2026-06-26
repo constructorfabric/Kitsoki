@@ -3560,6 +3560,24 @@ def validate_matrix_bundle(matrix_dir: Path) -> dict:
                     f"summary={summary.get('scenario_outcomes')}, rows={len(rollup.get('scenario_outcomes', []))}",
                 )
             quality_gates = rollup.get("quality_gates", [])
+            persona_outcomes = rollup.get("persona_outcomes", [])
+            if summary.get("persona_outcomes", 0) != len(persona_outcomes):
+                add_validation_issue(
+                    issues,
+                    "error",
+                    "rollup-persona-outcomes",
+                    "rollup summary persona_outcomes does not match persona_outcomes length",
+                    f"summary={summary.get('persona_outcomes')}, rows={len(persona_outcomes)}",
+                )
+            expected_persona_gate_total = sum(row.get("quality_gate_total_runs", 0) for row in persona_outcomes)
+            if summary.get("quality_gate_total_runs", 0) != expected_persona_gate_total:
+                add_validation_issue(
+                    issues,
+                    "error",
+                    "rollup-persona-quality-gates",
+                    "persona outcome quality gate totals do not match rollup summary",
+                    f"summary={summary.get('quality_gate_total_runs')}, personas={expected_persona_gate_total}",
+                )
             if summary.get("quality_gate_rows", 0) != len(quality_gates):
                 add_validation_issue(
                     issues,
@@ -3614,7 +3632,7 @@ def validate_matrix_bundle(matrix_dir: Path) -> dict:
                     "rollup.slidey.json is missing the quality gate scene",
                 )
             rollup_scene_eyebrows = deck_scene_eyebrows(rollup_deck)
-            for expected in ["Coverage", "Runs", "Findings", "Scenario outcomes", "Quality gates", "Missing proof"]:
+            for expected in ["Coverage", "Runs", "Findings", "Persona outcomes", "Scenario outcomes", "Quality gates", "Missing proof"]:
                 if rollup_deck and expected not in rollup_scene_eyebrows:
                     add_validation_issue(issues, "error", "rollup-deck-scene", "rollup.slidey.json is missing a required rollup review scene", expected)
 
@@ -3946,6 +3964,54 @@ def aggregate_scenario_outcomes(runs: list[dict]) -> list[dict]:
     return [by_scenario[key] for key in sorted(by_scenario)]
 
 
+def aggregate_persona_outcomes(runs: list[dict]) -> list[dict]:
+    by_persona: dict[str, dict] = {}
+    for run in runs:
+        persona = run.get("persona", {})
+        persona_id = persona.get("id", "unknown")
+        row = by_persona.setdefault(persona_id, {
+            "persona": persona_id,
+            "label": persona.get("label", persona_id),
+            "runs": 0,
+            "reviewed_runs": 0,
+            "ready_runs": 0,
+            "present_evidence_count": 0,
+            "required_evidence_count": 0,
+            "findings_count": 0,
+            "strength_count": 0,
+            "weakness_count": 0,
+            "issue_count": 0,
+            "fix_count": 0,
+            "blocked_count": 0,
+            "quality_gate_satisfied_runs": 0,
+            "quality_gate_total_runs": 0,
+            "quality_gate_blocked_runs": 0,
+            "proof_minimum_evidence_count": 0,
+            "minimum_evidence_count": 0,
+            "review_statuses": {},
+        })
+        row["runs"] += 1
+        row["reviewed_runs"] += 1 if run.get("review_status") != "not_reviewed" else 0
+        row["ready_runs"] += 1 if run.get("review_status") == "ready" else 0
+        row["present_evidence_count"] += run.get("present_evidence_count", 0)
+        row["required_evidence_count"] += run.get("required_evidence_count", 0)
+        row["findings_count"] += run.get("findings_count", 0)
+        row["strength_count"] += run.get("strength_count", 0)
+        row["weakness_count"] += run.get("weakness_count", 0)
+        row["issue_count"] += run.get("issue_count", 0)
+        row["fix_count"] += run.get("fix_count", 0)
+        row["blocked_count"] += run.get("blocked_count", 0)
+        status = run.get("review_status", "not_reviewed")
+        row["review_statuses"][status] = row["review_statuses"].get(status, 0) + 1
+        for gate in run.get("quality_gates", []):
+            row["quality_gate_total_runs"] += 1
+            row["quality_gate_satisfied_runs"] += 1 if gate.get("satisfied") else 0
+            row["quality_gate_blocked_runs"] += 1 if gate.get("blocked") else 0
+            row["proof_minimum_evidence_count"] += gate.get("proof_minimum_evidence_count", 0)
+            row["minimum_evidence_count"] += gate.get("minimum_evidence_count", 0)
+    return [by_persona[key] for key in sorted(by_persona)]
+
+
 def aggregate_quality_gates(runs: list[dict]) -> list[dict]:
     by_scenario: dict[str, dict] = {}
     for run in runs:
@@ -4002,6 +4068,7 @@ def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
     reviewed = [run for run in runs if run["review_status"] != "not_reviewed"]
     ready = [run for run in runs if run["review_status"] == "ready"]
     scenario_outcomes = aggregate_scenario_outcomes(runs)
+    persona_outcomes = aggregate_persona_outcomes(runs)
     quality_gates = aggregate_quality_gates(runs)
     missing_proof_evidence = aggregate_missing_proof_evidence(quality_gates)
     totals = {
@@ -4019,6 +4086,7 @@ def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
         "blocked_count": sum(run.get("blocked_count", 0) for run in runs),
         "scenario_outcomes": len(scenario_outcomes),
         "scenario_outcomes_with_findings": sum(1 for row in scenario_outcomes if row["findings_count"] > 0),
+        "persona_outcomes": len(persona_outcomes),
         "quality_gate_rows": len(quality_gates),
         "quality_gate_satisfied_runs": sum(row["satisfied_runs"] for row in quality_gates),
         "quality_gate_total_runs": sum(row["runs"] for row in quality_gates),
@@ -4037,6 +4105,7 @@ def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
         "summary": totals,
         "runs": runs,
         "scenario_outcomes": scenario_outcomes,
+        "persona_outcomes": persona_outcomes,
         "quality_gates": quality_gates,
         "missing_proof_evidence": missing_proof_evidence,
         "missing_assignment_count": max(assignment_count - len(runs), 0),
@@ -4059,6 +4128,7 @@ def render_rollup_summary(rollup: dict) -> str:
         f"- Ready runs: {summary['ready_runs']}",
         f"- Evidence present: {summary['present_evidence_count']} / {summary['required_evidence_count']}",
         f"- Findings: {summary['findings_count']} (strengths {summary['strength_count']}, weaknesses {summary['weakness_count']}, issues {summary['issue_count']}, fixes {summary['fix_count']}, blocked {summary.get('blocked_count', 0)})",
+        f"- Persona outcome rows: {summary.get('persona_outcomes', 0)}",
         f"- Scenario outcome rows: {summary['scenario_outcomes']} ({summary['scenario_outcomes_with_findings']} with findings)",
         f"- Quality gates: {summary.get('quality_gate_satisfied_runs', 0)} / {summary.get('quality_gate_total_runs', 0)} satisfied, {summary.get('quality_gate_blocked_runs', 0)} blocked, proof evidence {summary.get('quality_gate_proof_minimum_evidence_count', 0)} / {summary.get('quality_gate_minimum_evidence_count', 0)} (captured {summary.get('quality_gate_present_minimum_evidence_count', 0)})",
         f"- Missing proof evidence rows: {summary.get('missing_proof_evidence_rows', 0)} ({summary.get('quality_gate_missing_proof_evidence_count', 0)} missing run-slots)",
@@ -4081,6 +4151,24 @@ def render_rollup_summary(rollup: dict) -> str:
         ])
     if not rollup["runs"]:
         lines.append("- (no run bundles matched this matrix)")
+    lines.extend(["", "## Persona Outcomes", ""])
+    if rollup.get("persona_outcomes"):
+        for row in rollup["persona_outcomes"]:
+            status_counts = ", ".join(f"{name}={count}" for name, count in sorted(row["review_statuses"].items()))
+            lines.extend([
+                f"### {row['label']}",
+                "",
+                f"- Persona: `{row['persona']}`",
+                f"- Runs: {row['runs']} (reviewed {row['reviewed_runs']}, ready {row['ready_runs']})",
+                f"- Evidence: {row['present_evidence_count']} / {row['required_evidence_count']}",
+                f"- Findings: {row['findings_count']} (strengths {row['strength_count']}, weaknesses {row['weakness_count']}, issues {row['issue_count']}, fixes {row['fix_count']}, blocked {row.get('blocked_count', 0)})",
+                f"- Quality gates: {row['quality_gate_satisfied_runs']} / {row['quality_gate_total_runs']} satisfied, {row['quality_gate_blocked_runs']} blocked",
+                f"- Proof evidence: {row['proof_minimum_evidence_count']} / {row['minimum_evidence_count']}",
+                f"- Review statuses: {status_counts or '(none)'}",
+                "",
+            ])
+    else:
+        lines.append("- (no persona outcomes found in matched runs)")
     lines.extend(["", "## Scenario Outcomes", ""])
     if rollup["scenario_outcomes"]:
         for row in rollup["scenario_outcomes"]:
@@ -4144,6 +4232,10 @@ def render_rollup_deck(rollup: dict) -> dict:
         f"{row['scenario']}: evidence {row['present_evidence_count']}/{row['required_evidence_count']}, findings {row['findings_count']}, outcomes {', '.join(f'{name}={count}' for name, count in sorted(row['outcomes'].items()))}"
         for row in rollup["scenario_outcomes"][:12]
     ]
+    persona_lines = [
+        f"{row['persona']}: runs {row['runs']}, ready {row['ready_runs']}, evidence {row['present_evidence_count']}/{row['required_evidence_count']}, proof {row['proof_minimum_evidence_count']}/{row['minimum_evidence_count']}, findings {row['findings_count']}"
+        for row in rollup.get("persona_outcomes", [])[:12]
+    ]
     quality_gate_lines = [
         f"{row['scenario']}: satisfied {row['satisfied_runs']}/{row['runs']}, proof evidence {row['proof_minimum_evidence_count']}/{row['minimum_evidence_count']}, blocked {row['blocked_runs']}"
         for row in rollup.get("quality_gates", [])[:12]
@@ -4186,6 +4278,13 @@ def render_rollup_deck(rollup: dict) -> dict:
                 "title": "Strengths, weaknesses, issues, fixes",
                 "body": findings_body,
                 "narration": "Finding counts are aggregated from the per-run findings files.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Persona outcomes",
+                "title": "Cross-persona signals",
+                "body": "\n".join(persona_lines) if persona_lines else "No persona outcomes found in matched runs.",
+                "narration": "Persona outcome rollups show whether different natural-use lenses are producing different evidence, findings, and proof coverage.",
             },
             {
                 "type": "narrative",

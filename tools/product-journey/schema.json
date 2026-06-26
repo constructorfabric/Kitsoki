@@ -59,7 +59,7 @@
     "scenario_task_required": ["scenario", "label", "target", "persona", "primary_story", "required_mcp", "evidence", "success_criteria", "task_prompt", "evidence_dir"]
   },
   "matrix_rollup": {
-    "required": ["matrix_id", "summary", "runs", "scenario_outcomes", "quality_gates", "missing_proof_evidence", "artifacts"],
+    "required": ["matrix_id", "summary", "runs", "persona_outcomes", "scenario_outcomes", "quality_gates", "missing_proof_evidence", "artifacts"],
     "artifacts": ["rollup.json", "rollup.md", "rollup.slidey.json"]
   },
   "stage_statuses": ["planned", "ready", "captured", "cached_validated", "validated", "blocked", "error"],

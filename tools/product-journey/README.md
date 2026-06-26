@@ -103,7 +103,10 @@ project, persona, and seed match matrix assignments. Use the assignment
 `emit_run_command` in `matrix.json` or `matrix.md` when you want auto-discovery
 to pick up the run without extra flags. The rollup includes per-scenario
 outcome totals so repeated onboarding, bugfix, PRD/design, implementation, and
-product-bug gaps are visible across runs. It also aggregates scenario
+product-bug gaps are visible across runs. It also includes per-persona outcome
+rows so cross-run review can compare whether core maintainer, dependency
+debugger, docs-minded contributor, and IDE-first lenses produce different
+evidence and findings. It also aggregates scenario
 `quality_gate` coverage so the matrix deck shows which journeys have enough
 proof-source minimum evidence to count as completed, plus a missing-proof
 evidence backlog that names the evidence kinds still needing live visual MCP or
