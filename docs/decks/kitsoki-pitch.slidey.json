@@ -45,11 +45,11 @@
     },
     {
       "type": "narrative",
-      "eyebrow": "The category",
-      "body": "Software work is a complex adaptive system.",
+      "eyebrow": "The prologue",
+      "body": "Processes are a complex adaptive system.",
       "lede": "People, agents, tools, artifacts, failures, and feedback loops keep perturbing each other.",
       "hold": 180,
-      "narration": "Software work is a complex adaptive system: people, agents, tools, artifacts, failures, and feedback loops."
+      "narration": "The Software Development Lifecycle is a complex adaptive system: people, agents, tools, artifacts, failures, and feedback loops."
     },
     {
       "type": "book",
@@ -66,15 +66,15 @@
           "takeaway": "Open systems exchange matter, energy, and information with an environment."
         }
       ],
-      "caption": "Bertalanffy's point is structural: behavior lives in the organization of the whole, not isolated parts. That is the right abstraction for workflow.",
+      "caption": "Systems are structural: behavior lives in the organization of the whole and how the parts interact, the whole is more than the sum of the parts.",
       "hold": 240,
       "narration": "General System Theory frames systems as open, organized, and environment-coupled."
     },
     {
       "type": "narrative",
       "eyebrow": "Kitsoki takeaway",
-      "body": "Workflows are open systems.",
-      "lede": "Boundary, state, tools, and feedback belong in one coupled loop.",
+      "body": "Human processes are open systems.",
+      "lede": "The effectiveness of processes is in the structure, and the management of the relationship with the open environment.",
       "hold": 180,
       "narration": "Kitsoki makes the boundary explicit: state in, artifacts out, feedback always attached."
     },
@@ -93,7 +93,7 @@
           "takeaway": "Persistent systems evolve structures that make flow easier."
         }
       ],
-      "caption": "The constructal law says durable systems change shape to improve access to the currents moving through them. Kitsoki should do the same.",
+      "caption": "The constructal law says durable systems change shape to improve access to the currents moving through them.",
       "hold": 210,
       "narration": "Constructal law adds the second root: systems endure by improving flow architecture."
     },
@@ -101,7 +101,7 @@
       "type": "narrative",
       "eyebrow": "Kitsoki takeaway",
       "body": "Flow beats chat.",
-      "lede": "Route attention, evidence, decisions, and review through one explicit path, then remove repeated friction.",
+      "lede": "Structured stories provide the channels that accelerate flow and can be reshaped over time.",
       "hold": 180,
       "narration": "Kitsoki makes flow visible so repeated friction can be removed instead of hidden."
     },
@@ -134,7 +134,7 @@
     },
     {
       "type": "diagram-svg",
-      "title": "Flow, boundary, cognition",
+      "title": "Three roots, one runtime",
       "panels": [
         {
           "label": "",
@@ -143,59 +143,78 @@
             {
               "id": "boundary",
               "label": "Boundary",
-              "sub": "workflow state",
+              "sub": "Bertalanffy",
+              "lines": [
+                "open system",
+                "state in / artifacts out"
+              ],
               "x": 100,
-              "y": 40,
+              "y": 30,
               "w": 600,
-              "h": 130,
+              "h": 140,
               "style": "primary"
             },
             {
               "id": "flow",
               "label": "Flow",
-              "sub": "attention and evidence",
+              "sub": "Bejan",
+              "lines": [
+                "attention, evidence, decisions",
+                "move through the loop"
+              ],
               "x": 100,
-              "y": 220,
+              "y": 205,
               "w": 600,
-              "h": 130
+              "h": 140
             },
             {
               "id": "cognition",
               "label": "Cognition",
-              "sub": "agent artifact loop",
+              "sub": "Maturana + Varela",
+              "lines": [
+                "agent + artifact + world",
+                "coupled over time"
+              ],
               "x": 100,
-              "y": 400,
+              "y": 380,
               "w": 600,
-              "h": 130
+              "h": 140
             },
             {
               "id": "kitsoki",
               "label": "Kitsoki",
-              "sub": "adaptive workflow",
+              "sub": "the runtime",
+              "lines": [
+                "workflow engine",
+                "makes the loop executable"
+              ],
               "x": 100,
-              "y": 580,
+              "y": 555,
               "w": 600,
-              "h": 130,
+              "h": 140,
               "style": "secondary"
             }
           ],
           "edges": [
             {
               "from": "boundary",
-              "to": "flow"
+              "to": "flow",
+              "label": "organizes"
             },
             {
               "from": "flow",
-              "to": "cognition"
+              "to": "cognition",
+              "label": "routes"
             },
             {
               "from": "cognition",
-              "to": "kitsoki"
+              "to": "kitsoki",
+              "label": "enacts"
             },
             {
               "from": "kitsoki",
               "to": "boundary",
-              "label": "updates",
+              "label": "revises",
               "style": "back",
               "bus": 800,
               "lift": -15,
@@ -204,9 +223,9 @@
           ]
         }
       ],
-      "caption": "Kitsoki makes the adaptive loop explicit: typed boundaries, directed flow, durable memory, and testable feedback.",
+      "caption": "Kitsoki makes the three roots executable: open systems define the boundary, constructal law improves flow, and cognition preserves the loop.",
       "hold": 210,
-      "narration": "Kitsoki makes the adaptive loop explicit: typed boundaries, directed flow, durable memory, and testable feedback."
+      "narration": "Kitsoki makes the three roots executable: open systems define the boundary, constructal law improves flow, and cognition preserves the loop."
     },
     {
       "type": "narrative",
