@@ -296,6 +296,36 @@ class DeterministicDeckTest(unittest.TestCase):
         intents = [scene for scene in deck["scenes"] if scene.get("title") == "Intent distributions"][0]
         self.assertEqual(intents["rows"][0]["cells"][:3], ["git-ops", "git commit", "4"])
 
+    def test_story_qa_deck_summarizes_project_lanes(self):
+        _, deck = run_tool("story-qa", {
+            "project": "all",
+            "catalog": "tools/product-journey/catalog.json",
+            "markdown_path": ".artifacts/story-qa/run/report.md",
+            "targets": [
+                {
+                    "id": "gears-rust",
+                    "stack": "rust",
+                    "run_mode": "external-benchmark",
+                    "status": "validated",
+                    "notes": "sister project",
+                    "verify": {"status": "validated", "detail": "cached", "output": []},
+                },
+                {
+                    "id": "postgresql",
+                    "stack": "c",
+                    "run_mode": "local-oracle",
+                    "status": "validated",
+                    "notes": "oracle",
+                    "verify": {"status": "blocked", "detail": "missing checkout", "output": []},
+                },
+            ],
+        })
+        self.assertEqual(deck["meta"]["title"], "Story QA Report")
+        lanes = [scene for scene in deck["scenes"] if scene.get("title") == "Project lanes"][0]
+        self.assertEqual(lanes["rows"][0]["cells"][:3], ["gears-rust", "rust", "external-benchmark"])
+        status = [scene for scene in deck["scenes"] if scene.get("title") == "QA status"][0]
+        self.assertEqual(status["items"][2]["status"], "blocked")
+
 
 if __name__ == "__main__":
     unittest.main()

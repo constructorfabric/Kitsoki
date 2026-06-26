@@ -17,7 +17,12 @@ python3 tools/story-qa/run.py --project gears-rust
 python3 tools/story-qa/run.py --project all
 ```
 
-The runner writes a transient report to `.context/story-qa-run.md`.
+The runner writes a transient pointer report to `.context/story-qa-run.md` and a
+reviewable artifact bundle under `.artifacts/story-qa/<run>/`:
+
+- `report.md`
+- `summary.json`
+- `deck.slidey.json`
 
 ## Local product site
 

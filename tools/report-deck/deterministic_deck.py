@@ -655,6 +655,61 @@ def cost_report(data: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, st
     return title_deck("Per-story Cost Report", f"{len(stories)} story(s), {total_ops} sampled raw operation(s)", scenes), refs
 
 
+def story_qa(data: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    targets = require_list(data, "targets", "story-qa")
+    requested = data.get("project", "all")
+    rows = []
+    counts = {"validated": 0, "available": 0, "planned": 0, "blocked": 0, "error": 0}
+    for target in targets:
+        verify = target.get("verify") or {}
+        verify_status = str(verify.get("status") or target.get("status") or "planned").lower()
+        if verify_status in counts:
+            counts[verify_status] += 1
+        elif verify_status.startswith("validated"):
+            counts["validated"] += 1
+        elif verify_status.startswith("blocked"):
+            counts["blocked"] += 1
+        else:
+            counts["planned"] += 1
+        rows.append({"cells": [
+            target.get("id", ""),
+            target.get("stack", ""),
+            target.get("run_mode", ""),
+            target.get("status", ""),
+            verify.get("status", ""),
+            verify.get("detail", ""),
+        ]})
+    evidence_items = [
+        {"label": "Markdown report", "status": "done" if data.get("markdown_path") else "pending", "detail": "Human-readable story QA report.", "ref": data.get("markdown_path", "")},
+        {"label": "Summary JSON", "status": "done", "detail": "Structured input used to build this deterministic deck.", "ref": str(data.get("_source", ""))},
+        {"label": "Product journey catalog", "status": "done", "detail": "Target and perspective registry.", "ref": data.get("catalog", "")},
+    ]
+    scenes = [
+        objectives_scene("QA status", [
+            {"label": "Requested scope", "status": "done", "detail": str(requested)},
+            {"label": "Validated lanes", "status": "done" if counts["validated"] else "pending", "detail": f"{counts['validated']} target(s)."},
+            {"label": "Blocked lanes", "status": "blocked" if counts["blocked"] else "done", "detail": f"{counts['blocked']} target(s)."},
+            {"label": "Errors", "status": "failed" if counts["error"] else "done", "detail": f"{counts['error']} target(s)."},
+        ]),
+        {
+            "type": "table",
+            "variant": "data",
+            "title": "Project lanes",
+            "columns": ["Target", "Stack", "Mode", "Catalog", "Verify", "Detail"],
+            "rows": rows or [{"cells": ["-", "-", "-", "-", "-", "-"]}],
+            "hold": 3000,
+        },
+        evidence_scene("Review artifacts", evidence_items),
+    ]
+    refs = [
+        {"label": "Markdown report", "path": data.get("markdown_path", ""), "status": "done" if data.get("markdown_path") else "pending"},
+        {"label": "Summary JSON", "path": str(data.get("_source", "")), "status": "done"},
+        {"label": "Product journey catalog", "path": data.get("catalog", ""), "status": "done"},
+    ]
+    subtitle = f"{len(targets)} target(s), {counts['validated']} validated, {counts['blocked']} blocked"
+    return title_deck("Story QA Report", subtitle, scenes), refs
+
+
 def workflow(data: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
     title = data.get("title") or data.get("name") or "Workflow Report"
     objectives = data.get("objectives") or []
@@ -987,6 +1042,7 @@ BUILDERS = {
     "model-harness": model_harness,
     "onboarding": onboarding,
     "product-journey": product_journey,
+    "story-qa": story_qa,
     "workflow": workflow,
 }
 

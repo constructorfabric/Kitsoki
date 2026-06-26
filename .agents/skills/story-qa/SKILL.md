@@ -50,6 +50,8 @@ other project lanes remain placeholders until a local corpus is available.
 
 ## Evidence
 
-The skill writes a transient report under `.context/` and prints the exact status
-per project. That keeps the exploratory pass reviewable without pretending the
-planned lanes are already validated.
+The skill writes a transient pointer report under `.context/` and a durable
+review bundle under `.artifacts/story-qa/<run>/` containing `report.md`,
+`summary.json`, and `deck.slidey.json`. The deck is generated deterministically
+from the structured target/verification rows, so planned or blocked lanes stay
+visible without pretending they are validated.
