@@ -99,9 +99,11 @@ artifacts do not satisfy proof-source quality gates.
 Use `--matrix-personas all` when every persona should run against every target.
 The matrix is a no-LLM assignment plan; before a live scored sweep, refresh each
 target's current open bug count and repository popularity metadata with
-`--refresh-github-targets` and feed the proof into `--emit-matrix`. Validation
-warns when proof is missing and fails when proof shows a target below the
-100-open-bug floor or configured stargazer floor.
+`--refresh-github-targets`, feed the proof into `--emit-matrix`, then run
+`--validate-matrix --strict-target-proof`. Draft matrix validation warns when
+proof is missing; strict validation fails when proof is missing or shows a
+target below the 100-open-bug floor, configured stargazer floor, or open-source
+license contract.
 Launch an assignment run with the target `id` and persona from that matrix:
 
 ```sh
@@ -133,7 +135,8 @@ Validate generated matrices before using them as the shared sweep contract:
 
 ```sh
 python3 tools/product-journey/run.py --validate-matrix \
-  --matrix-dir .artifacts/product-journey/matrices/<matrix-id>
+  --matrix-dir .artifacts/product-journey/matrices/<matrix-id> \
+  --strict-target-proof
 ```
 
 The bundle's `agent-brief.md`, `scenarios.json`, and `evidence.json` are the

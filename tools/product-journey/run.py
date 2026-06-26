@@ -4132,6 +4132,12 @@ def validate_matrix_bundle(matrix_dir: Path, strict_target_proof: bool = False) 
     for expected in ["Selection", "Target proof", "Personas", "Scenarios", "Task prompts", "Execution"]:
         if deck and expected not in matrix_scene_eyebrows:
             add_validation_issue(issues, "error", "matrix-deck-scene", "deck.slidey.json is missing a required matrix review scene", expected)
+    proof_scenes = [
+        scene for scene in deck.get("scenes", [])
+        if isinstance(scene, dict) and scene.get("eyebrow") == "Target proof"
+    ] if deck else []
+    if deck and proof_scenes and "Strict sweep ready:" not in proof_scenes[0].get("body", ""):
+        add_validation_issue(issues, "error", "matrix-deck-target-proof-readiness", "Target proof deck scene does not show strict sweep readiness")
 
     rollup_files = schema["matrix_rollup"]["artifacts"]
     present_rollup_files = [name for name in rollup_files if (matrix_dir / name).exists()]
@@ -4287,6 +4293,8 @@ def validate_matrix_bundle(matrix_dir: Path, strict_target_proof: bool = False) 
 
 def render_matrix_summary(matrix: dict) -> str:
     proof = matrix.get("target_proof", {})
+    proof_summary = proof.get("summary", {})
+    strict_ready = bool(proof) and proof_summary.get("failed", 0) == 0 and proof_summary.get("errors", 0) == 0
     lines = [
         "# Product journey GitHub matrix",
         "",
@@ -4305,6 +4313,7 @@ def render_matrix_summary(matrix: dict) -> str:
         f"- Refresh: {matrix['selection_contract']['refresh_note']}",
         f"- Target proof: {proof.get('proof_id', 'not refreshed')}",
         f"- Target proof checked: {proof.get('created_at', '')}",
+        f"- Strict sweep ready: {'yes' if strict_ready else 'no - run refresh-github-targets and validate with --strict-target-proof'}",
         "",
         "## Targets",
         "",
@@ -4370,6 +4379,7 @@ def render_matrix_deck(matrix: dict) -> dict:
     ]
     proof = matrix.get("target_proof", {})
     proof_summary = proof.get("summary", {})
+    strict_ready = bool(proof) and proof_summary.get("failed", 0) == 0 and proof_summary.get("errors", 0) == 0
     proof_lines = [
         f"Proof: {proof.get('proof_id', 'not refreshed')}",
         f"Checked: {proof.get('created_at', '')}",
@@ -4378,6 +4388,7 @@ def render_matrix_deck(matrix: dict) -> dict:
         f"Errors: {proof_summary.get('errors', 0)}",
         f"Bug floor: {proof_summary.get('open_bug_floor', matrix['selection_contract'].get('open_bug_floor', 'n/a'))}",
         f"Star floor: {proof_summary.get('stargazer_floor', matrix['selection_contract'].get('stargazer_floor', 'n/a'))}",
+        f"Strict sweep ready: {'yes' if strict_ready else 'no - validate with --strict-target-proof before live scoring'}",
     ]
     assignment_lines = [
         f"{assignment['target']['label']} / {assignment['persona']['label']}"
