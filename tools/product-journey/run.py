@@ -2690,6 +2690,7 @@ def seed_demo_evidence(run_dir: Path, publish_deck: Optional[Path]) -> dict:
 
 
 def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
+    schema = read_json(SCHEMA)
     update_derived_artifacts(run_dir, publish_deck=None)
     run_json = read_json(run_dir / "run.json")
     evidence = read_json(run_dir / "evidence.json")
@@ -2765,10 +2766,16 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
     scenario_outcomes = build_scenario_outcomes(run_json, evidence, findings)
     driver_plan = build_driver_plan(run_json, evidence, execution_plan)
     quality_gates = summarize_quality_gates(evidence, scenario_outcomes, driver_plan)
+    driver_action_contract = summarize_driver_action_contract(driver_plan, schema)
     unsatisfied_quality_gates = [
         f"{gate['scenario']} ({gate['present_minimum_evidence_count']}/{gate['minimum_evidence_count']})"
         for gate in quality_gates
         if not gate.get("satisfied") and not gate.get("blocked")
+    ]
+    invalid_driver_actions = [
+        f"{row['scenario']}: actions={','.join(row['action_ids']) or 'none'}"
+        for row in driver_action_contract["rows"]
+        if not row["valid"]
     ]
 
     checks = [
@@ -2801,6 +2808,12 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
             "status": "pass" if not missing_driver_evidence_refs else "fail",
             "summary": "Captured driver journal evidence refs are attached as structured evidence.",
             "detail": ", ".join(missing_driver_evidence_refs),
+        },
+        {
+            "id": "driver-action-contract",
+            "status": "pass" if not invalid_driver_actions else "fail",
+            "summary": "Every scenario keeps the reusable driver action sequence and journal recording path.",
+            "detail": "; ".join(invalid_driver_actions),
         },
         {
             "id": "captured-evidence",
@@ -3602,7 +3615,7 @@ def validate_run_bundle(run_dir: Path) -> dict:
 
     validate_slidey_deck_shape(deck, media_manifest, issues)
     scene_eyebrows = deck_scene_eyebrows(deck)
-    for expected in ["Persona lens", "Driver plan", "Video playback", "Scenario outcomes", "Proof gates"]:
+    for expected in ["Persona lens", "Driver plan", "Driver contract", "Video playback", "Scenario outcomes", "Proof gates"]:
         if deck and expected not in scene_eyebrows:
             add_validation_issue(issues, "error", "deck-scene", "deck.slidey.json is missing a required review scene", expected)
     playback_count = media_manifest.get("summary", {}).get("playback_items", 0) if media_manifest else 0
@@ -4215,6 +4228,54 @@ def summarize_quality_gates(evidence: dict, outcomes: dict, driver_plan: dict) -
             "done_when": gate.get("done_when", ""),
         })
     return rows
+
+
+def summarize_driver_action_contract(driver_plan: dict, schema: dict) -> dict:
+    required_ids = schema["driver_plan"].get("driver_action_ids", [])
+    required_keys = schema["driver_plan"].get("driver_action_required", [])
+    rows = []
+    invalid_rows = []
+    for index, scenario in enumerate(driver_plan.get("scenarios", []), start=1):
+        scenario_id = scenario.get("scenario", f"driver-scenario-{index}")
+        actions = scenario.get("driver_actions", [])
+        action_ids = [action.get("id", "") for action in actions]
+        missing_keys = []
+        journal_recordable = False
+        for action in actions:
+            action_id = action.get("id", "action")
+            for key in required_keys:
+                if key not in action:
+                    missing_keys.append(f"{action_id}/{key}")
+            if action_id == "journal_attempt":
+                journal_tools = " ".join(action.get("tools", []))
+                journal_recordable = (
+                    "story.driver_event" in journal_tools
+                    or "--record-driver-event" in journal_tools
+                ) and bool(action.get("record", "").strip())
+        order_matches = action_ids == required_ids
+        valid = order_matches and not missing_keys and journal_recordable
+        row = {
+            "scenario": scenario_id,
+            "action_count": len(actions),
+            "expected_action_count": len(required_ids),
+            "action_ids": action_ids,
+            "expected_action_ids": required_ids,
+            "order_matches": order_matches,
+            "missing_keys": missing_keys,
+            "journal_recordable": journal_recordable,
+            "valid": valid,
+        }
+        rows.append(row)
+        if not valid:
+            invalid_rows.append(row)
+    return {
+        "scenario_count": len(rows),
+        "valid_scenarios": len(rows) - len(invalid_rows),
+        "invalid_scenarios": len(invalid_rows),
+        "required_action_ids": required_ids,
+        "required_action_keys": required_keys,
+        "rows": rows,
+    }
 
 
 def aggregate_scenario_outcomes(runs: list[dict]) -> list[dict]:
@@ -5074,11 +5135,19 @@ def render_deck(
         ]
     execution_body = "\n".join(execution_lines) if execution_lines else "Execution plan not generated yet."
     driver_lines = []
+    driver_contract_lines = []
     proof_gate_lines = []
     if driver_plan is not None:
         driver_lines = [
             f"{scenario['scenario']}: {scenario['harness']} / {scenario['visual_surface']}"
             for scenario in driver_plan.get("scenarios", [])
+        ]
+        driver_contract = summarize_driver_action_contract(driver_plan, read_json(SCHEMA))
+        driver_contract_lines = [
+            f"{row['scenario']}: {'ok' if row['valid'] else 'needs attention'} - "
+            f"{row['action_count']}/{row['expected_action_count']} actions, "
+            f"journal {'yes' if row['journal_recordable'] else 'no'}"
+            for row in driver_contract.get("rows", [])
         ]
         evidence_items_for_gates = evidence.get("items", []) if evidence is not None else []
         captured_evidence = {
@@ -5115,6 +5184,7 @@ def render_deck(
                 f"outcome {outcome.get('outcome', 'not_started')} - {gate.get('done_when', '')}"
             )
     driver_body = "\n".join(driver_lines) if driver_lines else "Driver plan not generated yet."
+    driver_contract_body = "\n".join(driver_contract_lines) if driver_contract_lines else "Driver action contract not generated yet."
     proof_gates_body = "\n".join(proof_gate_lines) if proof_gate_lines else "Quality gates not generated yet."
     playback_scenes = playback_deck_scenes(media_manifest)
     scenes = [
@@ -5158,6 +5228,13 @@ def render_deck(
             "title": "Harness and visual surfaces",
             "body": driver_body,
             "narration": "The driver plan gives the product-journey QA agent machine-readable harness, visual surface, and evidence instructions.",
+        },
+        {
+            "type": "narrative",
+            "eyebrow": "Driver contract",
+            "title": "Reusable action loop",
+            "body": driver_contract_body,
+            "narration": "The driver contract shows whether each scenario still follows the standard open, observe, act, capture, and journal loop.",
         },
         {
             "type": "narrative",

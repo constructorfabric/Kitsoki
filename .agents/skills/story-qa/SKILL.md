@@ -169,7 +169,9 @@ execution plan, agent brief, driver plan, and handoff retain the final
 scenario keeps the ordered
 `open_surface -> read_current_frame -> act_as_persona -> capture_required_evidence -> journal_attempt`
 driver sequence with the required action fields and an auditable journal
-recording path.
+recording path. `--review-run` exposes the same check in `review.json` and the
+generated deck's `Driver contract` scene, so reviewers can see whether the
+reusable driver loop drifted before opening the raw plan.
 Captured screenshots, videos, traces, and documents are indexed in
 `media-manifest.json`; the generated Slidey deck uses that manifest for
 playback-ready media entries and standalone `Playback evidence` scenes for

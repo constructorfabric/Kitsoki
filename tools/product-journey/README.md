@@ -168,6 +168,9 @@ driver action contract: every scenario must keep the ordered
 `open_surface -> read_current_frame -> act_as_persona -> capture_required_evidence -> journal_attempt`
 sequence with the required fields and an auditable `journal_attempt` recording
 path. A valid bundle should be directly usable by the driver.
+`--review-run` includes the same contract as a hard review check and writes a
+`Driver contract` Slidey scene, so human review can spot drift in the reusable
+open/observe/act/capture/journal loop without opening the raw JSON.
 
 Attach evidence captured by a live or cassette-backed MCP run:
 
