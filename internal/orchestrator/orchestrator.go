@@ -2668,10 +2668,7 @@ func (o *Orchestrator) StateDefaultIntent(state app.StatePath) string {
 	if di == "" {
 		return ""
 	}
-	if mapped, ok := st.IntentAliases[di]; ok && strings.TrimSpace(mapped) != "" {
-		return mapped
-	}
-	return di
+	return resolveIntentAlias(o.def, state, st, di)
 }
 
 // CurrentView reconstructs the current state/world for a session and returns a
