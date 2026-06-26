@@ -64,10 +64,20 @@ func TestResolveScene_ViewedSceneWins(t *testing.T) {
 	if scene == nil {
 		t.Fatalf("scene is nil; want the resolved scene 9 object")
 	}
-	// Scene 9 is the "Cat Wrangling" image slide — the exact slide the user wants
-	// to edit. Proves the reviser would receive THIS slide's content.
-	if title, _ := scene["title"].(string); title != "Cat Wrangling" {
-		t.Fatalf("scene 9 title = %q, want \"Cat Wrangling\"", title)
+	// Scene 9 is the "Cat Wrangling" narrative slide — the exact slide the user
+	// wants to edit. Proves the reviser would receive THIS slide's content. The
+	// deck carries that label on the scene's `eyebrow` (narrative scenes have no
+	// `title`), which is exactly why resolve_scene's label falls back through
+	// title → eyebrow → lede.
+	label, _ := scene["title"].(string)
+	if label == "" {
+		label, _ = scene["eyebrow"].(string)
+	}
+	if label != "Cat Wrangling" {
+		t.Fatalf("scene 9 label = %q, want \"Cat Wrangling\"", label)
+	}
+	if sl, _ := out["scene_label"].(string); !strings.Contains(sl, "Cat Wrangling") {
+		t.Fatalf("scene_label = %q, want it to contain \"Cat Wrangling\"", sl)
 	}
 	sceneJSON, _ := out["scene_json"].(string)
 	if sceneJSON == "" || !strings.Contains(sceneJSON, `"Cat Wrangling"`) {

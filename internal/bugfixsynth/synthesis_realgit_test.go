@@ -22,10 +22,11 @@
 //     synthesis-critical call sites (commit_repro_test, regression_gate_exec)
 //     and returns canned envelopes for the ship-it tail's host.run sites (not
 //     reached here — the test stops at testing, where the regression is proven);
-//   - a custom host.agent.task that, on the reproducer/implementer call, spawns a
-//     background goroutine which writes the reproducer's RED test file to the
-//     worktree AFTER a short real-time delay (the sandbox sync-back lag) and at a
-//     path that does NOT match the reported repro_test_paths (the mis-path).
+//   - a custom host.agent.task that, on the reproducer call, writes the
+//     reproducer's RED test file to the worktree SYNCHRONOUSLY before returning
+//     (modelling the real host.agent.task's durability barrier,
+//     waitForAgentWorktreeWrites) and at a path that does NOT match the reported
+//     repro_test_paths (the mis-path the path-agnostic `git add -A` must capture).
 //
 // The test then proves the synthesis is robust: a discrete `test(repro): …`
 // commit lands BEFORE the fix commit (so HEAD~1 is the test-without-fix
@@ -48,7 +49,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
@@ -159,29 +159,38 @@ func TestBugfixSynthesis_RealGit_DiscretePreFixCommit_HEADminus1_RED(t *testing.
 		}
 	})
 
-	// ── FAILURE MODE (1): the maker sandbox flushes the reproducer's file back
-	// to the worktree at an UNBOUNDED later moment. We model it by writing the
-	// (mis-pathed) RED test from a background goroutine on a real-time DELAY, on
-	// the FIRST host.agent.task call (the reproducer/implementer). The synthesis
-	// commit step then has to POLL for it. ────────────────────────────────────
-	const syncBackLag = 1500 * time.Millisecond
+	// ── FAILURE MODE: the reproducer REPORTS one path but WRITES another (the
+	// mis-path). The real host.agent.task carries a durability barrier
+	// (waitForAgentWorktreeWrites) that guarantees the maker backend's writes are
+	// on disk before the call returns, so the story dropped its old sync-back poll
+	// loop. The stub below stands in for host.agent.task and so must honour that
+	// same guarantee: it writes the (mis-pathed) RED test SYNCHRONOUSLY on the
+	// FIRST call (the reproducer). The synthesis commit then relies on a
+	// path-agnostic `git add -A` to capture it whatever path it landed at. ──────
 	writerStarted := make(chan struct{}, 1)
 	startWriterOnce := false
 	reg.Replace("host.agent.task", func(c context.Context, args map[string]any) (host.Result, error) {
 		if !startWriterOnce {
-			// FIRST host.agent.task = the reproducer (reproducing room). Spawn the
-			// delayed mis-pathed RED-test writer.
+			// FIRST host.agent.task = the reproducer (reproducing room). Write the
+			// (mis-pathed) RED test SYNCHRONOUSLY before the call returns — this is
+			// exactly the contract the real host.agent.task now guarantees via its
+			// durability barrier (internal/host/agent_task.go waitForAgentWorktreeWrites,
+			// which blocks the call until the maker backend's writes are durable on
+			// disk before reproducing/on_enter returns). The story dropped its old
+			// poll loop in favour of that barrier, so the test stub — standing in for
+			// the real host.agent.task — must honour the same guarantee or the
+			// downstream commit_repro_test step (which no longer polls) would `git
+			// add -A` an empty index. The SURVIVING failure mode the test still
+			// exercises is the MIS-PATH: the reproducer reports reportedPath but
+			// writes realPath, so only a path-agnostic `git add -A` captures it.
 			startWriterOnce = true
-			go func() {
-				time.Sleep(syncBackLag)
-				abs := filepath.Join(workdir, realPath)
-				_ = os.MkdirAll(filepath.Dir(abs), 0o755)
-				_ = os.WriteFile(abs, []byte("// RED reproducer (lands late, mis-pathed)\n"), 0o644)
-				select {
-				case writerStarted <- struct{}{}:
-				default:
-				}
-			}()
+			abs := filepath.Join(workdir, realPath)
+			_ = os.MkdirAll(filepath.Dir(abs), 0o755)
+			_ = os.WriteFile(abs, []byte("// RED reproducer (mis-pathed)\n"), 0o644)
+			select {
+			case writerStarted <- struct{}{}:
+			default:
+			}
 		} else {
 			// LATER host.agent.task = the implementer (implementing room) applying
 			// the fix. It must actually mutate the worktree so iface.vcs.commit of
@@ -290,17 +299,17 @@ func TestBugfixSynthesis_RealGit_DiscretePreFixCommit_HEADminus1_RED(t *testing.
 	step("accept", "proposing")
 
 	// implementing/on_enter: latch the synthesised gate, then commit the
-	// reproducer's RED test as the DISCRETE pre-fix tip (poll → git add -A).
+	// reproducer's RED test as the DISCRETE pre-fix tip (git add -A).
 	step("accept", "implementing")
 	w := orch.CurrentWorld(sid)
 	require.True(t, w.Get("repro_committed") == true, "synthesised gate must latch (repro_committed)")
 	require.Equal(t, gateCmd, w.Get("gate_command"), "gate_command synthesised from the artifact's repro_command")
 
-	// The background writer must have fired (the file landed AFTER the lag, and
-	// the synthesis commit's poll waited for it).
+	// The reproducer's RED-test writer must have fired (the durability barrier the
+	// stub models guarantees it landed before reproducing/on_enter returned).
 	select {
 	case <-writerStarted:
-	case <-time.After(10 * time.Second):
+	default:
 		t.Fatal("reproducer file writer never ran")
 	}
 
