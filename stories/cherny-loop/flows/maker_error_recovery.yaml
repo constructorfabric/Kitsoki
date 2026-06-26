@@ -12,6 +12,14 @@ host_handlers:
     by_call:
       gate-0: { data: { ok: false, exit_code: 1, stdout: "FAIL: initial red" } }
       gate-2: { data: { ok: true,  exit_code: 0, stdout: "ok  kitsoki/internal/ratelimit  0.012s" } }
+      cherny-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/cherny-loop/test/report.md"
+            summary_path: ".artifacts/cherny-loop/test/summary.json"
+            deck_path: ".artifacts/cherny-loop/test/deck.slidey.json"
   host.agent.task:
     by_call:
       maker-1:
@@ -50,6 +58,7 @@ turns:
       terminal_reason: "achieved"
       iteration:       2
       maker_summary:   "Retry with the missing guard condition"
+      deck_path:       ".artifacts/cherny-loop/test/deck.slidey.json"
     expect_host_calls:
       - handler: host.agent.task
         args: { call: maker-2 }

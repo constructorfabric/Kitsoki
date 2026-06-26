@@ -15,6 +15,14 @@ host_handlers:
     by_call:
       gate-0: { data: { ok: false, exit_code: 1, stdout: "--- FAIL: TestAllow_Burst" } }
       gate-1: { data: { ok: true,  exit_code: 0, stdout: "ok  kitsoki/internal/ratelimit  0.012s" } }
+      cherny-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/cherny-loop/test/report.md"
+            summary_path: ".artifacts/cherny-loop/test/summary.json"
+            deck_path: ".artifacts/cherny-loop/test/deck.slidey.json"
   host.agent.task:
     by_call:
       maker-1: { data: { submitted: { summary: "Initialize the bucket with tokens=burst" } } }
@@ -36,6 +44,7 @@ turns:
       goal_achieved:   true
       terminal_reason: "achieved"
       worktree_path:   ".worktrees/cherny-loop"
+      deck_path:       ".artifacts/cherny-loop/test/deck.slidey.json"
     expect_host_calls:
       # Worktree minted exactly once, on the configured branch. The iface invoke
       # is rewritten at load to <binding>.<op>, so the recorded namespace is

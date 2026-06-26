@@ -8,7 +8,20 @@ initial_state: configuring
 host_handlers:
   # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
   host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
-  host.run:           { data: { ok: false, exit_code: 1, stdout: "FAIL: still red" } }
+  host.run:
+    by_call:
+      gate-0: { data: { ok: false, exit_code: 1, stdout: "FAIL: still red" } }
+      gate-1: { data: { ok: false, exit_code: 1, stdout: "FAIL: still red" } }
+      gate-2: { data: { ok: false, exit_code: 1, stdout: "FAIL: still red" } }
+      gate-3: { data: { ok: false, exit_code: 1, stdout: "FAIL: still red" } }
+      cherny-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/cherny-loop/test/report.md"
+            summary_path: ".artifacts/cherny-loop/test/summary.json"
+            deck_path: ".artifacts/cherny-loop/test/deck.slidey.json"
   host.agent.task:   { data: { submitted: { summary: "another change" } } }
   host.artifacts_dir: { data: { ok: true } }
 
@@ -26,9 +39,10 @@ turns:
     expect_world:
       terminal_reason: "iteration_budget"
       iteration:       3
+      deck_path:       ".artifacts/cherny-loop/test/deck.slidey.json"
     expect_host_calls:
       - handler: host.run
-        times: 4
+        times: 5
       - handler: host.agent.task
         times: 3
       - handler: host.artifacts_dir

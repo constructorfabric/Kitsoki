@@ -1,0 +1,92 @@
+states:
+  report:
+    description: "Final Cherny-loop report deck."
+    relevant_world: [goal_text, terminal_reason, iteration, report_path, summary_path, deck_path]
+    on_enter:
+      - invoke: host.run
+        id: cherny-report
+        with:
+          cmd: python3
+          args:
+            - "stories/cherny-loop/scripts/cherny_report.py"
+            - "--goal-text"
+            - "{{ world.goal_text }}"
+            - "--goal-artifact"
+            - "{{ world.goal_artifact }}"
+            - "--gate-mode"
+            - "{{ world.gate_mode }}"
+            - "--gate-command"
+            - "{{ world.gate_command }}"
+            - "--gate-ok"
+            - "{{ world.gate_ok }}"
+            - "--gate-stdout"
+            - "{{ world.gate_stdout }}"
+            - "--gate-reason"
+            - "{{ world.gate_reason }}"
+            - "--last-gate-failure"
+            - "{{ world.last_gate_failure }}"
+            - "--baseline-checked"
+            - "{{ world.baseline_checked }}"
+            - "--iteration"
+            - "{{ world.iteration }}"
+            - "--iteration-budget"
+            - "{{ world.iteration_budget }}"
+            - "--session-cost-usd"
+            - "{{ world.session_cost_usd }}"
+            - "--cost-budget-usd"
+            - "{{ world.cost_budget_usd }}"
+            - "--maker-summary"
+            - "{{ world.maker_summary }}"
+            - "--terminal-reason"
+            - "{{ world.terminal_reason }}"
+            - "--worktree-path"
+            - "{{ world.worktree_path }}"
+            - "--workspace-branch"
+            - "{{ world.workspace_branch }}"
+            - "--commit-sha"
+            - "{{ world.commit_sha }}"
+        bind:
+          report_path:  "stdout_json.report_path"
+          summary_path: "stdout_json.summary_path"
+          deck_path:    "stdout_json.deck_path"
+        on_error: report
+      - when: "world.terminal_reason == 'achieved' || world.terminal_reason == 'already_met'"
+        emit_intent: exit_achieved
+      - when: "world.terminal_reason == 'iteration_budget' || world.terminal_reason == 'cost_budget'"
+        emit_intent: exit_exhausted
+      - when: "world.terminal_reason == 'aborted'"
+        emit_intent: exit_abandoned
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - banner:
+              text:     "REPORT"
+              subtitle: "Deterministic Slidey report deck"
+              color:    "#10B981"
+          - kv:
+              pairs:
+                Goal: "{{ world.goal_text }}"
+                Status: "{{ world.terminal_reason }}"
+                Iterations: "{{ world.iteration }} of {{ world.iteration_budget }}"
+                Report: '{{ world.report_path|default:"(pending)" }}'
+                Deck: '{{ world.deck_path|default:"(pending)" }}'
+        choices:
+          - list:
+              items:
+                - label: "look"
+    on:
+      exit_achieved:
+        - target: "@exit:achieved"
+          effects:
+            - set: { terminal_reason: "{{ world.terminal_reason }}" }
+      exit_exhausted:
+        - target: "@exit:exhausted"
+          effects:
+            - set: { terminal_reason: "{{ world.terminal_reason }}" }
+      exit_abandoned:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+      look:
+        - target: .

@@ -143,7 +143,7 @@ states:
             - say: "The gate already passes. `reconfigure` to strengthen it, or `accept`."
       accept:
         - when: "(world.gate_mode != 'hybrid' && world.gate_ok == true) || (world.gate_mode == 'hybrid' && world.script_gate_ok == true && world.agent_gate_ok == true)"
-          target: "@exit:achieved"
+          target: report
           effects:
             - set: { goal_achieved: true, terminal_reason: "already_met" }
         - default: true
@@ -153,7 +153,7 @@ states:
       reconfigure:
         - target: configuring
       abort:
-        - target: "@exit:abandoned"
+        - target: report
           effects:
             - set: { terminal_reason: "aborted" }
       look:
@@ -199,7 +199,7 @@ states:
       reconfigure:
         - target: configuring
       abort:
-        - target: "@exit:abandoned"
+        - target: report
           effects:
             - set: { terminal_reason: "aborted" }
       look:

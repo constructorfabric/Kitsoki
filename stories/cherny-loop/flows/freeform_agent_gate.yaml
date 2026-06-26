@@ -37,6 +37,16 @@ host_handlers:
         data:
           submitted:
             summary: "Added skeptical-lead framing and evidence requirements"
+  host.run:
+    by_call:
+      cherny-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/cherny-loop/test/report.md"
+            summary_path: ".artifacts/cherny-loop/test/summary.json"
+            deck_path: ".artifacts/cherny-loop/test/deck.slidey.json"
   host.artifacts_dir: { data: { ok: true } }
   # iface.vcs.commit → host.git: commit the maker's work before @exit:achieved.
   host.git: { data: { ok: true, sha: "abc1234" } }
@@ -70,6 +80,7 @@ turns:
       gate_plan_reason: "This is a documentation-quality goal, so a focused adversarial review is the right proof."
       iteration:       1
       maker_summary:   "Added skeptical-lead framing and evidence requirements"
+      deck_path:       ".artifacts/cherny-loop/test/deck.slidey.json"
     expect_host_calls:
       - handler: host.agent.decide
         args: { call: gate-0 }

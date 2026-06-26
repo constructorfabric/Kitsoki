@@ -78,11 +78,11 @@ states:
           effects:
             - set: { goal_achieved: true, terminal_reason: "achieved" }
       mark_cost_exhausted:
-        - target: "@exit:exhausted"
+        - target: report
           effects:
             - set: { terminal_reason: "cost_budget" }
       mark_iter_exhausted:
-        - target: "@exit:exhausted"
+        - target: report
           effects:
             - set: { terminal_reason: "iteration_budget" }
       # Re-enter iterating (a real state change) so the next maker step runs —
@@ -93,7 +93,7 @@ states:
             - set:
                 last_gate_failure: "{{ slots.feedback }}"
       abort:
-        - target: "@exit:abandoned"
+        - target: report
           effects:
             - set: { terminal_reason: "aborted" }
       look:
@@ -135,14 +135,14 @@ states:
                 - label: "look"
     on:
       mark_committed:
-        - target: "@exit:achieved"
+        - target: report
           effects:
             # Re-pin terminal_reason on the direct exit arc so imports that
             # inspect exit-arc effects (not on_enter binds) see it set.
             # Mirrors the import-safe re-pin discipline in ship-it/integrate.yaml.
             - set: { terminal_reason: "achieved" }
       abort:
-        - target: "@exit:abandoned"
+        - target: report
           effects:
             - set: { terminal_reason: "aborted" }
       look:

@@ -15,6 +15,14 @@ host_handlers:
       gate-0: { data: { ok: false, exit_code: 1, stdout: "FAIL: TestAllow_Burst — burst rejected at #4" } }
       gate-1: { data: { ok: false, exit_code: 1, stdout: "FAIL: TestAllow_Refill — 0 tokens refilled" } }
       gate-2: { data: { ok: true,  exit_code: 0, stdout: "ok  kitsoki/internal/ratelimit  0.011s" } }
+      cherny-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/cherny-loop/test/report.md"
+            summary_path: ".artifacts/cherny-loop/test/summary.json"
+            deck_path: ".artifacts/cherny-loop/test/deck.slidey.json"
   host.agent.task:
     by_call:
       maker-1: { data: { submitted: { summary: "Size the bucket to the burst" } } }
@@ -37,6 +45,7 @@ turns:
       terminal_reason:   "achieved"
       iteration:         2
       maker_summary:     "Refill tokens by elapsed×rate"
+      deck_path:         ".artifacts/cherny-loop/test/deck.slidey.json"
       last_gate_failure: "FAIL: TestAllow_Refill — 0 tokens refilled"
     expect_host_calls:
       - handler: host.run

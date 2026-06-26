@@ -10,7 +10,17 @@ initial_state: configuring
 host_handlers:
   # Worktree minted at launch (iface.workspace.create -> host.git_worktree).
   host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
-  host.run: { data: { ok: true, exit_code: 0, stdout: "ok  kitsoki  0.4s" } }
+  host.run:
+    by_call:
+      gate-0: { data: { ok: true, exit_code: 0, stdout: "ok  kitsoki  0.4s" } }
+      cherny-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/cherny-loop/test/report.md"
+            summary_path: ".artifacts/cherny-loop/test/summary.json"
+            deck_path: ".artifacts/cherny-loop/test/deck.slidey.json"
 
 turns:
   - intent:
@@ -34,6 +44,7 @@ turns:
     expect_world:
       goal_achieved:   true
       terminal_reason: "already_met"
+      deck_path:       ".artifacts/cherny-loop/test/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true

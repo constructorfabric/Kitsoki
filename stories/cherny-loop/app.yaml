@@ -157,6 +157,9 @@ world:
 
   # Commit result (bound after the maker's work is committed on @exit:achieved).
   commit_sha:        { type: string, default: "" }
+  report_path:       { type: string, default: "" }
+  summary_path:      { type: string, default: "" }
+  deck_path:         { type: string, default: "" }
 
   # Gate result (bound from the checker each turn). gate_ok is intentionally a
   # tri-state: "" = not yet evaluated this turn, true/false once the checker
@@ -242,6 +245,18 @@ intents:
   mark_iter_exhausted:
     description: "(internal) iteration ceiling hit."
     examples: ["mark_iter_exhausted"]
+    priority: 1
+  exit_achieved:
+    description: "(internal) report written → achieved exit."
+    examples: []
+    priority: 1
+  exit_exhausted:
+    description: "(internal) report written → exhausted exit."
+    examples: []
+    priority: 1
+  exit_abandoned:
+    description: "(internal) report written → abandoned exit."
+    examples: []
     priority: 1
   loop_again:
     description: "(internal) gate failed, budget remains — loop with feedback."

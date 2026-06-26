@@ -57,6 +57,14 @@ host_handlers:
             --- FAIL: TestAllow_Concurrent (1.20s)
                 limiter_test.go:68: timeout: Allow held the lock across time.Sleep (deadlock)
             FAIL	kitsoki/internal/ratelimit	1.231s
+      cherny-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/cherny-loop/test/report.md"
+            summary_path: ".artifacts/cherny-loop/test/summary.json"
+            deck_path: ".artifacts/cherny-loop/test/deck.slidey.json"
   host.agent.task:
     by_call:
       maker-1: { data: { submitted: { summary: "Initialize the bucket with tokens=burst so a cold limiter allows a full burst" } } }
@@ -88,6 +96,7 @@ turns:
       terminal_reason: "iteration_budget"
       iteration:       3
       maker_summary:   "Guard the token read-modify-write with a mutex to kill the double-spend race"
+      deck_path:       ".artifacts/cherny-loop/test/deck.slidey.json"
     expect_host_calls:
       - handler: host.run
         args: { call: gate-0 }

@@ -11,8 +11,16 @@ initial_state: configuring
 host_handlers:
   host.git_worktree:
     error: "workspace.create: branch \"cherny-loop/run\" exists but reattach failed: already checked out"
-  # Stubbed but must NOT fire — the loop blocks before any gate/maker spend.
-  host.run: { data: { ok: false, exit_code: 1, stdout: "(should not run)" } }
+  host.run:
+    by_call:
+      cherny-report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            report_path: ".artifacts/cherny-loop/test/report.md"
+            summary_path: ".artifacts/cherny-loop/test/summary.json"
+            deck_path: ".artifacts/cherny-loop/test/deck.slidey.json"
   host.agent.task: { data: { submitted: { summary: "(should not run)" } } }
   host.artifacts_dir: { data: { ok: true } }
 
@@ -33,6 +41,7 @@ turns:
     expect_state: __exit__abandoned
     expect_world:
       terminal_reason: "aborted"
+      deck_path: ".artifacts/cherny-loop/test/deck.slidey.json"
 
 expect_terminal: true
 expect_no_errors: true
