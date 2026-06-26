@@ -75,7 +75,31 @@ describe("MetaButton — Report bug", () => {
     expect(wrapper.get('[data-testid="bug-toast-path"]').text()).toContain(
       "issues/bugs/2026-06-12T130405Z-foyer-button-does-nothing.md"
     );
-    expect(wrapper.find('[data-testid="bug-toast-open"]').exists()).toBe(true);
+    const open = wrapper.get('[data-testid="bug-toast-open"]');
+    expect(open.exists()).toBe(true);
+    expect(open.attributes("title")).toBe("Open the issue path");
+  });
+
+  it("opens the filed bug path when the filed toast open action is clicked", async () => {
+    const store = useBugReportStore();
+    vi.spyOn(store, "trigger").mockResolvedValue();
+    store.filed = {
+      id: "2026-06-12T130405Z-foyer-button-does-nothing",
+      path: "issues/bugs/2026-06-12T130405Z-foyer-button-does-nothing.md",
+    };
+    store.status = "filed";
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => null);
+
+    const wrapper = mount(MetaButton);
+    await wrapper.get('[data-testid="bug-toast-open"]').trigger("click");
+    await flushPromises();
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "issues/bugs/2026-06-12T130405Z-foyer-button-does-nothing.md",
+      "_blank"
+    );
   });
 
   it("surfaces an error state in the toast when filing fails", async () => {

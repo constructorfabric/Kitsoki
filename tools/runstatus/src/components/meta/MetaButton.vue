@@ -110,7 +110,7 @@
         <button
           class="meta-launcher__toast-link"
           data-testid="bug-toast-open"
-          title="Copy the issue path"
+          title="Open the issue path"
           @click="openFiled"
         >
           [open]
@@ -261,15 +261,10 @@ const showToast = computed(
     bugReport.status === "error"
 );
 
-/** Best-effort "open": copy the filed issue path to the clipboard. */
-async function openFiled(): Promise<void> {
+function openFiled(): void {
   const path = bugReport.filed?.path;
   if (!path) return;
-  try {
-    await navigator.clipboard?.writeText(path);
-  } catch {
-    /* clipboard unavailable — non-fatal */
-  }
+  window.open(path, "_blank");
 }
 
 async function refreshModes(): Promise<void> {
