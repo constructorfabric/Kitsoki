@@ -114,6 +114,8 @@ A run is acceptable only when:
 - The deck references rrweb source clips for the GitHub cases.
 - The rrweb clips are tour-driven evidence, not five-second passive holds on
   disconnected pages.
+- Each narrated rrweb beat has a precise visual annotation target. Broad fallback
+  targets such as the whole page or main content region do not satisfy the gate.
 - `scripts/verify-gh-agent-live-poc.mjs` passes without requiring an HTML viewer
   or MP4 export.
 

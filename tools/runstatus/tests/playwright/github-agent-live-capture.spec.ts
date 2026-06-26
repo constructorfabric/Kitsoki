@@ -42,6 +42,7 @@ type CapturePlan = {
 const DEFAULT_PLAN = path.join(repoRoot, ".artifacts", "github-agent-live", "capture-plan.json");
 const SPEC_REF = "tools/runstatus/tests/playwright/github-agent-live-capture.spec.ts";
 const CHAPTER_TAG = "slidey.chapter";
+const ANNOTATION_TAG = "kitsoki.annotation";
 
 function loadPlan(): CapturePlan {
   const planPath = process.env.KITSOKI_GH_AGENT_LIVE_CAPTURE_PLAN || DEFAULT_PLAN;
@@ -141,38 +142,6 @@ async function tryStyleAPIProof(page: Page): Promise<void> {
   }
 }
 
-async function markTextTarget(page: Page, name: string, needle: string): Promise<string | null> {
-  const marked = await page
-    .evaluate(
-      ({ attr, value }) => {
-        const exact = value.trim().toLowerCase();
-        const candidates = Array.from(
-          document.querySelectorAll<HTMLElement>(
-            "a, button, h1, h2, h3, pre, code, p, li, td, th, span, div.timeline-comment, div.js-comment-body, div.markdown-body",
-          ),
-        );
-        const scored = candidates
-          .map((el) => {
-            const text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
-            if (!text) return { el, score: 0 };
-            const lower = text.toLowerCase();
-            if (lower === exact) return { el, score: 1000 - text.length };
-            if (lower.includes(exact)) return { el, score: 500 - Math.min(text.length, 480) };
-            return { el, score: 0 };
-          })
-          .filter((entry) => entry.score > 0)
-          .sort((a, b) => b.score - a.score);
-        const target = scored[0]?.el;
-        if (!target) return false;
-        target.setAttribute(attr, name);
-        return true;
-      },
-      { attr: "data-kitsoki-demo-target", value: needle },
-    )
-    .catch(() => false);
-  return marked ? `[data-kitsoki-demo-target="${name}"]` : null;
-}
-
 async function markFirstSelector(page: Page, name: string, selectors: string[]): Promise<string | null> {
   const marked = await page
     .evaluate(
@@ -194,15 +163,136 @@ async function markFirstSelector(page: Page, name: string, selectors: string[]):
 
 async function targetExists(page: Page, selector: string | null): Promise<boolean> {
   if (!selector) return false;
-  return await page.locator(selector).first().count().then((n) => n > 0).catch(() => false);
+  return await page.evaluate((sel) => Boolean(document.querySelector(sel)), selector).catch(() => false);
 }
 
-async function showTarget(page: Page, spotlight: Spotlight, selector: string | null): Promise<void> {
+async function showTextTarget(page: Page, name: string, needle: string): Promise<{ selector: string | null; fallback: boolean }> {
+  return await page
+    .evaluate(
+      ({ attr, targetName, value }) => {
+        const position = (el: HTMLElement, fallback: boolean): { selector: string; fallback: boolean } => {
+          el.setAttribute(attr, targetName);
+          el.scrollIntoView({ block: "center", inline: "nearest" });
+          const back = document.getElementById("demo-spot-back");
+          const box = document.getElementById("demo-spot");
+          if (back && box) {
+            const r = el.getBoundingClientRect();
+            const pad = fallback ? 0 : 8;
+            box.style.top = `${Math.max(0, r.top - pad)}px`;
+            box.style.left = `${Math.max(0, r.left - pad)}px`;
+            box.style.width = `${Math.max(1, r.width + pad * 2)}px`;
+            box.style.height = `${Math.max(1, r.height + pad * 2)}px`;
+            back.classList.add("show");
+            box.classList.add("show");
+          }
+          return { selector: `[${attr}="${targetName}"]`, fallback };
+        };
+
+        const exact = value.trim().toLowerCase();
+        const candidates = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "a, button, h1, h2, h3, dt, dd, pre, code, p, li, td, th, span, div.timeline-comment, div.js-comment-body, div.markdown-body, div.comment-body",
+          ),
+        );
+        const scored = candidates
+          .map((el) => {
+            const text = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+            const href = el instanceof HTMLAnchorElement ? el.href : "";
+            const lower = `${text} ${href}`.toLowerCase();
+            if (!lower.trim()) return { el, score: 0 };
+            if (lower === exact) return { el, score: 1000 - text.length };
+            if (lower.includes(exact)) return { el, score: 500 - Math.min(text.length || href.length, 480) };
+            return { el, score: 0 };
+          })
+          .filter((entry) => entry.score > 0)
+          .sort((a, b) => b.score - a.score);
+        const target = scored[0]?.el;
+        if (target) return position(target, false);
+
+        const fallback = document.querySelector<HTMLElement>("main, article, body");
+        if (fallback) return position(fallback, true);
+        return { selector: null, fallback: true };
+      },
+      { attr: "data-kitsoki-demo-target", targetName: name, value: needle },
+    )
+    .catch(() => ({ selector: null, fallback: true }));
+}
+
+async function showTarget(page: Page, spotlight: Spotlight, selector: string | null): Promise<{ selector: string | null; fallback: boolean }> {
   if (await targetExists(page, selector)) {
     await spotlight(selector);
-  } else {
-    await spotlight(null);
+    return { selector, fallback: false };
   }
+  for (const fallback of ["main", "article", "body"]) {
+    if (await targetExists(page, fallback)) {
+      await spotlight(fallback);
+      return { selector: fallback, fallback: true };
+    }
+  }
+  await spotlight(null);
+  return { selector: null, fallback: true };
+}
+
+async function annotatedBeat(
+  page: Page,
+  caption: Beat,
+  spotlight: Spotlight,
+  selector: string | null,
+  title: string,
+  sub: string,
+  holdMs: number,
+): Promise<void> {
+  const shown = await showTarget(page, spotlight, selector);
+  await page.evaluate(
+    ({ tag, title: eventTitle, requestedSelector, shownSelector, fallback }) => {
+      const rrweb = (window as unknown as { rrweb?: { record?: { addCustomEvent?: (tag: string, payload: unknown) => void } } }).rrweb;
+      rrweb?.record?.addCustomEvent?.(tag, {
+        title: eventTitle,
+        requestedSelector,
+        shownSelector,
+        fallback,
+      });
+    },
+    {
+      tag: ANNOTATION_TAG,
+      title,
+      requestedSelector: selector,
+      shownSelector: shown.selector,
+      fallback: shown.fallback,
+    },
+  );
+  await caption(title, sub, holdMs);
+}
+
+async function annotatedTextBeat(
+  page: Page,
+  caption: Beat,
+  needle: string,
+  targetName: string,
+  title: string,
+  sub: string,
+  holdMs: number,
+): Promise<void> {
+  const shown = await showTextTarget(page, targetName, needle);
+  await page.evaluate(
+    ({ tag, title: eventTitle, needle: eventNeedle, shownSelector, fallback }) => {
+      const rrweb = (window as unknown as { rrweb?: { record?: { addCustomEvent?: (tag: string, payload: unknown) => void } } }).rrweb;
+      rrweb?.record?.addCustomEvent?.(tag, {
+        title: eventTitle,
+        needle: eventNeedle,
+        shownSelector,
+        fallback,
+      });
+    },
+    {
+      tag: ANNOTATION_TAG,
+      title,
+      needle,
+      shownSelector: shown.selector,
+      fallback: shown.fallback,
+    },
+  );
+  await caption(title, sub, holdMs);
 }
 
 async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
@@ -213,65 +303,126 @@ async function tourGithubThread(page: Page, step: CaptureStep, caption: Beat, sp
     ".gh-header-title",
     "h1",
   ]);
-  await caption(step.title, "Start where the requester worked: the live GitHub thread.", 2300);
-  await showTarget(page, spotlight, title);
+  await annotatedBeat(page, caption, spotlight, title, step.title, "Start where the requester worked: the live GitHub thread.", 2300);
   await dwell(page, 1500);
 
-  const mention = await markTextTarget(page, "request-mention", "@kitsoki");
-  await caption("Requester mentions @kitsoki", "This is the user action that should create exactly one kitsoki job.", 2600);
-  await showTarget(page, spotlight, mention);
+  await annotatedTextBeat(
+    page,
+    caption,
+    "@kitsoki",
+    "request-mention",
+    "Requester mentions @kitsoki",
+    "This is the user action that should create exactly one kitsoki job.",
+    2600,
+  );
   await dwell(page, 1500);
 
-  const appComment = await markTextTarget(page, "app-comment", "kitsoki-test.slothattax.me/run/");
-  await caption("kitsoki answers on the thread", "The App-authenticated response is the handoff from GitHub into the hosted run.", 2800);
-  await showTarget(page, spotlight, appComment);
+  await annotatedTextBeat(
+    page,
+    caption,
+    "kitsoki-test.slothattax.me/run/",
+    "app-comment",
+    "kitsoki answers on the thread",
+    "The App-authenticated response is the handoff from GitHub into the hosted run.",
+    2800,
+  );
   await dwell(page, 1800);
 
-  const runLink = await markTextTarget(page, "run-link", "https://kitsoki-test.slothattax.me/run/");
-  await caption("User follows the run link", "The visible link is the proof surface the requester can open.", 2300);
-  await showTarget(page, spotlight, runLink);
+  await annotatedTextBeat(
+    page,
+    caption,
+    "https://kitsoki-test.slothattax.me/run/",
+    "run-link",
+    "User follows the run link",
+    "The visible link is the proof surface the requester can open.",
+    2300,
+  );
   await dwell(page, 1500);
 }
 
 async function tourAppComment(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
-  const comment = await markTextTarget(page, "app-comment-anchor", "kitsoki-test.slothattax.me/run/");
-  await caption(step.title, "The URL opens directly on the App response, not just the original mention.", 2600);
-  await showTarget(page, spotlight, comment);
+  await annotatedTextBeat(
+    page,
+    caption,
+    "kitsoki-test.slothattax.me/run/",
+    "app-comment-anchor",
+    step.title,
+    "The URL opens directly on the App response, not just the original mention.",
+    2600,
+  );
   await dwell(page, 1700);
 
-  const link = await markTextTarget(page, "app-run-link", "https://kitsoki-test.slothattax.me/run/");
-  await caption("Run link is the user's next click", "This is the durable bridge from the GitHub thread to kitsoki's hosted evidence.", 2600);
-  await showTarget(page, spotlight, link);
+  await annotatedTextBeat(
+    page,
+    caption,
+    "https://kitsoki-test.slothattax.me/run/",
+    "app-run-link",
+    "Run link is the user's next click",
+    "This is the durable bridge from the GitHub thread to kitsoki's hosted evidence.",
+    2600,
+  );
   await dwell(page, 1700);
 }
 
 async function tourRunPage(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
   const heading = await markFirstSelector(page, "run-heading", ["h1", "main h2", "body"]);
-  await caption(step.title, "The hosted page proves the VM-backed job exists and is readable.", 2600);
-  await showTarget(page, spotlight, heading);
+  await annotatedBeat(
+    page,
+    caption,
+    spotlight,
+    heading,
+    step.title,
+    "The hosted page proves the VM-backed job exists and is readable.",
+    2600,
+  );
   await dwell(page, 1600);
 
-  const state = await markTextTarget(page, "run-state", "state");
-  await caption("Read the job state", "The page exposes the route, state, source, and run URL a reviewer needs.", 2600);
-  await showTarget(page, spotlight, state);
+  await annotatedTextBeat(
+    page,
+    caption,
+    "state",
+    "run-state",
+    "Read the job state",
+    "The page exposes the route, state, source, and run URL a reviewer needs.",
+    2600,
+  );
   await page.mouse.wheel(0, 360).catch(() => undefined);
   await dwell(page, 1800);
 
-  const source = await markTextTarget(page, "run-source", "github.com/bsacrobatix/Kitsoki");
-  await caption("Trace it back to GitHub", "The hosted view ties the job back to the original issue or PR.", 2300);
-  await showTarget(page, spotlight, source);
+  await annotatedTextBeat(
+    page,
+    caption,
+    "github.com/bsacrobatix/Kitsoki",
+    "run-source",
+    "Trace it back to GitHub",
+    "The hosted view ties the job back to the original issue or PR.",
+    2300,
+  );
   await dwell(page, 1600);
 }
 
 async function tourRunAPI(page: Page, step: CaptureStep, caption: Beat, spotlight: Spotlight): Promise<void> {
   const pre = await markFirstSelector(page, "api-json", ["pre", "body"]);
-  await caption(step.title, "The same proof is machine-readable for verification and automation.", 2600);
-  await showTarget(page, spotlight, pre);
+  await annotatedBeat(
+    page,
+    caption,
+    spotlight,
+    pre,
+    step.title,
+    "The same proof is machine-readable for verification and automation.",
+    2600,
+  );
   await dwell(page, 1600);
 
-  const state = await markTextTarget(page, "api-state", "\"state\"");
-  await caption("Verifier reads the same state", "This prevents the deck from being only a pretty screenshot.", 2600);
-  await showTarget(page, spotlight, state || pre);
+  await annotatedTextBeat(
+    page,
+    caption,
+    "\"state\"",
+    "api-state",
+    "Verifier reads the same state",
+    "This prevents the deck from being only a pretty screenshot.",
+    2600,
+  );
   await page.mouse.wheel(0, 320).catch(() => undefined);
   await dwell(page, 1800);
 }

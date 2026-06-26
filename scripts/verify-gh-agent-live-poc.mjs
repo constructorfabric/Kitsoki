@@ -42,10 +42,10 @@ const CASES = [
 ];
 
 const STEPS = [
-  { id: "github-thread", file: "01-github-thread.rrweb.json" },
-  { id: "app-comment", file: "02-app-comment.rrweb.json" },
-  { id: "run-page", file: "03-run-page.rrweb.json" },
-  { id: "run-api", file: "04-run-api.rrweb.json" },
+  { id: "github-thread", file: "01-github-thread.rrweb.json", minAnnotations: 4 },
+  { id: "app-comment", file: "02-app-comment.rrweb.json", minAnnotations: 2 },
+  { id: "run-page", file: "03-run-page.rrweb.json", minAnnotations: 3 },
+  { id: "run-api", file: "04-run-api.rrweb.json", minAnnotations: 2 },
 ];
 
 const DEFAULT_EVIDENCE_DIR = ".context";
@@ -419,7 +419,7 @@ function rrwebEvents(log) {
   return Array.isArray(log) ? log : Array.isArray(log?.events) ? log.events : [];
 }
 
-function checkRrwebLog(file, stepID, report, label) {
+function checkRrwebLog(file, step, report, label) {
   if (!fs.existsSync(file)) {
     return false;
   }
@@ -434,10 +434,24 @@ function checkRrwebLog(file, stepID, report, label) {
     report.fail(`${label} should contain at least 2 rrweb events, got ${events.length}`);
   }
   const hasChapter = events.some(
-    (event) => event?.type === 5 && event?.data?.tag === "slidey.chapter" && event?.data?.payload?.id === stepID,
+    (event) => event?.type === 5 && event?.data?.tag === "slidey.chapter" && event?.data?.payload?.id === step.id,
   );
   if (!hasChapter) {
-    report.fail(`${label} is missing slidey.chapter marker for ${stepID}`);
+    report.fail(`${label} is missing slidey.chapter marker for ${step.id}`);
+  }
+  const annotations = events.filter((event) => event?.type === 5 && event?.data?.tag === "kitsoki.annotation");
+  if (annotations.length < step.minAnnotations) {
+    report.fail(
+      `${label} has ${annotations.length} visual annotation marker(s), expected at least ${step.minAnnotations}`,
+    );
+  }
+  const missingVisualTarget = annotations.filter((event) => !event?.data?.payload?.shownSelector);
+  if (missingVisualTarget.length > 0) {
+    report.fail(`${label} has annotation marker(s) without a shown visual target`);
+  }
+  const fallbackTargets = annotations.filter((event) => event?.data?.payload?.fallback);
+  if (fallbackTargets.length > 0) {
+    report.fail(`${label} has ${fallbackTargets.length} broad fallback annotation target(s) instead of precise callouts`);
   }
   return true;
 }
@@ -491,7 +505,8 @@ function checkMedia(args, c, report) {
       if (!args.allowMissingMedia) report.fail(`${c.slug}: missing rrweb log ${rrwebPath}`);
       continue;
     }
-    checkRrwebLog(rrwebPath, id, report, `${c.slug} ${id} rrweb`);
+    const step = STEPS.find((candidate) => candidate.id === id) || { id, minAnnotations: 1 };
+    checkRrwebLog(rrwebPath, step, report, `${c.slug} ${id} rrweb`);
   }
 }
 
