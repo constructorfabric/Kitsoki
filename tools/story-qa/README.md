@@ -71,6 +71,8 @@ The generated bundle includes `scenarios.json` and `evidence.json`. Those files
 are the handoff contract for live or cassette-backed MCP runs: each scenario
 names the story surface, required Kitsoki/visual MCP tools, expected evidence,
 and success criteria.
+It also includes `execution-plan.md`, which orders the scenarios, lists concrete
+MCP capture steps, and provides ready-to-fill `--attach-evidence` commands.
 
 After a run captures evidence, attach references back to the bundle with
 `tools/product-journey/run.py --attach-evidence`. The command regenerates the

@@ -291,6 +291,7 @@ def build_run_bundle(
             "findings": "findings.json",
             "evidence": "evidence.json",
             "scenarios": "scenarios.json",
+            "execution_plan": "execution-plan.json",
             "review": "review.json",
             "deck": "deck.slidey.json",
         },
@@ -304,6 +305,7 @@ def build_run_bundle(
             "This project came from the GitHub matrix; refresh open bug counts before a live scored sweep."
         )
     evidence = evidence_plan(run_json)
+    execution_plan = build_execution_plan(run_json, evidence)
     findings = {"run_id": run_id, "items": [], "summary": {"strength": 0, "weakness": 0, "issue": 0, "fix": 0}}
     metrics = {
         "run_id": run_id,
@@ -327,7 +329,7 @@ def build_run_bundle(
     }
     bugs = {"run_id": run_id, "items": []}
     journey = render_journey(run_json)
-    deck = render_deck(run_json, metrics)
+    deck = render_deck(run_json, metrics, evidence=evidence, findings=findings, execution_plan=execution_plan)
 
     write_json(run_dir / "run.json", run_json)
     (run_dir / "journey.md").write_text(journey, encoding="utf-8")
@@ -336,6 +338,8 @@ def build_run_bundle(
     write_json(run_dir / "findings.json", findings)
     write_json(run_dir / "evidence.json", evidence)
     write_json(run_dir / "scenarios.json", {"run_id": run_id, "items": scenario_items})
+    write_json(run_dir / "execution-plan.json", execution_plan)
+    (run_dir / "execution-plan.md").write_text(render_execution_plan(execution_plan), encoding="utf-8")
     write_json(run_dir / "review.json", {
         "run_id": run_id,
         "status": "not_reviewed",
@@ -421,6 +425,151 @@ def build_matrix_bundle(
     (matrix_dir / "matrix.md").write_text(render_matrix_summary(matrix), encoding="utf-8")
     write_json(matrix_dir / "deck.slidey.json", render_matrix_deck(matrix))
     return matrix_dir, matrix
+
+
+def mcp_step(tool: str) -> str:
+    steps = {
+        "visual.open": "Open the local product site or relevant browser surface.",
+        "visual.observe": "Capture the current browser frame or retained screenshot reference.",
+        "visual.act": "Perform the next natural browser action for the persona.",
+        "session.open": "Open or resume the Kitsoki story session for this scenario.",
+        "session.inspect": "Inspect the current Kitsoki session state and trace context.",
+        "render.tui": "Capture the rendered TUI or web frame for the current room.",
+    }
+    return steps.get(tool, f"Use {tool} and capture its output.")
+
+
+def evidence_capture_hint(kind: str) -> str:
+    hints = {
+        "browser_screenshot": "Save a retained visual MCP screenshot or PNG reference.",
+        "page_url": "Record the exact local URL or GitHub page used.",
+        "navigation_trace": "Record the browser action sequence that reached the finding.",
+        "checkpoint_rating": "Rate whether the persona could proceed without private context.",
+        "session_trace": "Save the Kitsoki session trace or trace id.",
+        "rendered_tui_frame": "Save the rendered TUI/web frame for the room under review.",
+        "generated_config_diff": "Save the generated config diff or a no-change note.",
+        "onboarding_smoke_result": "Save the deterministic onboarding smoke result.",
+        "candidate_diff": "Save the candidate patch diff.",
+        "oracle_result": "Save the hidden or targeted oracle result.",
+        "full_suite_result": "Save full-suite output or a classified reason it was skipped.",
+        "key_interaction_video": "Save an MP4/GIF clip or retained video reference for Slidey playback.",
+        "prd_artifact": "Save the PRD artifact generated during the scenario.",
+        "design_artifact": "Save the design artifact generated during the scenario.",
+        "review_notes": "Save reviewer notes, objections, and unresolved questions.",
+        "implementation_diff": "Save the implementation diff.",
+        "targeted_test_result": "Save targeted deterministic test output.",
+        "review_summary": "Save the final implementation review summary.",
+        "bug_report_markdown": "Save the product bug report markdown.",
+        "screenshot_or_tui_png": "Save screenshot or TUI PNG evidence.",
+        "trace_reference": "Save the trace reference for reproduction.",
+        "reproduction_steps": "Save deterministic reproduction steps.",
+    }
+    return hints.get(kind, "Save this evidence artifact and attach it to the run.")
+
+
+def build_execution_plan(run_json: dict, evidence: dict) -> dict:
+    evidence_by_scenario: dict[str, list[dict]] = {}
+    for item in evidence.get("items", []):
+        evidence_by_scenario.setdefault(item["scenario"], []).append(item)
+
+    run_dir_arg = f".artifacts/product-journey/{run_json['run_id']}"
+    steps = []
+    for index, scenario in enumerate(run_json["scenarios"], start=1):
+        evidence_items = evidence_by_scenario.get(scenario["id"], [])
+        attach_commands = [
+            "python3 tools/product-journey/run.py --attach-evidence "
+            f"--run-dir {run_dir_arg} "
+            f"--scenario {scenario['id']} "
+            f"--evidence-kind {item['kind']} "
+            f"--evidence-path <path-or-retained-id> "
+            f"--notes \"{evidence_capture_hint(item['kind'])}\""
+            for item in evidence_items
+        ]
+        steps.append({
+            "order": index,
+            "scenario": scenario["id"],
+            "label": scenario["label"],
+            "stage": scenario["stage"],
+            "persona": run_json["persona"]["id"],
+            "project": run_json["project"]["id"],
+            "task": scenario["task"],
+            "primary_story": scenario["primary_story"],
+            "mcp_steps": [
+                {"tool": tool, "instruction": mcp_step(tool)}
+                for tool in scenario["required_mcp"]
+            ],
+            "evidence": [
+                {
+                    "kind": item["kind"],
+                    "status": item.get("status", "missing"),
+                    "path": item.get("path", ""),
+                    "capture_hint": evidence_capture_hint(item["kind"]),
+                }
+                for item in evidence_items
+            ],
+            "success_criteria": scenario["success_criteria"],
+            "attach_commands": attach_commands,
+        })
+
+    return {
+        "run_id": run_json["run_id"],
+        "project": run_json["project"],
+        "persona": run_json["persona"],
+        "created_at": now_utc(),
+        "summary": {
+            "scenario_count": len(steps),
+            "evidence_count": sum(len(step["evidence"]) for step in steps),
+        },
+        "steps": steps,
+        "finalize_commands": [
+            f"python3 tools/product-journey/run.py --record-finding --run-dir {run_dir_arg} --finding-kind <strength|weakness|issue|fix> --title <title> --summary <summary>",
+            f"python3 tools/product-journey/run.py --review-run --run-dir {run_dir_arg}",
+        ],
+    }
+
+
+def render_execution_plan(plan: dict) -> str:
+    lines = [
+        "# Product journey execution plan",
+        "",
+        f"- Run: `{plan['run_id']}`",
+        f"- Project: `{plan['project']['label']}`",
+        f"- Persona: `{plan['persona']['label']}`",
+        f"- Scenarios: {plan['summary']['scenario_count']}",
+        f"- Evidence slots: {plan['summary']['evidence_count']}",
+        "",
+    ]
+    for step in plan["steps"]:
+        lines.extend([
+            f"## {step['order']}. {step['label']}",
+            "",
+            f"- Scenario: `{step['scenario']}`",
+            f"- Story: `{step['primary_story']}`",
+            f"- Stage: `{step['stage']}`",
+            "",
+            step["task"],
+            "",
+            "### MCP Steps",
+            "",
+        ])
+        for mcp in step["mcp_steps"]:
+            lines.append(f"- `{mcp['tool']}`: {mcp['instruction']}")
+        lines.extend(["", "### Evidence", ""])
+        for evidence in step["evidence"]:
+            status = evidence["status"]
+            path = evidence["path"] or "<path-or-retained-id>"
+            lines.append(f"- `{evidence['kind']}` ({status}): {path} - {evidence['capture_hint']}")
+        lines.extend(["", "### Attach Commands", ""])
+        for command in step["attach_commands"]:
+            lines.append(f"```sh\n{command}\n```")
+        lines.extend(["", "### Success Criteria", ""])
+        for criterion in step["success_criteria"]:
+            lines.append(f"- {criterion}")
+        lines.append("")
+    lines.extend(["## Finalize", ""])
+    for command in plan["finalize_commands"]:
+        lines.append(f"```sh\n{command}\n```")
+    return "\n".join(lines) + "\n"
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -516,8 +665,11 @@ def update_derived_artifacts(run_dir: Path, publish_deck: Optional[Path] = None)
     write_json(run_dir / "review.json", review)
     write_json(run_dir / "metrics.json", metrics)
     write_json(run_dir / "scenarios.json", {"run_id": run_json["run_id"], "items": run_json["scenarios"]})
+    execution_plan = build_execution_plan(run_json, evidence)
+    write_json(run_dir / "execution-plan.json", execution_plan)
+    (run_dir / "execution-plan.md").write_text(render_execution_plan(execution_plan), encoding="utf-8")
     (run_dir / "journey.md").write_text(render_journey(run_json), encoding="utf-8")
-    deck = render_deck(run_json, metrics, evidence, findings, review)
+    deck = render_deck(run_json, metrics, evidence, findings, review, execution_plan)
     write_json(run_dir / "deck.slidey.json", deck)
     if publish_deck is not None:
         publish_deck.parent.mkdir(parents=True, exist_ok=True)
@@ -654,6 +806,7 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
     evidence = read_json(run_dir / "evidence.json")
     findings = read_json(run_dir / "findings.json")
     metrics = read_json(run_dir / "metrics.json")
+    execution_plan = build_execution_plan(run_json, evidence)
 
     required_files = [
         "run.json",
@@ -663,6 +816,8 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
         "findings.json",
         "evidence.json",
         "scenarios.json",
+        "execution-plan.json",
+        "execution-plan.md",
         "review.json",
         "deck.slidey.json",
     ]
@@ -749,7 +904,9 @@ def review_run_bundle(run_dir: Path, publish_deck: Optional[Path]) -> dict:
     metrics["review_passed_checks"] = passed
     metrics["review_total_checks"] = len(checks)
     write_json(run_dir / "metrics.json", metrics)
-    deck = render_deck(run_json, metrics, evidence, findings, review)
+    write_json(run_dir / "execution-plan.json", execution_plan)
+    (run_dir / "execution-plan.md").write_text(render_execution_plan(execution_plan), encoding="utf-8")
+    deck = render_deck(run_json, metrics, evidence, findings, review, execution_plan)
     write_json(run_dir / "deck.slidey.json", deck)
     if publish_deck is not None:
         publish_deck.parent.mkdir(parents=True, exist_ok=True)
@@ -931,6 +1088,7 @@ def render_deck(
     evidence: Optional[dict] = None,
     findings: Optional[dict] = None,
     review: Optional[dict] = None,
+    execution_plan: Optional[dict] = None,
 ) -> dict:
     stage_lines = [f"{stage['id']}: {stage['status']}" for stage in run_json["stages"]]
     scenario_lines = [
@@ -962,6 +1120,13 @@ def render_deck(
         for check in review.get("checks", [])[:8]:
             review_lines.append(f"{check.get('status', 'unknown')}: {check.get('id', 'check')} - {check.get('summary', '')}")
         review_body = "\n".join(review_lines)
+    execution_lines = []
+    if execution_plan is not None:
+        execution_lines = [
+            f"{step['scenario']}: {', '.join(mcp['tool'] for mcp in step['mcp_steps'])}"
+            for step in execution_plan.get("steps", [])
+        ]
+    execution_body = "\n".join(execution_lines) if execution_lines else "Execution plan not generated yet."
     return {
         "meta": {
             "mode": "report",
@@ -989,6 +1154,13 @@ def render_deck(
                 "title": "Repeatable tasks",
                 "body": "\n".join(scenario_lines),
                 "narration": "Each scenario names the story, MCP tools, evidence, and success criteria expected from a real run.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Execution plan",
+                "title": "MCP capture steps",
+                "body": execution_body,
+                "narration": "The execution plan turns each scenario into concrete MCP capture steps and attach commands.",
             },
             {
                 "type": "narrative",

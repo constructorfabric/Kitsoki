@@ -50,9 +50,13 @@ python3 tools/product-journey/run.py --emit-run --project vscode --persona docs-
 
 This writes `.artifacts/product-journey/<run-id>/` with `run.json`,
 `journey.md`, `metrics.json`, `bugs.json`, `findings.json`, `evidence.json`,
-`scenarios.json`, `review.json`, and `deck.slidey.json`. Add `--publish-deck` when the
-generated deck should replace `docs/decks/product-journey-eval.slidey.json` for
-review.
+`scenarios.json`, `execution-plan.json`, `execution-plan.md`, `review.json`,
+and `deck.slidey.json`. Add `--publish-deck` when the generated deck should
+replace `docs/decks/product-journey-eval.slidey.json` for review.
+
+Use `execution-plan.md` as the operator handoff: it lists the scenario order,
+the MCP tools to use, expected evidence slots, and ready-to-fill
+`--attach-evidence` commands.
 
 Attach evidence captured by a live or cassette-backed MCP run:
 
