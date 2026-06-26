@@ -64,6 +64,14 @@ Then launch an assignment run with the target `id` and persona from the matrix:
 python3 tools/product-journey/run.py --emit-run --project vscode --persona docs-minded-contributor --seed demo-01
 ```
 
+After assignment runs are reviewed, produce the matrix rollup deck:
+
+```sh
+python3 tools/product-journey/run.py --rollup-matrix \
+  --matrix-dir .artifacts/product-journey/matrices/<matrix-id> \
+  --rollup-run-dir .artifacts/product-journey/<run-id>
+```
+
 Add `--publish-deck` when the generated deck should replace
 `docs/decks/product-journey-eval.slidey.json`.
 

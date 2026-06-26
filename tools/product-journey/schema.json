@@ -23,6 +23,10 @@
     "artifacts": ["matrix.json", "matrix.md", "deck.slidey.json"],
     "target_count": 10
   },
+  "matrix_rollup": {
+    "required": ["matrix_id", "summary", "runs", "artifacts"],
+    "artifacts": ["rollup.json", "rollup.md", "rollup.slidey.json"]
+  },
   "stage_statuses": ["planned", "ready", "captured", "cached_validated", "validated", "blocked", "error"],
   "scenario": {
     "required": ["id", "label", "stage", "task", "primary_story", "required_mcp", "evidence", "success_criteria"]

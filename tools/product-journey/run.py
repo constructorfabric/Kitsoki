@@ -377,14 +377,21 @@ def build_matrix_bundle(
             assigned_personas = [select_persona(personas, "", f"{seed}:{target['id']}")]
         for persona in assigned_personas:
             assignment_id = f"{target['id']}--{persona['id']}"
+            assignment_seed = f"{seed}-{index + 1:02d}-{persona['id']}"
             assignments.append({
                 "id": assignment_id,
                 "target": target,
                 "persona": persona,
                 "scenarios": scenario_ids,
-                "seed": f"{seed}-{index + 1:02d}-{persona['id']}",
+                "seed": assignment_seed,
                 "status": "planned",
                 "evidence_dir": f"evidence/{assignment_id}",
+                "emit_run_command": (
+                    "python3 tools/product-journey/run.py --emit-run "
+                    f"--project {target['id']} "
+                    f"--persona {persona['id']} "
+                    f"--seed {assignment_seed}"
+                ),
                 "run_hint": (
                     "Create a product-journey run with this target/persona, drive the listed scenarios "
                     "through Kitsoki and visual MCP, attach evidence, record findings, then review the bundle."
@@ -965,7 +972,8 @@ def render_matrix_summary(matrix: dict) -> str:
     for assignment in matrix["assignments"]:
         lines.append(
             f"- `{assignment['id']}`: {assignment['target']['label']} as "
-            f"{assignment['persona']['label']} ({len(assignment['scenarios'])} scenarios)"
+            f"{assignment['persona']['label']} ({len(assignment['scenarios'])} scenarios) - "
+            f"`{assignment['emit_run_command']}`"
         )
     lines.extend([
         "",
@@ -1036,6 +1044,200 @@ def render_matrix_deck(matrix: dict) -> dict:
                 "narration": "The matrix is a planning artifact; each assignment still produces its own evidence-backed bundle.",
             },
         ],
+    }
+
+
+def collect_rollup_runs(matrix: dict, explicit_run_dirs: list[str]) -> list[Path]:
+    if explicit_run_dirs:
+        return [run_dir_from_arg(value) for value in explicit_run_dirs]
+
+    assignment_keys = {
+        (assignment["target"]["id"], assignment["persona"]["id"], assignment["seed"])
+        for assignment in matrix.get("assignments", [])
+    }
+    runs = []
+    if not ARTIFACT_ROOT.exists():
+        return runs
+    for path in sorted(ARTIFACT_ROOT.iterdir()):
+        if not path.is_dir() or path.name == "matrices":
+            continue
+        run_path = path / "run.json"
+        if not run_path.exists():
+            continue
+        try:
+            run_json = read_json(run_path)
+        except json.JSONDecodeError:
+            continue
+        key = (
+            run_json.get("project", {}).get("id", ""),
+            run_json.get("persona", {}).get("id", ""),
+            run_json.get("seed", ""),
+        )
+        if key in assignment_keys:
+            runs.append(path)
+    return runs
+
+
+def summarize_run_for_rollup(run_dir: Path) -> dict:
+    run_json = read_json(run_dir / "run.json")
+    metrics = read_json(run_dir / "metrics.json") if (run_dir / "metrics.json").exists() else {}
+    evidence = read_json(run_dir / "evidence.json") if (run_dir / "evidence.json").exists() else {"items": [], "summary": {}}
+    findings = read_json(run_dir / "findings.json") if (run_dir / "findings.json").exists() else {"items": [], "summary": {}}
+    review = read_json(run_dir / "review.json") if (run_dir / "review.json").exists() else {"status": "not_reviewed", "summary": ""}
+    finding_summary = findings.get("summary", {})
+    return {
+        "run_id": run_json["run_id"],
+        "run_dir": str(run_dir),
+        "project": run_json.get("project", {}),
+        "persona": run_json.get("persona", {}),
+        "seed": run_json.get("seed", ""),
+        "review_status": review.get("status", "not_reviewed"),
+        "review_summary": review.get("summary", ""),
+        "deck_path": str(run_dir / "deck.slidey.json"),
+        "execution_plan_path": str(run_dir / "execution-plan.md"),
+        "present_evidence_count": metrics.get("present_evidence_count", evidence.get("summary", {}).get("present", 0)),
+        "required_evidence_count": metrics.get("required_evidence_count", evidence.get("summary", {}).get("required", 0)),
+        "findings_count": metrics.get("findings_count", len(findings.get("items", []))),
+        "strength_count": finding_summary.get("strength", metrics.get("strength_count", 0)),
+        "weakness_count": finding_summary.get("weakness", metrics.get("weakness_count", 0)),
+        "issue_count": finding_summary.get("issue", metrics.get("issue_count", 0)),
+        "fix_count": finding_summary.get("fix", metrics.get("fix_count", 0)),
+    }
+
+
+def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
+    matrix = read_json(matrix_dir / "matrix.json")
+    run_dirs = collect_rollup_runs(matrix, explicit_run_dirs)
+    runs = [summarize_run_for_rollup(path) for path in run_dirs]
+    assignment_count = matrix.get("assignment_count", 0)
+    reviewed = [run for run in runs if run["review_status"] != "not_reviewed"]
+    ready = [run for run in runs if run["review_status"] == "ready"]
+    totals = {
+        "runs_found": len(runs),
+        "assignments": assignment_count,
+        "reviewed_runs": len(reviewed),
+        "ready_runs": len(ready),
+        "present_evidence_count": sum(run["present_evidence_count"] for run in runs),
+        "required_evidence_count": sum(run["required_evidence_count"] for run in runs),
+        "findings_count": sum(run["findings_count"] for run in runs),
+        "strength_count": sum(run["strength_count"] for run in runs),
+        "weakness_count": sum(run["weakness_count"] for run in runs),
+        "issue_count": sum(run["issue_count"] for run in runs),
+        "fix_count": sum(run["fix_count"] for run in runs),
+    }
+    return {
+        "matrix_id": matrix["matrix_id"],
+        "created_at": now_utc(),
+        "matrix_dir": str(matrix_dir),
+        "matrix_deck_path": str(matrix_dir / "deck.slidey.json"),
+        "summary": totals,
+        "runs": runs,
+        "missing_assignment_count": max(assignment_count - len(runs), 0),
+        "artifacts": {
+            "rollup": "rollup.json",
+            "summary": "rollup.md",
+            "deck": "rollup.slidey.json",
+        },
+    }
+
+
+def render_rollup_summary(rollup: dict) -> str:
+    summary = rollup["summary"]
+    lines = [
+        "# Product journey matrix rollup",
+        "",
+        f"- Matrix: `{rollup['matrix_id']}`",
+        f"- Runs found: {summary['runs_found']} / {summary['assignments']}",
+        f"- Reviewed runs: {summary['reviewed_runs']}",
+        f"- Ready runs: {summary['ready_runs']}",
+        f"- Evidence present: {summary['present_evidence_count']} / {summary['required_evidence_count']}",
+        f"- Findings: {summary['findings_count']} (strengths {summary['strength_count']}, weaknesses {summary['weakness_count']}, issues {summary['issue_count']}, fixes {summary['fix_count']})",
+        "",
+        "## Runs",
+        "",
+    ]
+    for run in rollup["runs"]:
+        lines.extend([
+            f"### {run['project'].get('label', run['project'].get('id', 'unknown'))} / {run['persona'].get('label', run['persona'].get('id', 'unknown'))}",
+            "",
+            f"- Run: `{run['run_id']}`",
+            f"- Review: {run['review_status']} - {run['review_summary']}",
+            f"- Evidence: {run['present_evidence_count']} / {run['required_evidence_count']}",
+            f"- Findings: {run['findings_count']}",
+            f"- Deck: `{run['deck_path']}`",
+            f"- Execution plan: `{run['execution_plan_path']}`",
+            "",
+        ])
+    if not rollup["runs"]:
+        lines.append("- (no run bundles matched this matrix)")
+    return "\n".join(lines) + "\n"
+
+
+def render_rollup_deck(rollup: dict) -> dict:
+    summary = rollup["summary"]
+    run_lines = [
+        f"{run['project'].get('label', run['project'].get('id', 'unknown'))} / {run['persona'].get('label', run['persona'].get('id', 'unknown'))}: {run['review_status']} ({run['present_evidence_count']}/{run['required_evidence_count']} evidence)"
+        for run in rollup["runs"][:16]
+    ]
+    findings_body = (
+        f"Strengths: {summary['strength_count']}\n"
+        f"Weaknesses: {summary['weakness_count']}\n"
+        f"Issues: {summary['issue_count']}\n"
+        f"Fixes: {summary['fix_count']}"
+    )
+    return {
+        "meta": {
+            "mode": "report",
+            "title": "Product Journey Matrix Rollup",
+            "phase": "rollup",
+            "resolution": {"width": 1920, "height": 1080},
+        },
+        "scenes": [
+            {
+                "type": "title",
+                "title": "Product Journey Matrix Rollup",
+                "subtitle": f"{summary['runs_found']} / {summary['assignments']} runs",
+                "narration": "Aggregated product-journey evidence and findings across matrix assignments.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Coverage",
+                "title": "Evidence and readiness",
+                "body": f"Reviewed runs: {summary['reviewed_runs']}\nReady runs: {summary['ready_runs']}\nEvidence present: {summary['present_evidence_count']} / {summary['required_evidence_count']}\nMissing assignments: {rollup['missing_assignment_count']}",
+                "narration": "This rollup shows whether the matrix has enough completed runs to review.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Runs",
+                "title": "Assignment status",
+                "body": "\n".join(run_lines) if run_lines else "No run bundles matched this matrix yet.",
+                "narration": "Each run links back to its own deck and execution plan in the rollup markdown.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Findings",
+                "title": "Strengths, weaknesses, issues, fixes",
+                "body": findings_body,
+                "narration": "Finding counts are aggregated from the per-run findings files.",
+            },
+        ],
+    }
+
+
+def write_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
+    rollup = build_matrix_rollup(matrix_dir, explicit_run_dirs)
+    write_json(matrix_dir / "rollup.json", rollup)
+    (matrix_dir / "rollup.md").write_text(render_rollup_summary(rollup), encoding="utf-8")
+    write_json(matrix_dir / "rollup.slidey.json", render_rollup_deck(rollup))
+    return {
+        "status": "rollup_created",
+        "matrix_id": rollup["matrix_id"],
+        "matrix_dir": str(matrix_dir),
+        "rollup_path": str(matrix_dir / "rollup.json"),
+        "markdown_path": str(matrix_dir / "rollup.md"),
+        "deck_path": str(matrix_dir / "rollup.slidey.json"),
+        **rollup["summary"],
+        "missing_assignment_count": rollup["missing_assignment_count"],
     }
 
 
@@ -1449,6 +1651,9 @@ def main() -> None:
     parser.add_argument("--run-log", action="store_true", help="Force a timestamped run log entry")
     parser.add_argument("--emit-run", action="store_true", help="Write a no-LLM run artifact bundle and Slidey deck")
     parser.add_argument("--emit-matrix", action="store_true", help="Write a no-LLM 10-repo GitHub journey matrix")
+    parser.add_argument("--rollup-matrix", action="store_true", help="Aggregate reviewed run bundles into a matrix rollup deck")
+    parser.add_argument("--matrix-dir", default="", help="Existing .artifacts/product-journey/matrices/<matrix-id> directory")
+    parser.add_argument("--rollup-run-dir", action="append", default=[], help="Run bundle directory to include in --rollup-matrix; repeatable")
     parser.add_argument(
         "--matrix-personas",
         default="primary",
@@ -1502,6 +1707,24 @@ def main() -> None:
     personas = load_personas(PERSONAS)
     scenarios = load_scenarios(SCENARIOS)
     github_targets = load_github_targets(GITHUB_TARGETS)
+
+    if args.rollup_matrix:
+        if not args.matrix_dir:
+            raise SystemExit("--rollup-matrix requires --matrix-dir")
+        matrix_dir = run_dir_from_arg(args.matrix_dir)
+        rollup = write_matrix_rollup(matrix_dir, args.rollup_run_dir)
+        if args.json_output:
+            print(json.dumps(rollup, sort_keys=True))
+            append_log(f"Emitted matrix rollup {rollup['matrix_id']}")
+            return
+        print(f"Product journey matrix rollup: {rollup['matrix_id']}")
+        print(f"Artifacts: {matrix_dir}")
+        print(f"Rollup: {rollup['rollup_path']}")
+        print(f"Deck: {rollup['deck_path']}")
+        print(f"Runs: {rollup['runs_found']} / {rollup['assignments']}")
+        print(f"Evidence: {rollup['present_evidence_count']} / {rollup['required_evidence_count']}")
+        append_log(f"Emitted matrix rollup {rollup['matrix_id']}")
+        return
 
     if args.emit_matrix:
         matrix_dir, matrix = build_matrix_bundle(github_targets, personas, scenarios, args.seed, args.matrix_personas)

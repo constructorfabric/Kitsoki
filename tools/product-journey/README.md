@@ -48,6 +48,21 @@ so a matrix assignment can become a concrete run bundle:
 python3 tools/product-journey/run.py --emit-run --project vscode --persona docs-minded-contributor --seed demo-01
 ```
 
+After one or more assignment runs have captured evidence and been reviewed,
+roll them back up into the matrix:
+
+```sh
+python3 tools/product-journey/run.py --rollup-matrix \
+  --matrix-dir .artifacts/product-journey/matrices/<matrix-id> \
+  --rollup-run-dir .artifacts/product-journey/<run-id>
+```
+
+The rollup writes `rollup.json`, `rollup.md`, and `rollup.slidey.json` into the
+matrix directory. Omit `--rollup-run-dir` to auto-discover run bundles whose
+project, persona, and seed match matrix assignments. Use the assignment
+`emit_run_command` in `matrix.json` or `matrix.md` when you want auto-discovery
+to pick up the run without extra flags.
+
 This writes `.artifacts/product-journey/<run-id>/` with `run.json`,
 `journey.md`, `metrics.json`, `bugs.json`, `findings.json`, `evidence.json`,
 `scenarios.json`, `execution-plan.json`, `execution-plan.md`, `review.json`,
