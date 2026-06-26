@@ -69,6 +69,12 @@ on prompt incantations to enforce structure.
   room-by-room cheap-router promotion with explicit hard-negative tests
   and fallback rather than a global model downgrade.
 
+- **[glm52-quota-dogfood.md](glm52-quota-dogfood.md)** — the provider
+  reliability lever. A live GLM-5.2 run through synthetic.new used the local
+  quota controller to serialize work and learn observed token usage without
+  hitting 429s, then used `agent-bench` to show the remaining failure was
+  task-shape performance: valid submit, but over wall/output/cost budgets.
+
 Future studies (planned, not yet written):
 
 - **PR refinement.** The `pr-refinement` tail: watching CI, resolving
