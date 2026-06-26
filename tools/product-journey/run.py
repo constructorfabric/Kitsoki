@@ -3335,6 +3335,7 @@ def render_dogfood_smoke_summary(report: dict) -> str:
     validation = report["validation"]
     review = report["review"]
     rollup = report["rollup"]
+    corpus = report["corpus_validation"]
     lines = [
         "# Product journey dogfood smoke",
         "",
@@ -3358,6 +3359,7 @@ def render_dogfood_smoke_summary(report: dict) -> str:
         "",
         "## Gates",
         "",
+        f"- Corpus validation: {corpus['status']} ({corpus['errors']} errors, {corpus['warnings']} warnings)",
         f"- Review: {review['review_status']} - {review['summary']}",
         f"- Run validation: {validation['run']['status']} ({validation['run']['errors']} errors, {validation['run']['warnings']} warnings)",
         f"- Matrix validation: {validation['matrix']['status']} ({validation['matrix']['errors']} errors, {validation['matrix']['warnings']} warnings)",
@@ -3376,6 +3378,7 @@ def render_dogfood_smoke_deck(report: dict) -> dict:
     validation = report["validation"]
     review = report["review"]
     rollup = report["rollup"]
+    corpus = report["corpus_validation"]
     artifact_body = "\n".join([
         f"Matrix: {report['matrix']['matrix_dir']}",
         f"Matrix deck: {report['matrix']['deck_path']}",
@@ -3385,6 +3388,7 @@ def render_dogfood_smoke_deck(report: dict) -> dict:
         f"Rollup deck: {rollup['deck_path']}",
     ])
     gate_body = "\n".join([
+        f"Corpus validation: {corpus['status']} ({corpus['errors']} errors, {corpus['warnings']} warnings)",
         f"Review: {review['review_status']}",
         f"Review checks: {review['passed']}/{review['total']} passed, {review['warnings']} warnings, {review['failed']} failures",
         f"Run validation: {validation['run']['status']} ({validation['run']['errors']} errors)",
@@ -3446,6 +3450,7 @@ def build_dogfood_smoke(
     dogfood_dir = DOGFOOD_ROOT / dogfood_id
     dogfood_dir.mkdir(parents=True, exist_ok=False)
 
+    corpus_validation = validate_journey_corpus(personas, scenarios, github_targets)
     matrix_dir, matrix = build_matrix_bundle(github_targets, personas, scenarios, f"{seed}-matrix", "primary")
     assignment = matrix["assignments"][0]
     run_dir, run_json = build_run_bundle(
@@ -3465,6 +3470,8 @@ def build_dogfood_smoke(
     rollup = write_matrix_rollup(matrix_dir, [str(run_dir)])
     matrix_validation = validate_matrix_bundle(matrix_dir)
     status = "passed" if (
+        corpus_validation["status"] == "valid"
+        and
         reviewed["review_status"] == "ready"
         and run_validation["status"] == "valid"
         and matrix_validation["status"] == "valid"
@@ -3475,6 +3482,7 @@ def build_dogfood_smoke(
         "created_at": now_utc(),
         "seed": seed,
         "dogfood_dir": str(dogfood_dir),
+        "corpus_validation": corpus_validation,
         "matrix": {
             "matrix_id": matrix["matrix_id"],
             "matrix_dir": str(matrix_dir),
@@ -4112,6 +4120,9 @@ def main() -> None:
                 "run_dir": report["run"]["run_dir"],
                 "run_deck_path": report["run"]["deck_path"],
                 "rollup_deck_path": report["rollup"]["deck_path"],
+                "corpus_validation_status": report["corpus_validation"]["status"],
+                "corpus_validation_errors": report["corpus_validation"]["errors"],
+                "corpus_validation_warnings": report["corpus_validation"]["warnings"],
                 "review_status": report["review"]["review_status"],
                 "review_summary": report["review"]["summary"],
                 "review_warnings": report["review"]["warnings"],
@@ -4133,6 +4144,7 @@ def main() -> None:
         print(f"Run: {report['run']['run_dir']}")
         print(f"Run deck: {report['run']['deck_path']}")
         print(f"Rollup deck: {report['rollup']['deck_path']}")
+        print(f"Corpus validation: {report['corpus_validation']['status']} ({report['corpus_validation']['warnings']} warnings)")
         print(f"Review: {report['review']['summary']}")
         print(f"Run validation: {report['validation']['run']['status']} ({report['validation']['run']['warnings']} warnings)")
         print(f"Matrix validation: {report['validation']['matrix']['status']} ({report['validation']['matrix']['warnings']} warnings)")

@@ -5,6 +5,18 @@ initial_state: idle
 host_handlers:
   host.run:
     by_call:
+      validate_product_journey_corpus:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: valid
+            personas: 4
+            scenarios: 6
+            targets: 10
+            errors: 0
+            warnings: 0
+            issues: []
       emit_product_journey_run:
         data:
           ok: true
@@ -206,6 +218,17 @@ host_handlers:
             issues: []
 
 turns:
+  - intent: { name: validate_corpus, slots: {} }
+    expect_state: idle
+    expect_world:
+      status: corpus_validated
+      corpus_validation_status: valid
+      corpus_validation_errors: 0
+      corpus_validation_warnings: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: validate_product_journey_corpus }
+
   - intent:
       name: refresh_targets
       slots:
