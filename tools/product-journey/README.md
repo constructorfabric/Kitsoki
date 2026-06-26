@@ -36,6 +36,25 @@ GEARS_RUST_REPO=~/code/gears-rust make gears-bakeoff
 `tools/product-journey/checks/` so the runner can prove the real red@baseline /
 green@fix split from the checked-out local repos.
 
+Generate the deterministic report JSON, companion Slidey deck spec, and Markdown
+review index:
+
+```sh
+python3 tools/product-journey/run.py \
+  --mode report \
+  --generated-at 2026-06-26T00:00:00Z
+```
+
+By default this writes:
+
+- `.artifacts/product-journey-eval/report.json`
+- `.artifacts/product-journey-eval/report.slidey.json`
+- `.artifacts/product-journey-eval/report.md`
+
+Use `--run-checks` only when you want to refresh local oracle evidence while
+building the report. The default report uses the catalog's current validated
+state and does not run expensive checks.
+
 ### Local product site for deterministic A/B testing
 
 For all journey runs, use a local production build of the product site so no remote state is shared:
@@ -57,5 +76,8 @@ onboarding, and bugfix surfaces.
 ## Output discipline
 
 - `.context/product-journey-runlog.md` stores the run log in the worktree root.
-- `docs/decks/product-journey-eval.slidey.json` stores the proof-ready
-  narrative state of progress.
+- `docs/decks/product-journey-eval.slidey.json` stores the hand-refined,
+  proof-ready narrative reference. Report generation links to it and does not
+  overwrite it.
+- `.artifacts/product-journey-eval/report.slidey.json` is the generated
+  companion deck for the latest structured report.

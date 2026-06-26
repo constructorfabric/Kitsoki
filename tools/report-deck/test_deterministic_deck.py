@@ -116,6 +116,24 @@ class DeterministicDeckTest(unittest.TestCase):
         table = [scene for scene in deck["scenes"] if scene.get("title") == "Fan-out items"][0]
         self.assertEqual(table["rows"][1]["cells"][:3], ["b", "failed", "2"])
 
+    def test_product_journey_deck_preserves_reference_deck(self):
+        _, deck = run_tool("product-journey", {
+            "program": "Product journey evaluator",
+            "reference_deck": "docs/decks/product-journey-eval.slidey.json",
+            "catalog": "tools/product-journey/catalog.json",
+            "run_log": ".context/product-journey-runlog.md",
+            "targets": [
+                {"id": "gears-rust", "stack": "rust", "status": "validated", "run_mode": "external-benchmark", "manifest": "manifest.yaml"},
+                {"id": "postgresql", "stack": "c", "status": "validated", "run_mode": "local-oracle", "validation_command": "bash check.sh"},
+            ],
+            "perspectives": [{"id": "postgresql", "owner": "sre", "status": "validated", "description": "docs + issue corpus"}],
+        })
+        evidence = [scene for scene in deck["scenes"] if scene.get("title") == "Review artifacts"][0]
+        refs = {item["label"]: item["ref"] for item in evidence["items"]}
+        self.assertEqual(refs["Reference deck"], "docs/decks/product-journey-eval.slidey.json")
+        target_table = [scene for scene in deck["scenes"] if scene.get("title") == "Target lanes"][0]
+        self.assertEqual(target_table["rows"][0]["cells"][:3], ["gears-rust", "rust", "validated"])
+
 
 if __name__ == "__main__":
     unittest.main()

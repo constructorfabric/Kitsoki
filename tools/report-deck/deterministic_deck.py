@@ -473,6 +473,67 @@ def fanout(data: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
     return title_deck(title, f"{counts['succeeded']} succeeded, {counts['failed']} failed, {counts['retried']} retried", scenes), refs
 
 
+def product_journey(data: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    title = data.get("title") or data.get("program") or "Product Journey Eval"
+    targets = require_list(data, "targets", "product-journey")
+    perspectives = require_list(data, "perspectives", "product-journey")
+    checks = data.get("checks") or {}
+    validated = sum(1 for t in targets if status(checks.get(t.get("id", ""), {}).get("status") or t.get("status")) in {"done", "validated"})
+    rows = []
+    for target in targets:
+        target_id = target.get("id", "")
+        check = checks.get(target_id, {}) if isinstance(checks, dict) else {}
+        rows.append({"cells": [
+            target_id,
+            target.get("stack", ""),
+            check.get("status") or target.get("status", ""),
+            target.get("run_mode", ""),
+            target.get("manifest") or target.get("validation_command") or target.get("run_command") or "",
+        ]})
+    perspective_rows = [
+        {"cells": [p.get("id", ""), p.get("owner", ""), p.get("status", ""), p.get("description", "")]}
+        for p in perspectives
+    ]
+    scenes = [
+        objectives_scene("Objective status", [
+            {"label": "Harness", "status": "done", "detail": "tools/product-journey/run.py emits deterministic structured reports."},
+            {"label": "Project lanes", "status": "done" if validated == len(targets) else "pending", "detail": f"{validated} of {len(targets)} target(s) validated or cached."},
+            {"label": "Hand-refined reference", "status": "done", "detail": data.get("reference_deck", "No reference deck recorded.")},
+            {"label": "Product-site journey", "status": "next", "detail": data.get("next_site_journey", "Run the local product site journey when ready.")},
+        ]),
+        {
+            "type": "table",
+            "variant": "data",
+            "title": "Target lanes",
+            "columns": ["Target", "Stack", "Status", "Mode", "Evidence"],
+            "rows": rows,
+            "hold": 3000,
+        },
+        {
+            "type": "table",
+            "variant": "data",
+            "title": "Perspectives",
+            "columns": ["Perspective", "Owner", "Status", "Description"],
+            "rows": perspective_rows or [{"cells": ["-", "-", "-", "-"]}],
+            "hold": 2600,
+        },
+        evidence_scene("Review artifacts", [
+            {"label": "Reference deck", "status": "done", "detail": "Hand-refined narrative reference; generated reports do not overwrite it.", "ref": data.get("reference_deck", "")},
+            {"label": "Catalog", "status": "done", "detail": "Project and perspective registry.", "ref": data.get("catalog", "")},
+            {"label": "Run log", "status": "implemented", "detail": "Chronological operator log when status/check modes are run.", "ref": data.get("run_log", "")},
+            {"label": "Generated summary", "status": "done", "detail": "Structured input used to build this deck.", "ref": str(data.get("_source", ""))},
+        ]),
+    ]
+    if data.get("next_steps"):
+        scenes.append(objectives_scene("Next steps", data["next_steps"]))
+    refs = [
+        {"label": "Reference deck", "path": data.get("reference_deck", ""), "status": "done"},
+        {"label": "Catalog", "path": data.get("catalog", ""), "status": "done"},
+        {"label": "Run log", "path": data.get("run_log", ""), "status": "implemented"},
+    ]
+    return title_deck(title, data.get("summary", "Deterministic product-journey report"), scenes), refs
+
+
 BUILDERS = {
     "bakeoff-summary": bakeoff_summary,
     "bug-report": bug_report,
@@ -480,6 +541,7 @@ BUILDERS = {
     "fanout": fanout,
     "feature-demo": feature_demo,
     "onboarding": onboarding,
+    "product-journey": product_journey,
     "workflow": workflow,
 }
 

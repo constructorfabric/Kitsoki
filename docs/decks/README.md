@@ -20,8 +20,16 @@ Supported deck kinds:
 - `bakeoff-summary`: matrix/task bakeoffs from `tools/bugfix-bakeoff/results/summary.json`.
 - `external-summary`: external repo bakeoffs from `tools/bugfix-bakeoff/external/results/summary.json`.
 - `onboarding`: project onboarding review decks from discovery/apply JSON.
+- `product-journey`: product-journey catalog/check reports, preserving
+  `docs/decks/product-journey-eval.slidey.json` as the hand-refined reference.
 - `workflow`: generic bulk/fan-out/dynamic workflow decks with objectives,
   evidence, work-item tables, next steps, and optional media scenes.
+- `feature-demo`: deterministic feature-development demo decks with personas and
+  rrweb/video scenes.
+- `bug-report`: deterministic bug report decks with reproducer, evidence, and
+  rrweb/video playback.
+- `fanout`: bulk/fan-out job decks with succeeded, failed, retried, pending, and
+  skipped item status tables.
 
 For hybrid demos, keep the same deterministic spine and reference existing media
 artifacts. The `workflow` kind accepts media entries with `rrweb` plus
