@@ -127,6 +127,46 @@ describe("MetaButton — Report bug", () => {
     });
   });
 
+  it("Alt+right-click shows a point menu before starting the report", async () => {
+    const store = useBugReportStore();
+    const trigger = vi.spyOn(store, "trigger").mockImplementation(async () => {
+      store.status = "reviewing";
+    });
+    const host = document.createElement("div");
+    host.innerHTML = `<p data-testid="translated-label">Guardar cambios</p>`;
+    document.body.appendChild(host);
+
+    const wrapper = mount(MetaButton, { attachTo: document.body });
+    host
+      .querySelector('[data-testid="translated-label"]')!
+      .dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          altKey: true,
+          clientX: 42,
+          clientY: 77,
+        })
+      );
+    await flushPromises();
+
+    expect(trigger).not.toHaveBeenCalled();
+    const item = document.querySelector('[data-testid="bug-point-menu-report"]');
+    expect(item).not.toBeNull();
+    expect(item?.textContent).toContain("Report bug here");
+
+    await wrapper.get('[data-testid="bug-point-menu-report"]').trigger("click");
+    await flushPromises();
+
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(trigger.mock.calls[0][0].placement).toMatchObject({
+      x: 42,
+      y: 77,
+      selector: '[data-testid="translated-label"]',
+      text: "Guardar cambios",
+    });
+  });
+
   it("ignores Alt+click inside editable fields", async () => {
     const store = useBugReportStore();
     const trigger = vi.spyOn(store, "trigger").mockResolvedValue();

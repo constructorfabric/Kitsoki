@@ -4,14 +4,18 @@
  * This is a focused browser-backed regression/demo for the point-specific bug
  * reporter. Unit tests mock the store and cannot prove the real DOM event +
  * runstatus.bug.preview path; this spec drives a real `kitsoki web` server,
- * Alt-clicks a story title, asserts the review modal opens with placement
- * context, writes an rrweb event stream, then renders that stream to MP4.
+ * Alt-right-clicks a story title, asserts the placed bug-report context menu
+ * appears, chooses "Report bug here", asserts the review modal opens with
+ * placement context, writes an rrweb event stream, then renders that stream to
+ * MP4.
  *
  * Artifacts:
  *   .artifacts/alt-click-bug-report/
  *     01-home-before-alt-click.png
- *     02-modal-after-alt-click.png
- *     03-modal-replay.png
+ *     02-context-menu-after-right-click.png
+ *     03-modal-after-menu-action.png
+ *     04-modal-replay.png
+ *     05-modal-description-placement.png
  *     alt-click-bug-report.rrweb.json
  *     alt-click-bug-report-demo.mp4
  *     frames/frame-*.png
@@ -62,7 +66,7 @@ test.beforeAll(async () => {
 
 test.afterAll(() => server?.stop());
 
-test("Alt-click opens placed bug report modal and rrweb video evidence", async () => {
+test("Alt-right-click menu opens placed bug report modal and rrweb video evidence", async () => {
   test.setTimeout(180000);
 
   const browser: Browser = await chromium.launch({ headless: true });
@@ -86,8 +90,21 @@ test("Alt-click opens placed bug report modal and rrweb video evidence", async (
     await shot(page, "home-before-alt-click");
     await dwell(page, 5000);
 
-    diag("alt-clicking story title");
-    await page.getByTestId("story-title").first().click({ modifiers: ["Alt"] });
+    diag("alt-right-clicking story title");
+    await page.getByTestId("story-title").first().click({
+      button: "right",
+      modifiers: ["Alt"],
+    });
+    const pointMenu = page.getByTestId("bug-point-menu");
+    await expect(pointMenu).toBeVisible({ timeout: 8000 });
+    await expect(page.getByTestId("bug-point-menu-report")).toContainText("Report bug here");
+    await expect(page.getByTestId("bug-point-menu-report")).toContainText(
+      '[data-testid="story-title"]',
+    );
+    await dwell(page, 7000);
+    await shot(page, "context-menu-after-right-click");
+
+    await page.getByTestId("bug-point-menu-report").click();
 
     const modal = page.getByTestId("bug-modal");
     await expect(modal).toBeVisible({ timeout: 20000 });
@@ -99,7 +116,7 @@ test("Alt-click opens placed bug report modal and rrweb video evidence", async (
       timeout: 8000,
     });
     await dwell(page, 7000);
-    await shot(page, "modal-after-alt-click");
+    await shot(page, "modal-after-menu-action");
 
     await expect(page.getByTestId("bug-modal-replay")).toBeVisible({ timeout: 8000 });
     await page.waitForFunction(
@@ -113,6 +130,12 @@ test("Alt-click opens placed bug report modal and rrweb video evidence", async (
     );
     await dwell(page, 7000);
     await shot(page, "modal-replay");
+
+    const description = page.getByTestId("bug-modal-description");
+    await description.scrollIntoViewIfNeeded();
+    await expect(description).toBeVisible({ timeout: 8000 });
+    await dwell(page, 7000);
+    await shot(page, "modal-description-placement");
 
     await dwell(page, 10000);
     await page.evaluate(() => {

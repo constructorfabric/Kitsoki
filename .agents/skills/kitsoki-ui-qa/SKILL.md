@@ -229,6 +229,14 @@ pipeline removes that failure mode structurally, not by hoping the model behaves
    feature file, not a default. (Runtime side: a self-driving kitsoki run surfaces
    its `say:` breadcrumbs as conversation bubbles so this feedback exists to film —
    see the demo-video-loop story.)
+9. **Interaction-affordance completeness.** A multi-step UI flow is not proven by
+   its final state alone. If the feature or scenarios require an intermediate
+   user-visible affordance — a context menu, dropdown, popover, command palette,
+   confirmation sheet, chooser, inline editor, placement marker, or similar
+   surface — at least one cited frame must show that affordance before the final
+   result. A direct jump from the trigger to the final modal/page/state is
+   incomplete evidence and must be `unsupported` or `fail` depending on whether
+   the frames merely omit or actively contradict the required intermediate UI.
 
 ## Prerequisites
 
