@@ -33,6 +33,10 @@ world:
   rollup_required_evidence_count: { type: int, default: 0 }
   rollup_persona_outcomes: { type: int, default: 0 }
   rollup_scenario_outcomes: { type: int, default: 0 }
+  rollup_driver_journal_rows: { type: int, default: 0 }
+  rollup_driver_journal_events: { type: int, default: 0 }
+  rollup_driver_journal_evidence_refs: { type: int, default: 0 }
+  rollup_driver_journal_blocked_events: { type: int, default: 0 }
   rollup_quality_gate_satisfied_runs: { type: int, default: 0 }
   rollup_quality_gate_total_runs: { type: int, default: 0 }
   rollup_quality_gate_proof_minimum_evidence_count: { type: int, default: 0 }

@@ -106,7 +106,9 @@ outcome totals so repeated onboarding, bugfix, PRD/design, implementation, and
 product-bug gaps are visible across runs. It also includes per-persona outcome
 rows so cross-run review can compare whether core maintainer, dependency
 debugger, docs-minded contributor, and IDE-first lenses produce different
-evidence and findings. It also aggregates scenario
+evidence and findings. It also aggregates driver-journal events by scenario so
+matrix review can tell which journeys the reusable driver actually attempted,
+captured, blocked, or validated. It also aggregates scenario
 `quality_gate` coverage so the matrix deck shows which journeys have enough
 proof-source minimum evidence to count as completed, plus a missing-proof
 evidence backlog that names the evidence kinds still needing live visual MCP or

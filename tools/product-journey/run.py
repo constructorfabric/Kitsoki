@@ -3632,6 +3632,24 @@ def validate_matrix_bundle(matrix_dir: Path) -> dict:
                     "rollup summary persona_outcomes does not match persona_outcomes length",
                     f"summary={summary.get('persona_outcomes')}, rows={len(persona_outcomes)}",
                 )
+            driver_journal = rollup.get("driver_journal", [])
+            if summary.get("driver_journal_rows", 0) != len(driver_journal):
+                add_validation_issue(
+                    issues,
+                    "error",
+                    "rollup-driver-journal",
+                    "rollup summary driver_journal_rows does not match driver_journal length",
+                    f"summary={summary.get('driver_journal_rows')}, rows={len(driver_journal)}",
+                )
+            expected_driver_events = sum(row.get("events", 0) for row in driver_journal)
+            if summary.get("driver_journal_events", 0) != expected_driver_events:
+                add_validation_issue(
+                    issues,
+                    "error",
+                    "rollup-driver-journal-events",
+                    "rollup summary driver_journal_events does not match driver journal rows",
+                    f"summary={summary.get('driver_journal_events')}, rows={expected_driver_events}",
+                )
             expected_persona_gate_total = sum(row.get("quality_gate_total_runs", 0) for row in persona_outcomes)
             if summary.get("quality_gate_total_runs", 0) != expected_persona_gate_total:
                 add_validation_issue(
@@ -3695,7 +3713,7 @@ def validate_matrix_bundle(matrix_dir: Path) -> dict:
                     "rollup.slidey.json is missing the quality gate scene",
                 )
             rollup_scene_eyebrows = deck_scene_eyebrows(rollup_deck)
-            for expected in ["Coverage", "Runs", "Findings", "Persona outcomes", "Scenario outcomes", "Quality gates", "Missing proof"]:
+            for expected in ["Coverage", "Runs", "Findings", "Persona outcomes", "Scenario outcomes", "Driver journal", "Quality gates", "Missing proof"]:
                 if rollup_deck and expected not in rollup_scene_eyebrows:
                     add_validation_issue(issues, "error", "rollup-deck-scene", "rollup.slidey.json is missing a required rollup review scene", expected)
 
@@ -3918,6 +3936,7 @@ def summarize_run_for_rollup(run_dir: Path) -> dict:
     outcomes = read_json(run_dir / "scenario-outcomes.json") if (run_dir / "scenario-outcomes.json").exists() else {"items": [], "summary": {}}
     review = read_json(run_dir / "review.json") if (run_dir / "review.json").exists() else {"status": "not_reviewed", "summary": ""}
     driver_plan = read_json(run_dir / "driver-plan.json") if (run_dir / "driver-plan.json").exists() else {"scenarios": []}
+    driver_journal = read_json(run_dir / "driver-journal.json") if (run_dir / "driver-journal.json").exists() else build_driver_journal(run_json["run_id"], [])
     finding_summary = findings.get("summary", {})
     quality_gates = summarize_quality_gates(evidence, outcomes, driver_plan)
     return {
@@ -3941,6 +3960,8 @@ def summarize_run_for_rollup(run_dir: Path) -> dict:
         "scenario_outcomes_path": str(run_dir / "scenario-outcomes.md"),
         "scenario_outcomes": outcomes.get("items", []),
         "scenario_outcomes_summary": outcomes.get("summary", {}),
+        "driver_journal_summary": driver_journal.get("summary", {}),
+        "driver_journal_events": driver_journal.get("items", []),
         "quality_gates": quality_gates,
     }
 
@@ -4108,6 +4129,41 @@ def aggregate_quality_gates(runs: list[dict]) -> list[dict]:
     return [by_scenario[key] for key in sorted(by_scenario)]
 
 
+def aggregate_driver_journal(runs: list[dict]) -> list[dict]:
+    by_scenario: dict[str, dict] = {}
+    for run in runs:
+        for event in run.get("driver_journal_events", []):
+            scenario_id = event.get("scenario", "")
+            if not scenario_id:
+                continue
+            row = by_scenario.setdefault(scenario_id, {
+                "scenario": scenario_id,
+                "events": 0,
+                "runs": set(),
+                "statuses": {},
+                "dispatch_modes": {},
+                "mcp_tools": {},
+                "evidence_refs": 0,
+                "blocked_events": 0,
+            })
+            row["events"] += 1
+            row["runs"].add(run.get("run_id", ""))
+            status = event.get("status", "attempted")
+            row["statuses"][status] = row["statuses"].get(status, 0) + 1
+            mode = event.get("dispatch_mode", "")
+            if mode:
+                row["dispatch_modes"][mode] = row["dispatch_modes"].get(mode, 0) + 1
+            for tool in event.get("mcp_tools", []):
+                row["mcp_tools"][tool] = row["mcp_tools"].get(tool, 0) + 1
+            row["evidence_refs"] += len(event.get("evidence_refs", []))
+            if status == "blocked" or event.get("blockers"):
+                row["blocked_events"] += 1
+    return [
+        {**row, "runs": len(row["runs"])}
+        for _, row in sorted(by_scenario.items())
+    ]
+
+
 def aggregate_missing_proof_evidence(quality_gates: list[dict]) -> list[dict]:
     rows = []
     for gate in quality_gates:
@@ -4133,6 +4189,7 @@ def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
     scenario_outcomes = aggregate_scenario_outcomes(runs)
     persona_outcomes = aggregate_persona_outcomes(runs)
     quality_gates = aggregate_quality_gates(runs)
+    driver_journal = aggregate_driver_journal(runs)
     missing_proof_evidence = aggregate_missing_proof_evidence(quality_gates)
     totals = {
         "runs_found": len(runs),
@@ -4150,6 +4207,10 @@ def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
         "scenario_outcomes": len(scenario_outcomes),
         "scenario_outcomes_with_findings": sum(1 for row in scenario_outcomes if row["findings_count"] > 0),
         "persona_outcomes": len(persona_outcomes),
+        "driver_journal_rows": len(driver_journal),
+        "driver_journal_events": sum(row["events"] for row in driver_journal),
+        "driver_journal_evidence_refs": sum(row["evidence_refs"] for row in driver_journal),
+        "driver_journal_blocked_events": sum(row["blocked_events"] for row in driver_journal),
         "quality_gate_rows": len(quality_gates),
         "quality_gate_satisfied_runs": sum(row["satisfied_runs"] for row in quality_gates),
         "quality_gate_total_runs": sum(row["runs"] for row in quality_gates),
@@ -4169,6 +4230,7 @@ def build_matrix_rollup(matrix_dir: Path, explicit_run_dirs: list[str]) -> dict:
         "runs": runs,
         "scenario_outcomes": scenario_outcomes,
         "persona_outcomes": persona_outcomes,
+        "driver_journal": driver_journal,
         "quality_gates": quality_gates,
         "missing_proof_evidence": missing_proof_evidence,
         "missing_assignment_count": max(assignment_count - len(runs), 0),
@@ -4193,6 +4255,7 @@ def render_rollup_summary(rollup: dict) -> str:
         f"- Findings: {summary['findings_count']} (strengths {summary['strength_count']}, weaknesses {summary['weakness_count']}, issues {summary['issue_count']}, fixes {summary['fix_count']}, blocked {summary.get('blocked_count', 0)})",
         f"- Persona outcome rows: {summary.get('persona_outcomes', 0)}",
         f"- Scenario outcome rows: {summary['scenario_outcomes']} ({summary['scenario_outcomes_with_findings']} with findings)",
+        f"- Driver journal: {summary.get('driver_journal_events', 0)} events across {summary.get('driver_journal_rows', 0)} scenarios ({summary.get('driver_journal_blocked_events', 0)} blocked, {summary.get('driver_journal_evidence_refs', 0)} evidence refs)",
         f"- Quality gates: {summary.get('quality_gate_satisfied_runs', 0)} / {summary.get('quality_gate_total_runs', 0)} satisfied, {summary.get('quality_gate_blocked_runs', 0)} blocked, proof evidence {summary.get('quality_gate_proof_minimum_evidence_count', 0)} / {summary.get('quality_gate_minimum_evidence_count', 0)} (captured {summary.get('quality_gate_present_minimum_evidence_count', 0)})",
         f"- Missing proof evidence rows: {summary.get('missing_proof_evidence_rows', 0)} ({summary.get('quality_gate_missing_proof_evidence_count', 0)} missing run-slots)",
         "",
@@ -4248,6 +4311,26 @@ def render_rollup_summary(rollup: dict) -> str:
             ])
     else:
         lines.append("- (no scenario outcomes found in matched runs)")
+    lines.extend(["", "## Driver Journal", ""])
+    if rollup.get("driver_journal"):
+        for row in rollup["driver_journal"]:
+            status_counts = ", ".join(f"{name}={count}" for name, count in sorted(row["statuses"].items()))
+            mode_counts = ", ".join(f"{name}={count}" for name, count in sorted(row["dispatch_modes"].items()))
+            tool_counts = ", ".join(f"{name}={count}" for name, count in sorted(row["mcp_tools"].items()))
+            lines.extend([
+                f"### {row['scenario']}",
+                "",
+                f"- Runs: {row['runs']}",
+                f"- Events: {row['events']}",
+                f"- Statuses: {status_counts or '(none)'}",
+                f"- Dispatch modes: {mode_counts or '(none)'}",
+                f"- Evidence refs: {row['evidence_refs']}",
+                f"- Blocked events: {row['blocked_events']}",
+                f"- MCP tools: {tool_counts or '(none recorded)'}",
+                "",
+            ])
+    else:
+        lines.append("- (no driver journal events found in matched runs)")
     lines.extend(["", "## Quality Gates", ""])
     if rollup.get("quality_gates"):
         for row in rollup["quality_gates"]:
@@ -4298,6 +4381,10 @@ def render_rollup_deck(rollup: dict) -> dict:
     persona_lines = [
         f"{row['persona']}: runs {row['runs']}, ready {row['ready_runs']}, evidence {row['present_evidence_count']}/{row['required_evidence_count']}, proof {row['proof_minimum_evidence_count']}/{row['minimum_evidence_count']}, findings {row['findings_count']}"
         for row in rollup.get("persona_outcomes", [])[:12]
+    ]
+    driver_lines = [
+        f"{row['scenario']}: events {row['events']}, runs {row['runs']}, statuses {', '.join(f'{name}={count}' for name, count in sorted(row['statuses'].items()))}, refs {row['evidence_refs']}, blocked {row['blocked_events']}"
+        for row in rollup.get("driver_journal", [])[:12]
     ]
     quality_gate_lines = [
         f"{row['scenario']}: satisfied {row['satisfied_runs']}/{row['runs']}, proof evidence {row['proof_minimum_evidence_count']}/{row['minimum_evidence_count']}, blocked {row['blocked_runs']}"
@@ -4355,6 +4442,13 @@ def render_rollup_deck(rollup: dict) -> dict:
                 "title": "Cross-run scenario signals",
                 "body": "\n".join(scenario_lines) if scenario_lines else "No scenario outcomes found in matched runs.",
                 "narration": "Scenario-level rollups show which journeys are repeatedly weak across natural-use assignments.",
+            },
+            {
+                "type": "narrative",
+                "eyebrow": "Driver journal",
+                "title": "Reusable driver attempts",
+                "body": "\n".join(driver_lines) if driver_lines else "No driver journal events found in matched runs.",
+                "narration": "Driver journal rollups show which scenarios the reusable driver actually attempted, captured, blocked, or validated.",
             },
             {
                 "type": "narrative",

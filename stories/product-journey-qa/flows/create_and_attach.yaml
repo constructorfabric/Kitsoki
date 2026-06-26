@@ -233,6 +233,10 @@ host_handlers:
             findings_count: 4
             persona_outcomes: 1
             scenario_outcomes: 5
+            driver_journal_rows: 4
+            driver_journal_events: 6
+            driver_journal_evidence_refs: 8
+            driver_journal_blocked_events: 1
             quality_gate_satisfied_runs: 1
             quality_gate_total_runs: 5
             quality_gate_proof_minimum_evidence_count: 6
@@ -330,13 +334,17 @@ turns:
       rollup_required_evidence_count: 25
       rollup_persona_outcomes: 1
       rollup_scenario_outcomes: 5
+      rollup_driver_journal_rows: 4
+      rollup_driver_journal_events: 6
+      rollup_driver_journal_evidence_refs: 8
+      rollup_driver_journal_blocked_events: 1
       rollup_quality_gate_satisfied_runs: 1
       rollup_quality_gate_total_runs: 5
       rollup_quality_gate_proof_minimum_evidence_count: 6
       rollup_quality_gate_minimum_evidence_count: 25
       rollup_missing_proof_evidence_rows: 12
       rollup_quality_gate_missing_proof_evidence_count: 19
-    expect_view_matches: "Rollup runs[\\s\\S]*1 / 10[\\s\\S]*Rollup outcomes[\\s\\S]*1 persona rows; 5 scenario rows[\\s\\S]*Rollup proof gates[\\s\\S]*1 / 5 satisfied; proof 6 / 25[\\s\\S]*Rollup proof backlog[\\s\\S]*12 rows; 19 missing run-slots"
+    expect_view_matches: "Rollup runs[\\s\\S]*1 / 10[\\s\\S]*Rollup outcomes[\\s\\S]*1 persona rows; 5 scenario rows[\\s\\S]*Rollup driver journal[\\s\\S]*6 events across 4 scenarios; 8 refs; 1 blocked[\\s\\S]*Rollup proof gates[\\s\\S]*1 / 5 satisfied; proof 6 / 25[\\s\\S]*Rollup proof backlog[\\s\\S]*12 rows; 19 missing run-slots"
     expect_host_calls:
       - handler: host.run
         args: { call: rollup_product_journey_matrix }
