@@ -100,6 +100,46 @@ manifest (copy-in / overlay oracles, to be auto-armed once `bench.py` grows an
 `inject: insert-at-marker` mode). Provenance, the full corpus table, and the
 H1/H4 findings are in [`projects/gears-rust/README.md`](projects/gears-rust/README.md).
 
+### Pilot automation: repo provisioning + dockerized repo-runtime
+
+To keep VM runs reproducible and reduce host drift, provision target repos and
+their checker image before spending. By default, scored cells now run inside the
+repo-runtime image for repo isolation (`--no-docker-score` disables this):
+
+```sh
+cd tools/bugfix-bakeoff/external
+
+# Build or refresh local checkouts for all manifests, and build the shared runtime
+# image used for deterministic preflight/verify/score workflows.
+./provision_repos.sh
+
+# Provision and build for just the selected projects.
+./provision_repos.sh --project query-string --project gears-rust
+
+# For private/local-only projects, point to a local checkout:
+GEARS_RUST_REPO=/path/to/gears-rust ./provision_repos.sh --project gears-rust
+
+# Run a no-cost check in the repo runtime image.
+./run_repo_docker.sh \
+  --project query-string \
+  --repo-dir ../../.artifacts/external-bakeoff/repos/query-string \
+  -- \
+  /workspace/kitsoki/tools/bugfix-bakeoff/external/bench.py preflight \
+    --project query-string --bug qs1 --candidate gpt-5.5
+```
+
+The image is built from:
+`tools/bugfix-bakeoff/external/docker/Dockerfile.repo-runtime` and includes
+`git`, `make`, `go`, `node`, `pnpm`, and `rust` toolchains plus shared cache
+mount points under `/workspace/.cache`.  
+
+`provision_repos.sh` inherits the same retry policy used by `drive.sh`:
+`MCP_DRIVE_MAX_ATTEMPTS` (default 12), exponential backoff from
+`MCP_DRIVE_BACKOFF_BASE` (default 10), and cap at
+`MCP_DRIVE_BACKOFF_MAX` (default 600s). This keeps quota/rate/network
+friction from failing the loop on first spike, while non-obvious exceptions retry
+by default.
+
 ## The deterministic good/bad detector — `bench.py`
 
 ```sh
@@ -327,8 +367,9 @@ in every load-bearing `initial_world` knob (the recipe below), and delegates the
 live drive to [`tools/mcp-drive/drive.sh`](../../mcp-drive/README.md) (raw
 `claude -p` with the studio MCP attached). The **worker** model is chosen by
 `session.new {profile, harness:"live"}` — `codex-native` → GPT-5.5,
-`synthetic-claude` → GLM-5.2; the orchestrator (cheap sonnet) only advances the
-pipeline. The generic instance it drives is
+`synthetic-claude` → GLM-5.2; the orchestrator defaults to GPT-5.5 via
+`MCP_DRIVE_MODEL=gpt-5.5` and only advances the pipeline.
+The generic instance it drives is
 [`stories/bench-bugfix`](../../../stories/bench-bugfix).
 
 `--score` grades the worktree (`bench.py score`) and extracts the worker cost

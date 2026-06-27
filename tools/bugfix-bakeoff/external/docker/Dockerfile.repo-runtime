@@ -1,0 +1,45 @@
+# Bakeoff repo-runtime image: minimal deterministic workspace for repo checks.
+#
+# This image is intentionally broad rather than perfect: it includes the toolchain
+# surface needed by the current pilot repos (PostgreSQL/Kubernetes/Geeks-rust style)
+# so repository-specific harness steps can run predictably in containers.
+FROM golang:1.25-bookworm
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      git \
+      bash \
+      make \
+      build-essential \
+      python3 \
+      python3-yaml \
+      python3-pip \
+      jq \
+ && rm -rf /var/lib/apt/lists/*
+
+# Node.js + pnpm for JS/TS repos.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends nodejs \
+ && corepack enable \
+ && corepack prepare pnpm@11.3.0 --activate \
+ && rm -rf /var/lib/apt/lists/*
+
+# Rust toolchain for Rust-heavy repos.
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path \
+ && ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo \
+ && ln -s /root/.cargo/bin/rustup /usr/local/bin/rustup \
+ && ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc \
+ && rm -rf /root/.rustup/settings.toml
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PATH="/root/.cargo/bin:${PATH}" \
+    CARGO_HOME="/root/.cargo" \
+    CARGO_TARGET_DIR="/workspace/.cache/cargo-target" \
+    PNPM_STORE_DIR="/workspace/.cache/pnpm"
+
+WORKDIR /workspace

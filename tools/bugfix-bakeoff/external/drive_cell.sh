@@ -5,24 +5,28 @@
 # knob + the headless MCP delegation) so a cell is one command instead of a
 # hand-assembled prompt. COST-BEARING (real LLM) — operator-run, never in CI.
 #
-#   drive_cell.sh --project <name> --bug <id> --candidate <key> [--score] [--no-drive]
+#   drive_cell.sh --project <name> --bug <id> --candidate <key> [--score] [--no-drive] [--no-docker-score]
 #                 [--repo-dir <local-checkout>]
 #
 #   --score      after the drive, grade the worktree with bench.py + extract cost
 #   --no-drive   only prepare the worktree + print the prompt (free; for inspection)
+#   --no-docker-score  force host-based scoring (docker default)
 #
 # Reads projects/<name>/manifest.yaml (per-bug facts via `bench.py meta --bug`) and
 # candidates.yaml (the model/profile axis). Clones the repo ONCE into a cache and
 # reuses node_modules across cells. The worker model is whatever the candidate's
 # profile selects (codex-native → GPT-5.5, synthetic-claude → GLM-5.2); the
-# orchestrator (cheap sonnet) only clicks the pipeline forward.
+# orchestrator (default GPT-5.5) only clicks the pipeline forward.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE" && git rev-parse --show-toplevel)"
 CACHE="${EXTERNAL_BAKEOFF_CACHE:-$REPO_ROOT/.artifacts/external-bakeoff}"      # gitignored work area
+MAX_ATTEMPTS="${MCP_DRIVE_MAX_ATTEMPTS:-12}"
+BACKOFF_BASE="${MCP_DRIVE_BACKOFF_BASE:-10}"
+BACKOFF_MAX="${MCP_DRIVE_BACKOFF_MAX:-600}"
 
-project=""; bug=""; cand=""; repo_dir=""; do_score=0; no_drive=0; orch="${MCP_DRIVE_MODEL:-opus}"
+project=""; bug=""; cand=""; repo_dir=""; do_score=0; no_drive=0; orch="${MCP_DRIVE_MODEL:-gpt-5.5}"; use_docker_score="${EXTERNAL_BAKEOFF_USE_DOCKER_SCORE:-1}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --project) project="$2"; shift 2;;
@@ -30,13 +34,88 @@ while [[ $# -gt 0 ]]; do
     --candidate) cand="$2"; shift 2;;
     --repo-dir) repo_dir="$2"; shift 2;;
     --orchestrator) orch="$2"; shift 2;;
+    --no-docker-score) use_docker_score=0; shift;;
     --score) do_score=1; shift;;
     --no-drive) no_drive=1; shift;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
 [[ -n "$project" && -n "$bug" && -n "$cand" ]] || {
-  echo "usage: drive_cell.sh --project <name> --bug <id> --candidate <key> [--repo-dir <local-checkout>] [--score] [--no-drive]" >&2; exit 2; }
+  echo "usage: drive_cell.sh --project <name> --bug <id> --candidate <key> [--repo-dir <local-checkout>] [--score] [--no-drive] [--no-docker-score]" >&2; exit 2; }
+
+is_retryable_error() {
+  local payload="$1"
+  local lower
+  lower="$(printf '%s' "$payload" | tr '[:upper:]' '[:lower:]')"
+
+  case "$lower" in
+    *"usage:"*|*"unknown option"*|*"unknown arg"*|*"invalid or missing argument"*|\
+    *"unknown candidate"*|*"unknown project"*|*"no such project"*|\
+    *"candidate not found"*|*"not configured"*|*"baseline is not a commit"*|\
+    *"not a git repository"*|*"no such file"*|*"command not found"*|\
+    *"permission denied"*)
+      return 1
+      ;;
+  esac
+  return 0
+}
+
+run_with_retry() {
+  local desc="$1"; local stdout_file="$2"; local stderr_file="$3"; shift 3
+  local attempt=1
+  local wait_seconds="$BACKOFF_BASE"
+  while true; do
+    set +e
+    "$@" >"$stdout_file" 2>"$stderr_file"
+    local rc=$?
+    set -e
+    local payload
+    payload="$(cat "$stdout_file" "$stderr_file" 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g')"
+    if [[ $rc -eq 0 ]]; then
+      return 0
+    fi
+    if is_retryable_error "$payload" && [[ $attempt -lt "$MAX_ATTEMPTS" ]]; then
+      echo "[cell] ${desc} failed (attempt ${attempt}) — retrying in ${wait_seconds}s" >&2
+      sleep "$wait_seconds"
+      attempt=$((attempt + 1))
+      wait_seconds=$((wait_seconds * 2))
+      if [[ $wait_seconds -gt $BACKOFF_MAX ]]; then
+        wait_seconds=$BACKOFF_MAX
+      fi
+      continue
+    fi
+    echo "[cell] ${desc} failed" >&2
+    return "$rc"
+  done
+}
+
+drive_with_retry() {
+  local log_file="$1"; local err_file="$2"
+  local attempt=1
+  local wait_seconds="$BACKOFF_BASE"
+  while true; do
+    set +e
+    MCP_DRIVE_MODEL="$orch" "$REPO_ROOT/tools/mcp-drive/drive.sh" --prompt-file "$pf" >"$log_file" 2>"$err_file"
+    local rc=$?
+    set -e
+    local payload
+    payload="$(cat "$log_file" "$err_file" 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g')"
+    if [[ $rc -eq 0 ]]; then
+      return 0
+    fi
+    if is_retryable_error "$payload" && [[ $attempt -lt "$MAX_ATTEMPTS" ]]; then
+      echo "[cell] drive failed (attempt ${attempt}) — retrying in ${wait_seconds}s" >&2
+      sleep "$wait_seconds"
+      attempt=$((attempt + 1))
+      wait_seconds=$((wait_seconds * 2))
+      if [[ $wait_seconds -gt $BACKOFF_MAX ]]; then
+        wait_seconds=$BACKOFF_MAX
+      fi
+      continue
+    fi
+    return "$rc"
+  done
+}
 
 # --- read manifest (per-bug) + candidate --------------------------------------
 meta="$(cd "$HERE" && python3 bench.py meta --project "$project" --bug "$bug")"
@@ -109,8 +188,8 @@ preflight_args=(preflight --project "$project" --bug "$bug" --candidate "$cand")
 if [[ -n "$local_only" && -z "${repo_dir:-}" ]]; then
   preflight_args+=(--repo-dir "$src")
 fi
-preflight_json="$CACHE/preflight/$cellkey.json"; mkdir -p "$(dirname "$preflight_json")"
-if ! python3 "$HERE/bench.py" "${preflight_args[@]}" > "$preflight_json"; then
+preflight_json="$CACHE/preflight/$cellkey.json"; preflight_err="$preflight_json.err"; mkdir -p "$(dirname "$preflight_json")"
+if ! run_with_retry "preflight --project $project --bug $bug --candidate $cand" "$preflight_json" "$preflight_err" python3 "$HERE/bench.py" "${preflight_args[@]}"; then
   if [[ "$no_drive" == 1 ]]; then
     echo "[cell] warning: preflight failed; --no-drive will still prepare the prompt. See $preflight_json" >&2
   else
@@ -136,7 +215,7 @@ git -C "$cell" checkout -q -B "$branch"
 
 trace="$CACHE/traces/$cellkey.jsonl"; rm -f "$trace"
 thread_file="$CACHE/threads/$cellkey.md"
-mkdir -p "$CACHE/traces" "$CACHE/drive-logs" "$CACHE/results/cells" "$CACHE/threads"
+mkdir -p "$CACHE/traces" "$CACHE/drive-logs" "$CACHE/results/cells" "$CACHE/threads" "$CACHE/score-logs"
 
 # --- the orchestrator prompt (all tuning knobs baked in) ----------------------
 prompt="$(cat <<EOF
@@ -198,7 +277,7 @@ if [[ "$no_drive" == 1 ]]; then echo "[cell] --no-drive: prompt at $pf"; echo "[
 log="$CACHE/drive-logs/$cellkey.json"
 err="${log%.json}.err"
 echo "[cell] driving (orchestrator=$orch, worker=$cand)…" >&2
-if MCP_DRIVE_MODEL="$orch" "$REPO_ROOT/tools/mcp-drive/drive.sh" --prompt-file "$pf" > "$log" 2>"$err"; then
+if drive_with_retry "$log" "$err"; then
   echo "[cell] drive done -> $log" >&2
   drive_exit=0
 else
@@ -220,13 +299,63 @@ if [[ "$do_score" == 1 ]]; then
     exit 1
   fi
 
+  to_docker_path() {
+    local p="$1"
+    if [[ "$p" == "$CACHE/"* ]]; then
+      printf '/workspace/.artifacts/%s\n' "${p#$CACHE/}"
+      return 0
+    fi
+    if [[ "$p" == "$CACHE" ]]; then
+      printf '/workspace/.artifacts\n'
+      return 0
+    fi
+    printf '%s\n' "$p"
+  }
+
   # Reuse the cloned JS node_modules for scoring; local_only repos install (if any)
   # via the manifest's per-bug oracle.setup inside the scratch tree.
-  [[ -z "$local_only" && -d "$src/node_modules" ]] && export QS_NODE_MODULES="$src/node_modules"
-  python3 "$HERE/bench.py" score \
-    --project "$project" --bug "$bug" --tree "$cell" \
-    --candidate "$cand" --treatment kitsoki --out "$out" \
-    --trace "$trace" --candidates "$HERE/candidates.yaml" || true
+  bench_host=(
+    python3 "$HERE/bench.py" score
+    --project "$project"
+    --bug "$bug"
+    --tree "$cell"
+    --candidate "$cand"
+    --treatment kitsoki
+    --out "$out"
+    --trace "$trace"
+    --candidates "$HERE/candidates.yaml"
+  )
+  host_score_log="$CACHE/score-logs/$cellkey-host.log"
+  host_score_err="$CACHE/score-logs/$cellkey-host.err"
+  if [[ "$use_docker_score" == 1 ]] && command -v docker >/dev/null 2>&1; then
+    image="${BAKEOFF_DOCKER_IMAGE_PREFIX:-kitsoki-bakeoff-repo}/${project}:${BAKEOFF_DOCKER_IMAGE_SUFFIX:-workspace-latest}"
+    if docker image inspect "$image" >/dev/null 2>&1; then
+      [[ -z "$local_only" && -d "$src/node_modules" ]] && export QS_NODE_MODULES="$src/node_modules"
+      docker_bench_tree="$(to_docker_path "$cell")"
+      docker_bench_out="$(to_docker_path "$out")"
+      docker_bench_trace="$(to_docker_path "$trace")"
+      docker_score_log="$CACHE/score-logs/$cellkey-docker.log"
+      docker_score_err="$CACHE/score-logs/$cellkey-docker.err"
+      if run_with_retry "docker score --project $project --bug $bug --candidate $cand" "$docker_score_log" "$docker_score_err" \
+        "$HERE/run_repo_docker.sh" --project "$project" --repo-dir "$src" -- \
+        python3 /workspace/kitsoki/tools/bugfix-bakeoff/external/bench.py score \
+          --project "$project" --bug "$bug" --tree "$docker_bench_tree" \
+          --candidate "$cand" --treatment kitsoki --out "$docker_bench_out" \
+          --trace "$docker_bench_trace" --candidates /workspace/kitsoki/tools/bugfix-bakeoff/external/candidates.yaml; then
+        :
+      else
+        echo "[cell] docker score failed; falling back to host scoring" >&2
+        run_with_retry "host score --project $project --bug $bug --candidate $cand" "$host_score_log" "$host_score_err" "${bench_host[@]}" || true
+      fi
+    else
+      echo "[cell] docker image not found (${image}); scoring on host" >&2
+      run_with_retry "host score --project $project --bug $bug --candidate $cand" "$host_score_log" "$host_score_err" "${bench_host[@]}" || true
+    fi
+  else
+    [[ -z "$local_only" && -d "$src/node_modules" ]] && export QS_NODE_MODULES="$src/node_modules"
+    run_with_retry "host score --project $project --bug $bug --candidate $cand" "$host_score_log" "$host_score_err" "${bench_host[@]}" || true
+  fi
+
   echo "[cell] cost: $(python3 "$HERE/bench.py" cost --trace "$trace")"
   echo "[cell] verdict: $(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["outcome"]["quality"])' "$out" 2>/dev/null || echo "?")"
 fi
