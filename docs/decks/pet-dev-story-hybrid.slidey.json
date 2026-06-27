@@ -119,6 +119,55 @@
       "narration": "Across the story, the product manager frames the pet idea, the architect designs it, and the developer decomposes it, fixes a bug, ships the feature, and opens the pull request with a demo of the live pet."
     },
     {
+      "type": "title",
+      "eyebrow": "0 · Where work lives",
+      "title": "It starts on GitHub",
+      "subtitle": "A real @kitsoki mention on a labelled issue → a run link in the reply → the kitsoki run page",
+      "narration": "Before any of this reaches the kitsoki composer, it starts where the work already lives: a real at-kitsoki mention on a labelled GitHub issue. The label decides the route, kitsoki replies with a run link, and that link opens the hosted run page."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "Bug label → bugfix",
+      "rrweb": "assets/dev-story-hybrid/github/bug-thread.rrweb.json",
+      "start": 0.25,
+      "chapters": "auto",
+      "caption": "@kitsoki on a bug-labelled issue → stories/bugfix. Live: github.com/bsacrobatix/Kitsoki/issues/44",
+      "narration": "A bug-labelled mention routes straight to the bugfix story — one mention, one claimed job, one run link."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "Feature label → dev story",
+      "rrweb": "assets/dev-story-hybrid/github/feature-thread.rrweb.json",
+      "start": 0.25,
+      "chapters": "auto",
+      "caption": "@kitsoki on a feature-labelled issue → the dev story that follows. Live: issues/45",
+      "narration": "A feature-labelled mention routes to the dev story you are about to watch — the same loop, opened from GitHub."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "Click it → the kitsoki run page",
+      "rrweb": "assets/dev-story-hybrid/github/run-page.rrweb.json",
+      "chapters": "auto",
+      "caption": "The run link opens the hosted kitsoki page: origin, a source link back to the issue, story, state, timeline",
+      "narration": "The run link opens a hosted run page — origin, a source link back to the exact issue, the story, the state, and a full timeline."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "…and the same run as JSON",
+      "rrweb": "assets/dev-story-hybrid/github/run-api.rrweb.json",
+      "chapters": "auto",
+      "caption": "The same job as JSON — every run is queryable, not just viewable",
+      "narration": "And the same job is available as JSON, so every run is queryable, not just viewable."
+    },
+    {
       "type": "personas",
       "variant": "use-cases",
       "title": "1 · Idea → PRD + mockup",
