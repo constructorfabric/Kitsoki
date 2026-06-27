@@ -303,6 +303,16 @@
       "narration": "The PRD is published, and a design issue is assigned to the architect: requirements ready."
     },
     {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "2 · Design issue",
+      "title": "GitHub · Design Ticket #52",
+      "rrweb": "clips/pet-github-design-issue.rrweb.json",
+      "chapters": "auto",
+      "caption": "The live design issue #52 on GitHub with the slidey design deck linked as an asset.",
+      "narration": "Arden receives the notification and goes to the live GitHub issue #52 to review the design deck linked directly in the issue body."
+    },
+    {
       "type": "personas",
       "variant": "use-cases",
       "title": "2 · Requirements → design",
@@ -452,6 +462,16 @@
       "caption": "Every hand-off is a notification where the work lives — mocked here for the story.",
       "hold": 260,
       "narration": "The design is published, and a decomposition issue is assigned to the developer: design ready."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "3 · Decomposition issue",
+      "title": "GitHub · Decomposition Ticket #53",
+      "rrweb": "clips/pet-github-decomp-issue.rrweb.json",
+      "chapters": "auto",
+      "caption": "The live decomposition issue #53 on GitHub with the work plan deck linked.",
+      "narration": "Andy opens the decomposition issue #53 on GitHub to access the work plan deck and start the task execution."
     },
     {
       "type": "personas",
@@ -620,6 +640,16 @@
       "caption": "Every hand-off is a notification where the work lives — mocked here for the story.",
       "hold": 260,
       "narration": "Mid-stream, a bug is filed and assigned to the developer: a redundant Observe link cluttering the topbar."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "4 · Bug report",
+      "title": "GitHub · Bug Ticket #54",
+      "rrweb": "clips/pet-github-bug-issue.rrweb.json",
+      "chapters": "auto",
+      "caption": "The live bug ticket #54 on GitHub reporting the redundant link.",
+      "narration": "Andy receives a bug notification and inspects the live GitHub issue #54, containing the bug report deck and reproduction replay."
     },
     {
       "type": "personas",
