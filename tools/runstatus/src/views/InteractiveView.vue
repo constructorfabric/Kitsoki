@@ -235,12 +235,22 @@
           >
             <div class="iv__panel-header">
               <span>State Diagram</span>
-              <button
-                type="button"
-                class="iv__panel-action"
-                title="Hide trace column"
-                @click="toggleTraceColumn"
-              >hide</button>
+              <span class="iv__panel-actions">
+                <button
+                  type="button"
+                  class="iv__panel-action iv__panel-action--pet"
+                  data-testid="trace-pet-toggle"
+                  :aria-pressed="petEnabled"
+                  :title="petEnabled ? 'Hide trace pet' : 'Show trace pet'"
+                  @click="toggleTracePet"
+                >🐾</button>
+                <button
+                  type="button"
+                  class="iv__panel-action"
+                  title="Hide trace column"
+                  @click="toggleTraceColumn"
+                >hide</button>
+              </span>
             </div>
             <StateDiagram
               v-if="store.mermaid"
@@ -293,6 +303,7 @@
               @select="onEventSelect"
             />
           </div>
+          <TracePet v-if="petEnabled" />
         </section>
 
         <!-- Embed (VS Code): nothing beside the chat — Trace and Graph open as
@@ -317,6 +328,7 @@ import ChatTranscript from "../components/ChatTranscript.vue";
 import InputBar from "../components/InputBar.vue";
 import StateDiagram from "../components/StateDiagram.vue";
 import TraceTimeline from "../components/TraceTimeline.vue";
+import TracePet from "../components/TracePet.vue";
 import StoryFreshness from "../components/StoryFreshness.vue";
 import MetaButton from "../components/meta/MetaButton.vue";
 import ProposalsBadge from "../components/ProposalsBadge.vue";
@@ -361,6 +373,24 @@ const error = ref<string | null>(null);
 const traceCollapsed = ref(false);
 const traceWidthPercent = ref(TRACE_WIDTH_DEFAULT);
 const diagramHeightPercent = ref(DIAGRAM_HEIGHT_DEFAULT);
+
+// Opt-in decorative trace-column pet (off by default). Persisted in localStorage
+// so the choice sticks across reloads. See TracePet.vue.
+const PET_PREF_KEY = "kitsoki:tracePet";
+const petEnabled = ref(false);
+try {
+  petEnabled.value = localStorage.getItem(PET_PREF_KEY) === "1";
+} catch {
+  /* localStorage unavailable (private mode / sandbox) — leave off */
+}
+function toggleTracePet() {
+  petEnabled.value = !petEnabled.value;
+  try {
+    localStorage.setItem(PET_PREF_KEY, petEnabled.value ? "1" : "0");
+  } catch {
+    /* ignore persistence failure */
+  }
+}
 
 const appId = computed(() => store.appDef?.id ?? store.appDef?.name ?? "kitsoki");
 const chatColumnStyle = computed(() => {
@@ -1143,6 +1173,29 @@ function onEventSelect(index: number): void {
   min-height: 0;
   padding: 0.5rem;
   gap: 0;
+  /* anchor for the absolutely-positioned decorative TracePet at the bottom */
+  position: relative;
+}
+
+/* group the diagram-header actions (pet toggle + hide) on the right */
+.iv__panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.iv__panel-action--pet {
+  font-size: 0.85rem;
+  line-height: 1;
+  filter: grayscale(0.4);
+  opacity: 0.65;
+}
+.iv__panel-action--pet:hover {
+  filter: none;
+  opacity: 1;
+}
+.iv__panel-action--pet[aria-pressed="true"] {
+  filter: none;
+  opacity: 1;
 }
 
 .iv__resize-handle {

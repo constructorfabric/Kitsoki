@@ -1,0 +1,94 @@
+# pets-dev — the dev-story PRD → Design walk pointed at the kitsoki repo.
+#
+# A thin instance of @kitsoki/dev-story (imported as `core`, root: core),
+# pre-bound to demo the dev-story PRD → Design walk on a real kitsoki feature:
+# "Kit", a VS-Code-pets-style tamagotchi companion that lives in the corner of
+# the kitsoki web UI and reacts to session state (idle / agent-thinking /
+# tests-green / bug-filed) to keep the developer company. Mirrors
+# stories/slidey-dev/ (slidey-targeted dev-story instance) exactly — the seam is
+# config, no engine/story change.
+#
+# The target is the kitsoki repo ITSELF (workdir "."), so the deterministic
+# flows + any rrweb capture under `kitsoki web --flow` write into a path that
+# exists in the recording sandbox.
+#
+# workdir is "." (self-contained .artifacts) so the deterministic flows write
+# into a path that exists in the recording sandbox.
+
+app:
+  id: pets-dev
+  version: 0.1.0
+  title: "pets-dev — PRD → Design on the kitsoki repo (pet companion)"
+  author: "Kitsoki"
+  license: "CC0"
+
+routing:
+  embedding:
+    model: "nomic-embed-text-v1.5"
+
+hosts:
+  - host.local_files.ticket
+  - host.gh.ticket
+  - host.git
+  - host.local
+  - host.git_worktree
+  - host.append_to_file
+  - host.inbox.add
+  - host.agent.ask
+  - host.agent.decide
+  - host.agent.task
+  - host.agent.search
+  - host.agent.converse
+  - host.chat.resolve
+  - host.artifacts_dir
+  - host.ide.open_file
+  - host.ide.open_diff
+  - host.diff.open
+  - host.run
+  - host.starlark.run
+
+imports:
+  core:
+    source: "@kitsoki/dev-story"
+    entry: landing
+    hosts: declared
+    host_bindings:
+      ticket:    host.local_files.ticket
+      vcs:       host.git
+      ci:        host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+    world_in:
+      workdir:                    "{{ world.workdir }}"
+      repo_root:                  "{{ world.repo_root }}"
+      judge_mode:                 "{{ world.judge_mode }}"
+      judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
+      publish_durable_path:       "{{ world.publish_durable_path }}"
+      prd_doc_filename:           "{{ world.prd_doc_filename }}"
+      prd_mockup_path:            "{{ world.prd_mockup_path }}"
+      design_template_dir:        "{{ world.design_template_dir }}"
+      design_durable_path:        "{{ world.design_durable_path }}"
+      design_doc_filename:        "{{ world.design_doc_filename }}"
+      design_ticket_dir:          "{{ world.design_ticket_dir }}"
+      ticket_repo:                "{{ world.ticket_repo }}"
+
+world:
+  workdir:                    { type: string, default: "." }
+  repo_root:                  { type: string, default: "." }
+  ticket_repo:                { type: string, default: "" }
+  judge_mode:                 { type: string, default: "human" }
+  judge_confidence_threshold: { type: float, default: 0.8 }
+
+  publish_durable_path:       { type: string, default: "docs/prd" }
+  prd_doc_filename:           { type: string, default: "" }
+  # The PRD-phase feature mockup: a self-contained HTML handout mockup of the
+  # pet-companion feature, embedded inline in prd_published as the PRD's mockup
+  # (host.artifacts_dir kind: slideshow → media slideshow iframe). Other
+  # dev-story instances leave this "" and render no mockup.
+  prd_mockup_path:            { type: string, default: "stories/pets-dev/assets/pm_idea-mockup.html" }
+  design_template_dir:        { type: string, default: "docs/proposals/templates" }
+  design_durable_path:        { type: string, default: "docs/proposals" }
+  design_doc_filename:        { type: string, default: "" }
+  design_ticket_dir:          { type: string, default: "issues/features" }
+
+root: core
