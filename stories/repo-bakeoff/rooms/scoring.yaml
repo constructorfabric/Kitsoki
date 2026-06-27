@@ -9,7 +9,7 @@
 states:
   scoring:
     description: "Checking completion evidence and rolling cell verdicts into a summary."
-    relevant_world: [completion, completion_done, completion_repairable, completion_requires_drive, completion_diagnostics, completion_status, completion_markdown, completion_repair_log, summary, summary_path, harness_dir, results_dir, report_dir, deck]
+    relevant_world: [completion, completion_done, completion_repairable, completion_requires_drive, completion_diagnostics, completion_status, completion_markdown, completion_repair_log, completion_state_thread, completion_state_path, summary, summary_path, harness_dir, results_dir, report_dir, deck]
     view:
       - heading: "Bake-off · scoring"
       - kv:
@@ -17,6 +17,7 @@ states:
             Completion: '{{ world.completion.status|default:world.completion_status|default:"(checking…)" }}'
             Completed: '{{ world.completion_done|default:false }}'
             Completion report: '{{ world.completion_markdown|default:"(not generated)" }}'
+            Completion state file: '{{ world.completion_state_path|default:"(not written yet)" }}'
             Repair needed: '{{ world.completion_requires_drive|default:false }}'
             Repairable: '{{ world.completion_repairable|default:false }}'
             Summary: '{{ world.summary_path|default:"(summarizing…)" }}'
@@ -85,6 +86,15 @@ states:
           completion_requires_drive: stdout_json.requires_drive
           completion_diagnostics: ""
         on_error: running
+      - invoke: host.artifacts_dir
+        id: completion_state
+        with:
+          thread: "{{ world.completion_state_thread }}"
+          mode: "replace"
+          body: "{{ world.completion }}"
+        bind:
+          completion_state_path: path
+        on_error: .
       - when: "world.completion.completed == true"
         invoke: host.run
         id: summarize

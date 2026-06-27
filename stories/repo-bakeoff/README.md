@@ -39,7 +39,7 @@ idle ─start─▶ configure ─accept─▶ prepare ─accept─▶ running �
 | `configure` | deterministic | Declare the matrix (bugs × candidates); compute the cell roster; optionally carry `repo_dir` for private/local repos. |
 | `prepare` | **deterministic · free · real** | `host.run → bench.py preflight --bug <world.bugs> [--repo-dir ...]` checks setup, `bench.py verify --bug <world.bugs> [--repo-dir ...]` arms the selected hidden oracles (RED@baseline / GREEN@real-fix), then `prepare_handoffs.sh --bug <world.bugs> --candidate <world.candidates>` writes and audits no-drive handoffs. This proves the bake-off is valid and reviewable **before** any LLM is spent. |
 | `running` | stub | Tracks the roster, shows the handoff-audit artifact, and renders exact per-cell `drive_cell.sh --score` commands for the selected matrix. The commands are run **manually** — the only cost-bearing step. |
-| `scoring` | deterministic | `host.run → bench.py completion --results <artifact-results-dir> --markdown <report-dir>/completion.md` records the evidence verdict, then `bench.py summarize --results <artifact-results-dir> --deck <report-dir>/deck.slidey.json --markdown <report-dir>/report.md` rolls the per-cell verdicts up and writes project-specific report artifacts. If no cell JSON exists, it routes back to `running` instead of producing a misleading 0-cell report. |
+| `scoring` | deterministic | `host.run → bench.py completion --results <artifact-results-dir> --markdown <report-dir>/completion.md` records the evidence verdict, then `bench.py summarize --results <artifact-results-dir> --deck <report-dir>/deck.slidey.json --markdown <report-dir>/report.md` rolls the per-cell verdicts up and writes project-specific report artifacts. If no cell JSON exists, it routes back to `running` instead of producing a misleading 0-cell report. Each scoring pass also writes `.artifacts/external-bakeoff/status/repo-bakeoff-completion-<project>.json` with machine-readable `completed`, `status`, `requires_drive`, and `repairable` fields. |
 | `reporting` | deterministic | Present the generated report markdown path and Slidey deck spec. |
 | `slideshow` | deterministic | `host.slidey.render` → static-HTML deck + sidecar to `host.artifacts_dir` (exactly slidey-edit's rendering room). |
 | `done` | gallery | The rendered report deck + the headline rollup. |
@@ -78,8 +78,9 @@ By default `drive_cell.sh` writes generated results under
 same directory, expressed relative to `harness_dir`, so `scoring` summarizes the
 actual live-driver output instead of the checked-in reference results. `scoring`
 also writes `.artifacts/external-bakeoff/report/completion.md`,
-`.artifacts/external-bakeoff/report/report.md`, and
-`.artifacts/external-bakeoff/report/deck.slidey.json`. The completion report
+`.artifacts/external-bakeoff/report/report.md`,
+`.artifacts/external-bakeoff/report/deck.slidey.json`, and
+`.artifacts/external-bakeoff/status/repo-bakeoff-completion-<project>.json`. The completion report
 distinguishes `ready-to-drive`, `complete-with-pending`, and fully live-scored
 evidence. Accepting `running` before at least one `results/cells/*.json` exists
 returns to `running`; run a cell with `drive_cell.sh --score` or explicitly use

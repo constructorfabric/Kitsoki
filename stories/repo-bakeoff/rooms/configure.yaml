@@ -6,7 +6,7 @@
 states:
   configure:
     description: "Declare the bake-off matrix (bugs × candidates) for the project."
-    relevant_world: [project, repo, repo_dir, bugs, candidates, cells_total]
+    relevant_world: [project, repo, repo_dir, bugs, candidates, cells_total, completion_state_thread]
     view:
       - heading: "Bake-off · configure"
       - kv:
@@ -31,6 +31,7 @@ states:
     on_enter:
       - set:
           cells_total: "{{ len(world.bugs) * len(world.candidates) }}"
+          completion_state_thread: "status/repo-bakeoff-completion-{{ world.project }}.json"
     on:
       accept:
         - target: prepare

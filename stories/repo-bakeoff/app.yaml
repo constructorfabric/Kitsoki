@@ -88,6 +88,8 @@ world:
   completion_status: { type: string, default: "" }
   completion_markdown: { type: string, default: "" }
   completion_repair_log: { type: string, default: "" }
+  completion_state_thread: { type: string, default: "repo-bakeoff-completion.json" }
+  completion_state_path: { type: string, default: "" }
 
   # ── Report / deck ────────────────────────────────────────────────────────────
   deck:           { type: object, default: { spec_path: "stories/repo-bakeoff/baked/deck.json", summary: "External-repo bake-off report." } }
