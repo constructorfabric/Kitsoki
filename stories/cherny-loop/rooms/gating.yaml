@@ -76,7 +76,10 @@ states:
         # the invoke's `when:` would see pre-bind gate_ok).
         - target: committing
           effects:
-            - set: { goal_achieved: true, terminal_reason: "achieved" }
+            - set:
+                goal_achieved: true
+                terminal_reason: "achieved"
+                maker_summary: "{{ if world.use_orchestrator == 'true' || world.use_orchestrator == true }}Cherny loop: {{ world.slot_a_summary }}{{ if world.slot_b_active }} / {{ world.slot_b_summary }}{{ end }}{{ else }}{{ world.maker_summary }}{{ end }}"
       mark_cost_exhausted:
         - target: "@exit:exhausted"
           effects:

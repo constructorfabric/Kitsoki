@@ -1171,7 +1171,33 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 		// DispatchPostBindEmits silently no-op'd. All three now emit
 		// EvIntentEmitParallelDropped through the trace logger and
 		// return no error so an otherwise-valid story is not bricked.
-		if parseParallel(state).IsParallel {
+		searchState := state
+		isParallelDropped := false
+		if par := parseParallel(state); par.IsParallel {
+			hasHandler := false
+			rootPath := par.Root
+			for {
+				cs, ok := m.states[rootPath]
+				if ok {
+					if len(cs.on[emit.Name]) > 0 || len(cs.on["*"]) > 0 {
+						hasHandler = true
+						break
+					}
+				}
+				idx := strings.LastIndexByte(rootPath, '.')
+				if idx < 0 {
+					break
+				}
+				rootPath = rootPath[:idx]
+			}
+			if hasHandler {
+				searchState = par.Root
+			} else {
+				isParallelDropped = true
+			}
+		}
+
+		if isParallelDropped {
 			m.logger.WarnContext(ctx, trace.EvIntentEmitParallelDropped,
 				slog.String("site", "dispatch_emitted_intents"),
 				slog.String("intent", emit.Name),
@@ -1179,6 +1205,7 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 			)
 			continue
 		}
+
 
 		// Resolve the emitted name through the import alias map of the
 		// active state's ancestor chain. When the LLM-judge emits a
@@ -1190,7 +1217,7 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 		// that maps `accept` to its renamed form. Returns the bare
 		// name when no mapping applies (standalone stories — back
 		// compat).
-		dispatchName := m.resolveEmittedIntentName(state, emit.Name)
+		dispatchName := m.resolveEmittedIntentName(searchState, emit.Name)
 		if dispatchName != emit.Name {
 			m.logger.DebugContext(ctx, trace.EvIntentEmitted,
 				slog.String("intent", emit.Name),
@@ -1200,13 +1227,14 @@ func (m *machineImpl) dispatchEmittedIntents(ctx context.Context, curState strin
 			)
 		}
 
-		winningTr, winningPath, _, err := m.findTransitionTraced(ctx, state, dispatchName, dispEnv)
+		winningTr, winningPath, _, err := m.findTransitionTraced(ctx, searchState, dispatchName, dispEnv)
 		if err != nil {
 			return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q at %q: find transition: %w", emit.Name, state, err)
 		}
 		if winningTr == nil {
 			return "", world.World{}, nil, "", nil, fmt.Errorf("emit_intent %q at %q: no transition arm matched (intent has no on: handler, or all guards failed)", emit.Name, state)
 		}
+
 
 		// Resolve target.
 		rawTarget := winningTr.tr.Target

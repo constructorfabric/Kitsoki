@@ -15,6 +15,9 @@ states:
           slot_b_active: false
           orchestrator_status: ""
           merge_conflict_detected: false
+          gate_ok: ""
+          script_gate_ok: ""
+          agent_gate_ok: ""
       # Option 1: Persistent chat-based orchestrator
       - invoke: host.chat.resolve
         id: "resolve-chat"
@@ -152,25 +155,17 @@ states:
 
   parallel_workers:
     type: parallel
-    on_enter:
-      - emit_intent: start_workers
     states:
       worker_a:
         type: compound
-        initial: check_active
+        initial: executing
         states:
-          check_active:
-            on:
-              start_workers:
-                - when: "world.slot_a_active == true"
-                  target: ../executing
-                - default: true
-                  target: ../idle
           executing:
             on_enter:
               # Create dedicated workspace branch for slot A
               - invoke: iface.workspace.create
                 id: "worktree-a"
+                when: "world.slot_a_active == true"
                 with:
                   id:   "{{ world.workspace_id }}-a"
                   name: "{{ world.workspace_branch }}-a"
@@ -180,6 +175,7 @@ states:
                 on_error: error
               - invoke: host.agent.task
                 id: "maker-a-{{ world.iteration }}"
+                when: "world.slot_a_active == true"
                 with:
                   agent: maker
                   provider: "{{ world.worker_provider_a }}"
@@ -198,8 +194,13 @@ states:
                   slot_a_summary: submitted.summary
                   slot_a_files: submitted.files_changed
                 on_error: error
+              # Set done BEFORE commit invoke so the emitted event sees the true flag
+              - set:
+                  slot_a_done: true
+                when: "world.slot_a_active == true"
               - invoke: iface.vcs.commit
                 id: "commit-a-{{ world.iteration }}"
+                when: "world.slot_a_active == true"
                 with:
                   workdir: "{{ world.worktree_path_a }}"
                   message: "Slot A: {{ world.slot_a_summary }}"
@@ -208,32 +209,24 @@ states:
                 bind:
                   commit_sha_a: sha
                 on_error: error
-              - set: { slot_a_done: true }
-              - emit: slot_a_finished
+              # Only emit proceed if B is also done or inactive
+              - emit_intent: proceed
+                when: "world.slot_a_active == true && (world.slot_b_active == false || world.slot_b_done == true)"
           error:
             on_enter:
               - set: { slot_a_last_error: "Worker A failed to execute or commit", slot_a_done: true }
-              - emit: slot_a_finished
-          idle:
-            on_enter:
-              - set: { slot_a_done: true }
-              - emit: slot_a_finished
+              - emit_intent: proceed
+                when: "world.slot_b_active == false || world.slot_b_done == true"
       worker_b:
         type: compound
-        initial: check_active
+        initial: executing
         states:
-          check_active:
-            on:
-              start_workers:
-                - when: "world.slot_b_active == true"
-                  target: ../executing
-                - default: true
-                  target: ../idle
           executing:
             on_enter:
               # Create dedicated workspace branch for slot B
               - invoke: iface.workspace.create
                 id: "worktree-b"
+                when: "world.slot_b_active == true"
                 with:
                   id:   "{{ world.workspace_id }}-b"
                   name: "{{ world.workspace_branch }}-b"
@@ -243,6 +236,7 @@ states:
                 on_error: error
               - invoke: host.agent.task
                 id: "maker-b-{{ world.iteration }}"
+                when: "world.slot_b_active == true"
                 with:
                   agent: maker
                   provider: "{{ world.worker_provider_b }}"
@@ -261,8 +255,13 @@ states:
                   slot_b_summary: submitted.summary
                   slot_b_files: submitted.files_changed
                 on_error: error
+              # Set done BEFORE commit invoke so the emitted event sees the true flag
+              - set:
+                  slot_b_done: true
+                when: "world.slot_b_active == true"
               - invoke: iface.vcs.commit
                 id: "commit-b-{{ world.iteration }}"
+                when: "world.slot_b_active == true"
                 with:
                   workdir: "{{ world.worktree_path_b }}"
                   message: "Slot B: {{ world.slot_b_summary }}"
@@ -271,24 +270,17 @@ states:
                 bind:
                   commit_sha_b: sha
                 on_error: error
-              - set: { slot_b_done: true }
-              - emit: slot_b_finished
+              # Only emit proceed if A is also done or inactive
+              - emit_intent: proceed
+                when: "world.slot_b_active == true && (world.slot_a_active == false || world.slot_a_done == true)"
           error:
             on_enter:
               - set: { slot_b_last_error: "Worker B failed to execute or commit", slot_b_done: true }
-              - emit: slot_b_finished
-          idle:
-            on_enter:
-              - set: { slot_b_done: true }
-              - emit: slot_b_finished
+              - emit_intent: proceed
+                when: "world.slot_a_active == false || world.slot_a_done == true"
     on:
-      start_workers:
-        - target: .
-      slot_a_finished:
-        - when: "world.slot_b_active == false || world.slot_b_done == true"
-          target: merging
-      slot_b_finished:
-        - when: "world.slot_a_active == false || world.slot_a_done == true"
+      proceed:
+        - when: "(world.slot_a_active == false || world.slot_a_done == true) && (world.slot_b_active == false || world.slot_b_done == true)"
           target: merging
       abort:
         - target: "@exit:abandoned"
@@ -297,8 +289,13 @@ states:
 
   merging:
     description: "Merge disjoint slot changes into main worktree"
-    relevant_world: [workspace_branch, worktree_path]
+    relevant_world: [workspace_branch, worktree_path, slot_a_active, slot_b_active, merge_conflict_detected]
     on_enter:
+      # Reset gate_ok so that gating room doesn't early-transition on pre-bind stale gate_ok
+      - set:
+          gate_ok: ""
+          script_gate_ok: ""
+          agent_gate_ok: ""
       # Merge slot A if active and done
       - invoke: host.run
         id: "merge-a"
