@@ -119,9 +119,9 @@
     },
     {
       "type": "title",
-      "eyebrow": "0 · Where the bug comes from",
-      "title": "A user hits a bug — and reports it in the app",
-      "subtitle": "right-click the broken thing → a captured replay + scrubbed trace → filed, no context-switch",
+      "eyebrow": "0 · Effortless bug reporting",
+      "title": "It starts in the app where users work",
+      "subtitle": "report directly from the meta menu → a captured replay + scrubbed trace → filed, no context-switch",
       "narration": "Before any of this reaches a developer, the bug starts with a user. They hit something broken and report it right where it happened — no leaving the app, no hand-written repro. Kitsoki captures the replay and a scrubbed trace and files it for them."
     },
     {
@@ -133,16 +133,6 @@
       "chapters": "auto",
       "caption": "Alt-right-click the exact element → a placed bug report with a captured rrweb replay + the clicked location, ready to file",
       "narration": "The user alt-right-clicks the exact element that misbehaved. Kitsoki opens a placed bug report — the precise target, a captured replay of what they just did, and a scrubbed trace — so the report carries a real reproduction, not a vague description."
-    },
-    {
-      "type": "video",
-      "mode": "embedded",
-      "eyebrow": "0 · The hand-off",
-      "title": "It surfaces as work in the inbox",
-      "rrweb": "assets/dev-story-hybrid/web-inbox.rrweb.json",
-      "chapters": "auto",
-      "caption": "The filed report becomes a tracked job — a background run completes, the inbox badge increments, and one click jumps to it",
-      "narration": "That report becomes tracked work. A background job runs, the inbox badge increments the moment it completes, and a single click jumps straight to the run — the same async hand-off every phase of this story uses."
     },
     {
       "type": "title",
