@@ -3518,8 +3518,8 @@
             "arrowRx": 350,
             "arrowRy": 230,
             "variant": "recycle-logo",
-            "glyphY": 410,
-            "glyphSize": 620
+            "glyphY": 430,
+            "glyphSize": 920
           },
           "nodes": [
             {
