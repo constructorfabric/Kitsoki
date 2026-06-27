@@ -121,8 +121,8 @@
       "type": "title",
       "eyebrow": "0 · Where work lives",
       "title": "It starts on GitHub",
-      "subtitle": "A real @kitsoki mention on a labelled issue — the label routes to the right story",
-      "narration": "Before any of this reaches the kitsoki composer, it starts where the work already lives: a real at-kitsoki mention on a labelled GitHub issue. The label decides the route."
+      "subtitle": "A real @kitsoki mention on a labelled issue → a run link in the reply → the kitsoki run page",
+      "narration": "Before any of this reaches the kitsoki composer, it starts where the work already lives: a real at-kitsoki mention on a labelled GitHub issue. The label decides the route, kitsoki replies with a run link, and that link opens the hosted run page."
     },
     {
       "type": "video",
@@ -145,6 +145,36 @@
       "chapters": "auto",
       "caption": "@kitsoki on a feature-labelled issue → the dev story that follows. Live: issues/45",
       "narration": "A feature-labelled mention routes to the dev story you are about to watch — the same loop, opened from GitHub."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "@kitsoki replies with a run link",
+      "rrweb": "assets/dev-story-hybrid/github/app-comment.rrweb.json",
+      "chapters": "auto",
+      "caption": "The App-authenticated reply carries the job id, story, state — and the run link the requester clicks next",
+      "narration": "The hand-off back to the thread is an App-authenticated comment carrying the job id, the story, the final state, and a public run link."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "Click it → the kitsoki run page",
+      "rrweb": "assets/dev-story-hybrid/github/run-page.rrweb.json",
+      "chapters": "auto",
+      "caption": "The run link opens the hosted kitsoki page: origin, a source link back to the issue, story, state, timeline",
+      "narration": "The run link opens a hosted run page — origin, a source link back to the exact issue, the story, the state, and a full timeline."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "…and the same run as JSON",
+      "rrweb": "assets/dev-story-hybrid/github/run-api.rrweb.json",
+      "chapters": "auto",
+      "caption": "The same job as JSON — every run is queryable, not just viewable",
+      "narration": "And the same job is available as JSON, so every run is queryable, not just viewable."
     },
     {
       "type": "personas",
@@ -349,43 +379,6 @@
       "chapters": "auto",
       "caption": "Reproduction + validation summary → pull request",
       "narration": "The summary carries the reproduction and validation evidence straight into the pull request."
-    },
-    {
-      "type": "title",
-      "eyebrow": "7 · What every run leaves behind",
-      "title": "Every run is a durable artifact",
-      "subtitle": "An App comment, a hosted run page, machine-readable JSON — each one linkable and replayable",
-      "narration": "Every run leaves a durable, addressable record behind — not ephemeral chat, but artifacts anyone can open."
-    },
-    {
-      "type": "video",
-      "mode": "embedded",
-      "eyebrow": "7 · Artifacts",
-      "title": "The hand-off is a comment",
-      "rrweb": "assets/dev-story-hybrid/github/app-comment.rrweb.json",
-      "chapters": "auto",
-      "caption": "@kitsoki comments back with the job id, story, state, and a public run link",
-      "narration": "The hand-off back to the thread is an App-authenticated comment carrying the job id, the story, the final state, and a public run link."
-    },
-    {
-      "type": "video",
-      "mode": "embedded",
-      "eyebrow": "7 · Artifacts",
-      "title": "The hosted run page",
-      "rrweb": "assets/dev-story-hybrid/github/run-page.rrweb.json",
-      "chapters": "auto",
-      "caption": "A human-readable run summary: origin, a source link back to the issue, story, state, timeline",
-      "narration": "The run link opens a hosted run page — origin, a source link back to the exact issue, the story, the state, and a full timeline."
-    },
-    {
-      "type": "video",
-      "mode": "embedded",
-      "eyebrow": "7 · Artifacts",
-      "title": "Machine-readable run JSON",
-      "rrweb": "assets/dev-story-hybrid/github/run-api.rrweb.json",
-      "chapters": "auto",
-      "caption": "The same job as JSON — every run is queryable, not just viewable",
-      "narration": "And the same job is available as JSON, so every run is queryable, not just viewable."
     },
     {
       "type": "cta",
