@@ -39,6 +39,19 @@ It prints `claude -p`'s JSON result envelope on stdout (`result`,
 `total_cost_usd`, `usage`, `session_id`). Run it in the background (`&` or a
 background Bash) for long drives.
 
+## Quota/error retry behavior
+
+`drive.sh` retries transient provider/API/transport errors with exponential
+backoff by default (to support quota recovery without manual intervention).
+Retry order:
+
+- `MCP_DRIVE_MAX_ATTEMPTS` default 12
+- `MCP_DRIVE_BACKOFF_BASE` default 10 seconds
+- `MCP_DRIVE_BACKOFF_MAX` default 600 seconds (10 minutes)
+- `MCP_DRIVE_RETRY_VERBOSE=1` to print retry progress to stderr
+
+Non-retryable failures (bad usage / config issues) fail fast.
+
 ## Orchestrator model vs worker model
 
 The **orchestrator** (`claude -p`) only *drives* the studio — it clicks

@@ -196,12 +196,30 @@ if [[ "$no_drive" == 1 ]]; then echo "[cell] --no-drive: prompt at $pf"; echo "[
 
 # --- drive (COST) -------------------------------------------------------------
 log="$CACHE/drive-logs/$cellkey.json"
+err="${log%.json}.err"
 echo "[cell] driving (orchestrator=$orch, worker=$cand)…" >&2
-MCP_DRIVE_MODEL="$orch" "$REPO_ROOT/tools/mcp-drive/drive.sh" --prompt-file "$pf" > "$log" 2>"${log%.json}.err" || true
-echo "[cell] drive done -> $log" >&2
+if MCP_DRIVE_MODEL="$orch" "$REPO_ROOT/tools/mcp-drive/drive.sh" --prompt-file "$pf" > "$log" 2>"$err"; then
+  echo "[cell] drive done -> $log" >&2
+  drive_exit=0
+else
+  drive_exit=$?
+  echo "[cell] drive failed with exit $drive_exit -> $err" >&2
+fi
 
 if [[ "$do_score" == 1 ]]; then
   out="$CACHE/results/cells/$cellkey-kitsoki.json"
+  if [[ "$drive_exit" != 0 ]]; then
+    reason="driver transient failure after retries"
+    if [[ -s "$err" ]]; then
+      reason="$(tail -n 30 "$err" | tr '\n' ' ' | sed 's/  */ /g')"
+    fi
+    python3 "$HERE/bench.py" pending \
+      --project "$project" --bug "$bug" --candidate "$cand" --reason "$reason" \
+      --out "$out"
+    echo "[cell] wrote pending result -> $out" >&2
+    exit 1
+  fi
+
   # Reuse the cloned JS node_modules for scoring; local_only repos install (if any)
   # via the manifest's per-bug oracle.setup inside the scratch tree.
   [[ -z "$local_only" && -d "$src/node_modules" ]] && export QS_NODE_MODULES="$src/node_modules"
