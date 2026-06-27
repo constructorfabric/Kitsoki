@@ -3593,7 +3593,7 @@
               "to": "build",
               "label": "fix the gap",
               "style": "back",
-              "bus": 90,
+              "bus": 30,
               "lift": 65
             },
             {
