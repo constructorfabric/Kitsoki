@@ -62,6 +62,10 @@ on prompt incantations to enforce structure.
   [`tools/bugfix-bakeoff/external/`](../../tools/bugfix-bakeoff/external/)
   (`make qs-bakeoff`); cost-vs-real-fix cells are operator-run.
 
+- **[onboarding-cross-repo.md](onboarding-cross-repo.md)** — cross-repo onboarding
+  validation, including `gears-rust`, `slidey`, `postgresql`, and `kubernetes`
+  harness profiles with repo-specific readiness gates before live work.
+
 - **[routing-model-cost-study.md](routing-model-cost-study.md)** — the
   model-selection lever after deterministic routing has already done its
   job. Mines real Kitsoki turns into a routing corpus, compares available

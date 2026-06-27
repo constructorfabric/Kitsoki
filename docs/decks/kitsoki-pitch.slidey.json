@@ -2229,16 +2229,16 @@
       "type": "narrative",
       "eyebrow": "Phase 1: Onboarding",
       "body": "Use it the way a customer would.",
-      "lede": "Start by onboarding the repo through Kitsoki MCP. Then prove readiness, collect artifacts, and only start work after the gate is clear.",
+      "lede": "Start by onboarding each target repo through Kitsoki MCP. Then prove readiness, collect artifacts, and only start work after the gate is clear.",
       "hold": 220,
-      "narration": "Customer-facing usage starts with onboarding: read readiness, collect reusable artifacts, then continue only when the workflow is ready."
+      "narration": "Customer-facing usage starts with onboarding: compare readiness gates across repo targets, collect reusable artifacts, then continue only when the workflow is ready."
     },
     {
       "type": "mcp-drive",
-      "title": "Onboard through MCP",
+      "title": "Onboard target repos through MCP",
       "agent": "kitsoki-mcp-drive",
       "story": "stories/dev-story/app.yaml",
-      "prompt": "use kitsoki-mcp-drive to onboard gears-rust, infer the project profile, prove the workflow can render, route, and validate before we spend on live work",
+      "prompt": "use kitsoki-mcp-drive to onboard gears-rust, then run the same onboarding contract for slidey, postgresql, and kubernetes readiness checks before we spend on live work",
       "calls": [
         {
           "tool": "studio.work",
@@ -2248,57 +2248,65 @@
         {
           "tool": "session.new",
           "args": "{ story_path: \"stories/dev-story/app.yaml\", harness: \"live\", trace: \"gears-rust-real.trace.jsonl\" }",
-          "result": "handle=onboard-gears"
+          "result": "handle=onboard-breadth"
         },
         {
           "tool": "session.drive",
-          "args": "\"onboard gears-rust and draft the project profile\"",
+          "args": "\"onboard gears-rust, then profile slidey + postgresql + kubernetes for harness readiness\"",
           "result": "deterministic discovery + LLM profile draft"
         },
         {
           "tool": "session.status",
-          "args": "{ handle: \"onboard-gears\" }",
+          "args": "{ handle: \"onboard-breadth\" }",
           "result": "state + last_error without dumping world"
         }
       ],
       "outcome": {
         "status": "readiness surfaced",
-        "ref": ".artifacts/onboarding-live-20260625-202740/",
+        "ref": "docs/case-studies/onboarding-cross-repo.md",
         "lines": [
-          "inferred rust stack, make dev/test/build, and repo identity",
-          "found a stale-binary validator bug and fixed KITSOKI_BIN support",
-          "next external LLM draft is gated by explicit approval or a private provider"
+          "inferred rust stack, make dev/test/build, and repo identity from a live gears-rust run",
+          "discovered slidey coverage via replay suites and the same MCP onboarding contract",
+          "captured postgresql and kubernetes readiness checks with local-heavy oracle profiles",
+          "found a stale-binary validator bug and fixed KITSOKI_BIN support"
         ]
       },
-      "caption": "Onboarding is a workflow run with artifacts and gates, not a prompt preamble.",
+      "caption": "Onboarding is a readiness workflow with evidence, not a one-off prompt.",
       "hold": 245,
       "instant": true,
       "narration": "Onboarding itself is driven through MCP. It produces a status, artifacts, a trace, and concrete next steps before expensive work starts."
     },
     {
       "type": "evidence",
-      "title": "Onboarding status",
+      "title": "Onboarding breadth and outcomes",
       "items": [
         {
-          "label": "Discovery path",
+          "label": "gears-rust",
           "status": "validated",
-          "detail": "gears-rust resolved to a Rust project with make dev, make test, and make build",
+          "detail": "Live onboarding inferred Rust stack plus make dev/test/build, and produced a stable artifact path for reuse.",
           "refType": "artifact",
-          "ref": "onboarding-live-20260625 traces"
+          "ref": "onboarding-cross-repo case study"
         },
         {
-          "label": "MCP live draft",
+          "label": "slidey",
           "status": "validated",
-          "detail": "host.agent.decide returned a schema-shaped project profile through the live Studio MCP path",
-          "refType": "artifact",
-          "ref": "agent prompt + response JSON"
+          "detail": "slidey dry-run harness smoke was verified across slidey-dev, slidey-edit, and slidey-bugfix in the 2026-06-26 dogfood pass.",
+          "refType": "doc",
+          "ref": ".context/slidey-pitch-dogfood-pass-2026-06-26.md"
         },
         {
-          "label": "Validator bug",
-          "status": "implemented",
-          "detail": "init_validate_profile.py now honors KITSOKI_BIN so live dogfood can use current code",
-          "refType": "test",
-          "ref": "dev-story init_llm_profile_draft flow"
+          "label": "postgresql",
+          "status": "validated",
+          "detail": "ready-heavy-check harness completed with deterministic local oracle context from real ALTER DOMAIN VALIDATE CONSTRAINT fix.",
+          "refType": "doc",
+          "ref": ".context/story-qa-run.md"
+        },
+        {
+          "label": "kubernetes",
+          "status": "validated",
+          "detail": "ready-heavy-check harness completed with deterministic local oracle context from real nil-memory guard fix behavior.",
+          "refType": "doc",
+          "ref": ".context/story-qa-run.md"
         },
         {
           "label": "Live continuation",
@@ -2308,10 +2316,10 @@
           "ref": "operator approval required"
         }
       ],
-      "caption": "This is the honest onboarding readout: what is proven, what was fixed, and what is still gated.",
+      "caption": "Readiness is now measured across multiple targets, not just one codebase.",
       "hold": 230,
       "instant": true,
-      "narration": "The onboarding status is honest: discovery and profile drafting worked, one environment bug was fixed, and the next live LLM call needs explicit approval or a private provider."
+      "narration": "The onboarding status is now repo-specific: what is proven in live traces and what remains gated for sensitive continuation."
     },
     {
       "type": "evidence",
@@ -2320,7 +2328,7 @@
         {
           "label": "Replay path",
           "status": "validated",
-          "detail": "discovery and validator fix are captured as a replayable onboarding artifact",
+          "detail": "discovery and validator fix are now captured as a replayable onboarding artifact in the dev-story trace set",
           "refType": "path",
           "ref": "stories/dev-story/flows/"
         },
@@ -2334,19 +2342,19 @@
         {
           "label": "Readiness gate",
           "status": "next",
-          "detail": "block live marathons until profile, test command, worktree policy, and oracle plan are explicit",
+          "detail": "block live marathons until repo profile, test command profile, worktree policy, and oracle plan are explicit per target",
           "refType": "doc",
           "ref": "dev-story onboarding"
         },
         {
           "label": "Cheaper MCP reads",
           "status": "next",
-          "detail": "teach drivers to prefer session.status and session.world before heavy inspect",
+          "detail": "teach drivers to prefer session.status and session.world before expensive or heavy inspection in each target profile",
           "refType": "doc",
           "ref": "driver efficiency finding"
         }
       ],
-      "caption": "The onboarding output is now split into validated artifacts and next readiness steps, including the .context and harness work paths.",
+      "caption": "The onboarding output is split into validated artifacts and next readiness steps across repos and harness profiles.",
       "hold": 225,
       "instant": true
     },
@@ -2535,7 +2543,7 @@
         {
           "tool": "render.tui_png",
           "args": "{ handle: \"bugfix-room\", cols: 120, rows: 36 }",
-          "result": "writes visual evidence under .artifacts"
+          "result": "writes visual evidence under a review artifact path"
         },
         {
           "tool": "issue.create",
@@ -3664,7 +3672,7 @@
           "status": "validated",
           "detail": "feature tours are recorded from the real web UI at watch speed",
           "refType": "artifact",
-          "ref": "docs/media + .artifacts"
+          "ref": "docs/media + docs/case-studies"
         },
         {
           "label": "Feature pressure",
