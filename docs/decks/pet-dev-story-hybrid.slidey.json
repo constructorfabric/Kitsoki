@@ -233,13 +233,13 @@
       "panels": [
         {
           "system": "github",
-          "ref": "kitsoki#PRD",
+          "ref": "bsacrobatix/Kitsoki#52",
           "stage": "handoff",
           "messages": [
             {
               "author": "github",
               "role": "bot",
-              "body": "Design issue assigned to Arden — requirements ready ✅"
+              "body": "Design issue assigned to Arden — requirements ready ✅\nhttps://github.com/bsacrobatix/Kitsoki/issues/52"
             },
             {
               "author": "arden",
@@ -384,13 +384,13 @@
       "panels": [
         {
           "system": "github",
-          "ref": "kitsoki#design",
+          "ref": "bsacrobatix/Kitsoki#53",
           "stage": "handoff",
           "messages": [
             {
               "author": "github",
               "role": "bot",
-              "body": "Decomposition issue assigned to Andy — design ready ✅"
+              "body": "Decomposition issue assigned to Andy — design ready ✅\nhttps://github.com/bsacrobatix/Kitsoki/issues/53"
             },
             {
               "author": "andy",
@@ -552,13 +552,13 @@
       "panels": [
         {
           "system": "github",
-          "ref": "kitsoki#bug",
+          "ref": "bsacrobatix/Kitsoki#54",
           "stage": "handoff",
           "messages": [
             {
               "author": "github",
               "role": "bot",
-              "body": "Bug filed & assigned to Andy — redundant Observe ↗ link 🐞"
+              "body": "Bug filed & assigned to Andy — redundant Observe ↗ link 🐞\nhttps://github.com/bsacrobatix/Kitsoki/issues/54"
             },
             {
               "author": "andy",
@@ -666,13 +666,13 @@
       "panels": [
         {
           "system": "github",
-          "ref": "kitsoki#bug",
+          "ref": "bsacrobatix/Kitsoki#54",
           "stage": "handoff",
           "messages": [
             {
               "author": "github",
               "role": "bot",
-              "body": "Triaged: one-shot unsupervised — go ✅"
+              "body": "Triaged: one-shot unsupervised — go ✅\nhttps://github.com/bsacrobatix/Kitsoki/issues/54"
             },
             {
               "author": "andy",
