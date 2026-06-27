@@ -29,6 +29,8 @@ No LLM, no cost. Two subcommands:
   bench.py completion --project <name> --bug <id[,id]> --candidate <key[,key]>
       Print an explicit repo-history completion verdict from readiness/results:
       no-cost ready, ready to drive live, complete with pending, or live scored.
+      Output now includes completion.completed to let KitSoki story flow gate
+      deterministic finalization.
       Add --require-result-evidence or --require-live-scored to fail publishing
       gates when the current artifacts are not sufficient. Free/no-LLM.
 
@@ -983,11 +985,22 @@ def build_completion_report(m, repo_dir=None, candidate=None, candidates_path=No
         status = "ready-to-drive" if ready_to_drive else "blocked"
     elif pending:
         status = "complete-with-pending"
+    completed = status in {"complete", "complete-with-pending"}
+    needs_manual_drive = (missing > 0 or stale_results > 0)
+    can_auto_repair = (result_evidence_complete is False) and (
+        (stale_prepared > 0 or unprepared > 0) and
+        not needs_manual_drive and
+        preflight_ok and
+        arming_verified
+    )
 
     out = {
         "ok": result_evidence_complete,
         "project": m["project"]["id"],
         "status": status,
+        "completed": completed,
+        "requires_drive": needs_manual_drive,
+        "repairable": can_auto_repair,
         "checks": {
             "preflight_ok": preflight_ok,
             "arming_verified": arming_verified,
@@ -1060,10 +1073,13 @@ def write_completion_markdown(report, markdown):
         f"# {report['project']} repo-history completion",
         "",
         f"Status: {report['status']}",
+        f"Completed: {'yes' if report['completed'] else 'no'}",
         f"No-cost ready: {'yes' if checks['no_cost_ready'] else 'no'}",
         f"Ready to drive live: {'yes' if checks['ready_to_drive'] else 'no'}",
         f"Result evidence complete: {'yes' if checks['result_evidence_complete'] else 'no'}",
         f"Live scored capability result: {'yes' if checks['live_scored'] else 'no'}",
+        f"Requires additional live drive: {'yes' if report['requires_drive'] else 'no'}",
+        f"Auto-repairable prepared-handshake issues: {'yes' if report['repairable'] else 'no'}",
         "",
         "## Cell Counts",
         "",
