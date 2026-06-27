@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "orchestrator_output",
+  "description": "Output schema for the orchestrator agent defining tasks for slots.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "plan": {
+      "type": "string",
+      "description": "Overall progress plan and current status description."
+    },
+    "slot_a_task": {
+      "type": "string",
+      "description": "Disjoint task description for worker slot A. Empty if no task assigned."
+    },
+    "slot_a_active": {
+      "type": "boolean",
+      "description": "True if worker slot A should run this iteration."
+    },
+    "slot_b_task": {
+      "type": "string",
+      "description": "Disjoint task description for worker slot B. Empty if no task assigned."
+    },
+    "slot_b_active": {
+      "type": "boolean",
+      "description": "True if worker slot B should run this iteration."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["iterating", "completed"],
+      "description": "Current loop status decided by the orchestrator."
+    }
+  },
+  "required": ["plan", "slot_a_task", "slot_a_active", "slot_b_task", "slot_b_active", "status"]
+}

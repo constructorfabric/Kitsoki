@@ -88,7 +88,13 @@ states:
       # Re-enter iterating (a real state change) so the next maker step runs —
       # this is what makes the loop autonomous, carrying the failure forward.
       loop_again:
-        - target: iterating
+        - when: 'world.use_orchestrator == true || world.use_orchestrator == "true"'
+          target: orchestrating
+          effects:
+            - set:
+                last_gate_failure: "{{ slots.feedback }}"
+        - when: '!(world.use_orchestrator == true || world.use_orchestrator == "true")'
+          target: iterating
           effects:
             - set:
                 last_gate_failure: "{{ slots.feedback }}"

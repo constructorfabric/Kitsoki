@@ -65,6 +65,9 @@ hosts:
   - host.run
   - host.artifacts_dir
   - host.git
+  - host.chat.resolve
+  - host.chat.transcript
+  - host.agent.converse
 
 # Worktree confinement — the maker is an autonomous agent that EDITS the repo,
 # so it must never write the operator's checkout directly. `launch` mints a
@@ -127,6 +130,14 @@ agents:
     system_prompt: "You choose the cheapest reliable gate for an ad hoc engineering goal. Prefer script gates when the goal names an existing command or an objective command can be written; use agent gates for subjective review; use hybrid when deterministic evidence covers most of the goal but a focused review remains."
     tools: [Read, Grep, Glob]
 
+  orchestrator:
+    system_prompt: "You are the orchestrator of an engineering task loop. Your job is to analyze the overall progress toward the goal, read the previous gate failure feedback and current artifact state, maintain the master plan, and identify the specific, disjoint sub-task(s) to dispatch to worker(s) this iteration. In stateless mode, you review everything fresh. In persistent mode, you build on the chat history. Provide a structured plan, the next task description, and whether the tasks are completed."
+    tools: [Read, Grep, Glob]
+
+  orchestrator_parser:
+    system_prompt: "You are a JSON extractor. Parse the orchestrator response, extract the JSON block matching the schema, and submit it."
+    tools: [Read, Grep, Glob]
+
 world:
   # Configuration (set in `configuring`, or seeded via a warp/flow).
   goal_text:         { type: string, default: "" }    # the purpose, in words
@@ -138,6 +149,31 @@ world:
   anchor_files:      { type: string, default: "" }    # fixed context handed to the maker each turn (ralph reset)
   iteration_budget:  { type: int,    default: 8 }
   cost_budget_usd:   { type: number, default: 0 }     # 0 = disabled
+
+  # Orchestrator & Parallel Worker variables
+  use_orchestrator:         { type: bool,   default: false }
+  orchestrator_mode:        { type: string, default: "persistent" } # persistent | stateless
+  orchestrator_plan:        { type: string, default: "" }
+  orchestrator_chat_id:     { type: string, default: "" }
+  orchestrator_response:    { type: string, default: "" }
+  orchestrator_status:      { type: string, default: "iterating" }
+  slot_a_task:              { type: string, default: "" }
+  slot_a_active:            { type: bool,   default: false }
+  slot_a_summary:           { type: string, default: "" }
+  slot_a_done:              { type: bool,   default: false }
+  slot_a_last_error:        { type: string, default: "" }
+  slot_a_files:             { type: list,   default: [] }
+  slot_b_task:              { type: string, default: "" }
+  slot_b_active:            { type: bool,   default: false }
+  slot_b_summary:           { type: string, default: "" }
+  slot_b_done:              { type: bool,   default: false }
+  slot_b_last_error:        { type: string, default: "" }
+  slot_b_files:             { type: list,   default: [] }
+  worker_provider_a:        { type: string, default: "ambient" }
+  worker_provider_b:        { type: string, default: "ambient" }
+  worktree_path_a:          { type: string, default: "" }
+  worktree_path_b:          { type: string, default: "" }
+  merge_conflict_detected:  { type: bool,   default: false }
 
   # Worktree confinement (see hosts comment). The maker + gate run with cwd
   # pinned to worktree_path so every iteration's writes land in an isolated
@@ -198,6 +234,11 @@ intents:
       # reusable .worktrees/cherny-loop on branch cherny-loop/run).
       workspace_branch: { type: string, required: false }
       workspace_id:     { type: string, required: false }
+      # Orchestrator settings
+      use_orchestrator:  { type: string, required: false }
+      orchestrator_mode: { type: string, required: false }
+      worker_provider_a: { type: string, required: false }
+      worker_provider_b: { type: string, required: false }
   launch:
     description: "Verify the gate fails first, then start the loop."
     examples: ["launch", "go", "run the loop", "verify the gate"]
@@ -249,6 +290,50 @@ intents:
     priority: 1
     slots:
       feedback: { type: string, required: false }
+  slot_a_finished:
+    description: "(internal) worker A done."
+    examples: []
+    priority: 1
+  slot_b_finished:
+    description: "(internal) worker B done."
+    examples: []
+    priority: 1
+  check_merging:
+    description: "(internal) workers done, go to merge."
+    examples: []
+    priority: 1
+  start_workers:
+    description: "(internal) start parallel workers."
+    examples: []
+    priority: 1
+  dispatch:
+    description: "(internal) dispatch orchestrator decision."
+    examples: []
+    priority: 1
+  run_a:
+    description: "(internal) run worker a."
+    examples: []
+    priority: 1
+  skip_a:
+    description: "(internal) skip worker a."
+    examples: []
+    priority: 1
+  run_b:
+    description: "(internal) run worker b."
+    examples: []
+    priority: 1
+  skip_b:
+    description: "(internal) skip worker b."
+    examples: []
+    priority: 1
+  finish_a:
+    description: "(internal) finish worker a."
+    examples: []
+    priority: 1
+  finish_b:
+    description: "(internal) finish worker b."
+    examples: []
+    priority: 1
   abort:
     description: "Abandon the loop."
     examples: ["abort", "stop", "give up"]

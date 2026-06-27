@@ -1,0 +1,74 @@
+# Test stateless orchestrator fan-out to parallel workers, merge, and achieve.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:
+    by_call:
+      gate-0: { data: { ok: false, exit_code: 1, stdout: "failed baseline" } }
+      merge-a: { data: { ok: true, exit_code: 0 } }
+      merge-b: { data: { ok: true, exit_code: 0 } }
+      gate-1: { data: { ok: true, exit_code: 0, stdout: "all tests passed" } }
+  host.agent.decide:
+    by_call:
+      stateless-decide:
+        data:
+          submitted:
+            plan: "Updating both components in parallel"
+            slot_a_task: "Implement feature A"
+            slot_a_active: true
+            slot_b_task: "Fix bug B"
+            slot_b_active: true
+            status: "iterating"
+  host.agent.task:
+    by_call:
+      maker-a-1: { data: { submitted: { summary: "Implemented feature A" } } }
+      maker-b-1: { data: { submitted: { summary: "Fixed bug B" } } }
+  host.artifacts_dir: { data: { ok: true } }
+  host.git: { data: { ok: true, sha: "abc1234" } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal: "Implement feature A and fix bug B"
+        gate_command: "go test ./..."
+        gate_mode: "script"
+        use_orchestrator: "true"
+        orchestrator_mode: "stateless"
+    expect_state: configuring
+  - intent: { name: launch, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      goal_achieved: true
+      terminal_reason: "achieved"
+      iteration: 1
+      slot_a_done: true
+      slot_b_done: true
+    expect_host_calls:
+      - handler: host.run
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: stateless-decide }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-a-1 }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-b-1 }
+        times: 1
+      - handler: host.run
+        args: { call: merge-a }
+        times: 1
+      - handler: host.run
+        args: { call: merge-b }
+        times: 1
+      - handler: host.run
+        args: { call: gate-1 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

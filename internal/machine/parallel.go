@@ -87,12 +87,12 @@ const (
 // single turn before the machine bails out with an error.  Set generously
 // so legitimate ~3-step cross-region chains pass; small enough that a YAML
 // bug forming a cycle fails loudly.
-const maxEmitDepth = 8
+const maxEmitDepth = 24
 
 // EmitIntentMaxDepth bounds re-entrant emit_intent dispatches within one
 // turn to prevent infinite chains. Matches the depth cap used for Emit
 // (event) propagation above.
-const EmitIntentMaxDepth = 8
+const EmitIntentMaxDepth = 24
 
 // parsedParallel is the decoded form of a parallel-encoded state path.
 //

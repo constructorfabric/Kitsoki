@@ -129,18 +129,16 @@ states:
                 - label: "look"
     on:
       proceed:
-        - when: "(world.gate_mode != 'hybrid' && world.gate_ok == false) || (world.gate_mode == 'hybrid' && world.script_gate_ok != '' && world.agent_gate_ok != '' && (world.script_gate_ok == false || world.agent_gate_ok == false))"
-          target: iterating
-          # Hand the baseline failure to the first maker turn — the loop starts
-          # already pointed at the gap, not blind.
+        - when: 'world.use_orchestrator == true || world.use_orchestrator == "true"'
+          target: orchestrating
           effects:
             - set:
                 last_gate_failure: "{{ world.gate_stdout }}{{ world.gate_reason }}"
         - default: true
-          target: .
-          guard_hint: "The gate passes — there is nothing to iterate toward."
+          target: iterating
           effects:
-            - say: "The gate already passes. `reconfigure` to strengthen it, or `accept`."
+            - set:
+                last_gate_failure: "{{ world.gate_stdout }}{{ world.gate_reason }}"
       accept:
         - when: "(world.gate_mode != 'hybrid' && world.gate_ok == true) || (world.gate_mode == 'hybrid' && world.script_gate_ok == true && world.agent_gate_ok == true)"
           target: "@exit:achieved"

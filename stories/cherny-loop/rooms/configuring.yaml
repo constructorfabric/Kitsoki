@@ -47,6 +47,14 @@ states:
           pairs:
             Iteration cap: "{{ world.iteration_budget }}"
             Cost cap:      '{% if world.cost_budget_usd > 0 %}${{ world.cost_budget_usd }}{% else %}(disabled){% endif %}'
+      - heading: "Orchestration"
+        when: "world.use_orchestrator"
+      - kv:
+          pairs:
+            Orchestrator: '{{ world.orchestrator_mode }}'
+            Worker Slot A: '{{ world.worker_provider_a }}'
+            Worker Slot B: '{{ world.worker_provider_b }}'
+        when: "world.use_orchestrator"
       - choice:
           mode: single
           prompt: "Actions"
@@ -87,6 +95,10 @@ states:
                 cost_budget_usd:  "{{ slots.cost_budget ?? world.cost_budget_usd }}"
                 workspace_branch: "{{ slots.workspace_branch ?? world.workspace_branch }}"
                 workspace_id:     "{{ slots.workspace_id ?? world.workspace_id }}"
+                use_orchestrator:  "{{ slots.use_orchestrator ?? world.use_orchestrator }}"
+                orchestrator_mode: "{{ slots.orchestrator_mode ?? world.orchestrator_mode }}"
+                worker_provider_a: "{{ slots.worker_provider_a ?? world.worker_provider_a }}"
+                worker_provider_b: "{{ slots.worker_provider_b ?? world.worker_provider_b }}"
             - invoke: host.agent.decide
               id: "gate-plan"
               when: "slots.gate_mode == nil && (slots.goal ?? '') != '' && world.gate_command == ''"
