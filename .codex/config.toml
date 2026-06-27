@@ -1,0 +1,21 @@
+[mcp_servers.slidey]
+command = "node"
+args = ["/Users/brad/code/slidey/src/mcp.js", "--root", "/Users/brad/code/Kitsoki"]
+
+[mcp_servers.slidey.tools.slidey_scene_summary]
+approval_mode = "approve"
+
+[mcp_servers.slidey.tools.slidey_workspace_tree]
+approval_mode = "approve"
+
+[mcp_servers.slidey.tools.slidey_render_png]
+approval_mode = "approve"
+
+[mcp_servers.slidey.tools.slidey_render_html]
+approval_mode = "approve"
+
+[mcp_servers.slidey.tools.slidey_doctor]
+approval_mode = "approve"
+
+[mcp_servers.slidey.tools.slidey_audit]
+approval_mode = "approve"
