@@ -2227,11 +2227,11 @@
     },
     {
       "type": "narrative",
-      "eyebrow": "Dogfood path",
+      "eyebrow": "Phase 1: Onboarding",
       "body": "Use it the way a customer would.",
-      "lede": "Start by onboarding the repo through Kitsoki MCP. Read the status and next steps. Then drive planning, bugfix, git ops, and story improvement through the same governed surface. The bakeoff and harness slides are the proof that the loop works.",
+      "lede": "Start by onboarding the repo through Kitsoki MCP. Then prove readiness, collect artifacts, and only start work after the gate is clear.",
       "hold": 220,
-      "narration": "The dogfood path is the customer path: onboard through MCP, read the readiness status, drive real tasks, then use the bakeoff harness as proof."
+      "narration": "Customer-facing usage starts with onboarding: read readiness, collect reusable artifacts, then continue only when the workflow is ready."
     },
     {
       "type": "mcp-drive",
@@ -2315,12 +2315,12 @@
     },
     {
       "type": "evidence",
-      "title": "Onboarding next steps",
+      "title": "Onboarding outcomes and artifacts",
       "items": [
         {
-          "label": "Promote replay",
-          "status": "next",
-          "detail": "turn the successful discovery and validator-fix path into a no-LLM flow fixture",
+          "label": "Replay path",
+          "status": "validated",
+          "detail": "discovery and validator fix are captured as a replayable onboarding artifact",
           "refType": "path",
           "ref": "stories/dev-story/flows/"
         },
@@ -2346,13 +2346,13 @@
           "ref": "driver efficiency finding"
         }
       ],
-      "caption": "The next step is not more demo polish. It is turning onboarding into a reusable readiness gate for every repo.",
+      "caption": "The onboarding output is now split into validated artifacts and next readiness steps, including the .context and harness work paths.",
       "hold": 225,
       "instant": true
     },
     {
       "type": "mcp-drive",
-      "title": "Use it from Claude Code",
+      "title": "Use it from Claude Code (onboarding)",
       "agent": "kitsoki-mcp-drive",
       "story": "workspace story router",
       "prompt": "use kitsoki-mcp-drive to onboard the repo, show readiness, then drive the next task through the right Kitsoki story",
@@ -2393,8 +2393,16 @@
       "narration": "After onboarding, the same MCP surface drives planning, bugfix, git operations, and story improvement."
     },
     {
+      "type": "narrative",
+      "eyebrow": "Phase 2: Validation",
+      "body": "Close the loop before shipping.",
+      "lede": "After onboarding, validate plan quality and fixes through replayable PRD/proposal checks, bugfix cells, and hard-case stress coverage.",
+      "hold": 200,
+      "narration": "Validation first means we challenge proposals and fixes against evidence, not assumptions."
+    },
+    {
       "type": "mcp-drive",
-      "title": "Planning through MCP",
+      "title": "Back-test PRD and proposal writing",
       "agent": "kitsoki-mcp-drive",
       "story": "stories/kitsoki-dev/app.yaml",
       "prompt": "use kitsoki-mcp-drive agent to propose and implement the spatial oracle feature I described in the markdown",
@@ -3285,6 +3293,14 @@
       "hold": 240,
       "narration": "The harness is not theory. It is a list of failure modes we turned into product behavior.",
       "instant": true
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Phase 3: Large-scale training",
+      "body": "Move from one repo check to reusable system training.",
+      "lede": "At scale, failures become scoreable training cases, stories evolve from traces, and the entire loop becomes a repeatable product capability.",
+      "hold": 210,
+      "narration": "Large-scale training converts operational evidence into model and workflow improvement across projects."
     },
     {
       "type": "diagram-svg",
