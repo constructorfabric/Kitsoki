@@ -122,50 +122,19 @@
       "type": "title",
       "eyebrow": "0 · Where work lives",
       "title": "It starts on GitHub",
-      "subtitle": "A real @kitsoki mention on a labelled issue → a run link in the reply → the kitsoki run page",
-      "narration": "Before any of this reaches the kitsoki composer, it starts where the work already lives: a real at-kitsoki mention on a labelled GitHub issue. The label decides the route, kitsoki replies with a run link, and that link opens the hosted run page."
+      "subtitle": "A real @kitsoki mention on a labelled issue claims the job — kitsoki runs the story and reports back on the thread",
+      "narration": "Before any of this reaches the kitsoki composer, it starts where the work already lives: a labelled GitHub issue. A real at-kitsoki mention claims the job, kitsoki runs the matching story, and it reports back on the same thread — with the validated artifacts attached, as we will see at each step."
     },
     {
       "type": "video",
       "mode": "embedded",
       "eyebrow": "0 · GitHub front door",
-      "title": "Bug label → bugfix",
-      "rrweb": "assets/dev-story-hybrid/github/bug-thread.rrweb.json",
-      "start": 0.25,
+      "title": "A labelled issue → @kitsoki claims it",
+      "rrweb": "clips/pet-github-feature-kickoff.rrweb.json",
+      "start": 0.0,
       "chapters": "auto",
-      "caption": "@kitsoki on a bug-labelled issue → stories/bugfix. Live: github.com/bsacrobatix/Kitsoki/issues/44",
-      "narration": "A bug-labelled mention routes straight to the bugfix story — one mention, one claimed job, one run link."
-    },
-    {
-      "type": "video",
-      "mode": "embedded",
-      "eyebrow": "0 · GitHub front door",
-      "title": "Feature label → dev story",
-      "rrweb": "assets/dev-story-hybrid/github/feature-thread.rrweb.json",
-      "start": 0.25,
-      "chapters": "auto",
-      "caption": "@kitsoki on a feature-labelled issue → the dev story that follows. Live: issues/45",
-      "narration": "A feature-labelled mention routes to the dev story you are about to watch — the same loop, opened from GitHub."
-    },
-    {
-      "type": "video",
-      "mode": "embedded",
-      "eyebrow": "0 · GitHub front door",
-      "title": "Click it → the kitsoki run page",
-      "rrweb": "assets/dev-story-hybrid/github/run-page.rrweb.json",
-      "chapters": "auto",
-      "caption": "The run link opens the hosted kitsoki page: origin, a source link back to the issue, story, state, timeline",
-      "narration": "The run link opens a hosted run page — origin, a source link back to the exact issue, the story, the state, and a full timeline."
-    },
-    {
-      "type": "video",
-      "mode": "embedded",
-      "eyebrow": "0 · GitHub front door",
-      "title": "…and the same run as JSON",
-      "rrweb": "assets/dev-story-hybrid/github/run-api.rrweb.json",
-      "chapters": "auto",
-      "caption": "The same job as JSON — every run is queryable, not just viewable",
-      "narration": "And the same job is available as JSON, so every run is queryable, not just viewable."
+      "caption": "A real @kitsoki mention on the labelled issue claims the job. Live: github.com/bsacrobatix/Kitsoki/issues/52",
+      "narration": "A real at-kitsoki mention on the labelled issue claims the job — one mention, one claimed run. kitsoki goes to work; the artifacts land back on the thread at each step."
     },
     {
       "type": "personas",
@@ -307,10 +276,10 @@
       "mode": "embedded",
       "eyebrow": "2 · Design issue",
       "title": "GitHub · Design Ticket #52",
-      "rrweb": "clips/pet-github-design-issue.rrweb.json",
+      "rrweb": "clips/pet-github-feature-thread.rrweb.json",
       "chapters": "auto",
-      "caption": "The live design issue #52 on GitHub with the slidey design deck linked as an asset.",
-      "narration": "Arden receives the notification and goes to the live GitHub issue #52 to review the design deck linked directly in the issue body."
+      "caption": "@kitsoki on the design issue → kitsoki replies with the PRD + validated design deck, as GitHub release downloads. Live: issues/52",
+      "narration": "Here is that same issue, paid off: kitsoki has replied on the thread with the PRD and the validated design deck — attached as GitHub release downloads, ready to review without leaving GitHub."
     },
     {
       "type": "personas",
@@ -468,10 +437,10 @@
       "mode": "embedded",
       "eyebrow": "3 · Decomposition issue",
       "title": "GitHub · Decomposition Ticket #53",
-      "rrweb": "clips/pet-github-decomp-issue.rrweb.json",
+      "rrweb": "clips/pet-github-decomp-thread.rrweb.json",
       "chapters": "auto",
-      "caption": "The live decomposition issue #53 on GitHub with the work plan deck linked.",
-      "narration": "Andy opens the decomposition issue #53 on GitHub to access the work plan deck and start the task execution."
+      "caption": "@kitsoki on the decomposition issue → kitsoki replies with the work-plan deck. Live: issues/53",
+      "narration": "The decomposition is tracked the same way: kitsoki replies on issue 53 with the validated work-plan deck, attached as a GitHub release download."
     },
     {
       "type": "personas",
@@ -646,10 +615,10 @@
       "mode": "embedded",
       "eyebrow": "4 · Bug report",
       "title": "GitHub · Bug Ticket #54",
-      "rrweb": "clips/pet-github-bug-issue.rrweb.json",
+      "rrweb": "clips/pet-github-bug-thread.rrweb.json",
       "chapters": "auto",
-      "caption": "The live bug ticket #54 on GitHub reporting the redundant link.",
-      "narration": "Andy receives a bug notification and inspects the live GitHub issue #54, containing the bug report deck and reproduction replay."
+      "caption": "@kitsoki on the bug issue → kitsoki replies with the bug report and fix report. Live: issues/54",
+      "narration": "And here is the bug, filed mid-stream: a real at-kitsoki mention claims it, and kitsoki replies with the bug report and the fix report — again, artifacts available directly from GitHub."
     },
     {
       "type": "personas",
