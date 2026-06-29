@@ -5,6 +5,7 @@ import { installEmbedViewListener } from "../lib/embedView.js";
 import type { ViewElement } from "../types.js";
 import { createDataSource } from "../data/source.js";
 import type { AnnotationAnchor, MediaKind } from "../lib/annotationAnchor.js";
+import { serializeAnchor } from "../lib/annotationAnchor.js";
 import MarkdownModal from "./MarkdownModal.vue";
 import ArtifactAnnotator from "./ArtifactAnnotator.vue";
 import { useRunStore } from "../stores/run.js";
@@ -346,6 +347,19 @@ async function sendAnnotation(): Promise<void> {
           // The slide the operator is looking at (from the deck's embed:view
           // reports), so the refine targets THAT slide — not a guessed default.
           ...(_run.embedScope ? { current_scene: _run.embedScope } : {}),
+          // WHAT the operator actually pointed at, as a slot (not just the
+          // visual-ambient seam) so the receiving room can fold the LIVE anchor
+          // into world.annotation — otherwise the refine reads only the baked
+          // seed and "what was clicked" is lost. Carries the on-wire anchor plus
+          // the UI label world.annotation.anchor.label renders.
+          ...(serializeAnchor(anchor)
+            ? {
+                annotation_anchor: {
+                  ...serializeAnchor(anchor),
+                  ...(label ? { label } : {}),
+                },
+              }
+            : {}),
         },
         // No displayLabel: the user bubble derives its text from the feedback
         // slot. Passing the instruction as BOTH label and slot rendered it

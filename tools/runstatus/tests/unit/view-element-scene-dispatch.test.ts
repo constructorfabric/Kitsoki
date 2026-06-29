@@ -73,6 +73,13 @@ describe("ViewElement scene-aware refine dispatch", () => {
     const slots = submit.mock.calls[0][3] as Record<string, unknown>;
     expect(slots.feedback).toBe("swap the cat for a cowboy herding cats");
     expect(slots.current_scene).toBe("9"); // the viewed slide rode the refine
+    // WHAT the operator clicked rides as a slot too, so the story can fold the
+    // LIVE anchor into world.annotation (else the refine reads only the seed).
+    expect(slots.annotation_anchor).toEqual({
+      kind: "semantic_element",
+      semantic_element: { plugin: undefined, ref: "9/image" },
+      label: "Scene 9",
+    });
   });
 
   it("opens annotate on the same viewed scene transition", async () => {

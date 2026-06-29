@@ -96,12 +96,25 @@ states:
         - target: refining
           effects:
             # An inline feedback note overrides the baked annotation's instruction;
-            # the anchor (where the operator pointed) is unchanged. current_scene
-            # is the slide the operator is viewing (reported by the embed plugin)
-            # — it makes the refine target THAT slide, overriding any stale seed.
+            # current_scene is the slide the operator is viewing (reported by the
+            # embed plugin) — it makes the refine target THAT slide, overriding any
+            # stale seed.
             - set:
                 refine_feedback: "{{ slots.feedback ?? '' }}"
                 current_scene: "{{ slots.current_scene ?? '' }}"
+            # Fold the LIVE anchor (what the operator actually clicked, sent as the
+            # `annotation_anchor` slot) into world.annotation so resolve_scene and
+            # the refine prompt target the picked element — not the baked seed.
+            # Without this, world.annotation only ever holds seed_annotation's
+            # default and "what was clicked" is lost (the anchor rides the visual
+            # ambient seam, which resolve_scene/the prompt's primary path can't
+            # read). No live pick (tour/baked drive) ⇒ keep the existing annotation.
+            - when: "slots.annotation_anchor != nil"
+              set:
+                annotation:
+                  anchor: "{{ slots.annotation_anchor }}"
+                  instruction: "{{ slots.feedback ?? '' }}"
+                  frame_handle: "{{ world.deck_handle }}"
       revise:
         - target: drafting
           effects:
