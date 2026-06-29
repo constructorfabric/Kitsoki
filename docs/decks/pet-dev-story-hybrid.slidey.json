@@ -250,6 +250,17 @@
       "narration": "And here is the artifact itself: the published PRD, a markdown document the architect picks up — the problem, the target users, the goals, and the requirements that keep the pet weightless."
     },
     {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "1 · Artifact deck · PRD",
+      "title": "The PRD, as a deck",
+      "rrweb": "clips/pet-prd-deck.rrweb.json",
+      "start": 0,
+      "chapters": "auto",
+      "caption": "The same requirements, published as a self-contained slidey deck (HTML) — rendered and played slide by slide.",
+      "narration": "And the same PRD as a shareable deck: a self-contained slidey deck the team can flip through — the product output, packaged."
+    },
+    {
       "type": "title",
       "eyebrow": "1 · Where work lives",
       "title": "It runs from GitHub",
