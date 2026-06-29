@@ -1,9 +1,19 @@
 BINARY    := kitsoki
 PKG       := ./cmd/kitsoki
-# Default install dir: macOS doesn't put ~/bin on PATH (and doesn't create it),
-# so default to ~/.local/bin there — already on PATH for typical setups. Linux
-# keeps the classic ~/bin. Override with `make install INSTALLDIR=...`.
-INSTALLDIR ?= $(if $(filter Darwin,$(shell uname -s)),$(HOME)/.local/bin,$(HOME)/bin)
+# Default install dir: pick a location that's actually on PATH on both Linux and
+# macOS, instead of the per-OS ~/bin / ~/.local/bin guess (neither is reliably on
+# PATH, which left the binary unfindable). Resolution order:
+#   - $GOBIN, if the user already set one (respect their choice);
+#   - /usr/local/bin when writable — the standard local-binary dir, on PATH by
+#     default on virtually every Linux and macOS (homebrew-Intel, root VMs, …);
+#   - else ~/.local/bin — the XDG user-bin fallback when /usr/local/bin needs sudo
+#     (Apple-Silicon homebrew, non-root users). The post-install PATH check below
+#     warns if whatever we picked isn't on PATH.
+# Override with `make install INSTALLDIR=...`.
+INSTALLDIR ?= $(shell \
+	if [ -n "$$GOBIN" ]; then printf '%s' "$$GOBIN"; \
+	elif [ -w /usr/local/bin ]; then printf '%s' /usr/local/bin; \
+	else printf '%s' "$$HOME/.local/bin"; fi)
 
 # codesign_adhoc <binary>: on macOS, force a fresh ad-hoc code signature on a
 # just-built binary. Go's linker-internal ad-hoc signature is rejected as
