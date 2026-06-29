@@ -131,9 +131,17 @@ func TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP(t *testing.T) {
 	if resB.Error == "" {
 		t.Fatalf("expected session B create to be refused, but it succeeded: %#v", resB.Data)
 	}
-	if !strings.Contains(resB.Error, "already checked out by session") ||
-		!strings.Contains(resB.Error, "session-A") {
-		t.Fatalf("session B error did not name the owning session as expected: %q", resB.Error)
+	// Assert BEHAVIOR, not one implementation's exact prose: the refusal must
+	// name the owning session (session-A) and signal an ownership/in-use
+	// conflict. Any equivalent wording ("checked out by" / "in use by" /
+	// "owned by" / "held by") is a correct fix — pinning a single phrase would
+	// wrongly fail semantically-correct implementations.
+	ownershipConflict := strings.Contains(resB.Error, "checked out by") ||
+		strings.Contains(resB.Error, "in use by") ||
+		strings.Contains(resB.Error, "owned by") ||
+		strings.Contains(resB.Error, "held by")
+	if !ownershipConflict || !strings.Contains(resB.Error, "session-A") {
+		t.Fatalf("session B error did not name the owning session / signal an ownership conflict as expected: %q", resB.Error)
 	}
 	t.Logf("FIX 1: session B refused with: %s", resB.Error)
 

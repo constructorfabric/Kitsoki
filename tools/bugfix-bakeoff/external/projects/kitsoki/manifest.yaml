@@ -58,6 +58,17 @@ bugs:
       uncommitted WIP. Creating a second session against an in-use checkout must
       be refused, not silently shared.
 
+      The fix must live in the HOST worktree provider (the git_worktree
+      host_interface / workspace.create handler in internal/host), as a safety
+      net that holds EVEN IN THE WORST CASE where two sessions resolve to the
+      identical on-disk checkout id. Concretely: thread a per-session identity
+      into workspace.create, and on a `create` for a checkout that is already
+      owned by a DIFFERENT session, return a loud error that names the owning
+      session — do NOT return {ok:true} pointing at the first session's live
+      tree. Legitimate same-session re-entry (identical session) must still
+      short-circuit to ok. Making upstream ids merely distinct is NOT sufficient:
+      the host create itself must refuse the colliding, different-session case.
+
   - id: bug12
     ticket_ref: issues/bugs/2026-06-10T141756Z-decide-postcmd-captured-submit-reported-abandoned.md
     title: "host.agent.decide with validator.post_cmd reports 'abandoned' when the payload WAS captured"

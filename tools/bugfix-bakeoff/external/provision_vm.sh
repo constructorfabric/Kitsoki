@@ -42,6 +42,15 @@ if ! command -v go >/dev/null 2>&1 && [[ ! -x /usr/local/go/bin/go ]]; then
 fi
 export PATH="/usr/local/go/bin:/usr/local/bin:${PATH}"
 
+# --- 1b. git identity ---------------------------------------------------------
+# The worker's bf__implementer commits its fix via the host (`git.commit`). A
+# fresh root box has no global identity, so the commit fails with "Author
+# identity unknown" — the implementer errors, the pipeline bounces to bf.idle,
+# and the cell scores `failed` on an UNCOMMITTED (but otherwise complete) fix.
+git config --global user.email >/dev/null 2>&1 || git config --global user.email "bakeoff@kitsoki.local"
+git config --global user.name  >/dev/null 2>&1 || git config --global user.name  "Kitsoki Bakeoff"
+log "git identity: $(git config --global user.name) <$(git config --global user.email)>"
+
 # --- 2. harness CLIs (orchestrator + worker) ----------------------------------
 # npm global prefix is /usr/local by default → both land on PATH.
 log "installing codex + claude-code CLIs (npm -g)"
