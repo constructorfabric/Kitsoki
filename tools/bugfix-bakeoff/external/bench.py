@@ -52,7 +52,14 @@ REPO_ROOT = HERE.parents[2]
 
 
 def load(project):
-    mpath = HERE / "projects" / project / "manifest.yaml"
+    # `--project` is normally a project id resolved under projects/<id>/, but a
+    # direct path to a manifest.yaml is also accepted (handy for ad-hoc repos and
+    # tests) — least surprise: if it points at an existing .yaml, use it as-is.
+    cand = Path(project)
+    if cand.suffix in (".yaml", ".yml") and cand.exists():
+        mpath = cand
+    else:
+        mpath = HERE / "projects" / project / "manifest.yaml"
     if not mpath.exists():
         sys.exit(f"no manifest: {mpath}")
     m = yaml.safe_load(mpath.read_text())
@@ -114,10 +121,24 @@ def materialize(tree, dest, node_modules=None):
     if files.returncode == 0 and files.stdout.strip():
         for rel in files.stdout.splitlines():
             src = tree / rel
-            if not src.exists():
+            dst = dest / rel
+            # Preserve tracked symlinks AS symlinks — never copy their target.
+            # A tracked symlink to a directory (e.g. docs/skills -> ../.agents/skills)
+            # otherwise makes shutil.copy2 raise IsADirectoryError when the link
+            # resolves, which is exactly why host scoring diverged from the docker
+            # (copytree) path. Recreating the link is deterministic in both.
+            if src.is_symlink():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                if dst.is_symlink() or dst.exists():
+                    dst.unlink()
+                os.symlink(os.readlink(src), dst)
                 continue
-            (dest / rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dest / rel)
+            # Skip dangling entries and directory gitlinks (submodules): nothing
+            # to copy as a regular file.
+            if not src.exists() or src.is_dir():
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
     else:
         shutil.copytree(tree, dest, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("node_modules", ".git"))
