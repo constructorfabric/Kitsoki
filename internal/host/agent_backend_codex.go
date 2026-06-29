@@ -225,9 +225,37 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 	if sp := strings.TrimSpace(systemPrompt); sp != "" {
 		prompt = sp + "\n\n---\n\n" + stdin
 	}
+	// codex (≥0.142) DEFERS MCP server tools behind its `tool_search` tool — a
+	// registered server's tools (e.g. the acceptance-loop validator `submit`) are
+	// NOT in the eager tool list, so a prompt that says "call submit(…)" finds no
+	// such tool and the model emulates it as TEXT — every acceptance attempt then
+	// fails and the host.agent.task bounces (verified live, codex-cli 0.142.3).
+	// Tool-search itself works: when the model is told to discover the tool first
+	// it calls server="kitsoki-validator" tool="submit" and the payload validates.
+	// So whenever we registered MCP servers (mcpConfig present, !resume), prepend
+	// an explicit discovery instruction. Resume inherits the recorded session's
+	// wiring and arg surface, so it is left untouched.
+	if !isResume && strings.TrimSpace(mcpConfig) != "" {
+		prompt = codexMCPToolSearchPreamble + "\n\n---\n\n" + prompt
+	}
 
 	return Invocation{Args: args, Stdin: prompt, WorkingDir: workingDir}
 }
+
+// codexMCPToolSearchPreamble instructs a codex agent to surface deferred MCP
+// tools via tool_search before using them. codex ≥0.142 does not expose MCP
+// server tools eagerly; without this, the validator `submit` tool (and any other
+// kitsoki-registered MCP tool the prompt asks for) appears to "not exist" and the
+// model fakes the call in prose. Phrased producer-neutrally — it names no
+// specific server so it holds for the validator, operator-ask, and write-mode
+// bridges alike.
+const codexMCPToolSearchPreamble = "TOOL ACCESS (codex): Some tools provided to you — including the " +
+	"`submit` tool used to submit your final result — are NOT listed in your " +
+	"default tool set. They are reachable only via the `tool_search` tool. " +
+	"BEFORE you conclude that a tool the task asks for (e.g. `submit`) is " +
+	"unavailable, you MUST call `tool_search` to locate it, then call it. Never " +
+	"emulate such a tool by printing its name or its arguments as text — a " +
+	"printed call does nothing."
 
 // codexMCPConfigArgs reads a claude-shaped --mcp-config JSON file
 // ({"mcpServers":{name:{command,args,env}}}) and emits codex `-c` TOML config

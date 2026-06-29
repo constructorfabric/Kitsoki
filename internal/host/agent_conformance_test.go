@@ -310,8 +310,16 @@ func TestConformance_ArgvTranslation(t *testing.T) {
 		got := strings.Join(inv.Args, " ")
 
 		// Prompt stays on stdin with the system prompt prepended.
-		if inv.Stdin != "SYS-PROMPT\n\n---\n\n"+stdin {
-			t.Errorf("codex stdin = %q, want system prompt prepended", inv.Stdin)
+		if inv.Stdin != codexMCPToolSearchPreamble+"\n\n---\n\nSYS-PROMPT\n\n---\n\n"+stdin {
+			t.Errorf("codex stdin = %q, want tool-search preamble + system prompt prepended", inv.Stdin)
+		}
+		if !strings.Contains(inv.Stdin, "tool_search") {
+			t.Errorf("codex stdin missing the MCP tool-search discovery preamble; got %q", inv.Stdin)
+		}
+		// No MCP config registered ⇒ no preamble (nothing deferred to discover).
+		noMCP := codexBackend{}.TranslateInvocation([]string{"-p", "--append-system-prompt", "S"}, "body", wd)
+		if strings.Contains(noMCP.Stdin, "tool_search") {
+			t.Errorf("codex injected the tool-search preamble with no MCP config; stdin=%q", noMCP.Stdin)
 		}
 		// Base exec flags.
 		if len(inv.Args) == 0 || inv.Args[0] != "exec" {
