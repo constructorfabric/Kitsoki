@@ -7,7 +7,7 @@ states:
       # name what Kitsoki does and the next action. Record that as the
       # discovery checkpoint the product-journey QA scenario asserts.
       - set:
-          next_action: "Run `kitsoki run stories/dev-story/app.yaml`, or onboard your repo with the `onboard` quick action."
+          next_action: "Run `kitsoki run stories/dev-story/app.yaml` to open the dev-story hub, where the onboarding flow profiles your repo into a runnable instance."
           checkpoint_rating: 5
           status: "discovered"
     view:
