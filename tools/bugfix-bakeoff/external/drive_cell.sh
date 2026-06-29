@@ -286,6 +286,22 @@ else
   echo "[cell] drive failed with exit $drive_exit -> $err" >&2
 fi
 
+# Cell-health classification from the trace: separate an INFRA failure (worker
+# never ran, silent stall, host/env error) from a real MODEL result the oracle
+# should judge. A bare `failed` verdict lies — it looks identical whether the
+# worker never got a turn or genuinely produced a wrong fix. Print the label so
+# a sweep is readable and so infra regressions are caught loudly.
+health_json="$(python3 "$HERE/bench.py" classify --trace "$trace" 2>/dev/null || echo '{}')"
+health_class="$(printf '%s' "$health_json" | python3 -c 'import sys,json;
+try: print(json.load(sys.stdin).get("class",""))
+except Exception: print("")' 2>/dev/null)"
+echo "[cell] health: ${health_class:-unknown} -- $(printf '%s' "$health_json" | python3 -c 'import sys,json;
+try: print(json.load(sys.stdin).get("reason",""))
+except Exception: print("")' 2>/dev/null)" >&2
+case "$health_class" in
+  infra:*) echo "[cell] WARNING: this cell is an INFRASTRUCTURE failure, not a model miss — do not score it against the model." >&2 ;;
+esac
+
 if [[ "$do_score" == 1 ]]; then
   out="$CACHE/results/cells/$cellkey-kitsoki.json"
   if [[ "$drive_exit" != 0 ]]; then

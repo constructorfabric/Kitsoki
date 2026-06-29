@@ -68,6 +68,20 @@
       "narration": "This is one dev story end to end: adding a small pet to the trace column — from a product idea to a merged pull request, where every phase produces a validated, replayable artifact."
     },
     {
+      "type": "title",
+      "eyebrow": "Product Requirements · validated output",
+      "title": "A little pet for the trace column",
+      "subtitle": "Give the long agent-loop wait some life — without taking screen space",
+      "narration": "The product manager's validated output: a PRD for a small companion that lives in the trace column."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Problem",
+      "lede": "Watching a long run is a lonely wait.",
+      "body": "The trace column just ticks rows by while the agent thinks, tests run, and a fix lands. Nothing on the screen is alive. A small ambient companion can add warmth to that wait — and cost nothing.",
+      "narration": "Watching a long session is a lonely wait at the trace column. Nothing on screen is alive. A small ambient companion adds warmth to that wait, and costs nothing."
+    },
+    {
       "type": "personas",
       "variant": "cast",
       "title": "The cast",
@@ -152,20 +166,6 @@
       "chapters": "auto",
       "caption": "Conversation-driven intake: a one-line idea → discovery → clarifying questions → a drafted, published PRD.",
       "narration": "Watch the PRD take shape. The product manager starts from a one-line idea — a tiny pet at the bottom of the trace column — kitsoki asks clarifying questions, the manager answers, and a validated PRD is drafted and published, every step in order."
-    },
-    {
-      "type": "title",
-      "eyebrow": "Product Requirements · validated output",
-      "title": "A little pet for the trace column",
-      "subtitle": "Give the long agent-loop wait some life — without taking screen space",
-      "narration": "The product manager's validated output: a PRD for a small companion that lives in the trace column."
-    },
-    {
-      "type": "narrative",
-      "eyebrow": "Problem",
-      "lede": "Watching a long run is a lonely wait.",
-      "body": "The trace column just ticks rows by while the agent thinks, tests run, and a fix lands. Nothing on the screen is alive. A small ambient companion can add warmth to that wait — and cost nothing.",
-      "narration": "Watching a long session is a lonely wait at the trace column. Nothing on screen is alive. A small ambient companion adds warmth to that wait, and costs nothing."
     },
     {
       "type": "cards",

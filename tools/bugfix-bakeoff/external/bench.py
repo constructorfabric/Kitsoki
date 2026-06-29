@@ -197,6 +197,133 @@ def read_trace_metrics(trace):
     }
 
 
+# Host-error signatures that mean "the harness/environment failed", NOT "the
+# model produced a wrong fix". Matched case-insensitively against any event's
+# error/last_error text. Each maps to a short, actionable label.
+INFRA_ERROR_SIGNATURES = [
+    ("identity unknown", "git-identity-missing"),
+    ("please tell me who you are", "git-identity-missing"),
+    ("--dangerously-skip-permissions cannot be used with root", "root-skip-permissions"),
+    ("acceptance failed after", "worker-acceptance-failed"),
+    ("no such tool", "mcp-tool-missing"),
+    ("no handler registered", "host-handler-missing"),
+    ("connection reset", "network"),
+    ("connection timed out", "network"),
+    ("service unavailable", "provider-5xx"),
+    ("bad gateway", "provider-5xx"),
+    ("gateway timeout", "provider-5xx"),
+]
+
+# A drive that reached one of these states ran the pipeline to a real terminal —
+# any failure past here is a MODEL result the oracle should judge, not infra.
+TERMINAL_STATES = {"bf.done", "finished"}
+
+
+def classify_cell(trace):
+    """Classify a cell run as an INFRA failure vs a real MODEL result by reading
+    the trace. The bake-off verdict (`failed`) lies constantly: a worker that
+    never ran, a silent stall, or a host/env error all look identical to "the
+    model didn't fix it". This separates them so a sweep is readable and the
+    model is only scored on runs where it actually got a fair turn.
+
+    Returns {class, reason, evidence{...}}. `class` is one of:
+      infra:worker-never-ran   — zero agent.stream / zero completed calls
+      infra:stall              — an agent.call.start with no matching complete,
+                                 trace ends there (silent hang, e.g. quota/timeout)
+      infra:host-error         — a host/env error (git identity, root perms, …)
+      model:result             — reached a terminal state; defer to the oracle
+      incomplete               — stopped early, no terminal, no clear infra cause
+    """
+    if not trace or not os.path.exists(trace):
+        return {"class": "infra:no-trace", "reason": "trace file absent", "evidence": {"trace": trace}}
+
+    events = []
+    for line in open(trace):
+        try:
+            events.append(json.loads(line))
+        except Exception:
+            continue
+
+    starts, completes = {}, set()
+    streams = 0
+    states = set()
+    last_infra_error = None
+    last_infra_label = None
+    stall_agent = None
+    for e in events:
+        kind = e.get("kind", "")
+        p = e.get("payload", {}) or {}
+        sp = e.get("state_path")
+        if sp:
+            states.add(sp)
+        if kind == "agent.stream":
+            streams += 1
+        elif kind == "agent.call.start":
+            # call_id is a top-level event field; agent is in the payload.
+            starts[e.get("call_id")] = p.get("agent")
+        elif kind == "agent.call.complete":
+            completes.add(e.get("call_id"))
+        # Scan any error-bearing field for an infra signature.
+        for field in ("error", "last_error"):
+            txt = p.get(field)
+            if isinstance(txt, str) and txt:
+                low = txt.lower()
+                for sig, label in INFRA_ERROR_SIGNATURES:
+                    if sig in low:
+                        last_infra_error = txt[:300]
+                        last_infra_label = label
+
+    open_calls = [(cid, ag) for cid, ag in starts.items() if cid not in completes]
+    reached_terminal = bool(states & TERMINAL_STATES)
+    evidence = {
+        "agent_streams": streams,
+        "agent_calls_started": len(starts),
+        "agent_calls_completed": len(completes),
+        "states_visited": sorted(states),
+        "reached_terminal": reached_terminal,
+        "open_calls": [{"call_id": c, "agent": a} for c, a in open_calls],
+    }
+
+    # 1. Worker never ran at all.
+    if streams == 0 and not completes:
+        return {"class": "infra:worker-never-ran",
+                "reason": "no agent.stream events and no completed agent calls — the worker never made an LLM call",
+                "evidence": evidence}
+
+    # 2. A start with no complete, and it's the tail of the trace → silent stall.
+    if open_calls and not reached_terminal:
+        last = events[-1] if events else {}
+        last_is_open_start = last.get("kind") == "agent.call.start" and \
+            last.get("call_id") in dict(open_calls)
+        # Even if a couple of trailing world.update events follow, a lone open
+        # call near the end is a stall (quota deadlock / MCP tool timeout).
+        if last_is_open_start or len(open_calls) >= 1:
+            agent = open_calls[-1][1]
+            evidence["stalled_agent"] = agent
+            return {"class": "infra:stall",
+                    "reason": f"agent '{agent}' started but never completed and the run did not reach a terminal state — a silent hang (quota deadlock / tool timeout / killed worker)",
+                    "evidence": evidence}
+
+    # 3. A recognized host/env error.
+    if last_infra_label:
+        evidence["error_label"] = last_infra_label
+        evidence["error"] = last_infra_error
+        return {"class": "infra:host-error",
+                "reason": f"host/environment error ({last_infra_label}) — not a model miss",
+                "evidence": evidence}
+
+    # 4. Reached a terminal state: a real model result for the oracle to judge.
+    if reached_terminal:
+        return {"class": "model:result",
+                "reason": "pipeline reached a terminal state; the pass/fail is a real model result — score it with the oracle",
+                "evidence": evidence}
+
+    # 5. Stopped early without a terminal state or a recognized infra cause.
+    return {"class": "incomplete",
+            "reason": "pipeline stopped before a terminal state with no recognized infra cause — inspect the trace",
+            "evidence": evidence}
+
+
 def candidate_meta(candidates_path, key):
     """Look up model/effort/provider for a candidate key from candidates.yaml.
     Returns {} if the file or key is absent (back-compat for ad-hoc scoring)."""
@@ -1588,6 +1715,8 @@ def main():
     mt.add_argument("--bug")     # optional: emit one bug's drive facts
     c = sub.add_parser("cost")   # worker cost/tokens from a live trace
     c.add_argument("--trace", required=True)
+    cl = sub.add_parser("classify")  # INFRA-fail vs MODEL-result from a live trace
+    cl.add_argument("--trace", required=True)
     sm = sub.add_parser("summarize")  # roll up results/cells/*.json by candidate
     sm.add_argument("--project", required=True)
     sm.add_argument("--results", default="results", help="results dir (cells/ under it)")
@@ -1599,6 +1728,9 @@ def main():
 
     if a.cmd == "cost":
         sys.exit(trace_cost(a.trace))
+    if a.cmd == "classify":
+        print(json.dumps(classify_cell(a.trace)))
+        sys.exit(0)
     if a.cmd == "summarize":
         sys.exit(summarize(load(a.project), a.results, a.deck, a.markdown,
                            allow_empty=a.allow_empty))
