@@ -1,0 +1,3968 @@
+{
+  "_comment": "Kitsoki concept pitch. Leads with control inversion and the proofs a coding-agent skeptic can't dismiss: the runtime overrules the model mid-call, edits hot-reload and replay byte-for-byte as tests, and the workflow runs where work already lives. After the one-prompt strawman it credits the Cherny loop (loop engineering: a gated, budgeted agent loop that converges) and argues phases-not-prompts is that idea generalized into a composable graph. The phases arc then shows the gates routing review failures back to implement, plan, or reproduce — and that this can loop multiple times.",
+  "meta": {
+    "mode": "pitch",
+    "title": "Kitsoki",
+    "theme": {
+      "name": "rose-pine-moon",
+      "background": "#1c140d",
+      "fontFamily": "'Inter', 'Avenir Next', 'Segoe UI', sans-serif",
+      "colors": {
+        "base": "#1c140d",
+        "surface": "#2a1a10",
+        "overlay": "#3d2419",
+        "muted": "#7b5f4d",
+        "subtle": "#c1a188",
+        "text": "#f3ead8",
+        "love": "#e0a23a",
+        "gold": "#f4cf95",
+        "rose": "#a8492b",
+        "pine": "#c97b4a",
+        "foam": "#e8d6b3",
+        "iris": "#3aa3a0",
+        "highlightLow": "#2f1f16",
+        "highlightMuted": "#412518",
+        "highlightHigh": "#7d2e1c"
+      },
+      "css": "#title-card{gap:24px !important;}#title-card-subtitle{display:flex;flex-direction:column;align-items:center;gap:16px;color:#f3ead8;}#title-card-subtitle img{display:block;height:auto;max-width:640px;width:640px;}#title-card-subtitle div.deck-subtitle{max-width:1500px;line-height:1.45;font-size:36px;color:#d9c9ad;}#title-card-subtitle .deck-subtitle-note{display:block;max-width:1300px;line-height:1.35;font-size:28px;color:#b29b7a;}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon .spinner-bar,\n#root.theme-rose-pine-moon #stat-value,\n#root.theme-rose-pine-moon #trace-title,\n#root.theme-rose-pine-moon #book-title,\n#root.theme-rose-pine-moon #diagramsvg-title,\n#root.theme-rose-pine-moon #diagram-title,\n#root.theme-rose-pine-moon #narrative-eyebrow,\n#root.theme-rose-pine-moon #thread-title,\n#root.theme-rose-pine-moon #diagramsvg-panel-label,\n#root.theme-rose-pine-moon .cards-title,\n#root.theme-rose-pine-moon .image-title,\n#root.theme-rose-pine-moon .imagecompare-title,\n#root.theme-rose-pine-moon .mermaid-title,\n#root.theme-rose-pine-moon .table-title,\n#root.theme-rose-pine-moon .code-call,\n#root.theme-rose-pine-moon .code-dot-call,\n#root.theme-rose-pine-moon .table-crown,\n#root.theme-rose-pine-moon .table-row-hi,\n#root.theme-rose-pine-moon a {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon .code-line-hl,\n#root.theme-rose-pine-moon #stat-value,\n#root.theme-rose-pine-moon .dsvg-arrow path,\n#root.theme-rose-pine-moon .dsvg-edge path,\n#root.theme-rose-pine-moon .dsvg-edge line {\n  border-color: var(--slidey-rose);\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon #stat-value {\n  background: linear-gradient(90deg, var(--slidey-gold), var(--slidey-rose));\n}\n\n#root.theme-rose-pine-moon .dsvg-edge line:not(.dsvg-gate-bar),\n#root.theme-rose-pine-moon .dsvg-edge path,\n#root.theme-rose-pine-moon .dsvg-edge-gate.dsvg-gate-oracle,\n#root.theme-rose-pine-moon .dsvg-gate-bar.dsvg-gate-oracle,\n#root.theme-rose-pine-moon .dsvg-edge-recycle {\n  stroke: var(--slidey-gold);\n  fill: none;\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow path,\n#root.theme-rose-pine-moon .dsvg-arrow-highlighted path,\n#root.theme-rose-pine-moon .dsvg-arrow-back path,\n#root.theme-rose-pine-moon .dsvg-arrow-recycle path {\n  stroke: var(--slidey-gold);\n  fill: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow-back path,\n#root.theme-rose-pine-moon .dsvg-edge-back path {\n  stroke: var(--slidey-highlight-high);\n  fill: none;\n}\n\n#root.theme-rose-pine-moon .dsvg-edge-recycle path {\n  fill: none !important;\n  stroke: var(--slidey-background) !important;\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow-recycle path {\n  fill: var(--slidey-background) !important;\n  stroke: var(--slidey-background) !important;\n}\n\n#root.theme-rose-pine-moon .dsvg-cycle-arrow path {\n  stroke: color-mix(in srgb, var(--slidey-gold) 36%, transparent);\n  stroke-width: 18;\n  fill: none;\n}\n\n#root.theme-rose-pine-moon .dsvg-cycle-guide {\n  stroke: color-mix(in srgb, var(--slidey-gold) 22%, transparent);\n  fill: none;\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow-cycle path {\n  fill: color-mix(in srgb, var(--slidey-gold) 62%, transparent);\n  stroke: none;\n}\n\n#root.theme-rose-pine-moon .dsvg-cycle-label {\n  fill: var(--slidey-subtle);\n}\n\n#root.theme-rose-pine-moon .dsvg-cycle-glyph {\n  fill: color-mix(in srgb, var(--slidey-gold) 18%, transparent);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary rect,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary rect,\n#root.theme-rose-pine-moon .dsvg-node rect {\n  stroke: var(--slidey-rose);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary rect {\n  fill: var(--slidey-highlight-muted);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary rect {\n  fill: var(--slidey-highlight-low);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-label,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-label {\n  fill: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-sub,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-sub,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-line,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-line {\n  fill: var(--slidey-text);\n}\n\n#root.theme-rose-pine-moon .trace-turn-user::before,\n#root.theme-rose-pine-moon .thread-system.thread-system-jira,\n#root.theme-rose-pine-moon .thread-system.thread-system-bitbucket {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .json-key,\n#root.theme-rose-pine-moon .code-key,\n#root.theme-rose-pine-moon .cards-bullet,\n#root.theme-rose-pine-moon .cards-card.cards-style-primary,\n#root.theme-rose-pine-moon .cards-col.accent-blue,\n#root.theme-rose-pine-moon .cards-col.accent-purple,\n#root.theme-rose-pine-moon .cards-qa-question,\n#root.theme-rose-pine-moon .cards-qa-answer,\n#root.theme-rose-pine-moon .mockup-blue,\n#root.theme-rose-pine-moon .tx-hud-app,\n#root.theme-rose-pine-moon .tx-card-turn {\n  color: var(--slidey-gold);\n  border-color: var(--slidey-rose);\n}\n\n\n#root.theme-rose-pine-moon #table-title,\n#root.theme-rose-pine-moon [id$=\"-title\"],\n#root.theme-rose-pine-moon #cta-wordmark,\n#root.theme-rose-pine-moon #cta-tagline,\n#root.theme-rose-pine-moon #cta-url {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #cta-wordmark {\n  background: linear-gradient(180deg, var(--slidey-gold), var(--slidey-rose));\n  -webkit-background-clip: text;\n  background-clip: text;\n  color: transparent !important;\n}\n\n#root.theme-rose-pine-moon #cta-url {\n  background: var(--slidey-overlay);\n  border-color: var(--slidey-highlight-high);\n}\n\n#root.theme-rose-pine-moon .spinner-bar,\n#root.theme-rose-pine-moon #spinner-bar {\n  background: linear-gradient(90deg, var(--slidey-gold), var(--slidey-rose)) !important;\n}\n\n#book-region .book-takeaway {\n  font-size: 24px;\n  line-height: 1.35;\n}\n\n#book-region .book-count-1 .book-takeaway {\n  font-size: 32px;\n  line-height: 1.3;\n}\n\n#book-region .book-caption {\n  font-size: 32px;\n  line-height: 1.4;\n  max-width: 1500px;\n}\n\n#narrative-region {\n  max-width: 1600px;\n}\n\n#narrative-body {\n  font-size: 68px;\n  line-height: 1.18;\n  max-width: 1380px;\n}\n\n#narrative-lede {\n  font-size: 36px;\n  line-height: 1.42;\n  max-width: 1360px;\n}\n"
+    },
+    "ticket": "",
+    "phase": "demo",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "narration": {
+      "voice": "en-AU-NatashaNeural",
+      "rate": "+0%"
+    }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "title": "",
+      "subtitleHtml": "<img src=\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNjYgNjQiIHdpZHRoPSIxNjYiIGhlaWdodD0iNjQiIHJvbGU9ImltZyIgYXJpYS1sYWJlbD0ia2l0c29raSI+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTIuNCAxLjkyKSBzY2FsZSgwLjMyKSI+CiAgICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSI3MCIgcj0iMzAiIGZpbGw9IiNlMGEyM2EiLz4KICAgIDxnIHN0cm9rZT0iI2UwYTIzYSIgc3Ryb2tlLXdpZHRoPSI1IiBzdHJva2UtbGluZWNhcD0icm91bmQiPgogICAgICA8bGluZSB4MT0iMTUwIiB5MT0iNzAiIHgyPSIxMzgiIHkyPSI3MCIvPgogICAgICA8bGluZSB4MT0iMTM1IiB5MT0iMzUiIHgyPSIxMjciIHkyPSI0MyIvPgogICAgICA8bGluZSB4MT0iMTAwIiB5MT0iMjAiIHgyPSIxMDAiIHkyPSIzMiIvPgogICAgICA8bGluZSB4MT0iNjUiIHkxPSIzNSIgeDI9IjczIiB5Mj0iNDMiLz4KICAgICAgPGxpbmUgeDE9IjUwIiB5MT0iNzAiIHgyPSI2MiIgeTI9IjcwIi8+CiAgICA8L2c+CiAgICA8cGF0aCBkPSJNMjAgMTUwIEwyMCAxMjAgTDYwIDEyMCBMNjAgMTA1IEwxNDAgMTA1IEwxNDAgMTIwIEwxODAgMTIwIEwxODAgMTUwIFoiIGZpbGw9IiNhODQ5MmIiLz4KICAgIDxwYXRoIGQ9Ik0yMCAxNTAgTDE4MCAxNTAgTDE4MCAxNjggTDIwIDE2OCBaIiBmaWxsPSIjN2QyZTFjIi8+CiAgICA8cmVjdCB4PSI5MiIgeT0iMTIwIiB3aWR0aD0iMTYiIGhlaWdodD0iMzAiIGZpbGw9IiMzYTI0MTgiLz4KICA8L2c+CiAgPHRleHQgeD0iNjQiIHk9IjQxIiBmb250LWZhbWlseT0iLWFwcGxlLXN5c3RlbSxCbGlua01hY1N5c3RlbUZvbnQsJ1NlZ29lIFVJJyxSb2JvdG8sSGVsbmV0aWNhLEFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjgiIGZvbnQtd2VpZ2h0PSI3MDAiIGxldHRlci1zcGFjaW5nPSIwLjUiPjx0c3BhbiBmaWxsPSIjZjNlYWQ4Ij5raXRzPC90c3Bhbj48dHNwYW4gZmlsbD0iI2Y0Y2Y5NSI+b2tpPC90c3Bhbj48L3RleHQ+Cjwvc3ZnPgo\" alt=\"Kitsoki\"/><span class=\"deck-subtitle\">A conversational workflow engine built for reliable delivery</span><span class=\"deck-subtitle-note\">Production-ready workflows. Evidence-first execution. Reliable handoff.</span>"
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Prologue: Autonomous bug fixing",
+      "body": "It started with a simple question: can an agent fix a bug end to end? Can we get to 80/20 Autonomy?",
+      "lede": "It sounded simple and self-contained - so we chased autonomous bug fixing as the headline capability: take a report, reproduce, fix, verify, ship — no human in the loop.",
+      "hold": 180,
+      "narration": "FILLER narration — the journey began with autonomous bug fixing."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "What I learned",
+      "body": "The fix is the easy part! Everything upstream decides whether it can happen at all.",
+      "lede": "Success rate is a lagging indicator downstream of well-defined visual and behavioral expectations, good testing harnesses, good documentation, the ability to capture the regression, and the quality of the bug report itself.",
+      "hold": 210,
+      "narration": "FILLER narration — autonomous fix success is the outcome of effective upstream processes."
+    },
+    {
+      "type": "table",
+      "title": "Naïve Success Factors",
+      "columns": [
+        "Outcome",
+        "Share",
+        "What it took"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "Solvable as-is",
+            "12.5%",
+            "Clear report, reproducible, expectations already explicit"
+          ]
+        },
+        {
+          "cells": [
+            "Solvable, hard-won",
+            "12.5%",
+            "Many rounds plus access to internal docs"
+          ]
+        },
+        {
+          "cells": [
+            "UI issue",
+            "25%",
+            "Visual/behavioral expectations, unclear navigation — a serious challenge"
+          ]
+        },
+        {
+          "cells": [
+            "Never solvable",
+            "50%",
+            "Ticket was incomplete — no amount of effort downstream helps"
+          ]
+        }
+      ],
+      "variant": "data",
+      "caption": "Only one in eight bugs was solvable as written. The rest were gated upstream — by docs, by UI expectations, and above all by incomplete reports.",
+      "hold": 300,
+      "narration": "Of eight bugs, only one was solvable as-is. One more took many rounds and internal docs, a quarter were hard UI issues, and half were never solvable because the ticket was incomplete."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Prologue: Push the pain forward",
+      "body": "Improving bug fixing in a vacuum isn't beneficial.",
+      "lede": "It became clear that the overall SDLC quality is what drives bug fix efficiently - without good quality prompts, tools, and especially inputs - there's little to no chance to achieve 80% autonomous operation.",
+      "hold": 210,
+      "narration": "FILLER narration — push the pain forward into the upstream process."
+    },
+    {
+      "type": "meme",
+      "template": "db",
+      "fields": {
+        "text1": "Agentic development",
+        "text2": "Engineering Leadership",
+        "text3": "SDLC processes"
+      }
+    },
+    {
+      "type": "meme",
+      "template": "clown-makeup",
+      "fields": {
+        "step1": "I'll write a prompt to solve the bug",
+        "step2": "I'll write a script that does setup and checks the output",
+        "step3": "I'll write a 4-phase loop-driven pipeline in Python",
+        "step4": "Now I have 14 phases and 20 Python scripts"
+      },
+      "narration": "You start with a prompt. Then a script to set it up and check the output. Then a loop-driven pipeline. Before long you're maintaining fourteen phases and twenty Python scripts — full clown makeup."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The prologue",
+      "body": "Processes are a complex adaptive system.",
+      "lede": "People, agents, tools, artifacts, failures, and feedback loops keep perturbing each other.",
+      "hold": 180,
+      "narration": "The Software Development Lifecycle is a complex adaptive system: people, agents, tools, artifacts, failures, and feedback loops."
+    },
+    {
+      "type": "book",
+      "title": "Root 1: General System Theory",
+      "books": [
+        {
+          "title": "General System Theory",
+          "subtitle": "Foundations, Development, Applications",
+          "authors": "Ludwig von Bertalanffy",
+          "publisher": "George Braziller",
+          "year": "1968",
+          "isbn": "9780807604533",
+          "cover": "assets/books/general-system-theory.jpg",
+          "takeaway": "Open systems exchange matter, energy, and information with an environment."
+        }
+      ],
+      "caption": "Systems are structural: behavior lives in the organization of the whole and how the parts interact, the whole is more than the sum of the parts.",
+      "hold": 240,
+      "narration": "General System Theory frames systems as open, organized, and environment-coupled."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Kitsoki takeaway",
+      "body": "Human processes are open systems.",
+      "lede": "Processes are built around analagous, systemic patterns.  The ability of that process to effectively interact with the environment to which it is connected drives its capability.",
+      "hold": 180,
+      "narration": "Kitsoki makes the boundary explicit: state in, artifacts out, feedback always attached."
+    },
+    {
+      "type": "book",
+      "title": "Root 2: Design in Nature",
+      "books": [
+        {
+          "title": "Design in Nature",
+          "subtitle": "How the Constructal Law Governs Evolution",
+          "authors": "Adrian Bejan and J. Peder Zane",
+          "publisher": "Doubleday / Anchor",
+          "year": "2012",
+          "isbn": "9780307744340",
+          "cover": "assets/books/design-in-nature.jpg",
+          "takeaway": "Persistent systems evolve structures that make flow easier."
+        }
+      ],
+      "caption": "The constructal law says durable systems change shape to improve access to the currents moving through them.",
+      "hold": 210,
+      "narration": "Constructal law adds the second root: systems endure by improving flow architecture."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Kitsoki takeaway",
+      "body": "Flow beats chat.",
+      "lede": "Structured stories provide the channels that accelerate flow and can be reshaped over time - the flow media is product capability and user feedback.",
+      "hold": 180,
+      "narration": "Kitsoki makes flow visible so repeated friction can be removed instead of hidden."
+    },
+    {
+      "type": "book",
+      "title": "Root 3: The Tree of Knowledge",
+      "books": [
+        {
+          "title": "The Tree of Knowledge",
+          "subtitle": "The Biological Roots of Human Understanding",
+          "authors": "Humberto R. Maturana and Francisco J. Varela",
+          "publisher": "Shambhala",
+          "year": "1992 revised edition",
+          "isbn": "9780877736424",
+          "cover": "assets/books/tree-of-knowledge.jpg",
+          "takeaway": "Knowing is enacted through a self-maintaining loop between agent and environment."
+        }
+      ],
+      "caption": "Maturana and Varela treat cognition as embodied action: a living system keeps itself going by coupling to its world. The observer is part of the system - this feedback between environment and organism or living system is the dynamic of life itself.",
+      "hold": 210,
+      "narration": "The Tree of Knowledge adds the third root: cognition is a self-maintaining loop."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Kitsoki takeaway",
+      "body": "Cognition is an open loop.",
+      "lede": "The agent, artifact, and environment keep shaping each other over time, so the runtime and framework provide the structure to preserve continuity.",
+      "hold": 180,
+      "narration": "Kitsoki preserves the loop so work can be inspected, replayed, tested, and improved."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Three roots, one runtime",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 940 920",
+          "nodes": [
+            {
+              "id": "boundary",
+              "label": "Boundary",
+              "sub": "Bertalanffy",
+              "lines": [
+                "open system",
+                "state in / artifacts out"
+              ],
+              "x": 100,
+              "y": 30,
+              "w": 600,
+              "h": 120,
+              "style": "primary"
+            },
+            {
+              "id": "flow",
+              "label": "Flow",
+              "sub": "Bejan",
+              "lines": [
+                "attention, evidence, decisions",
+                "move through the loop"
+              ],
+              "x": 100,
+              "y": 240,
+              "w": 600,
+              "h": 120
+            },
+            {
+              "id": "cognition",
+              "label": "Cognition",
+              "sub": "Maturana + Varela",
+              "lines": [
+                "agent + artifact + world",
+                "coupled over time"
+              ],
+              "x": 100,
+              "y": 450,
+              "w": 600,
+              "h": 120
+            },
+            {
+              "id": "kitsoki",
+              "label": "Kitsoki",
+              "sub": "the runtime",
+              "lines": [
+                "workflow engine",
+                "makes the loop executable"
+              ],
+              "x": 100,
+              "y": 660,
+              "w": 600,
+              "h": 120,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "boundary",
+              "to": "flow",
+              "label": "organizes"
+            },
+            {
+              "from": "flow",
+              "to": "cognition",
+              "label": "routes"
+            },
+            {
+              "from": "cognition",
+              "to": "kitsoki",
+              "label": "enacts"
+            }
+          ]
+        }
+      ],
+      "caption": "Kitsoki makes the three roots executable: open systems define the boundary, constructal law improves flow, and cognition preserves the loop.",
+      "hold": 210,
+      "narration": "Kitsoki makes the three roots executable: open systems define the boundary, constructal law improves flow, and cognition preserves the loop."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Continuous improvement needs a process",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1700 820",
+          "layout": "cycle",
+          "cycle": {
+            "center": {
+              "x": 820,
+              "y": 365
+            },
+            "rx": 290,
+            "ry": 180,
+            "arrowRx": 380,
+            "arrowRy": 205,
+            "variant": "recycle-logo",
+            "glyphY": 430,
+            "glyphSize": 920
+          },
+          "nodes": [
+            {
+              "id": "define",
+              "label": "Define",
+              "sub": "good defined",
+              "lines": [
+                "goal",
+                "boundary"
+              ],
+              "slot": "left",
+              "w": 280,
+              "h": 176,
+              "style": "primary"
+            },
+            {
+              "id": "measure",
+              "label": "Measure",
+              "sub": "what happened",
+              "lines": [
+                "trace",
+                "evidence"
+              ],
+              "slot": "top",
+              "w": 280,
+              "h": 176
+            },
+            {
+              "id": "analyze",
+              "label": "Analyze",
+              "sub": "flow breaks",
+              "lines": [
+                "friction",
+                "variance"
+              ],
+              "slot": "right",
+              "w": 280,
+              "h": 176
+            },
+            {
+              "id": "improve",
+              "label": "Improve",
+              "sub": "system change",
+              "lines": [
+                "story",
+                "gate"
+              ],
+              "slot": "bottom",
+              "w": 280,
+              "h": 176
+            },
+            {
+              "id": "control",
+              "label": "Control",
+              "sub": "kept stable",
+              "lines": [
+                "replay",
+                "tests"
+              ],
+              "x": 1339,
+              "y": 365,
+              "w": 239,
+              "h": 190,
+              "style": "secondary",
+              "cycle": false
+            },
+            {
+              "id": "input",
+              "label": "Input",
+              "sub": "signal + tickets",
+              "lines": [
+                "goal",
+                "constraints"
+              ],
+              "x": 10,
+              "y": 365,
+              "w": 340,
+              "h": 190,
+              "style": "secondary",
+              "cycle": false
+            },
+            {
+              "id": "output",
+              "label": "Output",
+              "sub": "improvements",
+              "lines": [
+                "tuning",
+                "learning"
+              ],
+              "x": 1330,
+              "y": 640,
+              "w": 257,
+              "h": 176,
+              "style": "secondary",
+              "cycle": false
+            }
+          ],
+          "edges": [
+            {
+              "from": "input",
+              "to": "define"
+            },
+            {
+              "from": "control",
+              "to": "output"
+            }
+          ]
+        }
+      ],
+      "caption": "Lean and Six Sigma work because the process is explicit enough to observe, measure, change, and hold stable.",
+      "hold": 210,
+      "narration": "Continuous improvement needs a process. Lean and Six Sigma work because the process is explicit enough to measure, change, and hold stable."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Prompts are not enough",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1420 650",
+          "nodes": [
+            {
+              "id": "prompt",
+              "label": "Prompt-only",
+              "sub": "better wording + examples",
+              "lines": [
+                "nudges the model"
+              ],
+              "x": 80,
+              "y": 80,
+              "w": 500,
+              "h": 170,
+              "style": "primary"
+            },
+            {
+              "id": "agent",
+              "label": "Agent behavior",
+              "sub": "still probabilistic",
+              "lines": [
+                "hidden decisions"
+              ],
+              "x": 80,
+              "y": 390,
+              "w": 500,
+              "h": 170
+            },
+            {
+              "id": "story",
+              "label": "Workflow",
+              "sub": "typed phases",
+              "lines": [
+                "owned state"
+              ],
+              "x": 840,
+              "y": 40,
+              "w": 500,
+              "h": 150,
+              "style": "primary"
+            },
+            {
+              "id": "gate",
+              "label": "Gate",
+              "sub": "objective check",
+              "lines": [
+                "tests + review"
+              ],
+              "x": 840,
+              "y": 250,
+              "w": 500,
+              "h": 150
+            },
+            {
+              "id": "feedback",
+              "label": "Artifacts",
+              "sub": "attached evidence",
+              "lines": [
+                "trace + failure reason"
+              ],
+              "x": 840,
+              "y": 460,
+              "w": 500,
+              "h": 150,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "prompt",
+              "to": "agent"
+            },
+            {
+              "from": "story",
+              "to": "gate"
+            },
+            {
+              "from": "gate",
+              "to": "feedback"
+            },
+            {
+              "from": "feedback",
+              "to": "story",
+              "style": "back",
+              "bus": 1360,
+              "lift": -22,
+              "land": 22
+            }
+          ]
+        }
+      ],
+      "caption": "Prompts can improve the agent. Structured workflows improve the system around the agent.",
+      "hold": 210,
+      "narration": "Prompts can improve agent behavior, but behavior is hard to control with prompts alone. Structured workflows give us phases, gates, traces, and tests."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Every decision becomes training data",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1320 620",
+          "nodes": [
+            {
+              "id": "operator",
+              "label": "Operator",
+              "sub": "human · LLM · script",
+              "lines": [
+                "typed decision"
+              ],
+              "x": 80,
+              "y": 220,
+              "w": 330,
+              "h": 170,
+              "style": "primary"
+            },
+            {
+              "id": "record",
+              "label": "Record",
+              "sub": "input + output",
+              "lines": [
+                "operator attached"
+              ],
+              "x": 495,
+              "y": 220,
+              "w": 330,
+              "h": 170
+            },
+            {
+              "id": "dataset",
+              "label": "Dataset",
+              "sub": "labeled by design",
+              "lines": [
+                "ready to review"
+              ],
+              "x": 910,
+              "y": 220,
+              "w": 330,
+              "h": 170,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "operator",
+              "to": "record"
+            },
+            {
+              "from": "record",
+              "to": "dataset"
+            }
+          ]
+        }
+      ],
+      "caption": "Because every decision is recorded with its operator, input, and output, a running story creates its own supervised dataset.",
+      "hold": 210,
+      "narration": "Every Kitsoki decision is recorded with the operator, input, and output. That means a running story produces labeled training data as a side effect."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Train the story like a model",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1320 700",
+          "nodes": [
+            {
+              "id": "trace",
+              "label": "Trace",
+              "sub": "real usage",
+              "lines": [
+                "misses + repeats"
+              ],
+              "x": 95,
+              "y": 70,
+              "w": 320,
+              "h": 160,
+              "style": "primary"
+            },
+            {
+              "id": "promote",
+              "label": "Promote",
+              "sub": "story diff",
+              "lines": [
+                "YAML + tests"
+              ],
+              "x": 500,
+              "y": 70,
+              "w": 320,
+              "h": 160
+            },
+            {
+              "id": "replay",
+              "label": "Replay",
+              "sub": "zero-cost",
+              "lines": [
+                "sharper behavior"
+              ],
+              "x": 905,
+              "y": 70,
+              "w": 320,
+              "h": 160,
+              "style": "secondary"
+            },
+            {
+              "id": "effect",
+              "label": "Less LLM",
+              "sub": "more determinism",
+              "lines": [
+                "improvement you can read"
+              ],
+              "x": 350,
+              "y": 420,
+              "w": 620,
+              "h": 170,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "trace",
+              "to": "promote"
+            },
+            {
+              "from": "promote",
+              "to": "replay"
+            },
+            {
+              "from": "replay",
+              "to": "effect"
+            },
+            {
+              "from": "effect",
+              "to": "trace",
+              "style": "back",
+              "bus": 60,
+              "lift": -20,
+              "land": 20
+            }
+          ]
+        }
+      ],
+      "caption": "The learned behavior lives in git as YAML, tests, and knowledge, not in opaque model weights.",
+      "hold": 210,
+      "narration": "Training a Kitsoki story means reading the trace, promoting repeated decisions into story structure, replaying the result, and keeping the learned behavior in git."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The setting",
+      "body": "You have a workflow. People drive it by chatting where the work already lives.",
+      "lede": "A GitHub issue. A Jira ticket. A Slack thread. A CRM record.",
+      "hold": 165,
+      "narration": "You have a workflow. People drive it by chatting where the work lives."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "One workflow, many surfaces",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1100 460",
+          "nodes": [
+            {
+              "id": "wf",
+              "label": "Kitsoki",
+              "sub": "state machine",
+              "x": 420,
+              "y": 170,
+              "w": 286,
+              "h": 130,
+              "style": "primary"
+            },
+            {
+              "id": "gh",
+              "label": "GitHub issue",
+              "sub": "comments",
+              "x": 370,
+              "y": 20,
+              "w": 388,
+              "h": 120
+            },
+            {
+              "id": "jira",
+              "label": "Jira ticket",
+              "sub": "comments",
+              "x": 20,
+              "y": 175,
+              "w": 361,
+              "h": 120
+            },
+            {
+              "id": "cli",
+              "label": "Local TUI",
+              "sub": "kitsoki run",
+              "x": 740,
+              "y": 175,
+              "w": 320,
+              "h": 120
+            },
+            {
+              "id": "slack",
+              "label": "Slack thread",
+              "sub": "replies",
+              "x": 370,
+              "y": 320,
+              "w": 388,
+              "h": 120
+            }
+          ],
+          "edges": [
+            {
+              "from": "gh",
+              "to": "wf"
+            },
+            {
+              "from": "jira",
+              "to": "wf"
+            },
+            {
+              "from": "cli",
+              "to": "wf"
+            },
+            {
+              "from": "slack",
+              "to": "wf"
+            }
+          ]
+        }
+      ],
+      "caption": "One YAML state machine drives every surface — the same flow runs in a terminal and in a real ticket thread.",
+      "hold": 210,
+      "narration": "One YAML state machine drives every surface. GitHub, Jira, Slack, or your terminal."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The problem",
+      "body": "Building this chatbot is harder than it looks.",
+      "lede": "Pure LLM agents drift, can't be tested, and break unpredictably. Hand-coded state machines can't parse free text or evolve.",
+      "hold": 165,
+      "narration": "Building this is harder than it looks. Agents drift. State machines can't parse text."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Cat wrangling",
+      "narration": "Orchestrating agents without structure is cat wrangling. Kitsoki ends the wrangling by keeping the runtime in charge.",
+      "panels": [
+        {
+          "label": "Without structure",
+          "viewBox": "0 0 760 550",
+          "nodes": [
+            {
+              "id": "agent",
+              "label": "Agent",
+              "sub": "free-form plan",
+              "x": 90,
+              "y": 40,
+              "w": 540,
+              "h": 112,
+              "style": "primary"
+            },
+            {
+              "id": "tool",
+              "label": "Tools",
+              "sub": "direct actions",
+              "x": 90,
+              "y": 214,
+              "w": 540,
+              "h": 112
+            },
+            {
+              "id": "review",
+              "label": "Review",
+              "sub": "late correction",
+              "x": 90,
+              "y": 388,
+              "w": 540,
+              "h": 112
+            }
+          ],
+          "edges": [
+            {
+              "from": "agent",
+              "to": "tool",
+              "label": "tries"
+            },
+            {
+              "from": "tool",
+              "to": "review",
+              "label": "hope"
+            },
+            {
+              "from": "review",
+              "to": "agent",
+              "label": "redo",
+              "style": "back",
+              "bus": 660,
+              "lift": -18,
+              "land": 18
+            }
+          ],
+          "caption": "The work is improvised in the moment, so drift only shows up after the damage is done."
+        },
+        {
+          "label": "With Kitsoki",
+          "viewBox": "0 0 760 550",
+          "nodes": [
+            {
+              "id": "runtime",
+              "label": "Runtime",
+              "sub": "owns the plan",
+              "x": 90,
+              "y": 40,
+              "w": 540,
+              "h": 112,
+              "style": "primary"
+            },
+            {
+              "id": "work",
+              "label": "Work item",
+              "sub": "stateful step",
+              "x": 90,
+              "y": 214,
+              "w": 540,
+              "h": 112
+            },
+            {
+              "id": "gate",
+              "label": "Gate",
+              "sub": "prove it",
+              "x": 90,
+              "y": 388,
+              "w": 540,
+              "h": 112,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "runtime",
+              "to": "work",
+              "label": "assigns"
+            },
+            {
+              "from": "work",
+              "to": "gate",
+              "label": "submits"
+            },
+            {
+              "from": "gate",
+              "to": "runtime",
+              "label": "feedback",
+              "style": "back",
+              "bus": 640,
+              "lift": -18,
+              "land": 18
+            }
+          ],
+          "caption": "The runtime keeps the plan explicit, the work bounded, and the feedback attached."
+        }
+      ],
+      "caption": "Kitsoki removes the wrangling by putting the runtime between intent and action.",
+      "hold": 195
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Control inversion",
+      "panels": [
+        {
+          "label": "Typical agent",
+          "viewBox": "0 0 420 380",
+          "nodes": [
+            {
+              "id": "llm",
+              "label": "LLM",
+              "sub": "plan · reason · decide",
+              "x": 70,
+              "y": 50,
+              "w": 320,
+              "h": 118,
+              "style": "primary"
+            },
+            {
+              "id": "rt",
+              "label": "runtime",
+              "sub": "execute",
+              "x": 70,
+              "y": 240,
+              "w": 320,
+              "h": 118
+            }
+          ],
+          "edges": [
+            {
+              "from": "llm",
+              "to": "rt",
+              "label": "calls"
+            }
+          ],
+          "caption": "LLM holds the plan; runtime executes."
+        },
+        {
+          "label": "Kitsoki",
+          "viewBox": "0 0 420 380",
+          "nodes": [
+            {
+              "id": "rt",
+              "label": "runtime",
+              "sub": "state machine",
+              "x": 70,
+              "y": 50,
+              "w": 320,
+              "h": 118,
+              "style": "primary"
+            },
+            {
+              "id": "llm",
+              "label": "LLM",
+              "sub": "narrow sub-task",
+              "x": 70,
+              "y": 240,
+              "w": 320,
+              "h": 118,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "rt",
+              "to": "llm",
+              "label": "resolve this",
+              "side": "left"
+            },
+            {
+              "from": "llm",
+              "to": "rt",
+              "label": "typed intent",
+              "side": "right"
+            }
+          ],
+          "caption": "Runtime holds the plan; LLM is called as a sub-task."
+        }
+      ],
+      "caption": "The arrow that matters is the LLM's return arrow — a typed intent, not a free-form action.",
+      "hold": 210,
+      "narration": "Kitsoki flips control. The runtime is in charge. The LLM is called only when interpretation is needed."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "One prompt",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 700 660",
+          "nodes": [
+            {
+              "id": "prompt",
+              "label": "PROMPT",
+              "lines": [
+                "validate the bug,",
+                "then fix it,",
+                "then make sure",
+                "you did a good job."
+              ],
+              "x": 130,
+              "y": 50,
+              "w": 464,
+              "h": 240
+            },
+            {
+              "id": "agent",
+              "label": "agent",
+              "sub": "opus",
+              "lines": [
+                "tools: shell + git + repo",
+                "domain: entire codebase"
+              ],
+              "x": 130,
+              "y": 410,
+              "w": 464,
+              "h": 220,
+              "style": "primary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "prompt",
+              "to": "agent"
+            }
+          ]
+        }
+      ],
+      "caption": "One agent. One prompt. No structure between the steps.",
+      "hold": 240,
+      "narration": "The naive approach: one big prompt. Validate, fix, verify. The agent does everything."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "The Cherny loop",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1180 800",
+          "nodes": [
+            {
+              "id": "goal",
+              "label": "goal",
+              "sub": "+ a gate that can prove it",
+              "x": 70,
+              "y": 20,
+              "w": 640,
+              "h": 120
+            },
+            {
+              "id": "maker",
+              "label": "maker",
+              "sub": "smallest change toward the goal",
+              "lines": [
+                "fed the last gate failure"
+              ],
+              "x": 70,
+              "y": 200,
+              "w": 640,
+              "h": 160,
+              "style": "primary"
+            },
+            {
+              "id": "gate",
+              "label": "gate · checker",
+              "sub": "script (exit 0) or agent",
+              "lines": [
+                "pass = goal actually met"
+              ],
+              "x": 70,
+              "y": 430,
+              "w": 640,
+              "h": 160
+            },
+            {
+              "id": "done",
+              "label": "done",
+              "sub": "goal met — or budget ceiling hit",
+              "x": 70,
+              "y": 660,
+              "w": 640,
+              "h": 120
+            }
+          ],
+          "edges": [
+            {
+              "from": "goal",
+              "to": "maker"
+            },
+            {
+              "from": "maker",
+              "to": "gate",
+              "gate": "check"
+            },
+            {
+              "from": "gate",
+              "to": "done",
+              "gate": "✓ pass"
+            },
+            {
+              "from": "gate",
+              "to": "maker",
+              "style": "back",
+              "bus": 860,
+              "lift": 18,
+              "label": "fail · feed the reason forward"
+            }
+          ]
+        }
+      ],
+      "caption": "Loop engineering, after Boris Cherny: an agent iterates toward a goal until a gate proves it's actually met — or a budget ceiling stops it. Launch it once; it converges on its own.",
+      "hold": 240,
+      "narration": "A Cherny loop gives an agent a goal, checker, and budget. Each failed gate feeds the next try.",
+      "instant": true
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Loop engineering, generalized",
+      "body": "Kitsoki the conclusion of this idea — a graph of these loops.",
+      "lede": "A Cherny loop solves one goal with one gate and one budget. Kitsoki turns each phase into a separate gated loop, then composes those loops into a durable workflow that can be reused and improved.",
+      "hold": 210,
+      "narration": "Kitsoki generalizes that loop: every phase gets a gate and budget, then composes into a graph."
+    },
+    {
+      "type": "title",
+      "title": "vs."
+    },
+    {
+      "_comment": "Scene 7–13: full graph shown throughout; one item highlighted per slide.",
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 680 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180,
+              "style": "primary"
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            }
+          ]
+        }
+      ],
+      "caption": "Phase 1: read-only — confirm the bug exists before any code changes.",
+      "hold": 120,
+      "narration": "Four phases, three gates — starting with reproduce.",
+      "seamless": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 680 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails",
+              "highlighted": true
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            }
+          ]
+        }
+      ],
+      "caption": "Deterministic gate: the test must fail first — no planning until the bug is proven reproducible. A script decides, not a judgment.",
+      "hold": 90,
+      "narration": "The first gate: test must fail before planning begins.",
+      "seamless": true,
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 680 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150,
+              "style": "primary"
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            }
+          ]
+        }
+      ],
+      "caption": "Phase 2: propose the fix approach — requires operator sign-off before proceeding.",
+      "hold": 120,
+      "narration": "Plan proposes the fix — awaiting operator sign-off.",
+      "seamless": true,
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 680 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved",
+              "highlighted": true
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            }
+          ]
+        }
+      ],
+      "caption": "Gate: no code written until the plan is approved.",
+      "hold": 90,
+      "narration": "Gate: no code changes until the plan is signed off.",
+      "seamless": true,
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 680 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180,
+              "style": "primary"
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            }
+          ]
+        }
+      ],
+      "caption": "Phase 3: writes to an isolated worktree — scoped to code changes only.",
+      "hold": 120,
+      "narration": "Implement writes to a scoped worktree — isolated from main.",
+      "seamless": true,
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 680 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass",
+              "highlighted": true
+            }
+          ]
+        }
+      ],
+      "caption": "Deterministic gate: the tests must pass — review only sees working code. A script decides, for free.",
+      "hold": 90,
+      "narration": "Gate: tests must pass before sending to human review.",
+      "seamless": true,
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1100 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180,
+              "style": "primary"
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            },
+            {
+              "from": "implement",
+              "to": "implement",
+              "style": "back",
+              "bus": 700,
+              "lift": -55,
+              "land": 55,
+              "label": "retry in place",
+              "highlighted": true
+            }
+          ]
+        }
+      ],
+      "caption": "Layer 1 is mechanical: the gate just runs the tests. They fail — or won't even run against the harness — and implement retries itself, in place. No human, no step backward.",
+      "hold": 165,
+      "narration": "Tests fail? Implement loops in place and fixes the code.",
+      "seamless": true,
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 680 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150,
+              "style": "primary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            }
+          ]
+        }
+      ],
+      "caption": "The last gate is different: review is an agent — an adversarial judgment, not a script. It can approve the work, or send it back.",
+      "hold": 165,
+      "narration": "Agent review can approve or send the work back.",
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 720 1100",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 580,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 580,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 580,
+              "h": 180
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · adversarial judgment"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 580,
+              "h": 150,
+              "style": "primary"
+            },
+            {
+              "id": "merge",
+              "label": "merge",
+              "sub": "→ main",
+              "x": 70,
+              "y": 950,
+              "w": 580,
+              "h": 120
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            },
+            {
+              "from": "review",
+              "to": "merge",
+              "gate": "agent · approve?",
+              "agent": true,
+              "highlighted": true
+            }
+          ]
+        }
+      ],
+      "caption": "Three deterministic gates (orange) are scripts — exact, free, incorruptible. The last gate is an agent (violet): an adversarial review for what no test can encode. Pass, and it merges.",
+      "hold": 210,
+      "narration": "Most gates are deterministic scripts. The final gate is agent review for quality no test can encode.",
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1240 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180,
+              "style": "primary"
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            },
+            {
+              "from": "review",
+              "to": "implement",
+              "style": "back",
+              "bus": 660,
+              "lift": -30,
+              "label": "missed case",
+              "highlighted": true
+            }
+          ]
+        }
+      ],
+      "caption": "Just a missed case — back to implement. The plan and root cause stand.",
+      "hold": 150,
+      "narration": "Missed edge case: back to implement. Same plan, same diagnosis.",
+      "seamless": false,
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1240 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150,
+              "style": "primary"
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            },
+            {
+              "from": "review",
+              "to": "plan",
+              "style": "back",
+              "bus": 720,
+              "lift": 0,
+              "label": "wrong plan",
+              "highlighted": true
+            }
+          ]
+        }
+      ],
+      "caption": "The fix was wrong — back to plan. Re-plan against what review learned.",
+      "hold": 150,
+      "narration": "Wrong plan: back to plan and choose another approach.",
+      "seamless": true,
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Phases, not prompts",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1240 900",
+          "nodes": [
+            {
+              "id": "reproduce",
+              "label": "reproduce",
+              "sub": "haiku",
+              "lines": [
+                "read-only · ticket + repo",
+                "→ failing test fixture"
+              ],
+              "x": 70,
+              "y": 10,
+              "w": 540,
+              "h": 180,
+              "style": "primary"
+            },
+            {
+              "id": "plan",
+              "label": "plan",
+              "sub": "opus",
+              "lines": [
+                "→ fix plan (operator approval)"
+              ],
+              "x": 70,
+              "y": 260,
+              "w": 540,
+              "h": 150
+            },
+            {
+              "id": "implement",
+              "label": "implement",
+              "sub": "sonnet",
+              "lines": [
+                "worktree write only",
+                "→ commit"
+              ],
+              "x": 70,
+              "y": 480,
+              "w": 540,
+              "h": 180
+            },
+            {
+              "id": "review",
+              "label": "review",
+              "sub": "opus",
+              "lines": [
+                "read-only · approve or refine"
+              ],
+              "x": 70,
+              "y": 730,
+              "w": 540,
+              "h": 150
+            }
+          ],
+          "edges": [
+            {
+              "from": "reproduce",
+              "to": "plan",
+              "gate": "gate · test fails"
+            },
+            {
+              "from": "plan",
+              "to": "implement",
+              "gate": "gate · approved"
+            },
+            {
+              "from": "implement",
+              "to": "review",
+              "gate": "gate · tests pass"
+            },
+            {
+              "from": "review",
+              "to": "reproduce",
+              "style": "back",
+              "bus": 780,
+              "lift": 30,
+              "label": "wrong root cause",
+              "highlighted": true
+            }
+          ]
+        }
+      ],
+      "caption": "The root cause was wrong — back to reproduce. Investigate before planning again.",
+      "hold": 150,
+      "narration": "Wrong root cause: back to reproduce before planning again.",
+      "seamless": true,
+      "skipTitle": true,
+      "instant": true
+    },
+    {
+      "_comment": "P1 — the host rejects the model mid-call. The single hardest beat for a coding-agent skeptic to dismiss: their model is its own authority.",
+      "type": "diagram-svg",
+      "title": "The runtime overrules the model",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 820 640",
+          "nodes": [
+            {
+              "id": "llm",
+              "label": "LLM",
+              "sub": "proposes a decision",
+              "lines": [
+                "verb: decide"
+              ],
+              "x": 190,
+              "y": 20,
+              "w": 440,
+              "h": 150
+            },
+            {
+              "id": "runtime",
+              "label": "runtime",
+              "sub": "validates the answer",
+              "lines": [
+                "rejects off-contract"
+              ],
+              "x": 190,
+              "y": 250,
+              "w": 440,
+              "h": 150,
+              "style": "primary"
+            },
+            {
+              "id": "accepted",
+              "label": "accepted",
+              "sub": "recorded in the trace",
+              "x": 190,
+              "y": 490,
+              "w": 440,
+              "h": 120
+            }
+          ],
+          "edges": [
+            {
+              "from": "llm",
+              "to": "runtime",
+              "label": "submits",
+              "side": "right"
+            },
+            {
+              "from": "runtime",
+              "to": "llm",
+              "label": "reject · re-prompt",
+              "side": "left"
+            },
+            {
+              "from": "runtime",
+              "to": "accepted",
+              "label": "valid"
+            }
+          ]
+        }
+      ],
+      "caption": "Even when the LLM is called, the runtime validates the answer — and can reject and re-prompt it mid-call.",
+      "hold": 240,
+      "narration": "When the LLM is called, the runtime polices it. Off-contract decisions are rejected; valid ones hit the trace.",
+      "instant": true
+    },
+    {
+      "type": "meme",
+      "template": "gb",
+      "fields": {
+        "text1": "Prompt engineering",
+        "text2": "Loop engineering",
+        "text3": "Context engineering",
+        "text4": "Kitsoki"
+      },
+      "narration": "Prompt engineering. Then loop engineering. Then context engineering. And finally — Kitsoki."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The dev loop",
+      "body": "Author locally. Replay. Deploy.",
+      "lede": "Edit the YAML and the running machine hot-reloads. Each turn replays byte-for-byte without an LLM call — the spec itself is the regression test. Attach it to GitHub Issues or Jira with one config change.",
+      "hold": 180,
+      "narration": "Author locally. Edits hot-reload, turns replay without the LLM, then attach GitHub or Jira."
+    },
+    {
+      "type": "thread",
+      "title": "Driven from where work lives",
+      "panels": [
+        {
+          "system": "jira",
+          "ref": "PLTFRM-89507",
+          "stage": "refine",
+          "messages": [
+            {
+              "author": "alice",
+              "role": "dev",
+              "body": "Also reject service-account JWTs. They shouldn't reach this route."
+            },
+            {
+              "author": "kitsoki",
+              "role": "bot",
+              "body": "Plan updated:\n• added negative test for service-account JWT\n• tightened middleware match"
+            }
+          ]
+        },
+        {
+          "system": "bitbucket",
+          "ref": "PR-481",
+          "stage": "review",
+          "messages": [
+            {
+              "author": "alice",
+              "role": "dev",
+              "body": "use a ternary here"
+            },
+            {
+              "author": "kitsoki",
+              "role": "bot",
+              "body": "Acknowledged. Pushing fix…\n\n✓ pushed  a3f8d2c · refactor(auth): use ternary in service-account check"
+            }
+          ]
+        }
+      ],
+      "caption": "No local checkout. No \"kitsoki run\". The state machine runs in CI; comments are the surface.",
+      "hold": 270,
+      "narration": "Developers drive workflows from where the work lives. Comment on a ticket to refine. Comment on a pull request to push a fix."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Phase 1: Onboarding",
+      "body": "Use it the way a customer would.",
+      "lede": "Start by onboarding each target repo through Kitsoki MCP. Then prove readiness, collect artifacts, and only start work after the gate is clear.",
+      "hold": 220,
+      "narration": "Customer-facing usage starts with onboarding: compare readiness gates across repo targets, collect reusable artifacts, then continue only when the workflow is ready."
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Onboard target repos through MCP",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/dev-story/app.yaml",
+      "prompt": "use kitsoki-mcp-drive to onboard gears-rust, then run the same onboarding contract for slidey, postgresql, and kubernetes readiness checks before we spend on live work",
+      "calls": [
+        {
+          "tool": "studio.work",
+          "args": "{ include_quiet: false, limit: 20 }",
+          "result": "finds active repos, stories, and handoffs"
+        },
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/dev-story/app.yaml\", harness: \"live\", trace: \"gears-rust-real.trace.jsonl\" }",
+          "result": "handle=onboard-breadth"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"onboard gears-rust, then profile slidey + postgresql + kubernetes for harness readiness\"",
+          "result": "deterministic discovery + LLM profile draft"
+        },
+        {
+          "tool": "session.status",
+          "args": "{ handle: \"onboard-breadth\" }",
+          "result": "state + last_error without dumping world"
+        }
+      ],
+      "outcome": {
+        "status": "readiness surfaced",
+        "ref": "docs/case-studies/onboarding-cross-repo.md",
+        "lines": [
+          "inferred rust stack, make dev/test/build, and repo identity from a live gears-rust run",
+          "discovered slidey coverage via replay suites and the same MCP onboarding contract",
+          "captured postgresql and kubernetes readiness checks with local-heavy oracle profiles",
+          "found a stale-binary validator bug and fixed KITSOKI_BIN support"
+        ]
+      },
+      "caption": "Onboarding is a readiness workflow with evidence, not a one-off prompt.",
+      "hold": 245,
+      "instant": true,
+      "narration": "Onboarding itself is driven through MCP. It produces a status, artifacts, a trace, and concrete next steps before expensive work starts."
+    },
+    {
+      "type": "evidence",
+      "title": "Onboarding breadth and outcomes",
+      "items": [
+        {
+          "label": "gears-rust",
+          "status": "validated",
+          "detail": "Live onboarding inferred Rust stack plus make dev/test/build, and produced a stable artifact path for reuse.",
+          "refType": "artifact",
+          "ref": "onboarding-cross-repo case study"
+        },
+        {
+          "label": "slidey",
+          "status": "validated",
+          "detail": "slidey dry-run harness smoke was verified across slidey-dev, slidey-edit, and slidey-bugfix in the 2026-06-26 dogfood pass.",
+          "refType": "doc",
+          "ref": ".context/slidey-pitch-dogfood-pass-2026-06-26.md"
+        },
+        {
+          "label": "postgresql",
+          "status": "validated",
+          "detail": "ready-heavy-check harness completed with deterministic local oracle context from real ALTER DOMAIN VALIDATE CONSTRAINT fix.",
+          "refType": "doc",
+          "ref": ".context/story-qa-run.md"
+        },
+        {
+          "label": "kubernetes",
+          "status": "validated",
+          "detail": "ready-heavy-check harness completed with deterministic local oracle context from real nil-memory guard fix behavior.",
+          "refType": "doc",
+          "ref": ".context/story-qa-run.md"
+        },
+        {
+          "label": "Live continuation",
+          "status": "next",
+          "detail": "rerun the draft with approved repo-data sharing or a local/private model provider",
+          "refType": "test",
+          "ref": "operator approval required"
+        }
+      ],
+      "caption": "Readiness is now measured across multiple targets, not just one codebase.",
+      "hold": 230,
+      "instant": true,
+      "narration": "The onboarding status is now repo-specific: what is proven in live traces and what remains gated for sensitive continuation."
+    },
+    {
+      "type": "evidence",
+      "title": "Onboarding outcomes and artifacts",
+      "items": [
+        {
+          "label": "Replay path",
+          "status": "validated",
+          "detail": "discovery and validator fix are now captured as a replayable onboarding artifact in the dev-story trace set",
+          "refType": "path",
+          "ref": "stories/dev-story/flows/"
+        },
+        {
+          "label": "Private-provider path",
+          "status": "next",
+          "detail": "rerun profile drafting against a local/private model for sensitive repo data",
+          "refType": "doc",
+          "ref": "harness profile"
+        },
+        {
+          "label": "Readiness gate",
+          "status": "next",
+          "detail": "block live marathons until repo profile, test command profile, worktree policy, and oracle plan are explicit per target",
+          "refType": "doc",
+          "ref": "dev-story onboarding"
+        },
+        {
+          "label": "Cheaper MCP reads",
+          "status": "next",
+          "detail": "teach drivers to prefer session.status and session.world before expensive or heavy inspection in each target profile",
+          "refType": "doc",
+          "ref": "driver efficiency finding"
+        }
+      ],
+      "caption": "The onboarding output is split into validated artifacts and next readiness steps across repos and harness profiles.",
+      "hold": 225,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Use it from Claude Code (onboarding)",
+      "agent": "kitsoki-mcp-drive",
+      "story": "workspace story router",
+      "prompt": "use kitsoki-mcp-drive to onboard the repo, show readiness, then drive the next task through the right Kitsoki story",
+      "calls": [
+        {
+          "tool": "studio.work",
+          "args": "{ include_quiet: false, limit: 20 }",
+          "result": "shows active repos, sessions, stories, and follow-ups"
+        },
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/kitsoki-dev/app.yaml\", harness: \"live\" }",
+          "result": "opens the governed operator workflow"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"plan, fix, commit, and file workflow gaps\"",
+          "result": "routes natural language into story phases"
+        },
+        {
+          "tool": "session.trace",
+          "args": "{ handle: \"work-1\", limit: 80 }",
+          "result": "keeps proof for review and training"
+        }
+      ],
+      "outcome": {
+        "status": "same surface, many jobs",
+        "ref": "story state + trace",
+        "lines": [
+          "the operator prompt stays natural",
+          "the runtime chooses phases, gates, tools, and artifacts",
+          "failures become traceable follow-up work instead of lost context"
+        ]
+      },
+      "caption": "After onboarding, the same MCP surface drives the day-to-day work.",
+      "hold": 230,
+      "instant": true,
+      "narration": "After onboarding, the same MCP surface drives planning, bugfix, git operations, and story improvement."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Phase 2: Validation",
+      "body": "Close the loop before shipping.",
+      "lede": "After onboarding, validate plan quality and fixes through replayable PRD/proposal checks, bugfix cells, and hard-case stress coverage.",
+      "hold": 200,
+      "narration": "Validation first means we challenge proposals and fixes against evidence, not assumptions."
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Back-test PRD and proposal writing",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/kitsoki-dev/app.yaml",
+      "prompt": "use kitsoki-mcp-drive agent to propose and implement the spatial oracle feature I described in the markdown",
+      "calls": [
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/kitsoki-dev/app.yaml\", harness: \"live\", profile: \"codex\" }",
+          "result": "handle=plan-spatial-oracle"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"propose and implement the spatial oracle feature...\"",
+          "result": "routes to planning / proposal workflow"
+        },
+        {
+          "tool": "session.status",
+          "args": "{ handle: \"plan-spatial-oracle\" }",
+          "result": "reads state and allowed intents cheaply"
+        },
+        {
+          "tool": "session.trace",
+          "args": "{ handle: \"plan-spatial-oracle\", kinds: [\"host.call\", \"machine.transition\"] }",
+          "result": "captures the decision trail"
+        }
+      ],
+      "outcome": {
+        "status": "proposal ready",
+        "ref": ".context/spatial-oracle-plan.md",
+        "lines": [
+          "scope is explicit before writes",
+          "approval gate separates design from implementation",
+          "trace records why the plan exists"
+        ]
+      },
+      "hold": 230,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Bugfix through MCP",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/bugfix/app.yaml",
+      "prompt": "fix the flaky screenshot diff bug from the issue, prove the regression red first, then ship the smallest safe change",
+      "calls": [
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/bugfix/app.yaml\", harness: \"live\" }",
+          "result": "handle=bugfix-128"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"fix the flaky screenshot diff bug...\"",
+          "result": "triage -> reproduce -> plan"
+        },
+        {
+          "tool": "render.tui_png",
+          "args": "{ handle: \"bugfix-128\", cols: 120, rows: 38 }",
+          "result": "visual proof for operator review"
+        },
+        {
+          "tool": "session.status",
+          "args": "{ handle: \"bugfix-128\" }",
+          "result": "state=testing · gate running"
+        }
+      ],
+      "outcome": {
+        "status": "fix gated",
+        "ref": "trace: bugfix-128.jsonl",
+        "lines": [
+          "reproduction before code",
+          "tests run as deterministic gates",
+          "review sees a working diff instead of an agent claim"
+        ]
+      },
+      "hold": 230,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Git operations through MCP",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/git-ops/app.yaml",
+      "prompt": "merge the finished work back to main, handle conflicts if needed, commit only my changes, and leave unrelated dirt alone",
+      "calls": [
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/git-ops/app.yaml\", key: \"ship-spatial-oracle\" }",
+          "result": "handle=git-ship-1"
+        },
+        {
+          "tool": "studio.work",
+          "args": "{ include_quiet: false, limit: 20 }",
+          "result": "finds active handoff / conflict work"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"merge the finished work back to main...\"",
+          "result": "routes to conflict-aware git ops"
+        },
+        {
+          "tool": "session.trace",
+          "args": "{ handle: \"git-ship-1\", limit: 60 }",
+          "result": "records every handoff decision"
+        }
+      ],
+      "outcome": {
+        "status": "handoff preserved",
+        "ref": "commit + trace",
+        "lines": [
+          "worktree policy stays explicit",
+          "dirty unrelated files are not reverted",
+          "operator can reacquire any blocked step"
+        ]
+      },
+      "hold": 230,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Self-improvement loop",
+      "agent": "kitsoki-mcp-drive",
+      "story": "studio issue.create",
+      "prompt": "this story stalled after the operator chose an on-disk ticket; file a GitHub issue with the trace and a screenshot so we can fix the workflow",
+      "calls": [
+        {
+          "tool": "session.trace",
+          "args": "{ handle: \"bugfix-room\", limit: 80 }",
+          "result": "captures the stale transition and host calls"
+        },
+        {
+          "tool": "render.tui_png",
+          "args": "{ handle: \"bugfix-room\", cols: 120, rows: 36 }",
+          "result": "writes visual evidence under a review artifact path"
+        },
+        {
+          "tool": "issue.create",
+          "args": "{ repo: \"constructorfabric/Kitsoki\", include_trace: true, assets: [...] }",
+          "result": "GitHub issue + source-autonomous label"
+        },
+        {
+          "tool": "studio.work",
+          "args": "{ include_quiet: false }",
+          "result": "new issue appears as follow-up work"
+        }
+      ],
+      "outcome": {
+        "status": "gap captured",
+        "ref": "GitHub #new",
+        "lines": [
+          "the agent cannot silently drop MCP gaps",
+          "evidence is bundled at filing time",
+          "the bug becomes input to the next story improvement run"
+        ]
+      },
+      "hold": 240,
+      "instant": true
+    },
+    {
+      "type": "mcp-drive",
+      "title": "Story improvement harness",
+      "agent": "kitsoki-mcp-drive",
+      "story": "stories/slidey-bugfix/app.yaml",
+      "prompt": "run the story improvement harness over failed traces, promote the fixed behavior into replay tests, and show the story diff that makes the next run better",
+      "calls": [
+        {
+          "tool": "session.new",
+          "args": "{ story_path: \"stories/slidey-bugfix/app.yaml\", harness: \"replay\" }",
+          "result": "handle=story-train-1"
+        },
+        {
+          "tool": "session.drive",
+          "args": "\"improve this story from failed traces\"",
+          "result": "collects failures and candidate story diff"
+        },
+        {
+          "tool": "story.validate",
+          "args": "{ dir: \"stories/slidey-bugfix\" }",
+          "result": "schema and transition invariants pass"
+        },
+        {
+          "tool": "story.test",
+          "args": "{ dir: \"stories/slidey-bugfix\" }",
+          "result": "flow fixtures replay without LLM spend"
+        }
+      ],
+      "outcome": {
+        "status": "story retrained",
+        "ref": "flows + prompt diff",
+        "lines": [
+          "failed runs become fixtures",
+          "prompt and gate changes are tested like code",
+          "the next marathon starts from a stronger workflow"
+        ]
+      },
+      "caption": "The harness trains stories with traces, gates, and replayable proof, not isolated prompt snippets.",
+      "hold": 240,
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "How runs become reusable tests",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1420 420",
+          "nodes": [
+            {
+              "id": "runs",
+              "label": "real run",
+              "sub": "what happened",
+              "lines": [
+                "real repos",
+                "real failures"
+              ],
+              "x": 80,
+              "y": 110,
+              "w": 340,
+              "h": 180,
+              "style": "secondary"
+            },
+            {
+              "id": "cases",
+              "label": "replayable case",
+              "sub": "pin the bug",
+              "lines": [
+                "failing baseline",
+                "hidden pass check"
+              ],
+              "x": 530,
+              "y": 110,
+              "w": 460,
+              "h": 180,
+              "style": "primary"
+            },
+            {
+              "id": "harness",
+              "label": "scoreboard",
+              "sub": "try again safely",
+              "lines": [
+                "compare attempts",
+                "improve the story"
+              ],
+              "x": 1080,
+              "y": 110,
+              "w": 360,
+              "h": 180,
+              "style": "secondary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "runs",
+              "to": "cases",
+              "label": "pin as fixture",
+              "elbow": "H",
+              "labelX": 465,
+              "labelY": 85
+            },
+            {
+              "from": "cases",
+              "to": "harness",
+              "label": "measure + score",
+              "elbow": "H",
+              "labelX": 1035,
+              "labelY": 85
+            }
+          ]
+        }
+      ],
+      "caption": "A live run is only useful if we can replay it. We turn each real failure into a test case, score future attempts, and use the results to improve the story.",
+      "hold": 240,
+      "narration": "A live run becomes useful when we can replay it. Each real failure becomes a test case, the harness scores future attempts, and the result improves the story.",
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "The harness contract",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1220 760",
+          "nodes": [
+            {
+              "id": "baseline",
+              "label": "baseline",
+              "sub": "prove RED",
+              "lines": [
+                "bug is present"
+              ],
+              "x": 205,
+              "y": 70,
+              "w": 390,
+              "h": 150
+            },
+            {
+              "id": "oracle",
+              "label": "oracle",
+              "sub": "withheld test",
+              "lines": [
+                "real PR signal"
+              ],
+              "x": 625,
+              "y": 70,
+              "w": 390,
+              "h": 150
+            },
+            {
+              "id": "cell",
+              "label": "cell",
+              "sub": "task x model",
+              "lines": [
+                "fresh worktree",
+                "explicit trace"
+              ],
+              "x": 360,
+              "y": 330,
+              "w": 500,
+              "h": 170,
+              "style": "primary"
+            },
+            {
+              "id": "score",
+              "label": "score",
+              "sub": "oracle + cost",
+              "lines": [
+                "solved / partial / failed"
+              ],
+              "x": 360,
+              "y": 565,
+              "w": 500,
+              "h": 135
+            }
+          ],
+          "edges": [
+            {
+              "from": "baseline",
+              "to": "cell",
+              "side": "left"
+            },
+            {
+              "from": "oracle",
+              "to": "cell",
+              "side": "right"
+            },
+            {
+              "from": "cell",
+              "to": "score"
+            }
+          ]
+        }
+      ],
+      "caption": "A cell is hermetic and reproducible. If the fixture is not armed, it cannot enter the live runner.",
+      "hold": 240,
+      "narration": "The harness contract is simple. Prove the baseline is red, withhold the oracle, drive one hermetic cell, then score the result.",
+      "instant": true
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "No-cost first",
+      "body": "Spend only after the case is armed.",
+      "lede": "The free path verifies fixtures, preflights candidates, prepares worktrees, renders exact drive commands, and validates the repo-bakeoff story flow. Live LLM cells are the explicit gated step, not the default test path.",
+      "hold": 210,
+      "narration": "The important process change is no-cost first. Verify and prepare everything before spending on a live cell."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "gears-rust marathon",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1220 680",
+          "nodes": [
+            {
+              "id": "repo",
+              "label": "gears-rust",
+              "sub": "Rust monorepo",
+              "lines": [
+                "heavy crates",
+                "per-bug oracles"
+              ],
+              "x": 70,
+              "y": 90,
+              "w": 470,
+              "h": 180
+            },
+            {
+              "id": "result",
+              "label": "10 / 10",
+              "sub": "shipped + verified",
+              "lines": [
+                "real baselines",
+                "real PR tests"
+              ],
+              "x": 680,
+              "y": 90,
+              "w": 470,
+              "h": 180,
+              "style": "primary"
+            },
+            {
+              "id": "corpus",
+              "label": "corpus",
+              "sub": "4 armed + 6 reference",
+              "lines": [
+                "RED at baseline",
+                "GREEN at fix"
+              ],
+              "x": 375,
+              "y": 400,
+              "w": 470,
+              "h": 180
+            }
+          ],
+          "edges": [
+            {
+              "from": "repo",
+              "to": "result",
+              "label": "marathon"
+            },
+            {
+              "from": "result",
+              "to": "corpus",
+              "label": "captured"
+            }
+          ]
+        }
+      ],
+      "caption": "Ten real gears-rust fixes went through the pipeline and passed independent oracle verification; the corpus now backs repeatable harness checks.",
+      "hold": 240,
+      "narration": "The gears-rust marathon shipped and independently verified ten out of ten real fixes, then captured the evidence as a reusable corpus.",
+      "instant": true
+    },
+    {
+      "type": "table",
+      "title": "gears-rust bugs 1-5",
+      "columns": [
+        "Case",
+        "Package",
+        "Real fix",
+        "Verify"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "bug1",
+            "toolkit",
+            "a7080261",
+            "PASS"
+          ]
+        },
+        {
+          "cells": [
+            "bug2",
+            "grpc",
+            "6e954c6f",
+            "PASS"
+          ]
+        },
+        {
+          "cells": [
+            "bug3",
+            "macros",
+            "17cc2fcd",
+            "PASS"
+          ]
+        },
+        {
+          "cells": [
+            "bug4",
+            "errors",
+            "e21d79ab",
+            "PASS"
+          ]
+        },
+        {
+          "cells": [
+            "bug5",
+            "resource-group",
+            "8737281d",
+            "PASS"
+          ]
+        }
+      ],
+      "variant": "data",
+      "caption": "First half of the gears-rust marathon: five pinned real fixes, five independent oracle passes.",
+      "hold": 300,
+      "narration": "The first half of the gears-rust marathon is traceable to concrete cases, packages, real fix commits, and independent oracle passes.",
+      "instant": true
+    },
+    {
+      "type": "table",
+      "title": "gears-rust bugs 6-10",
+      "columns": [
+        "Case",
+        "Package",
+        "Real fix",
+        "Verify"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "bug6",
+            "odata",
+            "ba166a57",
+            "PASS"
+          ]
+        },
+        {
+          "cells": [
+            "bug7",
+            "auth",
+            "7ed1c603",
+            "PASS"
+          ]
+        },
+        {
+          "cells": [
+            "bug8",
+            "modkit-db",
+            "c3c96ac7",
+            "PASS"
+          ]
+        },
+        {
+          "cells": [
+            "bug9",
+            "modkit",
+            "aba9d854",
+            "PASS"
+          ]
+        },
+        {
+          "cells": [
+            "bug10",
+            "mini-chat",
+            "7563f5cd",
+            "PASS"
+          ]
+        }
+      ],
+      "variant": "data",
+      "caption": "Second half: the same pipeline shape held across five more packages, with no human edits to the fixes.",
+      "hold": 300,
+      "narration": "The second half kept the same pipeline shape across five more packages, again with independent oracle passes and no human edits to the fixes.",
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Hard cases made the harness honest",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1280 620",
+          "nodes": [
+            {
+              "id": "h2",
+              "label": "H2",
+              "sub": "PASS",
+              "x": 80,
+              "y": 145,
+              "w": 230,
+              "h": 125,
+              "style": "primary"
+            },
+            {
+              "id": "h3",
+              "label": "H3",
+              "sub": "PASS",
+              "x": 380,
+              "y": 145,
+              "w": 230,
+              "h": 125,
+              "style": "primary"
+            },
+            {
+              "id": "h1",
+              "label": "H1",
+              "sub": "FAIL",
+              "lines": [
+                "wrong signal"
+              ],
+              "x": 680,
+              "y": 145,
+              "w": 260,
+              "h": 150
+            },
+            {
+              "id": "h4",
+              "label": "H4",
+              "sub": "STALL",
+              "lines": [
+                "hung call"
+              ],
+              "x": 1010,
+              "y": 145,
+              "w": 230,
+              "h": 150
+            },
+            {
+              "id": "fixes",
+              "label": "generic fixes",
+              "sub": "not case patches",
+              "lines": [
+                "end-to-end reproducer",
+                "watchdog design"
+              ],
+              "x": 375,
+              "y": 410,
+              "w": 530,
+              "h": 180,
+              "style": "primary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "h1",
+              "to": "fixes",
+              "label": "finding"
+            },
+            {
+              "from": "h4",
+              "to": "fixes",
+              "label": "finding"
+            }
+          ]
+        }
+      ],
+      "caption": "The stress run did not inflate the score. It exposed one incomplete fix and one stalled maker call, then turned both into generic pipeline hardening.",
+      "hold": 240,
+      "narration": "The hard-case run was useful because it failed honestly. Two passed, one failed, one stalled, and both problems became generic pipeline fixes.",
+      "instant": true
+    },
+    {
+      "type": "table",
+      "title": "hard-case stress bugs",
+      "columns": [
+        "Case",
+        "Package",
+        "Verdict",
+        "Finding"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "H1",
+            "oagw",
+            "FAIL",
+            "wrong signal"
+          ]
+        },
+        {
+          "cells": [
+            "H2",
+            "account",
+            "PASS",
+            "oracle green"
+          ]
+        },
+        {
+          "cells": [
+            "H3",
+            "account",
+            "PASS",
+            "oracle green"
+          ]
+        },
+        {
+          "cells": [
+            "H4",
+            "resource-group",
+            "STALL",
+            "watchdog gap"
+          ]
+        }
+      ],
+      "variant": "data",
+      "caption": "The stress bakeoff stayed honest: H1 and H4 became product hardening, not hidden score inflation.",
+      "hold": 300,
+      "narration": "The hard-case bakeoff is traceable too. Two passed, one failed with the wrong signal, and one stalled because the runner lacked a watchdog.",
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "query-string live bakeoff",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1280 650",
+          "nodes": [
+            {
+              "id": "qs1",
+              "label": "qs1",
+              "sub": "solved",
+              "lines": [
+                "oracle + suite PASS"
+              ],
+              "x": 90,
+              "y": 45,
+              "w": 330,
+              "h": 135,
+              "style": "primary"
+            },
+            {
+              "id": "qs2",
+              "label": "qs2",
+              "sub": "solved",
+              "lines": [
+                "oracle + suite PASS"
+              ],
+              "x": 90,
+              "y": 250,
+              "w": 330,
+              "h": 135,
+              "style": "primary"
+            },
+            {
+              "id": "qs3",
+              "label": "qs3",
+              "sub": "solved",
+              "lines": [
+                "oracle + suite PASS"
+              ],
+              "x": 90,
+              "y": 455,
+              "w": 330,
+              "h": 135,
+              "style": "primary"
+            },
+            {
+              "id": "rollup",
+              "label": "3 / 3",
+              "sub": "GPT-5.5 cells",
+              "lines": [
+                "33 agent calls",
+                "3.74M in · 34K out"
+              ],
+              "x": 720,
+              "y": 240,
+              "w": 470,
+              "h": 180
+            }
+          ],
+          "edges": [
+            {
+              "from": "qs1",
+              "to": "rollup",
+              "side": "left"
+            },
+            {
+              "from": "qs2",
+              "to": "rollup"
+            },
+            {
+              "from": "qs3",
+              "to": "rollup",
+              "side": "right"
+            }
+          ]
+        }
+      ],
+      "caption": "The query-string run is small but complete: three external parser bugs, three hidden-oracle passes, full suite green each time.",
+      "hold": 240,
+      "narration": "For query-string, the GPT five point five Kitsoki run solved three out of three cells, with oracle and suite passing each time.",
+      "instant": true
+    },
+    {
+      "type": "table",
+      "title": "query-string bug traceability",
+      "columns": [
+        "Case",
+        "Issue / PR",
+        "Baseline",
+        "Bug"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "qs1",
+            "#336",
+            "2e1f45a",
+            "encoded separator"
+          ]
+        },
+        {
+          "cells": [
+            "qs2",
+            "#404 / #406",
+            "88e1e36",
+            "typed comma array"
+          ]
+        },
+        {
+          "cells": [
+            "qs3",
+            "PR #392",
+            "4287e77",
+            "bracket separator"
+          ]
+        }
+      ],
+      "variant": "data",
+      "caption": "Each query-string cell starts from the real fix parent and is graded by the real regression test kept out of the maker tree.",
+      "hold": 300,
+      "narration": "The query-string bakeoff is also traceable: three real filed bugs or pull requests, three pinned baselines, and hidden regression-test grading.",
+      "instant": true
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Failure modes became product features",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1280 820",
+          "nodes": [
+            {
+              "id": "baseline",
+              "label": "baseline",
+              "sub": "already green",
+              "lines": [
+                "drop before spend"
+              ],
+              "x": 80,
+              "y": 75,
+              "w": 470,
+              "h": 150
+            },
+            {
+              "id": "shared",
+              "label": "checkout",
+              "sub": "shared state",
+              "lines": [
+                "one worktree per cell"
+              ],
+              "x": 730,
+              "y": 75,
+              "w": 470,
+              "h": 150
+            },
+            {
+              "id": "trace",
+              "label": "trace",
+              "sub": "cost evidence",
+              "lines": [
+                "explicit path"
+              ],
+              "x": 80,
+              "y": 305,
+              "w": 470,
+              "h": 150
+            },
+            {
+              "id": "suite",
+              "label": "tests",
+              "sub": "unrelated reds",
+              "lines": [
+                "scope the command"
+              ],
+              "x": 730,
+              "y": 305,
+              "w": 470,
+              "h": 150
+            },
+            {
+              "id": "story",
+              "label": "story hardening",
+              "sub": "generic only",
+              "lines": [
+                "prompt · gate · fixture"
+              ],
+              "x": 390,
+              "y": 610,
+              "w": 500,
+              "h": 150,
+              "style": "primary"
+            }
+          ],
+          "edges": [
+            {
+              "from": "baseline",
+              "to": "story"
+            },
+            {
+              "from": "shared",
+              "to": "story"
+            },
+            {
+              "from": "trace",
+              "to": "story"
+            },
+            {
+              "from": "suite",
+              "to": "story"
+            }
+          ]
+        }
+      ],
+      "caption": "The harness is built from scars: every recurring failure mode became a deterministic check, a runtime rule, or a story prompt change.",
+      "hold": 240,
+      "narration": "The harness is not theory. It is a list of failure modes we turned into product behavior.",
+      "instant": true
+    },
+    {
+      "type": "table",
+      "title": "Persona-driven journey QA in detail",
+      "columns": [
+        "Persona",
+        "Question",
+        "Evidence",
+        "Gap status"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "Developer",
+            "Can one developer complete a realistic journey from evidence?",
+            "story.test, story.validate, trace artifacts",
+            "Covered for core paths; expanding to all flows"
+          ]
+        },
+        {
+          "cells": [
+            "QA owner",
+            "Are claims reproducible before handoff?",
+            "mcp-drive logs + suite replays",
+            "In progress: some heuristics are still manual"
+          ]
+        },
+        {
+          "cells": [
+            "Operator",
+            "Can stalled steps resume from trace context?",
+            "session.trace + artifacts + issue payloads",
+            "Partially delivered; recovery KPI rollout pending"
+          ]
+        },
+        {
+          "cells": [
+            "Product owner",
+            "Does quality improve over repeated marathons?",
+            "scorecard, verdicts, trend checks",
+            "In progress until trend dashboard ships"
+          ]
+        }
+      ],
+      "variant": "data",
+      "caption": "Process mapping is by persona and evidence, with open gaps tracked explicitly.",
+      "hold": 250,
+      "narration": "Persona-driven QA tracks reproducibility and confidence by role: what developers need to execute, what QA needs to trust, what operators need for handoff, and what owners need for trend confidence.",
+      "instant": true
+    },
+    {
+      "type": "evidence",
+      "title": "Persona-driven journey QA",
+      "items": [
+        {
+          "label": "Developer persona",
+          "status": "progress",
+          "detail": "journey-level trace capture, proposal checkpoints, and bugfix evidence are being replayed from live runs in one coherent flow.",
+          "refType": "artifact",
+          "ref": "story trace + flow fixtures"
+        },
+        {
+          "label": "QA owner persona",
+          "status": "progress",
+          "detail": "skeptical review pass is partially automated; partial coverage still relies on manual judgment for UX evidence and edge-case interpretation.",
+          "refType": "test",
+          "ref": "journey-qa draft harness"
+        },
+        {
+          "label": "Operator persona",
+          "status": "progress",
+          "detail": "operator handoff artifacts are consistently surfaced, but multi-day cadence dashboards and alerting are still being rolled out.",
+          "refType": "doc",
+          "ref": "handoff + trace review notes"
+        },
+        {
+          "label": "Product owner persona",
+          "status": "progress",
+          "detail": "cross-repo persona scoring and trend reporting exist as design intent; remaining work is to wire them into a reusable weekly report.",
+          "refType": "artifact",
+          "ref": "persona QA scorecard draft"
+        }
+      ],
+      "caption": "Persona-driven QA is now a running process, with partial delivery across roles and explicit gaps tracked in the same evidence lane as product validation.",
+      "hold": 230,
+      "instant": true
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Phase 3: Large-scale training",
+      "body": "Move from one repo check to reusable system training.",
+      "lede": "At scale, failures become scoreable training cases, stories evolve from traces, and the entire loop becomes a repeatable product capability.",
+      "hold": 210,
+      "narration": "Large-scale training converts operational evidence into model and workflow improvement across projects."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Stories train like models",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1280 620",
+          "nodes": [
+            {
+              "id": "trace",
+              "label": "trace",
+              "sub": "run record",
+              "lines": [
+                "cost",
+                "decisions"
+              ],
+              "x": 70,
+              "y": 190,
+              "w": 340,
+              "h": 220
+            },
+            {
+              "id": "oracle",
+              "label": "oracle",
+              "sub": "grade",
+              "lines": [
+                "PASS",
+                "FAIL",
+                "STALL"
+              ],
+              "x": 470,
+              "y": 190,
+              "w": 340,
+              "h": 220,
+              "style": "primary"
+            },
+            {
+              "id": "diff",
+              "label": "story diff",
+              "sub": "improvement",
+              "lines": [
+                "prompt",
+                "gate",
+                "fixture"
+              ],
+              "x": 870,
+              "y": 190,
+              "w": 340,
+              "h": 220
+            }
+          ],
+          "edges": [
+            {
+              "from": "trace",
+              "to": "oracle"
+            },
+            {
+              "from": "oracle",
+              "to": "diff"
+            },
+            {
+              "from": "diff",
+              "to": "trace",
+              "label": "re-run",
+              "style": "back",
+              "bus": 490,
+              "lift": 40
+            }
+          ]
+        }
+      ],
+      "caption": "The training example is not a prompt snippet. It is the whole loop: trace, oracle, outcome, story diff, and replayable proof.",
+      "hold": 240,
+      "narration": "Stories train like models, but the training example is operational: trace, oracle, outcome, story diff, and replayable proof.",
+      "instant": true
+    },
+    {
+      "type": "evidence",
+      "title": "What the evidence says",
+      "items": [
+        {
+          "label": "gears-rust marathon",
+          "status": "validated",
+          "detail": "ten real merged-fix baselines re-solved through Kitsoki, each independently verified by hidden PR oracles",
+          "refType": "artifact",
+          "ref": ".context/gears-marathon-log.md"
+        },
+        {
+          "label": "query-string bakeoff",
+          "status": "validated",
+          "detail": "three external parser bugs solved by gpt-5.5 through Kitsoki with oracle and suite pass",
+          "refType": "artifact",
+          "ref": "tools/bugfix-bakeoff/external/results/summary.json"
+        },
+        {
+          "label": "hard-case stress",
+          "status": "validated",
+          "detail": "multi-file cases passed, H1 exposed near-side assertion risk, H4 exposed a stalled-call watchdog gap",
+          "refType": "doc",
+          "ref": ".context/gears-hard-cases-report.md"
+        },
+        {
+          "label": "methodology",
+          "status": "validated",
+          "detail": "RED baseline, hidden oracle, hermetic worktree, explicit trace, score before story hardening",
+          "refType": "doc",
+          "ref": "tools/bugfix-bakeoff/external/README.md"
+        }
+      ],
+      "caption": "The proof is credible because misses are preserved as product findings, not edited out of the score.",
+      "hold": 245,
+      "instant": true
+    },
+    {
+      "type": "evidence",
+      "title": "What becomes possible",
+      "items": [
+        {
+          "label": "Repo readiness",
+          "status": "validated",
+          "detail": "onboarding becomes a gate: profile, commands, worktree policy, story route, oracle plan",
+          "refType": "doc",
+          "ref": "dev-story onboarding"
+        },
+        {
+          "label": "Model ladders",
+          "status": "validated",
+          "detail": "run cheap-to-expensive candidates and stop once a hidden oracle reaches solved",
+          "refType": "command",
+          "ref": "external/escalate.sh"
+        },
+        {
+          "label": "Story training",
+          "status": "validated",
+          "detail": "a failed run produces trace evidence, a story diff, and replay coverage for the next run",
+          "refType": "artifact",
+          "ref": "trace -> fixture -> story diff"
+        },
+        {
+          "label": "Customer proof",
+          "status": "validated",
+          "detail": "the same harness can answer: should I trust Kitsoki on my repo, with my tests, at this cost?",
+          "refType": "artifact",
+          "ref": "deterministic Slidey report"
+        }
+      ],
+      "caption": "This is the customer story: Kitsoki is not a smarter prompt. It is a measurable improvement loop around real work.",
+      "hold": 245,
+      "instant": true
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Close the loop",
+      "body": "The demo becomes an operating system for improvement.",
+      "lede": "A customer can onboard a repo, run governed tasks through MCP, score real outcomes against hidden oracles, and watch misses turn into story/runtime changes. That is the thing prompts alone do not give them.",
+      "hold": 230,
+      "narration": "The demo becomes an operating system for improvement: onboard, drive, score, learn, and rerun."
+    },
+    {
+      "type": "thread",
+      "title": "Improves with use",
+      "panels": [
+        {
+          "system": "jira",
+          "ref": "PLTFRM-89507",
+          "stage": "trace",
+          "messages": [
+            {
+              "author": "kitsoki",
+              "role": "bot",
+              "body": "Test-review converted from LLM call → deterministic script.\n\nTrace showed 47 identical calls; replaced with a 12-line script."
+            }
+          ]
+        },
+        {
+          "system": "jira",
+          "ref": "PLTFRM-89507",
+          "stage": "feedback",
+          "messages": [
+            {
+              "author": "alice",
+              "role": "dev",
+              "body": "feedback for kitsoki — you're being way too verbose in the comments"
+            },
+            {
+              "author": "kitsoki",
+              "role": "bot",
+              "body": "Acknowledged. Tuning comment verbosity in next deploy."
+            }
+          ]
+        },
+        {
+          "system": "jira",
+          "ref": "PLTFRM-89507",
+          "stage": "knowledge",
+          "messages": [
+            {
+              "author": "kitsoki",
+              "role": "bot",
+              "body": "Indexed your team's internal tooling and docs:\n• runbook RUN-042 → embedded in the auth-fix prompt\n• stand-validate command → wrapped as a host call"
+            }
+          ]
+        }
+      ],
+      "caption": "The trace tells the author where the LLM keeps being asked the same question. Each conversion is one diff against the YAML — and the system absorbs your existing tools as it goes.",
+      "hold": 300,
+      "narration": "Kitsoki improves with use. It converts repeated LLM calls into scripts. It accepts your feedback. And it indexes your team's existing tools."
+    },
+    {
+      "type": "title",
+      "title": "Lessons Learned",
+      "hold": 160,
+      "narration": "Lessons learned."
+    },
+    {
+      "type": "diagram-svg",
+      "title": "Demo-driven development",
+      "panels": [
+        {
+          "label": "",
+          "viewBox": "0 0 1320 760",
+          "layout": "cycle",
+          "cycle": {
+            "center": {
+              "x": 610,
+              "y": 365
+            },
+            "rx": 335,
+            "ry": 215,
+            "arrowRx": 350,
+            "arrowRy": 230,
+            "variant": "recycle-logo",
+            "glyphY": 430,
+            "glyphSize": 920
+          },
+          "nodes": [
+            {
+              "id": "proposal",
+              "label": "proposal",
+              "sub": "what should exist",
+              "lines": [
+                "change summary",
+                "scenarios"
+              ],
+              "slot": "left",
+              "w": 320,
+              "h": 150
+            },
+            {
+              "id": "build",
+              "label": "feature",
+              "sub": "make it real",
+              "lines": [
+                "web surface",
+                "story behavior"
+              ],
+              "slot": "top",
+              "w": 320,
+              "h": 150
+            },
+            {
+              "id": "demo",
+              "label": "demo video",
+              "sub": "prove the proposal",
+              "lines": [
+                "no LLM replay",
+                "watch-speed"
+              ],
+              "slot": "right",
+              "w": 320,
+              "h": 150,
+              "style": "primary"
+            },
+            {
+              "id": "qa",
+              "label": "visual QA",
+              "sub": "gate the evidence",
+              "lines": [
+                "cited frames",
+                "skeptical pass"
+              ],
+              "slot": "bottom",
+              "w": 320,
+              "h": 150
+            },
+            {
+              "id": "site",
+              "label": "product site",
+              "sub": "ship the proof",
+              "lines": [
+                "feature catalog",
+                "demo assets"
+              ],
+              "x": 930,
+              "y": 535,
+              "w": 340,
+              "h": 150,
+              "cycle": false
+            }
+          ],
+          "edges": [
+            {
+              "from": "qa",
+              "to": "site",
+              "label": "pass",
+              "labelX": 855,
+              "labelY": 560
+            }
+          ]
+        }
+      ],
+      "caption": "A proposal is not done when the code compiles. It is done when the product can demonstrate the full behavior and the evidence passes review.",
+      "hold": 250,
+      "narration": "The development pattern is proposal, implementation, deterministic demo, visual QA, then either fix the gap or ship the proof.",
+      "instant": true
+    },
+    {
+      "type": "evidence",
+      "title": "The two-skill loop",
+      "items": [
+        {
+          "label": "Feature spec",
+          "status": "validated",
+          "detail": "the proposal or change summary defines what the viewer must see",
+          "refType": "doc",
+          "ref": "proposal / feature.md"
+        },
+        {
+          "label": "kitsoki-ui-demo",
+          "status": "implemented",
+          "detail": "records deterministic, no-LLM product video plus frames and chapters",
+          "refType": "artifact",
+          "ref": "MP4 + NN-*.png + chapters.json"
+        },
+        {
+          "label": "kitsoki-ui-qa",
+          "status": "implemented",
+          "detail": "judges the video against scenarios, cites frames, and can downgrade passes",
+          "refType": "test",
+          "ref": "qa-report.md + verdict.json"
+        },
+        {
+          "label": "Iteration",
+          "status": "validated",
+          "detail": "a QA failure becomes maker feedback, not a hand-waved demo problem",
+          "refType": "log",
+          "ref": "maker -> QA -> maker"
+        }
+      ],
+      "caption": "The demo and the QA report become part of development, not a marketing pass after development.",
+      "hold": 240,
+      "instant": true
+    },
+    {
+      "type": "evidence",
+      "title": "What the loop produces",
+      "items": [
+        {
+          "label": "Product videos",
+          "status": "validated",
+          "detail": "feature tours are recorded from the real web UI at watch speed",
+          "refType": "artifact",
+          "ref": "docs/media + docs/case-studies"
+        },
+        {
+          "label": "Feature pressure",
+          "status": "validated",
+          "detail": "if the video cannot show the proposal, the product is not legible enough yet",
+          "refType": "test",
+          "ref": "unsupported / fail"
+        },
+        {
+          "label": "Reusable fixtures",
+          "status": "validated",
+          "detail": "real traces can become no-LLM flows and host cassettes for repeatable demos",
+          "refType": "path",
+          "ref": "kitsoki trace to-flow"
+        },
+        {
+          "label": "Site content",
+          "status": "validated",
+          "detail": "the same proof assets feed the product site, docs, decks, and release review",
+          "refType": "doc",
+          "ref": "features/*.yaml"
+        }
+      ],
+      "caption": "The loop turns feature development into evidence production: working UI, deterministic video, QA report, and public-facing proof.",
+      "hold": 240,
+      "instant": true
+    },
+    {
+      "type": "evidence",
+      "title": "Next: mockup and storyboard",
+      "items": [
+        {
+          "label": "Mockup first",
+          "status": "next",
+          "detail": "turn the proposal into concrete screens before the implementation gets expensive",
+          "refType": "artifact",
+          "ref": "static mockup"
+        },
+        {
+          "label": "Storyboard the tour",
+          "status": "next",
+          "detail": "make a video that looks basically like the final product video",
+          "refType": "artifact",
+          "ref": "mock video"
+        },
+        {
+          "label": "Tune the script",
+          "status": "next",
+          "detail": "refine annotations, narration, and agent instructions against the storyboard",
+          "refType": "doc",
+          "ref": "instructions"
+        },
+        {
+          "label": "Build to spec",
+          "status": "next",
+          "detail": "implement the feature once the screen, video, and story behavior are aligned",
+          "refType": "path",
+          "ref": "storyboard -> feature"
+        }
+      ],
+      "caption": "Move the first learning loop earlier: proposal to mockup to storyboard to instructions, then implementation. The feature gets built to a visible spec.",
+      "hold": 240,
+      "instant": true
+    },
+    {
+      "type": "cta",
+      "wordmark": "Kitsoki",
+      "tagline": "Prove what the model did — and what it couldn't",
+      "url": "github.com/constructorfabric/Kitsoki",
+      "hold": 180,
+      "narration": "Kitsoki — prove what the model did, and what it couldn't."
+    }
+  ]
+}

@@ -61,7 +61,7 @@ func (srv *Server) registerStoryTools() {
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "story.test",
-		Description: "Run the story's deterministic flow fixtures (testrunner.RunFlows — no LLM, replay/cassette honored). {dir?, flows?, recording?, allow_missing_recording?, fail_fast?, verbose?, json?, trace_out?}: flows overrides the default <dir>/flows/*.yaml glob. Returns a per-fixture pass/fail report.",
+		Description: "Run the story's deterministic flow fixtures (testrunner.RunFlows — no LLM, replay/cassette honored). {dir?, flows?, recording?, allow_missing_recording?, fail_fast?, verbose?, json?, trace_out?, detailed?}: flows overrides the default <dir>/flows/*.yaml glob. Returns a per-fixture pass/fail report (per-fixture failure_count only; pass detailed=true for full failure strings).",
 	}, srv.handleStoryTest)
 }
 
@@ -135,9 +135,28 @@ type StoryGraphArgs struct {
 type StoryGraphOK struct {
 	OK     bool                  `json:"ok"`               // always true on this branch
 	Mode   string                `json:"mode"`             // "rooms" | "detail" | "agents"
-	Rooms  []graph.RoomSummary   `json:"rooms,omitempty"`  // mode == rooms
+	Rooms  []RoomSummaryItem     `json:"rooms,omitempty"`  // mode == rooms
 	Detail *graph.RoomDetail     `json:"detail,omitempty"` // mode == detail
 	Agents []graph.AgentContract `json:"agents,omitempty"` // mode == agents
+}
+
+// RoomSummaryItem is the token-diet projection of graph.RoomSummary for the
+// room-list mode. It deliberately drops the UI-only Distance field (BFS layout
+// chrome for the web editor) which carries no signal for agent reasoning.
+type RoomSummaryItem struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	HasAgent bool   `json:"has_agent"`
+}
+
+// projectRoomList strips graph.RoomSummary to the agent-facing RoomSummaryItem
+// (no Distance). Order is preserved from graph.RoomList.
+func projectRoomList(rooms []graph.RoomSummary) []RoomSummaryItem {
+	out := make([]RoomSummaryItem, 0, len(rooms))
+	for _, r := range rooms {
+		out = append(out, RoomSummaryItem{ID: r.ID, Label: r.Label, HasAgent: r.HasAgent})
+	}
+	return out
 }
 
 // StoryTestArgs is the input to story.test.
@@ -158,6 +177,10 @@ type StoryTestArgs struct {
 	// TraceOut writes the authoritative JSONL trace to this path, matching CLI
 	// --trace-out. Intended for single-fixture reconstruction.
 	TraceOut string `json:"trace_out,omitempty"`
+	// Detailed includes the full per-turn failure strings in the result. When
+	// false (default) only a per-fixture failure COUNT is returned, keeping the
+	// MCP payload small; set true to see *why* a fixture failed.
+	Detailed bool `json:"detailed,omitempty"`
 }
 
 // StoryTestOK is the story.test result: the per-fixture pass/fail report.
@@ -169,13 +192,15 @@ type StoryTestOK struct {
 }
 
 // FlowResultItem is one flow file's result, projected from
-// testrunner.FlowResult. The per-turn detail is flattened to failure strings so
-// the agent can see *why* a fixture failed without the full event log.
+// testrunner.FlowResult. By default only FailureCount is populated (token
+// diet); the full per-turn Failures strings are included only when the caller
+// passes detailed=true.
 type FlowResultItem struct {
-	File     string   `json:"file"`               // the flow fixture path
-	Passed   bool     `json:"passed"`             // whether every turn passed
-	Skipped  bool     `json:"skipped,omitempty"`  // recording-miss skip (when allow-missing set)
-	Failures []string `json:"failures,omitempty"` // per-turn failure messages (empty on pass)
+	File         string   `json:"file"`                    // the flow fixture path
+	Passed       bool     `json:"passed"`                  // whether every turn passed
+	Skipped      bool     `json:"skipped,omitempty"`       // recording-miss skip (when allow-missing set)
+	FailureCount int      `json:"failure_count,omitempty"` // number of per-turn failures (always set)
+	Failures     []string `json:"failures,omitempty"`      // per-turn failure messages (only when detailed=true)
 }
 
 // ── handlers ──────────────────────────────────────────────────────────────────
@@ -275,7 +300,7 @@ func (srv *Server) handleStoryGraph(
 		}
 		return nil, StoryGraphOK{OK: true, Mode: "detail", Detail: &detail}, nil
 	default:
-		return nil, StoryGraphOK{OK: true, Mode: "rooms", Rooms: graph.RoomList(a)}, nil
+		return nil, StoryGraphOK{OK: true, Mode: "rooms", Rooms: projectRoomList(graph.RoomList(a))}, nil
 	}
 }
 
@@ -307,7 +332,7 @@ func (srv *Server) handleStoryTest(
 	if err != nil {
 		return buildToolError(ErrBadRequest, fmt.Sprintf("run flows: %v", err)), nil, nil
 	}
-	return nil, projectFlowReport(report), nil
+	return nil, projectFlowReport(report, args.Detailed), nil
 }
 
 // ── workspace resolution & path safety ────────────────────────────────────────
@@ -428,9 +453,10 @@ func collectValidationErrors(err error) []ValidationItem {
 }
 
 // projectFlowReport flattens a testrunner.FlowReport to the wire shape: the
-// aggregate counts plus one entry per fixture with its per-turn failure
-// messages. ok is true exactly when no fixture failed.
-func projectFlowReport(report *testrunner.FlowReport) StoryTestOK {
+// aggregate counts plus one entry per fixture. Each entry always carries a
+// per-fixture FailureCount; the full per-turn failure strings are included only
+// when detailed is true (token diet). ok is true exactly when no fixture failed.
+func projectFlowReport(report *testrunner.FlowReport, detailed bool) StoryTestOK {
 	out := StoryTestOK{
 		OK:      report.Failed == 0,
 		Passed:  report.Passed,
@@ -439,8 +465,13 @@ func projectFlowReport(report *testrunner.FlowReport) StoryTestOK {
 	}
 	for _, r := range report.Results {
 		item := FlowResultItem{File: r.File, Passed: r.Passed, Skipped: r.Skipped}
+		var failures []string
 		for _, turn := range r.Turns {
-			item.Failures = append(item.Failures, turn.Failures...)
+			failures = append(failures, turn.Failures...)
+		}
+		item.FailureCount = len(failures)
+		if detailed {
+			item.Failures = failures
 		}
 		out.Results = append(out.Results, item)
 	}

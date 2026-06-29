@@ -13,7 +13,7 @@ plain Markdown. Each file is a YAML-frontmatter-headed `.md` per the
 bug format documented inline below (and in
 [`docs/stories/bugs.md`](../docs/stories/bugs.md)).
 
-Historically the dogfood app (`stories/kitsoki-dev/`) read this directory via
+Historically the dogfood app (`.kitsoki/stories/kitsoki-dev/`) read this directory via
 `host.local_files.ticket`; once the GitHub cutover lands it binds
 `host.gh.ticket` instead.
 
@@ -69,14 +69,22 @@ component: <short tag, e.g. tui, runtime, loader>
 kitsoki_rev: <short SHA at filing>
 trace_ref: ""                       # may be empty for hand-filed seeds
 external: {}                        # external tracker links (Jira id, GH issue)
-repro_command: ""                   # optional: a deterministic command that
+repro_command: ""                   # RECOMMENDED: a deterministic command that
                                     # FAILS (non-zero exit) while the bug is
                                     # live. The bugfix story's `reproducing`
                                     # room runs it RED-first (see
                                     # stories/bugfix/README.md → "repro RED-gate")
                                     # — non-zero exit = bug reproduces → proceed;
                                     # zero exit = cannot reproduce → needs-human.
-                                    # Absent/empty ⇒ LLM-only reproduction.
+                                    # Absent/empty ⇒ the pipeline SYNTHESISES the
+                                    # gate: the reproducer authors a RED test,
+                                    # commits it as the discrete pre-fix
+                                    # reproducer, and derives gate_command from it
+                                    # — so a bare report still ships autonomously
+                                    # (see stories/bugfix/README.md → "synthesised
+                                    # gate"). Supplying repro_command is still
+                                    # preferred: it proves the bug reproduces
+                                    # BEFORE any LLM/maker budget is spent.
 ---
 ```
 
@@ -91,7 +99,7 @@ contents wholesale.
 ## Comment thread
 
 The dogfood transport (`host.append_to_file`, bound at
-`stories/kitsoki-dev/app.yaml`) appends `## Comment <RFC3339> by
+`.kitsoki/stories/kitsoki-dev/app.yaml`) appends `## Comment <RFC3339> by
 <author>` blocks at the bottom of the file when checkpoint artifacts
 fire. **The bug file IS the conversation log** — proposals, judge
 verdicts, operator acks, and the resolution decision all live in the
@@ -130,7 +138,7 @@ accept
    TUI prompt, and `/meta kitsoki bug` and `/meta story bug` triggers
    compose a bug-reporter agent that calls `kitsoki bug create`
    itself.
-2. **Search** — `kitsoki run stories/kitsoki-dev/app.yaml`, then
+2. **Search** — `kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml`, then
    `tickets` → `search open kitsoki bugs`. The local-files provider
    scans `issues/bugs/*.md` and matches on title + body substring.
 3. **Work** — pick a ticket, type `bugfix`, walk the pipeline.
@@ -138,7 +146,7 @@ accept
    `iface.ticket.transition` with `to: resolved`, flipping the
    frontmatter in place.
 
-See `stories/kitsoki-dev/README.md` for the full operator walkthrough
+See `.kitsoki/stories/kitsoki-dev/README.md` for the full operator walkthrough
 (both supervised and `llm_then_human` autonomous variants).
 
 ## Status: open seeds today

@@ -35,17 +35,23 @@ initial_world:
 host_handlers:
   host.agent.decide:
     by_call:
-      name_slug:
-        data: { ok: true, submitted: { slug: "wf", rationale: "working folder" } }
       # If the once: guard failed, this would fire and overwrite the preset.
       existing_scan:
         data: { ok: true, submitted: { overlaps: [], roadmap_fit: "SHOULD-NOT-RUN" } }
+  host.run:
+    by_call:
+      name_slug:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"slug":"wf","workspace":"docs/proposals/.workspace/wf"}'
+          stdout_json: { slug: "wf", workspace: "docs/proposals/.workspace/wf" }
   host.artifacts_dir:
     data: { ok: true, path: "docs/proposals/.workspace/wf/out.md", message_id: "out#1" }
 
 turns:
-  # Intake message → advance to design_search. The intake arc calls name_slug
-  # (agent.decide), but the search room's on_enter once: guards (keyed off
+  # Intake message → advance to design_search. The intake arc calls deterministic
+  # name_slug, but the search room's on_enter once: guards (keyed off
   # design_existing_state and design_references — both already set) SKIP both
   # the scout and researcher. Presets survive verbatim — not overwritten by the
   # "SHOULD-NOT-RUN" stubs — which is the assertion this flow makes.
@@ -56,14 +62,13 @@ turns:
         overlaps:
           - { path: "docs/proposals/PRESET-SURVIVED.md", kind: "accepted", summary: "preset", recommendation: "amend" }
         roadmap_fit: "preset-survived"
-    # name_slug (agent.decide) IS called in the intake arc — the search room's
+    # name_slug (host.run) IS called in the intake arc — the search room's
     # existing_scan is the one we're asserting did NOT run. We verify via the
     # world assertion: if the preset survived (not overwritten by the
     # "SHOULD-NOT-RUN" stub), the once: guard worked. Intake no longer mints the
     # workspace, so no host.run uniquify fires here.
     expect_host_calls:
-      - handler: host.agent.decide
+      - handler: host.run
         args: { call: "name_slug" }
-    expect_no_host_calls: [host.run]
 
 expect_no_errors: true

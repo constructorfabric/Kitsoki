@@ -1,0 +1,111 @@
+# landing_proposal_routing — explicit proposal/design requests should enter the
+# design pipeline, while ordinary workbench requests should remain with `work`.
+#
+# This is the regression harness for tuning the landing router before spending
+# live-model calls. Run static first, then benchmark the same fixture against a
+# live profile such as codex-native/gpt-5.5.
+#
+# Source guidance:
+# - near-miss phrases should come from recent transcripts (session mining)
+# - boundary phrases should include one explicit correction phrase from users
+
+test_kind: intents
+app: ../app.yaml
+state: landing
+defaults:
+  runs: 1
+  min_pass_rate: 1.0
+
+fixtures:
+  - id: proposal-general
+    intent: { name: go_idea }
+    inputs:
+      - "draft a proposal for dynamic workflows"
+
+  - id: design-workflow-explicit
+    intent: { name: go_idea }
+    inputs:
+      - "use the design workflow to amend the existing dynamic-workflows proposal"
+
+  - id: proposal-human-review
+    intent: { name: go_idea }
+    inputs:
+      - "make the proposal ready for human review"
+
+  - id: design-package
+    intent: { name: go_idea }
+    inputs:
+      - "start a design package for the new routing eval process"
+
+  - id: amend-existing-proposal
+    intent: { name: go_idea }
+    inputs:
+      - "amend the existing proposal instead of creating a duplicate"
+
+  - id: proposal-open-questions
+    intent: { name: go_idea }
+    inputs:
+      - "resolve the open questions in this proposal"
+
+  - id: proposal-narration-quality
+    intent: { name: go_idea }
+    inputs:
+      - "tighten the proposal narration so it is terse and clear"
+
+  - id: proposal-from-idea
+    intent: { name: go_idea }
+    inputs:
+      - "I have an idea for a reusable story export flow"
+
+  - id: proposal-slices
+    intent: { name: go_idea }
+    inputs:
+      - "break this idea into proposal slices"
+
+  - id: proposal-dev-story
+    intent: { name: go_idea }
+    inputs:
+      - "drive this through the dev-story proposal process"
+
+  - id: proposal-boundary-questionnaire
+    intent: { name: go_idea }
+    inputs:
+      - "what should I include in a proposal before I hand it to design"
+
+  - id: proposal-quality-audit
+    intent: { name: go_idea }
+    inputs:
+      - "audit this proposal and fold the decisions back into the design"
+
+  - id: work-implementation-not-proposal
+    intent:
+      name: go_implementation
+    inputs:
+      - "implement the dynamic workflow service from the proposal"
+
+  - id: work-docs-not-proposal
+    intent:
+      name: go_docs
+    inputs:
+      - "update the docs after the proposal shipped"
+
+  - id: work-investigate-not-proposal
+    intent:
+      name: work
+      slots: { request: "investigate why the proposal publish step created two tickets" }
+    inputs:
+      - "investigate why the proposal publish step created two tickets"
+
+  - id: work-test-not-proposal
+    intent:
+      name: work
+      slots: { request: "add tests for the proposal publish script" }
+    inputs:
+      - "add tests for the proposal publish script"
+
+  - id: work-boundary-corrected
+    intent:
+      name: go_implementation
+      slots: { ticket: "proposal implementation" }
+    inputs:
+      - "implement a ticketized proposal once the brief is published"

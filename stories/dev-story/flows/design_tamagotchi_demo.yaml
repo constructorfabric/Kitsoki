@@ -19,10 +19,6 @@ host_handlers:
     data: { ok: true, connected: true }
   host.agent.decide:
     by_call:
-      name_slug:
-        data:
-          ok: true
-          submitted: { slug: "tamagotchi-pet-ui", rationale: "a persistent virtual-pet widget embedded in the session header" }
       existing_scan:
         data:
           ok: true
@@ -64,6 +60,12 @@ host_handlers:
         follow_up_questions: []
   host.run:
     by_call:
+      name_slug:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"slug":"tamagotchi-pet-ui","workspace":"docs/proposals/.workspace/tamagotchi-pet-ui"}'
+          stdout_json: { slug: "tamagotchi-pet-ui", workspace: "docs/proposals/.workspace/tamagotchi-pet-ui" }
       uniquify:
         data:
           ok: true

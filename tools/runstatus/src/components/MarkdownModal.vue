@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted } from "vue";
 import { renderMarkdownDocument } from "../lib/markdown.js";
 import { JsonRpcClient } from "../transport/jsonrpc.js";
 
-const props = defineProps<{ path: string }>();
+const props = defineProps<{ path: string; fullscreen?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 
 const content = ref<string | null>(null);
@@ -55,13 +55,20 @@ function onBackdropClick(e: MouseEvent) {
 
 <template>
   <Teleport to="body">
-    <div class="mm-backdrop" @click="onBackdropClick" role="dialog" aria-modal="true">
+    <div
+      class="mm-backdrop"
+      :class="{ 'mm-fullscreen': fullscreen }"
+      @click="onBackdropClick"
+      role="dialog"
+      aria-modal="true"
+      data-testid="markdown-modal"
+    >
       <div class="mm-panel">
         <header class="mm-header">
-          <span class="mm-path" :title="path">{{ path }}</span>
-          <button class="mm-close" @click="emit('close')" aria-label="Close">✕</button>
+          <span class="mm-path" :title="path" data-testid="markdown-modal-path">{{ path }}</span>
+          <button class="mm-close" @click="emit('close')" aria-label="Close" data-testid="markdown-modal-close">✕</button>
         </header>
-        <div class="mm-body">
+        <div class="mm-body" data-testid="markdown-modal-body">
           <div v-if="error" class="mm-error">Failed to load file: {{ error }}</div>
           <div v-else-if="missing" class="mm-missing">
             Not written yet — this file does not exist on disk. It will appear
@@ -96,6 +103,17 @@ function onBackdropClick(e: MouseEvent) {
   max-height: 85vh;
   overflow: hidden;
 }
+
+/* Fullscreen variant: the artifact fills the stage (demo "full-screened via the
+   modal" — see ArtifactModal). Larger panel + darker backdrop for presence. */
+.mm-backdrop.mm-fullscreen { background: rgba(2, 4, 8, 0.82); }
+.mm-fullscreen .mm-panel {
+  width: 94vw;
+  height: 92vh;
+  max-height: 92vh;
+}
+.mm-fullscreen .mm-body { padding: 2em 3em; }
+.mm-fullscreen .mm-md { max-width: 980px; margin: 0 auto; }
 
 .mm-header {
   display: flex;

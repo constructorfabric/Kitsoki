@@ -1,0 +1,35 @@
+# bugfix.beat.yaml — the per-job beat RunStorySession points RunFlows at for a
+# bug-labelled @kitsoki mention. RunFlows is invoked with the real
+# stories/bugfix/app.yaml as appPath; this fixture seeds the initial world from
+# the mention and drives the `start` intent to prove a turn executed against the
+# REAL bugfix machine. Host calls are served by inline handlers (no LLM, no gh).
+test_kind: flow
+app: ../../../stories/bugfix/app.yaml
+initial_state: idle
+initial_world:
+  # Mention-derived keys (the dispatcher seeds these from the GHJob).
+  ticket_id: "42"
+  thread: "github:o/r/issue/42"
+  judge_mode: "human"
+  gh_job_id: "job-stub"
+  gh_origin_ref: "github:o/r/issue/42"
+  repo: "o/r"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub" } }
+  host.agent.ask:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub" } }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "stub", summary_markdown: "stub" } }
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: reproducing
+
+expect_no_errors: true

@@ -1,0 +1,123 @@
+{
+  "_comment": "gears-rust × GPT-5.3-codex-spark open-issue bug-fix bake-off. Numbers come from .context/gears-spark-bakeoff-log.md and the live traces under .artifacts/gears-spark/. Render with the slidey VS Code extension or `slidey bundle`; do NOT commit the .slidey.html.",
+  "meta": {
+    "title": "Can a cheap, fast model fix real OPEN bugs in kitsoki?",
+    "resolution": { "width": 1920, "height": 1080 },
+    "theme": {
+      "name": "rose-pine-moon",
+      "background": "#0f172a",
+      "fontFamily": "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica Neue, Arial, sans-serif",
+      "colors": {
+        "base": "#0f172a",
+        "surface": "#111f33",
+        "overlay": "#17304d",
+        "muted": "#5f6e83",
+        "subtle": "#90a3bd",
+        "text": "#eef2ff",
+        "love": "#7dd3fc",
+        "gold": "#c4d2ff",
+        "rose": "#fda4af",
+        "pine": "#67e8f9",
+        "foam": "#93c5fd",
+        "iris": "#22d3ee",
+        "highlightLow": "#182f47",
+        "highlightMuted": "#2a4867",
+        "highlightHigh": "#4472a0"
+      }
+    },
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "kitsoki bake-off · 2026-06-25",
+      "title": "GPT-5.3-codex-spark on gears-rust",
+      "subtitle": "Driving the kitsoki bugfix pipeline LIVE over real OPEN issues",
+      "narration": "Can a cheap, fast model — GPT five point three codex spark — fix real, still-open bugs in a large Rust monorepo, when it's driven through kitsoki's structured bug-fix pipeline? We tested it live."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The twist",
+      "lede": "OPEN issues, not fixed ones",
+      "body": "Prior bake-offs graded against the regression test a merged PR shipped. Here we point the pipeline at issues that are still OPEN at HEAD — no maintainer fix to copy. We grade with a hidden public-API oracle where one exists, and open the resulting fix as an autonomous, clearly-unreviewed PR.",
+      "narration": "The twist this time: we worked on issues that are still open. No merged fix to lean on. Where a hidden oracle exists we grade against it; otherwise the fix goes out as an autonomous, explicitly-unreviewed pull request for a human to check."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "The setup",
+      "narration": "gears-rust is a large, mature Rust monorepo. The worker model is GPT five point three codex spark, chosen at session time by a kitsoki harness profile. Every cell is driven head-less over the kitsoki studio M-C-P — a cheap Sonnet orchestrator only clicks the pipeline forward; the spark model does all the real work inside the session.",
+      "cards": [
+        { "label": "gears-rust", "sub": "large mature Rust monorepo · private fork", "style": "primary" },
+        { "label": "GPT-5.3-codex-spark", "sub": "cheap / fast OpenAI Codex tier", "style": "primary" },
+        { "label": "MCP-driven", "sub": "sonnet orchestrator clicks · spark fixes", "style": "default" },
+        { "label": "bench-bugfix", "sub": "reproduce → propose → implement → test", "style": "default" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Open-issue triage — what's actually fixable",
+      "columns": ["Issue", "Verdict", "Why"],
+      "rows": [
+        { "cells": ["4115", "FIXABLE-NOW", "localized: one fn in toolkit config; has a hidden oracle"] },
+        { "cells": ["4052", "SCOPED-FEATURE", "design decision (Option A/B); multi-file; stretch"] },
+        { "cells": ["4005 / 4137", "SKIP", "process/infra tooling, not a code bug"] },
+        { "cells": ["OoP / testing / PRDs", "EPIC", "tracking issues, multi-week features"] }
+      ],
+      "variant": "data",
+      "hold": 300,
+      "caption": "Most open issues are epics. The honest single-bug backlog: 4115 (clean) and 4052 (stretch)."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "4115 — solved by spark",
+      "narration": "Issue forty-one fifteen: a gear named with dashes can't be overridden by a Kubernetes env var, because env names can't carry dashes. Spark reproduced it RED, wrote a one-file fix that remaps the gear-name segment, and landed it. The hidden oracle went green, three hundred fifteen library tests stayed green, and the approach matches what a human maintainer would write.",
+      "cards": [
+        { "label": "RED reproducer", "sub": "committed, bug confirmed live at HEAD", "style": "default" },
+        { "label": "+72 / -3, one file", "sub": "gear-name segment _ → - remap", "style": "primary" },
+        { "label": "oracle GREEN", "sub": "315/315 lib tests · no regression", "style": "primary" },
+        { "label": "2 forward turns", "sub": "matches the real maintainer approach", "style": "default" }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Results",
+      "columns": ["Cell", "Model", "Outcome", "Evidence"],
+      "rows": [
+        { "cells": ["4115", "gpt-5.3-codex-spark", "SOLVED", "oracle GREEN · PR #1 · autonomous"] },
+        { "cells": ["4052", "gpt-5.3-codex-spark", "PENDING", "worker hit usage cap mid-reproduce (resets 06-26)"] },
+        { "cells": ["4052", "gpt-5.5 (fallback)", "SOLVED", "load-bearing (revert→RED) · 46/46 · PR #2"] }
+      ],
+      "variant": "data",
+      "hold": 320,
+      "caption": "Spark: 1 solved, 1 pending (quota, NOT a capability result). 4052 landed under GPT-5.5 — 2 autonomous PRs total."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Dogfood payoff",
+      "lede": "The run hardened kitsoki itself",
+      "body": "F2 (real bug, fixed): host.local.run_tests fork/exec'd test_cmd directly, so an env-prefixed command (CARGO_TARGET_DIR=… cargo test) failed 'no such file or directory' and bounced the testing gate to idle. Now leading NAME=VALUE tokens route through /usr/bin/env — POSIX semantics, no shell. Regression-tested, committed to main. F1 (minor): import-prefixed intents emit a false-alarm validation_failed before resolving — documented as polish.",
+      "narration": "Driving real bugs surfaced a real kitsoki bug. The pipeline's test step fork-exec'd the test command directly, so an environment-prefixed command failed outright and bounced the testing gate. We fixed it to route environment prefixes through env — proper Unix semantics, no shell — with a regression test, committed to main. Dogfooding paid for itself."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Takeaways",
+      "lede": "Cheap model, real fix — when it's in budget",
+      "body": "Inside kitsoki's reproduce-first, oracle-graded pipeline, GPT-5.3-codex-spark produced a correct, maintainer-grade fix for a real open bug in 2 turns. The honest caveat: its usage cap is low — one good fix exhausted the daily quota, so a thin-budget model needs cell-level pacing or fallback. The pipeline wiring stayed healthy throughout, and the bug it exposed made kitsoki better.",
+      "narration": "The takeaway: inside kitsoki's reproduce-first, oracle-graded pipeline, even a cheap fast model produced a maintainer-grade fix for a real open bug in two turns. The caveat is budget — one good fix exhausted spark's daily quota, so a thin-budget model needs pacing or fallback. And the dogfood made kitsoki itself more robust."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Scoreboard",
+      "narration": "Two real open bugs fixed and shipped as autonomous, clearly-unreviewed pull requests. One real kitsoki bug found and fixed. Both fixes independently verified — green oracle for one, a revert-to-red proof for the other.",
+      "cards": [
+        { "label": "2 open bugs fixed", "sub": "PR #1 (spark) · PR #2 (gpt-5.5)", "style": "primary" },
+        { "label": "2 autonomous PRs", "sub": "marked UNREVIEWED · maintainer-grade", "style": "primary" },
+        { "label": "1 kitsoki bug fixed", "sub": "env-prefixed test_cmd · F2 · on main", "style": "default" },
+        { "label": "both independently verified", "sub": "oracle GREEN + revert→RED proof", "style": "default" }
+      ]
+    }
+  ]
+}

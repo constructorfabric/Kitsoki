@@ -85,6 +85,19 @@ func (f *fakeChatStore) Get(_ context.Context, chatID string) (*host.ChatRecord,
 	return &cp, nil
 }
 
+func (f *fakeChatStore) GetOrEnsure(_ context.Context, chatID string) (*host.ChatRecord, error) {
+	c, ok := f.chats[chatID]
+	if ok {
+		cp := *c
+		return &cp, nil
+	}
+	// Create a minimal placeholder, mirroring the real store's behaviour.
+	rec := &host.ChatRecord{ID: chatID, Title: "untitled chat", Status: "active"}
+	f.chats[chatID] = rec
+	cp := *rec
+	return &cp, nil
+}
+
 // Resolve mirrors the real chats.Store.Resolve filter semantics: it scans
 // the in-memory map for a non-fork chat matching (app, room, scopeKey) and
 // returns it if found; otherwise it creates a new chat. The boolean reports

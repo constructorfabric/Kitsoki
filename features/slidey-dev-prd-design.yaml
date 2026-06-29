@@ -137,3 +137,15 @@ tour:
         - { type: click-intent, intent: core__prd__accept }
         - { type: wait-state, state: core.prd_published }
         - { type: reveal-turn }
+    - id: spm-mockup
+      route: interactive
+      target: chat-transcript
+      title: The mockup, rendered inline
+      body: "A PRD isn't only prose. The PRD phase also produces a mockup of the feature — a printable per-scene speaker-notes handout — and kitsoki embeds it right in the run: a self-contained deck booted inline in the handoff room. The PM sees exactly what the feature looks like before a line of it is built, no separate renderer and no LLM."
+      placement: left
+      kind: explain
+      advance: next
+      waitForTarget: media-slideshow-frame
+      dwellMs: 7000
+      drive:
+        - { type: reveal-turn }

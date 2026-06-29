@@ -95,6 +95,8 @@ room-switch commands. Notable families:
 > "current state removed; staying put" outcome. The mechanics are documented
 > once, canonically, under the **Hot reload** bullet in
 > [`docs/stories/state-machine.md`](../stories/state-machine.md#8-the-turn-loop-state-machine-of-the-orchestrator).
+> `/reload --force` is a TUI authoring-only variant that bypasses `once:` caches
+> for one rerun; use it when testing prompt or `on_enter` edits.
 
 ## Observers: engine events → transcript
 

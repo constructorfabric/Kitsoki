@@ -17,9 +17,14 @@ import (
 func (srv *Server) registerChatTools() {
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "chat.show",
-		Description: "Show a chat's focused context for async reacquisition. {chat_id, handle?, session_id?, since_seq?} -> {chat, pty?, messages[]}. Read-only; requires kitsoki mcp --db.",
+		Description: "Show a chat's focused context for async reacquisition. {chat_id, handle?, session_id?, since_seq?, last_n? (default 5; <=0 means all), offset? (skip from the tail)} -> {chat, pty?, messages[]}. Returns only the last_n transcript rows by default to keep the payload small; raise last_n or set it to 0 for the full transcript. Read-only; requires kitsoki mcp --db.",
 	}, srv.handleChatShow)
 }
+
+// defaultChatShowLastN caps how many trailing transcript rows chat.show returns
+// when last_n is omitted, keeping the reacquisition payload small. A caller that
+// wants the full transcript passes last_n<=0.
+const defaultChatShowLastN = 5
 
 // ChatShowArgs is the input to chat.show.
 type ChatShowArgs struct {
@@ -27,6 +32,13 @@ type ChatShowArgs struct {
 	Handle    string `json:"handle,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
 	SinceSeq  int    `json:"since_seq,omitempty"`
+	// LastN caps the returned transcript to the last N rows (default
+	// defaultChatShowLastN). Zero is treated as the default; a negative value
+	// returns the full transcript.
+	LastN *int `json:"last_n,omitempty"`
+	// Offset skips this many rows from the tail before applying LastN, paginating
+	// backwards through the transcript.
+	Offset int `json:"offset,omitempty"`
 }
 
 // ChatShowResult is the read-only focused context for one chat thread.
@@ -114,6 +126,7 @@ func (srv *Server) handleChatShow(
 	if err != nil {
 		return buildToolError(ErrBadRequest, fmt.Sprintf("chat.show: transcript: %v", err)), nil, nil
 	}
+	messages = paginateTranscript(messages, args.LastN, args.Offset)
 	pty, err := store.GetPTY(ctx, args.ChatID)
 	if errors.Is(err, chats.ErrNoPTYSession) {
 		pty = nil
@@ -127,6 +140,36 @@ func (srv *Server) handleChatShow(
 		PTY:      inspectChatPTY(pty),
 		Messages: inspectChatMessages(messages),
 	}, nil
+}
+
+// paginateTranscript trims a transcript to a tail window. With lastN==nil the
+// default window (defaultChatShowLastN) applies; a value <=0 returns everything
+// (after offset). offset skips that many rows from the tail first, so a caller
+// can page backwards through history.
+func paginateTranscript(in []chats.Message, lastN *int, offset int) []chats.Message {
+	if len(in) == 0 {
+		return in
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > 0 {
+		if offset >= len(in) {
+			return nil
+		}
+		in = in[:len(in)-offset]
+	}
+	n := defaultChatShowLastN
+	if lastN != nil {
+		n = *lastN
+	}
+	if n <= 0 {
+		return in
+	}
+	if len(in) > n {
+		in = in[len(in)-n:]
+	}
+	return in
 }
 
 func (srv *Server) chatShowContext(args ChatShowArgs, chat *chats.Chat) (*ChatShowContext, error) {

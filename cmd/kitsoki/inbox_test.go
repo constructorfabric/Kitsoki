@@ -52,7 +52,7 @@ func TestInboxSyncGitHub_InsertsAndDedupes(t *testing.T) {
 		"gh issue list --repo acme/repo --state open --assignee @me --limit 10 --json number,title,assignees,url": {
 			stdout: `[{"number":7,"title":"Assigned issue","url":"https://github.com/acme/repo/issues/7","assignees":[{"login":"brad"}]}]`,
 		},
-		"gh pr list --repo acme/repo --state open --review-requested @me --limit 10 --json number,title,author,url": {
+		"gh pr list --repo acme/repo --state open --search review-requested:@me --limit 10 --json number,title,author,url": {
 			stdout: `[{"number":42,"title":"Review this","url":"https://github.com/acme/repo/pull/42","author":{"login":"alice"}}]`,
 		},
 	}}

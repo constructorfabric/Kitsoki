@@ -1,0 +1,42 @@
+# product-site — a deterministic, no-LLM product-discovery walkthrough.
+#
+# This is the target story for the product-journey QA `product-discovery`
+# scenario: a newcomer browses the Kitsoki product overview and learns what the
+# product does, how it works, and what to do next. It is a pure navigation
+# state machine — no hosts, no agents, no LLM — so a persona driver can walk it
+# deterministically and capture real frames / traces / a tour video as proof.
+#
+# overview → how_it_works → use_cases → get_started (records a checkpoint
+# rating); `restart` returns to the top, `look` re-renders in place.
+
+app:
+  id: product-site
+  version: 0.1.0
+  title: "Kitsoki product overview"
+  author: "kitsoki"
+  license: "CC0"
+
+world:
+  section:           { type: string, default: "overview" }
+  checkpoint_rating: { type: int, default: 0 }   # newcomer's "I understand it" confidence, 1-5
+  next_action:       { type: string, default: "" }
+  status:            { type: string, default: "" }
+
+intents:
+  next:
+    description: "Advance to the next section of the product tour."
+    examples: ["next", "continue", "tell me more"]
+    priority: 80
+  restart:
+    description: "Return to the product overview."
+    examples: ["restart", "start over", "back to the top"]
+    priority: 40
+  look:
+    description: "Re-render the current section."
+    examples: ["look", "?"]
+    priority: 10
+
+root: overview
+
+include:
+  - rooms/*.yaml

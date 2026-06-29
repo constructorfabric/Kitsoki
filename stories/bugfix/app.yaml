@@ -268,6 +268,13 @@ world:
   # (release/* etc.) override via world_in or by setting the key
   # explicitly before transitioning into bf.
   base_branch:      { type: string, default: "main" }
+  # base_commit pins the worktree CUT-POINT to a specific committish (any
+  # branch/tag/SHA `git worktree add` accepts). When empty the worktree is cut
+  # from base_branch. Distinct from base_branch on purpose: base_branch is also
+  # the PR target, whereas base_commit is "reproduce/fix AGAINST this exact
+  # commit" — e.g. a bug's pre-fix baseline SHA in a bake-off cell. Set it (not
+  # base_branch) when driving against a detached baseline.
+  base_commit:      { type: string, default: "" }
   feature_branch:   { type: string, default: "" }
 
   # ── Pipeline control ──────────────────────────────────────────────────
@@ -324,6 +331,30 @@ world:
   # Empty gate_command ⇒ the gate is skipped ⇒ current LLM-only reproducing
   # behaviour (backward compatible). See docs/stories/bugfix.md.
   repro_checked:          { type: bool,   default: false } # the pre-fix repro gate ran in reproducing
+  # repro_committed — latches the synthesised-gate commit. When a ticket carries
+  # NO repro_command (gate_command empty), the reproducing room commits the LLM
+  # reproducer's authored RED test as a DISCRETE pre-fix commit and derives
+  # gate_command from the artifact's repro_command, so the testing room's HEAD~1
+  # RED gate + the ship guard work exactly as they do for a ticket-supplied
+  # repro_command. This is what lets a bare bug report (no repro_command) still
+  # reach @exit:shipped autonomously. See flows/bugfix_synthesizes_gate_and_ships.yaml.
+  repro_committed:        { type: bool,   default: false }
+
+  # ── GREEN→RED→GREEN deterministic reproduce gate (reproducing room) ──────
+  # Proves the GREEN(baseline)→RED(reproducer) legs DETERMINISTICALLY, off the
+  # reproducer's OWN authored test (repro_command + repro_test_paths) and the
+  # project test_cmd — no pre-supplied oracle, so it is leak-safe in a bake-off.
+  # Runs AFTER the reproducer agent, BEFORE the LLM judge: the LLM only assesses
+  # test QUALITY/APPLICABILITY once GREEN→RED is mechanically proven. The
+  # GREEN(fix) leg is proven later in the testing room. Empty test_cmd ⇒ the
+  # deterministic gate degrades to LLM-only (logged, never silent). See
+  # .context/green-red-green-repro-gate.md and flows/bugfix_green_red_green_gate.yaml.
+  repro_baseline_green:   { type: bool,   default: false } # test_cmd was GREEN with the reproducer's test removed
+  repro_test_red:         { type: bool,   default: false } # repro_command exits non-zero WITH the test present (RED)
+  repro_gate_ran:         { type: bool,   default: false } # the deterministic gate actually ran (latch / vs skipped)
+  repro_gate_ok:          { type: bool,   default: false } # baseline_green && test_red — GREEN→RED proven
+  repro_gate_summary:     { type: string, default: "" }    # one-line human verdict (posted + rendered)
+  repro_gate_log:         { type: string, default: "" }    # captured output tail (audit)
 
   # ── Lost-work guard (clean-tree invariant) ──────────────────────────────
   # The maker rooms mutate the worktree (implementer writes the fix,
@@ -356,6 +387,20 @@ world:
   bf_autostart_attempted: { type: bool, default: false }
   judge_mode:       { type: string, default: "human" }           # human | llm | llm_then_human
   judge_confidence_threshold: { type: float, default: 0.8 }
+
+  # Active human-escalation on low-value work. Default false preserves the
+  # supervised behavior (uncertain HOLDS for an operator sweep; budget exhaustion
+  # ABANDONS). When true, the proposing/reproducing gates quit EARLY to
+  # @exit:needs-human with a structured `needs_human_reason` instead of
+  # refine-looping into the expensive implement→test→review path or steamrolling
+  # a low-confidence verdict. Autonomous drivers (bench-bugfix, drive_cell) set
+  # true; the TUI / kitsoki-dev leave it false. See .context/bugfix-early-escalation.md.
+  escalate_low_value: { type: bool, default: false }
+  # A proposed fix below this self-reported confidence is "low value" → escalate
+  # before spending implement/test/review budget (only when escalate_low_value).
+  proposer_confidence_floor: { type: float, default: 0.5 }
+  # The question handed to the human on an escalation exit (carried in last_error).
+  needs_human_reason: { type: string, default: "" }
 
   # Global cycle counter — tracks total refinements across the run. Per-phase
   # counters (below) drive the L2 budget gates; this scalar is a coarse
@@ -412,6 +457,7 @@ world:
   implement_review_artifact: { type: object, default: {} }  # testing-room artifact (yes, the name predates the implement_artifact split)
   validate_artifact:         { type: object, default: {} }
   done_artifact:             { type: object, default: {} }
+  fixed_in_commit:           { type: string, default: "" }  # short HEAD at close-out; posted to the issue before resolving
 
   # ── Judge state ───────────────────────────────────────────────────────
   llm_verdict:      { type: object, default: {} }   # { intent, reason, confidence, verdict }
@@ -549,13 +595,21 @@ intents:
     description: "(internal) the repro_command passed (GREEN) on the unchanged worktree → the bug does not currently reproduce → needs-human, never fixed."
     examples: []
     priority: 1
+  # ── active early-escalation (escalate_low_value). An internal guarded emit:
+  # a low-confidence proposal, an uncertain judge, an un-armed repro gate, or an
+  # exhausted budget routes to @exit:needs-human with a structured question
+  # instead of grinding/abandoning. Carries needs_human_reason. ───────────────
+  escalate_human:
+    description: "(internal) low-value/low-confidence work detected with escalate_low_value on → quit early to needs-human with a question."
+    examples: []
+    priority: 1
 
 # Intents exposed to importing parent stories. Wave 2 (dev-story hub)
 # `intents.import: [start, proceed, accept, refine, restart_from, quit]`
 # lifts these into the parent's bare intent table so an operator can
 # drive the imported pipeline without typing the `bf__` prefix.
 exports:
-  intents: [start, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, triage, change_ticket, quit, look]
+  intents: [start, accept, refine, restart_from, jump_to, quick_fix, skip_to_pr, full_pipeline, triage, change_ticket, quit, look, escalate_human]
 
 # Named return points. A parent story (dev-story / kitsoki-dev / cyber-devstory)
 # maps each to one of its own states. Standalone load synthesises

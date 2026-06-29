@@ -1,0 +1,30 @@
+# happy_up_to_date — agent says the catalog + site are in sync; verdict
+# landed under a different sha. Walks idle → reviewing → reviewed →
+# review_again → reviewed → quit.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+
+host_cassette: cassettes/up_to_date.cassette.yaml
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: reviewed
+    expect_world:
+      commit_sha:       "facefeeddeadbeef"
+      artifact_path:    "/tmp/.artifacts/site-review-recent-facefeeddeadbeef.json"
+      verdict_decision: "up_to_date"
+
+  # Run it again — same cassette, replay: any. Lands back in reviewed.
+  - intent: { name: review_again, slots: {} }
+    expect_state: reviewed
+    expect_world:
+      commit_sha: "facefeeddeadbeef"
+
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__done
+
+expect_terminal: true
+expect_no_errors: true

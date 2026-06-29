@@ -1,0 +1,258 @@
+{
+ "_comment": "Bugfix bake-off narrative deck. Scene types (title / cards / narrative) match stories/slidey-edit/baked/deck.json + stories/slidey-edit/schemas/deck.json so it bakes to static HTML via `slidey bundle` (see deck/README.md). Numbers are the real bug9 results from results/cells/*.json; pending grid cells are marked 'pending (quota/queue)', not invented.",
+ "meta": {
+  "title": "The Bugfix Bake-off",
+  "resolution": {
+   "width": 1920,
+   "height": 1080
+  },
+  "theme": "rose-pine-moon",
+  "narration": {
+   "voice": "en-AU-NatashaNeural",
+   "rate": "+0%"
+  }
+ },
+ "scenes": [
+  {
+   "type": "title",
+   "eyebrow": "Kitsoki case study",
+   "title": "The Bugfix Bake-off",
+   "subtitle": "Is structure worth more than a bigger model?",
+   "narration": "We hold the bugs fixed and vary two things \u2014 the structure of the workflow, and the model behind it \u2014 then grade every run against a hidden oracle."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "The thesis",
+   "lede": "Two axes, one question.",
+   "body": "Does the kitsoki pipeline make fixes better, and how does that trade against the model you point at it? We vary structure \u2014 the seven-room bugfix pipeline versus a single multi-stage prompt \u2014 and model \u2014 GLM-5.2, Opus 4.8, Sonnet 4.6, GPT-5.5 \u2014 over the same real bugs. If a cheaper model with structure matches a frontier model without it, structure is the lever and model is just the cost knob.",
+   "narration": "The question those leave open: does structure make fixes better, and how does that trade against the model? We vary the workflow structure and the model over the same real bugs."
+  },
+  {
+   "type": "cards",
+   "variant": "grid",
+   "title": "The experiment: a 2\u00d74 grid over 3 bugs",
+   "narration": "For each real bug we run a two-by-four grid: two treatments by four candidates, all from the fix's hermetic parent commit, graded against the fix's own regression test as a hidden oracle \u2014 with adjudication for oracles that are coupled to canonical wording.",
+   "cards": [
+    {
+     "label": "2 treatments",
+     "sub": "kitsoki pipeline vs single prompt",
+     "style": "primary"
+    },
+    {
+     "label": "4 candidates",
+     "sub": "GLM-5.2 \u00b7 Opus 4.8 \u00b7 Sonnet 4.6 \u00b7 GPT-5.5",
+     "style": "secondary"
+    },
+    {
+     "label": "5 real bugs",
+     "sub": "hermetic parent-commit baselines",
+     "style": "default"
+    },
+    {
+     "label": "hidden oracle",
+     "sub": "fix's own test + behavioural adjudication",
+     "style": "default"
+    }
+   ]
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Method \u00b7 honesty controls",
+   "lede": "No self-report. One cost basis.",
+   "body": "Each cell runs in its own disposable worktree from the fix's parent commit, pre-flighted RED. The hidden oracle stays out of the candidate's tree until scoring. Wording-coupled oracles false-fail correct fixes, so a judge adjudicates on behaviour \u2014 keeping the raw oracle status. Cost is one basis: kitsoki's native per-call cost, and claude -p priced from recorded usage on a corrected rate table that reproduces native cost to within half a percent.",
+   "narration": "Each cell is hermetic and pre-flighted red. The oracle is hidden until scoring, behavioural adjudication rescues correct fixes done differently, and cost is reported on one consistent basis with tokens as the primary axis."
+  },
+  {
+   "type": "table",
+   "title": "bug9 \u2014 single-prompt + guidance",
+   "columns": [
+    "Model",
+    "Outcome",
+    "Turns",
+    "Cost"
+   ],
+   "rows": [
+    {
+     "cells": [
+      "GLM-5.2",
+      "\u2014",
+      "\u2014",
+      "quota-blocked"
+     ]
+    },
+    {
+     "cells": [
+      "Opus 4.8",
+      "solved",
+      "0",
+      "$4.00"
+     ]
+    },
+    {
+     "cells": [
+      "Sonnet 4.6",
+      "solved",
+      "1",
+      "$3.02"
+     ]
+    },
+    {
+     "cells": [
+      "GPT-5.5",
+      "pending",
+      "\u2014",
+      "\u2014"
+     ]
+    }
+   ],
+   "hold": 360,
+   "variant": "data",
+   "caption": "The naive baseline: one staged prompt, oracle-gated guidance turns counted. Opus solved it cold; Sonnet needed one behavioural nudge for a third of the cost."
+  },
+  {
+   "type": "table",
+   "title": "bug9 \u2014 kitsoki pipeline",
+   "columns": [
+    "Model",
+    "Outcome",
+    "Cost",
+    "Note"
+   ],
+   "rows": [
+    {
+     "cells": [
+      "GLM-5.2",
+      "\u2014",
+      "\u2014",
+      "quota-blocked"
+     ]
+    },
+    {
+     "cells": [
+      "Opus 4.8",
+      "solved",
+      "$7.73",
+      "wrote a regression test"
+     ]
+    },
+    {
+     "cells": [
+      "Sonnet 4.6",
+      "failed",
+      "\u2014",
+      "broke 65 tests (pre-hardening)"
+     ]
+    },
+    {
+     "cells": [
+      "GPT-5.5",
+      "pending",
+      "\u2014",
+      "\u2014"
+     ]
+    }
+   ],
+   "hold": 360,
+   "variant": "data",
+   "caption": "The structured pipeline: pricier, but it wrote its own regression test and parked safely at the gate. Sonnet's failure here \u2014 a 65-test-breaking fix \u2014 is what forced the prompt hardening (commit d210ea67)."
+  },
+  {
+   "type": "table",
+   "title": "Grid coverage \u2014 24 cells (3 bugs \u00d7 4 models \u00d7 2)",
+   "columns": [
+    "Bug",
+    "Cells run",
+    "Status"
+   ],
+   "rows": [
+    {
+     "cells": [
+      "bug9 (P1)",
+      "4 / 8",
+      "opus+sonnet done \u00b7 GLM blocked \u00b7 GPT pending"
+     ]
+    },
+    {
+     "cells": [
+      "bug12 (P1)",
+      "0 / 8",
+      "queued"
+     ]
+    },
+    {
+     "cells": [
+      "bug14 (P2)",
+      "0 / 8",
+      "queued"
+     ]
+    }
+   ],
+   "hold": 300,
+   "variant": "data",
+   "caption": "Methodology validated end-to-end on bug9; the rest is queued. The harness is resumable \u2014 each cell re-runs independently and the committed summary.json regenerates this deck offline."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Takeaway \u00b7 structure vs cost",
+   "lede": "Structure is not automatically cheaper.",
+   "body": "On bug9, the kitsoki pipeline on Opus cost $7.73 \u2014 about 1.9\u00d7 the same model under a single prompt at $4.00, and roughly 3.5\u00d7 the wall time. The pipeline's overhead is real. Structure buys thoroughness, not a smaller bill, when the single prompt happens to land a correct fix unaided.",
+   "narration": "Structure is not automatically cheaper. The pipeline on Opus cost nearly twice the same model under a single prompt. The overhead is real."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Takeaway \u00b7 structure is more thorough",
+   "lede": "Only the pipeline parked safely.",
+   "body": "The kitsoki cell chose a different valid fix \u2014 a per-session worktree path, the ticket's own proposed resolution \u2014 wrote its own regression test, ran a refine loop, and parked at a red gate instead of declaring victory. The single-prompt cells solved the behaviour but added no regression test and left the suite red. The pipeline never shipped an unverified fix.",
+   "narration": "Only the pipeline wrote its own regression test, ran a refine loop, and parked at a red gate. The single-prompt runs solved the behaviour but left the suite red and added no test."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Takeaway \u00b7 the model axis",
+   "lede": "A cheaper model matched the frontier one.",
+   "body": "Sonnet under a single prompt reached the same behavioural solve as Opus for $3.02 with one feedback turn. The model axis is at least as consequential as the structure axis on this bug \u2014 which is exactly the trade the study is built to measure across the full grid.",
+   "narration": "Sonnet matched Opus on the same bug for three dollars with one feedback turn. The model axis matters as much as structure."
+  },
+  {
+   "type": "cards",
+   "variant": "grid",
+   "title": "The dogfood payoff: the pipeline caught a bad fix",
+   "narration": "Building the kitsoki treatment was a dogfood marathon. The headline finding: the hardened pipeline catches fixes a naive single prompt ships unverified.",
+   "cards": [
+    {
+     "label": "F1 \u2014 caught & hardened",
+     "sub": "blind implementer shipped a 65-test-breaking fix \u2192 self-verify before submit (d210ea67)",
+     "style": "primary"
+    },
+    {
+     "label": "F2 \u2014 under-reported parking",
+     "sub": "park reason hides 'breaks N tests'",
+     "style": "secondary"
+    },
+    {
+     "label": "F3 \u2014 uncleaned worktree",
+     "sub": "park leaves branch + no resume hint",
+     "style": "default"
+    },
+    {
+     "label": "P1 \u2014 missing trace",
+     "sub": "MCP sessions lack discoverable trace (filed)",
+     "style": "default"
+    }
+   ]
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Status",
+   "lede": "Methodology validated; full grid pending.",
+   "body": "Three of forty cells are scored \u2014 all on bug9. GLM-5.2 cells are blocked on a synthetic.new quota wall. bug12, bug14, and the sonnet/glm/gpt kitsoki cells are queued. This is a validated method plus a first worked example, not a finished sweep \u2014 the empty cells are pending, not zero.",
+   "narration": "Three of forty cells are scored. The GLM column is blocked on quota and the rest are queued. This is a validated method and a first result, not a finished sweep."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Conclusion",
+   "lede": "Structure is the lever. Model is the cost knob.",
+   "body": "The framework is reusable: drop new bugs into bakeoff.yaml, point it at new candidates, regrade against hermetic baselines and hidden oracles, regenerate the report and deck offline with zero re-spend. The run distilled into two general skills \u2014 matrix-task-comparison and dogfood-marathon \u2014 with task-bakeoff and dogfood-marathon stories to follow.",
+   "narration": "The framework is reusable \u2014 add bugs, add candidates, regrade offline with no re-spend. It distilled into two skills and two forthcoming stories, ready for the full grid."
+  }
+ ]
+}

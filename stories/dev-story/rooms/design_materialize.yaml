@@ -79,7 +79,7 @@ states:
         with:
           thread:   "002-existing-state"
           workdir:  "{{ world.design_workspace }}"
-          content:  "{{ world.design_existing_state }}"
+          body:     "{{ world.design_existing_state }}"
         bind:
           design_existing_path: path
         on_error: design_search
@@ -134,7 +134,7 @@ states:
         with:
           thread:   "003-references.json"
           workdir:  "{{ world.design_workspace }}"
-          content:  "{{ world.design_references }}"
+          body:     "{{ world.design_references }}"
         bind:
           design_references_path: path
         emit_intent: "materialized"
@@ -183,7 +183,7 @@ states:
         with:
           thread:   "003-references.json"
           workdir:  "{{ world.design_workspace }}"
-          content:  "{{ world.design_references }}"
+          body:     "{{ world.design_references }}"
         bind:
           design_references_path: path
         emit_intent: "materialized"

@@ -69,6 +69,18 @@
         <span class="meta-launcher__item-hint">{{ m.hint }}</span>
       </button>
 
+      <button
+        class="meta-launcher__item"
+        data-testid="meta-workflow-launcher"
+        title="Open dynamic workflows"
+        @click="openWorkflow"
+      >
+        <span class="meta-launcher__item-label">Dynamic workflows</span>
+        <span class="meta-launcher__item-hint">
+          Create, validate, launch, and export a draft
+        </span>
+      </button>
+
       <div class="meta-launcher__divider" role="separator"></div>
 
       <button
@@ -86,6 +98,27 @@
     </div>
 
     <div
+      v-if="pointMenu"
+      class="meta-context-menu"
+      data-testid="bug-point-menu"
+      :style="{ left: `${pointMenu.menuX}px`, top: `${pointMenu.menuY}px` }"
+      role="menu"
+      aria-label="Bug report context menu"
+    >
+      <button
+        class="meta-context-menu__item"
+        data-testid="bug-point-menu-report"
+        type="button"
+        role="menuitem"
+        :disabled="bugReport.status === 'capturing'"
+        @click="reportBugFromPointMenu"
+      >
+        <span class="meta-context-menu__label">Report bug here</span>
+        <span class="meta-context-menu__hint">{{ pointMenu.context.selector }}</span>
+      </button>
+    </div>
+
+    <div
       v-if="showToast"
       class="meta-launcher__toast"
       data-testid="bug-report-toast"
@@ -98,7 +131,7 @@
         <button
           class="meta-launcher__toast-link"
           data-testid="bug-toast-open"
-          title="Copy the issue path"
+          title="Open the issue path"
           @click="openFiled"
         >
           [open]
@@ -132,6 +165,8 @@ import { LiveSource } from "../../data/live-source.js";
 import { isEmbedded } from "../../lib/embed.js";
 import { useMetaStore } from "../../stores/meta.js";
 import { useBugReportStore } from "../../stores/bugReport.js";
+import { useWorkflowStore } from "../../stores/workflow.js";
+import type { BugPlacementContext } from "../../stores/bugReport.js";
 
 const props = withDefaults(
   defineProps<{
@@ -174,9 +209,15 @@ const isSnapshot =
 const route = useRoute();
 const meta = useMetaStore();
 const bugReport = useBugReportStore();
+const workflow = useWorkflowStore();
 const source = new LiveSource("/");
 
 const dropdownOpen = ref(false);
+const pointMenu = ref<{
+  context: BugPlacementContext;
+  menuX: number;
+  menuY: number;
+} | null>(null);
 const placement = computed(() => props.placement);
 const visible = computed(() => {
   if (isSnapshot) return false;
@@ -225,12 +266,58 @@ async function choose(key: string): Promise<void> {
 async function reportBug(): Promise<void> {
   if (bugReport.status === "capturing") return;
   dropdownOpen.value = false;
+  pointMenu.value = null;
   await bugReport.trigger({
     source,
     defaultTitle: "Bug report",
     severity: "med",
     traceRef: sessionId.value || undefined,
   });
+}
+
+async function reportBugAtContext(ctx?: BugPlacementContext): Promise<void> {
+  if (!ctx || bugReport.status === "capturing") return;
+  pointMenu.value = null;
+  dropdownOpen.value = false;
+  await bugReport.trigger({
+    source,
+    defaultTitle: "Bug report at clicked location",
+    severity: "med",
+    traceRef: sessionId.value || undefined,
+    placement: ctx,
+  });
+}
+
+async function reportBugFromPointMenu(): Promise<void> {
+  await reportBugAtContext(pointMenu.value?.context);
+}
+
+function reportBugAt(e: MouseEvent): void {
+  if (!e.altKey || !visible.value || bugReport.status === "capturing") return;
+  const target = e.target as HTMLElement | null;
+  if (!target || shouldIgnorePointReport(target)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  void reportBugAtContext(placementContext(e, target));
+}
+
+function openPointMenu(e: MouseEvent): void {
+  if (!e.altKey || !visible.value || bugReport.status === "capturing") return;
+  const target = e.target as HTMLElement | null;
+  if (!target || shouldIgnorePointReport(target)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  dropdownOpen.value = false;
+  pointMenu.value = {
+    context: placementContext(e, target),
+    ...pointMenuPosition(e),
+  };
+}
+
+function openWorkflow(): void {
+  dropdownOpen.value = false;
+  pointMenu.value = null;
+  workflow.openPanel();
 }
 
 // The toast is for capture-in-progress and the post-submit result. While the
@@ -242,15 +329,81 @@ const showToast = computed(
     bugReport.status === "error"
 );
 
-/** Best-effort "open": copy the filed issue path to the clipboard. */
-async function openFiled(): Promise<void> {
+function openFiled(): void {
   const path = bugReport.filed?.path;
   if (!path) return;
-  try {
-    await navigator.clipboard?.writeText(path);
-  } catch {
-    /* clipboard unavailable — non-fatal */
+  window.open(path, "_blank");
+}
+
+function shouldIgnorePointReport(target: HTMLElement): boolean {
+  if (
+    target.closest(
+      ".meta-launcher, .br-backdrop, input, textarea, select, [contenteditable='true'], [role='textbox']"
+    )
+  ) {
+    return true;
   }
+  return false;
+}
+
+function placementContext(e: MouseEvent, target: HTMLElement): BugPlacementContext {
+  return {
+    x: e.clientX,
+    y: e.clientY,
+    selector: describeTarget(target),
+    text: visibleText(target),
+    route: `${window.location.pathname}${window.location.hash}`,
+  };
+}
+
+function pointMenuPosition(e: MouseEvent): { menuX: number; menuY: number } {
+  const margin = 8;
+  const width = 260;
+  const height = 64;
+  return {
+    menuX: Math.max(margin, Math.min(e.clientX, window.innerWidth - width - margin)),
+    menuY: Math.max(margin, Math.min(e.clientY, window.innerHeight - height - margin)),
+  };
+}
+
+function visibleText(target: HTMLElement): string | undefined {
+  const text = (target.innerText || target.textContent || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return undefined;
+  return text.length > 140 ? `${text.slice(0, 137)}...` : text;
+}
+
+function describeTarget(target: HTMLElement): string {
+  const testId = target.getAttribute("data-testid");
+  if (testId) return `[data-testid="${testId}"]`;
+  const aria = target.getAttribute("aria-label");
+  if (aria) return `${target.tagName.toLowerCase()}[aria-label="${cssEscape(aria)}"]`;
+  const id = target.id ? `#${cssEscape(target.id)}` : "";
+  if (id) return `${target.tagName.toLowerCase()}${id}`;
+  const path: string[] = [];
+  let el: HTMLElement | null = target;
+  while (el && el !== document.body && path.length < 4) {
+    path.unshift(describePart(el));
+    el = el.parentElement;
+  }
+  return path.join(" > ");
+}
+
+function describePart(el: HTMLElement): string {
+  const testId = el.getAttribute("data-testid");
+  if (testId) return `[data-testid="${testId}"]`;
+  const cls = Array.from(el.classList)
+    .filter((c) => c && !c.startsWith("v-"))
+    .slice(0, 2)
+    .map((c) => `.${cssEscape(c)}`)
+    .join("");
+  return `${el.tagName.toLowerCase()}${cls}`;
+}
+
+function cssEscape(s: string): string {
+  const esc = (globalThis as typeof globalThis & { CSS?: { escape?: (v: string) => string } }).CSS?.escape;
+  return esc ? esc(s) : s.replace(/["\\]/g, "\\$&");
 }
 
 async function refreshModes(): Promise<void> {
@@ -265,11 +418,20 @@ watch(sessionId, refreshModes, { immediate: true });
 // Close the dropdown on an outside click.
 function onDocClick(e: MouseEvent): void {
   const el = e.target as HTMLElement | null;
-  if (el && el.closest(".meta-launcher")) return;
+  if (el && el.closest(".meta-launcher, .meta-context-menu")) return;
   dropdownOpen.value = false;
+  pointMenu.value = null;
 }
-onMounted(() => document.addEventListener("click", onDocClick));
-onUnmounted(() => document.removeEventListener("click", onDocClick));
+onMounted(() => {
+  document.addEventListener("click", onDocClick);
+  document.addEventListener("click", reportBugAt, true);
+  document.addEventListener("contextmenu", openPointMenu, true);
+});
+onUnmounted(() => {
+  document.removeEventListener("click", onDocClick);
+  document.removeEventListener("click", reportBugAt, true);
+  document.removeEventListener("contextmenu", openPointMenu, true);
+});
 </script>
 
 <style scoped>
@@ -393,6 +555,54 @@ onUnmounted(() => document.removeEventListener("click", onDocClick));
   bottom: auto;
   margin-top: 0.35rem;
   margin-bottom: 0;
+}
+
+.meta-context-menu {
+  position: fixed;
+  z-index: 1200;
+  min-width: 16rem;
+  max-width: min(22rem, calc(100vw - 1rem));
+  background: var(--k-bg-widget, #0d1b2a);
+  border: 1px solid var(--k-border-focus, #2563eb);
+  border-radius: 6px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.meta-context-menu__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--k-fg, #e2e8f0);
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+}
+
+.meta-context-menu__item:hover:not(:disabled) {
+  background: var(--k-bg-hover, #15233a);
+}
+
+.meta-context-menu__item:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.meta-context-menu__label {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.meta-context-menu__hint {
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--k-fg-muted, #64748b);
+  font-size: 0.68rem;
 }
 
 .meta-launcher__item {

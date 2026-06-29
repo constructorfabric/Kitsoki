@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -137,10 +138,23 @@ docs land):
   { "mcpServers": { "kitsoki": { "command": "kitsoki",
       "args": ["mcp", "--stories-dir", "<dir>"] } } }`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			defer func() {
+				if err != nil {
+					writeMCPStartupError(err, dbPath, storiesDir, workspace, flowPath)
+				}
+			}()
 			if dbPath == "" {
 				dbPath = defaultDBPath()
 			}
+
+			// Export the resolved semantic-routing toggle so the studio's
+			// per-session orchestrators (internal/mcp/studio) pick it up: the
+			// studio reads KITSOKI_SEMANTIC_ROUTING (it can't see the cmd-layer
+			// flag), and exporting it here makes the LLM-only default and the
+			// --semantic-routing override apply to MCP-driven sessions just like
+			// every other CLI surface. See docs/architecture/semantic-routing.md.
+			_ = os.Setenv("KITSOKI_SEMANTIC_ROUTING", strconv.FormatBool(semanticRoutingEnabled()))
 
 			// Build the studio session with the live-capable production builder:
 			// replay stays no-LLM (DefaultHarnessBuilder), and harness:live
@@ -214,7 +228,8 @@ docs land):
 				srvOpts = append(srvOpts, studio.ReadOnly())
 			}
 			srv := studio.NewServer(sess, srvOpts...)
-			srv.SetWebShot(mcpWebShotFunc(sess, ""))
+			srv.SetWebShotResult(mcpWebShotResultFunc(sess, ""))
+			srv.SetWebAct(mcpWebActFunc(sess, ""))
 
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 			defer cancel()
@@ -237,6 +252,41 @@ docs land):
 	cmd.Flags().BoolVar(&readOnly, "read-only", false,
 		"omit the story-mutating tool (story.write); read + replay-driving tools stay available (the meta-mode Q&A surface)")
 	return cmd
+}
+
+func writeMCPStartupError(err error, dbPath, storiesDir, workspace, flowPath string) {
+	if err == nil {
+		return
+	}
+	const dir = ".artifacts/logs"
+	if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {
+		fmt.Fprintf(os.Stderr, "kitsoki: mcp startup failed: %v (also failed to create %s: %v)\n", err, dir, mkErr)
+		return
+	}
+	now := time.Now().UTC()
+	body := fmt.Sprintf(
+		"timestamp: %s\nerror: %v\ncwd: %s\ndb: %s\nstories_dir: %s\nworkspace: %s\nflow: %s\n",
+		now.Format(time.RFC3339Nano),
+		err,
+		mcpGetwd(),
+		dbPath,
+		storiesDir,
+		workspace,
+		flowPath,
+	)
+	name := filepath.Join(dir, "mcp-startup-"+now.Format("20060102-150405")+".log")
+	_ = os.WriteFile(name, []byte(body), 0o644)
+	latest := filepath.Join(dir, "mcp-startup-latest.log")
+	_ = os.WriteFile(latest, []byte(body), 0o644)
+	fmt.Fprintf(os.Stderr, "kitsoki: mcp startup failed; wrote %s: %v\n", latest, err)
+}
+
+func mcpGetwd() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "(unknown: " + err.Error() + ")"
+	}
+	return wd
 }
 
 // mcpAttachEntry builds the .mcp.json mcpServers entry that drops this binary in
@@ -273,14 +323,30 @@ type mcpWebShotOptions struct {
 }
 
 func mcpWebShotFunc(sess *studio.StudioSession, repoRoot string) studio.WebShotFunc {
-	return mcpWebShotFuncWithOptions(sess, mcpWebShotOptions{RepoRoot: repoRoot})
+	resultFn := mcpWebShotResultFuncWithOptions(sess, mcpWebShotOptions{RepoRoot: repoRoot})
+	return func(ctx context.Context, spec studio.WebRenderSpec) ([]byte, error) {
+		res, err := resultFn(ctx, spec)
+		return res.PNG, err
+	}
+}
+
+func mcpWebShotResultFunc(sess *studio.StudioSession, repoRoot string) studio.WebShotResultFunc {
+	return mcpWebShotResultFuncWithOptions(sess, mcpWebShotOptions{RepoRoot: repoRoot})
 }
 
 func mcpWebShotFuncWithOptions(sess *studio.StudioSession, opts mcpWebShotOptions) studio.WebShotFunc {
+	resultFn := mcpWebShotResultFuncWithOptions(sess, opts)
 	return func(ctx context.Context, spec studio.WebRenderSpec) ([]byte, error) {
+		res, err := resultFn(ctx, spec)
+		return res.PNG, err
+	}
+}
+
+func mcpWebShotResultFuncWithOptions(sess *studio.StudioSession, opts mcpWebShotOptions) studio.WebShotResultFunc {
+	return func(ctx context.Context, spec studio.WebRenderSpec) (studio.WebShotResult, error) {
 		wsSpec := spec.ToWebshotSpec()
 		if wsSpec.SessionID == "" {
-			return nil, fmt.Errorf("kitsoki mcp render.web currently supports live handles; use kitsoki web-shot with a no-LLM flow for story/state screenshots")
+			return studio.WebShotResult{}, fmt.Errorf("kitsoki mcp render.web currently supports live handles; use kitsoki web-shot with a no-LLM flow for story/state screenshots")
 		}
 		repoRoot := opts.RepoRoot
 		if repoRoot == "" {
@@ -290,11 +356,11 @@ func mcpWebShotFuncWithOptions(sess *studio.StudioSession, opts mcpWebShotOption
 			repoRoot = kitrepo.Resolve()
 		}
 		if repoRoot == "" {
-			return nil, fmt.Errorf("could not locate the kitsoki checkout for tools/runstatus/web-shot.ts; set %s", kitrepo.EnvVar)
+			return studio.WebShotResult{}, fmt.Errorf("could not locate the kitsoki checkout for tools/runstatus/web-shot.ts; set %s", kitrepo.EnvVar)
 		}
 		helper := filepath.Join(repoRoot, "tools", "runstatus", "web-shot.ts")
 		if _, err := os.Stat(helper); err != nil {
-			return nil, fmt.Errorf("web-shot helper not found at %s: %w", helper, err)
+			return studio.WebShotResult{}, fmt.Errorf("web-shot helper not found at %s: %w", helper, err)
 		}
 
 		provider := studio.NewRunstatusProvider(sess)
@@ -309,10 +375,67 @@ func mcpWebShotFuncWithOptions(sess *studio.StudioSession, opts mcpWebShotOption
 		if browser == nil {
 			browser = &webshot.NodeInvoker{RepoRoot: repoRoot}
 		}
-		return webshot.Shot(ctx, wsSpec, webshot.Options{
+		res, err := webshot.ShotWithSemantic(ctx, wsSpec, webshot.Options{
 			Server:        serverFactory(handler),
 			Browser:       browser,
 			HealthTimeout: opts.HealthTimeout,
 		})
+		return studio.WebShotResult{PNG: res.PNG, SemanticJSON: res.SemanticJSON, RRWebJSON: res.RRWebJSON}, err
+	}
+}
+
+func mcpWebActFunc(sess *studio.StudioSession, repoRoot string) studio.WebActFunc {
+	return mcpWebActFuncWithOptions(sess, mcpWebShotOptions{RepoRoot: repoRoot})
+}
+
+func mcpWebActFuncWithOptions(sess *studio.StudioSession, opts mcpWebShotOptions) studio.WebActFunc {
+	return func(ctx context.Context, spec studio.WebRenderSpec, action studio.WebActionSpec) (studio.WebShotResult, error) {
+		wsSpec := spec.ToWebshotSpec()
+		if wsSpec.SessionID == "" {
+			return studio.WebShotResult{}, fmt.Errorf("kitsoki mcp visual.act currently supports live handles")
+		}
+		repoRoot := opts.RepoRoot
+		if repoRoot == "" {
+			repoRoot = os.Getenv(kitrepo.EnvVar)
+		}
+		if repoRoot == "" {
+			repoRoot = kitrepo.Resolve()
+		}
+		if repoRoot == "" {
+			return studio.WebShotResult{}, fmt.Errorf("could not locate the kitsoki checkout for tools/runstatus/web-shot.ts; set %s", kitrepo.EnvVar)
+		}
+		helper := filepath.Join(repoRoot, "tools", "runstatus", "web-shot.ts")
+		if _, err := os.Stat(helper); err != nil {
+			return studio.WebShotResult{}, fmt.Errorf("web-shot helper not found at %s: %w", helper, err)
+		}
+
+		provider := studio.NewRunstatusProvider(sess)
+		handler := rsserver.NewMulti(provider).Handler()
+		serverFactory := opts.Server
+		if serverFactory == nil {
+			serverFactory = func(h http.Handler) webshot.ServerProvider {
+				return &webshot.HandlerServer{Handler: h, HealthTimeout: opts.HealthTimeout}
+			}
+		}
+		browser := opts.Browser
+		if browser == nil {
+			browser = &webshot.NodeInvoker{RepoRoot: repoRoot}
+		}
+		var point *webshot.Point
+		if action.Point != nil {
+			point = &webshot.Point{X: action.Point.X, Y: action.Point.Y}
+		}
+		res, err := webshot.ActWithSemantic(ctx, wsSpec, webshot.Action{
+			Kind:         action.Kind,
+			ActionHandle: action.ActionHandle,
+			Point:        point,
+			Button:       action.Button,
+			Modifiers:    action.Modifiers,
+		}, webshot.Options{
+			Server:        serverFactory(handler),
+			Browser:       browser,
+			HealthTimeout: opts.HealthTimeout,
+		})
+		return studio.WebShotResult{PNG: res.PNG, SemanticJSON: res.SemanticJSON, RRWebJSON: res.RRWebJSON}, err
 	}
 }

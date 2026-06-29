@@ -1,0 +1,9 @@
+inputs:
+  backlog:         { type: object, required: false }
+  case_index:      { type: int,    required: false }
+  cases_processed: { type: int,    required: false }
+  case_budget:     { type: int,    required: false }
+
+outputs:
+  current_case:    { type: object }
+  current_case_id: { type: string }

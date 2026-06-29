@@ -1,0 +1,84 @@
+# processing — the per-case DISPATCHER + checkpoint. The marathon re-enters here
+# once per case; the operator advances the loop one case per turn with `next_case`
+# (the same operator-driven cadence the dogfood-marathon skill describes — you
+# answer each case's checkpoints as an honest operator). One case per turn also
+# keeps each turn's internal emit chain under the engine's emit-depth cap
+# (EmitIntentMaxDepth) — a whole backlog can't auto-run in a single turn.
+#
+# Loop shape (mirrors stories/bugfix's guarded-emit gate + stories/slidey-edit's
+# cycle/budget cap):
+#
+#   on entry (checkpoint): show the tally; if drained → `next_case` aggregates.
+#   next_case:
+#     if case_index >= |backlog|  OR  cases_processed >= case_budget:
+#         → aggregating                         (the loop guard, committed world)
+#     else:
+#         pick current_case = backlog.items[case_index]; → triaging
+#
+# Each per-case room (triaging → driving → verifying → recording) auto-emits the
+# next internal intent; recording's `record_done` increments case_index +
+# cases_processed and returns to THIS checkpoint. The budget cap guarantees the
+# loop terminates even if case_index plumbing ever regressed.
+
+states:
+
+  processing:
+    description: "Per-case checkpoint — advance to the next case or drain to the report."
+    relevant_world: [backlog, case_index, case_budget, cases_processed, current_case, results]
+    view:
+      - heading: "Dogfood marathon · processing"
+      - kv:
+          pairs:
+            Backlog:   '{{ world.backlog.items|length }}'
+            At case:   '{{ world.case_index }}'
+            Processed: '{{ world.cases_processed }}'
+            Recorded:  '{{ world.results.items|length }}'
+            Budget:    '{{ world.case_budget }}'
+      - prose: "Walking the backlog one case at a time: triage → drive the inner pipeline → independently verify → record. `next_case` to process the next case (or roll up the run when the backlog is drained)."
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "next_case"
+              hint:  "process the next case (or aggregate when drained)"
+            - label: "look"
+              hint:  "re-render the tally"
+            - label: "quit"
+              hint:  "abandon the marathon"
+    on_enter:
+      # Auto-advance the FIRST case on arrival from intake (case_index 0, nothing
+      # recorded yet) so the marathon flows straight in; subsequent cases are
+      # operator-paced via `next_case`. Guarded on committed world (no fresh bind).
+      - when: "world.cases_processed == 0 && world.case_index == 0 && len(world.results.items) == 0 && len(world.backlog.items) > 0"
+        emit_intent: next_case
+    on:
+      next_case:
+        # Loop guard on COMMITTED world: drained (index past the backlog) OR
+        # budget hit → aggregate.
+        - when: "world.case_index >= len(world.backlog.items) || world.cases_processed >= world.case_budget"
+          target: aggregating
+        # Otherwise pick the case at case_index (starlark — the template
+        # mini-language can't index a list by a variable) and enter triage.
+        - target: triaging
+          effects:
+            - invoke: host.starlark.run
+              id: pick_case
+              with:
+                script: scripts/pick_case.star
+                inputs:
+                  backlog:         "{{ world.backlog }}"
+                  case_index:      "{{ world.case_index }}"
+                  cases_processed: "{{ world.cases_processed }}"
+                  case_budget:     "{{ world.case_budget }}"
+              bind:
+                current_case:    current_case
+                current_case_id: current_case_id
+            - set:
+                triage_verdict: {}
+                drive_result:   {}
+                verify_result:  {}
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_processing" }
+      look:
+        - target: .

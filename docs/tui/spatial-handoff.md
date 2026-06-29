@@ -44,20 +44,22 @@ Terminal (turn blocked, waiting on the bridge):
 
 ## How it threads
 
-```
-oracle wants a point ─▶ host.SpatialPrompter.AskSpatial(ctx, req)   [turn blocks]
-   │  (TUI side: internal/tui/spatial_prompter.go)
-   ├─ start a transient server.PointServer on 127.0.0.1:0, mint a one-time token
-   ├─ paint the OSC 8 link + "pointing…" status (handleSpatialPoint)
-   ├─ best-effort open the link in the operator's browser (the /open opener)
-   └─ block on the token's channel
-        │
-        ▼  operator clicks the link
-   GET  /point?token=…&chromeless=1  ─▶ the bundled SPA, chrome-less mode
-   POST /point/return?token=…        ─▶ consume the token, deliver the bundle
-        │  (server side: internal/runstatus/server/point_handoff.go)
-        ▼
-   AskSpatial returns host.VisualAmbient ─▶ the parked turn resumes
+```mermaid
+sequenceDiagram
+    participant Agent as agent turn
+    participant Prompter as host.SpatialPrompter
+    participant TUI as TUI
+    participant Browser as bundled SPA
+    participant Server as point handoff server
+
+    Agent->>Prompter: AskSpatial(ctx, req)
+    Prompter->>TUI: start PointServer and mint token
+    TUI->>TUI: paint OSC 8 link + pointing status
+    TUI->>Browser: best-effort open /point?token=...
+    Browser->>Server: GET /point?token=...&chromeless=1
+    Browser->>Server: POST /point/return?token=...
+    Server-->>Prompter: VisualAmbient bundle
+    Prompter-->>Agent: parked turn resumes
 ```
 
 The authoritative sources are

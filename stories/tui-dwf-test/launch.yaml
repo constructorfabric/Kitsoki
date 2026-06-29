@@ -1,0 +1,3 @@
+state: idle
+world:
+  manifest_path: /Users/brad/code/Kitsoki/stories/tui-dwf-test/manifest.yaml

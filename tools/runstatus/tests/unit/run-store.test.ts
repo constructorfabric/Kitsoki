@@ -606,6 +606,49 @@ describe("useRunStore — write-side actions", () => {
     ]);
   });
 
+  it("sendText rides the viewed deck scene as a current_scene supplement slot", async () => {
+    let seenParams: { input?: string; slots?: Record<string, unknown> } | undefined;
+    const src = writeSource() as DataSource & {
+      turnStream: (
+        sid: string,
+        method: string,
+        params: { input?: string; slots?: Record<string, unknown> },
+        onEvent: (ev: unknown) => void
+      ) => Promise<TurnResult>;
+    };
+    src.turnStream = (_sid, _method, params) => {
+      seenParams = params;
+      return Promise.resolve(turnResult({ view: "ok" }));
+    };
+
+    const store = useRunStore();
+    // The live deck reports the operator is on scene 9.
+    store.setEmbedView({ producer: "slidey", scope: "9", label: "Cat Wrangling" });
+
+    await store.sendText(src, "sess-1", "make the title bolder");
+    expect(seenParams?.slots).toEqual({ current_scene: "9" });
+  });
+
+  it("sendText omits slots when no deck is being viewed", async () => {
+    let seenParams: { input?: string; slots?: Record<string, unknown> } | undefined;
+    const src = writeSource() as DataSource & {
+      turnStream: (
+        sid: string,
+        method: string,
+        params: { input?: string; slots?: Record<string, unknown> },
+        onEvent: (ev: unknown) => void
+      ) => Promise<TurnResult>;
+    };
+    src.turnStream = (_sid, _method, params) => {
+      seenParams = params;
+      return Promise.resolve(turnResult({ view: "ok" }));
+    };
+
+    const store = useRunStore();
+    await store.sendText(src, "sess-1", "hello");
+    expect(seenParams?.slots).toBeUndefined();
+  });
+
   it("sendText over a LiveSource clears the feed and rejects with TurnCancelledError when the turn is cancelled", async () => {
     const src = writeSource() as DataSource & { turnStream: unknown };
     (src as { turnStream: unknown }).turnStream = (

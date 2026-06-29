@@ -1,0 +1,195 @@
+# kitsoki-dev — the dogfood instance.
+#
+# The dogfood PoC milestone (★): kitsoki working on kitsoki through its own UI,
+# with the bug file as both ticket and conversation log.
+#
+# Composition is one import edge: dev-story (general-purpose hub) is
+# imported under alias `core` with concrete host bindings to the
+# local-files providers. The bf → pr chain — and every day-level room
+# (main, ticket_search, inbox, agent, …) — is reachable via the
+# `core` compound.
+#
+# # Two-command quickstart
+#
+#   $ kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml
+#   # Lands in core.landing. Type `tickets` to search; `pick TKT` to pick;
+#   # `bugfix` to enter the pipeline.
+#
+# Autonomous variant (set judge_mode at boot via a warp scenario):
+#
+#   $ kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml \
+#       --warp scenarios/autonomous_ready.yaml
+#
+# # ticket_globs — multi-glob coverage
+#
+# The local-files ticket provider scans `<repo_root>/issues/bugs/*.md`
+# for files matching the bug frontmatter schema (docs/stories/bugs.md).
+# The `ticket_globs:` world key documents the FULL set of paths a
+# future multi-glob provider scan will cover:
+#
+#   issues/bugs/*.md                   — kitsoki self-bugs
+#   issues/features/*.md               — kitsoki PRD-track features
+#   stories/*/issues/bugs/*.md         — per-story bugs (story authoring)
+#   stories/*/issues/features/*.md     — per-story features
+#
+# A bug filed via `/meta story bug` against `stories/oregon-trail/`
+# lands at `stories/oregon-trail/issues/bugs/<id>.md` and is reachable
+# from this same app — the multi-glob is what "devstory oversees
+# kitsoki AND its stories" means in practice. (Wave 3.5: extend the
+# provider to honour ticket_globs literally; current handler reads
+# `<repo_root>/issues/bugs/` only.)
+#
+# # transport — the bug file IS the conversation log
+#
+# `transport: host.append_to_file` means every checkpoint artifact
+# (post + judge verdict + operator reply) is appended into the bug
+# file itself as `## Comment <iso> by <author>` blocks. The file is
+# ticket, conversation thread, and audit trail in one place — nothing
+# is lost when the session ends.
+
+app:
+  id: kitsoki-dev
+  version: 0.1.0
+  title: "kitsoki-dev — work on kitsoki itself (and its stories) with GitHub issues"
+  author: "Kitsoki"
+  license: "CC0"
+
+routing:
+  embedding:
+    model: "nomic-embed-text-v1.5"
+
+# agent_plugins must be declared at the instance level — they are NOT inherited
+# from imported children. Mirrors the declaration in dev-story/app.yaml.
+agent_plugins:
+  agent.local_llm:
+    plugin: builtin.local_llm
+    model: qwen2.5-1.5b-instruct
+    grammar: true
+
+# Host allow-list (proposal §9). With `hosts: declared` on the import,
+# every host the child subtree may invoke must appear here. Five
+# iface defaults (ticket / vcs / ci / workspace / transport) are
+# rebound to concrete handlers below; the bare hosts (inbox, agent)
+# pass through.
+hosts:
+  # Iface-backed handlers — rebound via host_bindings below. Listed
+  # here so `hosts: declared` is satisfied.
+  - host.local_files.ticket
+  - host.gh.ticket
+  - host.git
+  - host.local
+  - host.git_worktree
+  - host.append_to_file
+  # Bare hosts the chain calls directly.
+  - host.inbox.add
+  # agent-split Phase 9 verbs (all stories migrated).
+  - host.agent.ask
+  - host.agent.decide
+  - host.agent.task
+  # Pulled in transitively via dev-story → cypilot import (cypilot
+  # uses host.run for its prd/adr/decomposition rooms). The strict
+  # `hosts: declared` import on `core` requires every transitively-
+  # exposed host to appear here too.
+  - host.run
+  # Design pipeline (dev-story rooms/design*.yaml):
+  # 4-stage pipeline using decide/task gates, workspace artifact writes,
+  # IDE open on first brief scaffold, and embedding-based reference search.
+  # Required under `hosts: declared`.
+  - host.agent.search
+  - host.artifacts_dir
+  - host.ide.open_file
+  # Design draft (dev-story design_draft) + PRD drafting (prd/drafting) mirror
+  # the editable artifact into the IDE and present the verdict-gated refine as a
+  # diff. Required under `hosts: declared`.
+  - host.ide.open_diff
+  # PRD discovery pipeline (dev-story imports stories/prd/): a
+  # conversational discovery (converse + a persistent chat) feeding the
+  # PRD → Design walk. Required under `hosts: declared`.
+  - host.agent.converse
+  - host.chat.resolve
+  # Code-review surface (dev-story's code_review room opens diffs in the best
+  # surface). Required under `hosts: declared`.
+  - host.diff.open
+  # Ad-hoc structured plan (dev-story rooms/verifying.yaml): the verify gate runs
+  # a sandboxed, recordable Starlark script with the read-only inspection
+  # surface (ctx.fs / ctx.probe). Required under `hosts: declared`.
+  - host.starlark.run
+
+# This instance has no day-level rooms of its own — every visible
+# state comes from the imported dev-story hub. Imports are folded in
+# under the `core` alias.
+imports:
+  core:
+    source: ../../../stories/dev-story
+    entry: landing
+
+    # § 9 strict mode — every host the chain may use must be declared
+    # in the parent's `hosts:` block above. The loader cross-checks at
+    # fold time.
+    hosts: declared
+
+    # Concrete bindings for every host_interface declared by dev-story
+    # (and transitively by bf / pr). These rebind the dev-story
+    # defaults to the local-files / git providers.
+    #
+    # The append_to_file transport is the dogfood-specific choice:
+    # checkpoint posts go INTO the bug file (the `thread:` arg on
+    # iface.transport.post carries the file path), so the local file
+    # is the comment thread.
+    host_bindings:
+      # GitHub cutover (github-issues-tracker slice #4): the dogfood loop reads/
+      # writes its tickets as GitHub issues on `ticket_repo`
+      # (constructorfabric/Kitsoki). The rooms thread `repo: {{ world.ticket_repo }}`
+      # into every iface.ticket.* call. Flip back to host.local_files.ticket for a
+      # purely offline run.
+      ticket:    host.gh.ticket
+      vcs:       host.git
+      ci:        host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+
+    # The dev-story hub already declares judge_mode +
+    # judge_confidence_threshold; project the instance-level values
+    # into them so the operator can flip mode from the warp scenario
+    # without re-authoring child YAML.
+    world_in:
+      judge_mode:                 "{{ world.judge_mode }}"
+      judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
+      ticket_repo:                "{{ world.ticket_repo }}"
+      bugfix_destination:         "{{ world.bugfix_destination }}"
+
+# Instance-level world. Provider-pointing keys plus judge-mode
+# defaults; the operator can override any of them at session start
+# via a `--warp` scenario file.
+#
+# `repo_root` and `ticket_globs` are documented here for forward
+# compatibility — the local-files provider currently honours
+# args.root → $KITSOKI_TICKETS_ROOT → cwd, and reads
+# `<root>/issues/bugs/*.md` literally. A future enhancement (Wave 3.5)
+# will accept ticket_globs as a multi-glob scan list and respect
+# repo_root via world.repo_root passthrough in `iface.ticket.*` args.
+world:
+  # Provider-pointing keys (forward-looking; not yet wired into
+  # iface.ticket.* args — see comment above).
+  repo_root:    { type: string, default: "" }
+  ticket_globs: { type: string, default: "issues/bugs/*.md,issues/features/*.md,stories/*/issues/bugs/*.md,stories/*/issues/features/*.md" }
+
+  # ticket_repo — the canonical GitHub repo every host.gh.ticket call pins via
+  # its `repo` arg, so the dogfood loop never silently resolves the operator's
+  # `origin` (a personal fork like bsacrobatix/Kitsoki). The checked-in project
+  # profile (.kitsoki/project-profile.yaml) is the source of truth for this repo;
+  # local dogfood runs can override via .kitsoki.local.yaml root.overrides.world.
+  ticket_repo:  { type: string, default: "constructorfabric/Kitsoki" }
+  # Default self-hosting destination: land fixes into the local base branch
+  # (main here) after the bugfix RED/GREEN gate and shared ship-it tail pass.
+  # Operators can still choose open-pr or leave-worktree from the dev-story UI.
+  bugfix_destination: { type: string, default: "local-merge" }
+
+  # Judge polymorphism. Defaults: supervised + 0.8 confidence floor.
+  # Flip judge_mode to `llm_then_human` for an unattended run.
+  judge_mode:                 { type: string, default: "human" }
+  judge_confidence_threshold: { type: float,  default: 0.8 }
+  autonomous_default_mode:    { type: string, default: "llm_then_human" }
+
+# Root: enter the dev-story hub.
+root: core

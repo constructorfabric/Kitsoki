@@ -1,0 +1,57 @@
+# triaging — cheap read-only triage of the current case before spending maker
+# budget. Mirrors the inner bugfix story's triage-only mode: emit a standardized
+# verdict (ALREADY-FIXED | STILL-LIVE | PARTIAL | UNCLEAR) citing code evidence.
+#
+# DELEGATION: under a live drive this is ONE host.agent.task (triager persona) —
+# read-only, no worktree, no fix. Under flow/no-LLM tests the call is stubbed by
+# id. The room NEVER fabricates a verdict; it journals whatever the task returned.
+#
+# Routing:
+#   ALREADY-FIXED  + drop_already_fixed → skip_case (degenerate baseline)
+#   else (STILL-LIVE | PARTIAL | UNCLEAR) → drive the inner pipeline
+
+states:
+
+  triaging:
+    description: "Triaging the current case (read-only verdict, no fix)."
+    relevant_world: [current_case, triage_verdict, drop_already_fixed]
+    view:
+      - heading: "Dogfood marathon · triaging"
+      - kv:
+          pairs:
+            Case:    '{{ world.current_case.id|default:"(none)" }}'
+            Title:   '{{ world.current_case.title|default:"—" }}'
+            Verdict: '{{ world.triage_verdict.verdict|default:"(triaging…)" }}'
+      - prose: "Read-only triage — does the bug still exist at the baseline? ALREADY-FIXED cases are dropped (degenerate baseline); STILL-LIVE / PARTIAL run the full inner pipeline."
+    on_enter:
+      - invoke: host.agent.task
+        id: triage_case
+        with:
+          agent: triager
+          acceptance:
+            schema: schemas/triage_verdict.json
+          context:
+            prompt: prompts/triage_case.md
+            case:           "{{ world.current_case }}"
+            inner_pipeline: "{{ world.inner_pipeline }}"
+        bind:
+          triage_verdict: submitted
+        on_error: driving   # triage is advisory — a failed triage still drives
+      # Drop degenerate (already-fixed) cases when configured.
+      - when: "world.drop_already_fixed && world.triage_verdict.verdict == 'ALREADY-FIXED'"
+        emit_intent: skip_case
+      - when: "!(world.drop_already_fixed && world.triage_verdict.verdict == 'ALREADY-FIXED')"
+        emit_intent: triage_done
+    on:
+      triage_done:
+        - target: driving
+      skip_case:
+        # Record a skipped case directly, then advance. recording handles the
+        # skipped shape via the verify_result.status sentinel.
+        - target: recording
+          effects:
+            - set:
+                verify_result: { status: "skipped", how: "triage verdict ALREADY-FIXED — degenerate baseline (dropped)" }
+                drive_result:  { exit: "skipped" }
+      look:
+        - target: .

@@ -1,0 +1,398 @@
+{
+  "meta": {
+    "title": "Kitsoki — a dev story, end to end on the slidey repo",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": {
+      "name": "rose-pine-moon",
+      "background": "#1c140d",
+      "fontFamily": "'Inter', 'Avenir Next', 'Segoe UI', sans-serif",
+      "colors": {
+        "base": "#1c140d",
+        "surface": "#2a1a10",
+        "overlay": "#3d2419",
+        "muted": "#7b5f4d",
+        "subtle": "#c1a188",
+        "text": "#f3ead8",
+        "love": "#e0a23a",
+        "gold": "#f4cf95",
+        "rose": "#a8492b",
+        "pine": "#c97b4a",
+        "foam": "#e8d6b3",
+        "iris": "#3aa3a0",
+        "highlightLow": "#2f1f16",
+        "highlightMuted": "#412518",
+        "highlightHigh": "#7d2e1c"
+      },
+      "css": "#title-card{gap:24px !important;}#title-card-subtitle{display:flex;flex-direction:column;align-items:center;gap:16px;color:#f3ead8;}#title-card-subtitle img{display:block;height:auto;max-width:640px;width:640px;}#title-card-subtitle div.deck-subtitle{max-width:1500px;line-height:1.45;font-size:36px;color:#d9c9ad;}#title-card-subtitle .deck-subtitle-note{display:block;max-width:1300px;line-height:1.35;font-size:28px;color:#b29b7a;}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon .spinner-bar,\n#root.theme-rose-pine-moon #stat-value,\n#root.theme-rose-pine-moon #trace-title,\n#root.theme-rose-pine-moon #book-title,\n#root.theme-rose-pine-moon #diagramsvg-title,\n#root.theme-rose-pine-moon #diagram-title,\n#root.theme-rose-pine-moon #narrative-eyebrow,\n#root.theme-rose-pine-moon #thread-title,\n#root.theme-rose-pine-moon #diagramsvg-panel-label,\n#root.theme-rose-pine-moon .cards-title,\n#root.theme-rose-pine-moon .image-title,\n#root.theme-rose-pine-moon .imagecompare-title,\n#root.theme-rose-pine-moon .mermaid-title,\n#root.theme-rose-pine-moon .table-title,\n#root.theme-rose-pine-moon .code-call,\n#root.theme-rose-pine-moon .code-dot-call,\n#root.theme-rose-pine-moon .table-crown,\n#root.theme-rose-pine-moon .table-row-hi,\n#root.theme-rose-pine-moon a {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon .code-line-hl,\n#root.theme-rose-pine-moon #stat-value,\n#root.theme-rose-pine-moon .dsvg-arrow path,\n#root.theme-rose-pine-moon .dsvg-edge path,\n#root.theme-rose-pine-moon .dsvg-edge line {\n  border-color: var(--slidey-rose);\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon #stat-value {\n  background: linear-gradient(90deg, var(--slidey-gold), var(--slidey-rose));\n}\n\n#root.theme-rose-pine-moon .dsvg-edge line:not(.dsvg-gate-bar),\n#root.theme-rose-pine-moon .dsvg-edge path,\n#root.theme-rose-pine-moon .dsvg-arrow path,\n#root.theme-rose-pine-moon .dsvg-arrow-back path,\n#root.theme-rose-pine-moon .dsvg-edge-back path,\n#root.theme-rose-pine-moon .dsvg-edge-gate.dsvg-gate-oracle,\n#root.theme-rose-pine-moon .dsvg-gate-bar.dsvg-gate-oracle,\n#root.theme-rose-pine-moon .dsvg-edge-recycle,\n#root.theme-rose-pine-moon .dsvg-arrow-recycle path {\n  stroke: var(--slidey-gold);\n  fill: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow-back path,\n#root.theme-rose-pine-moon .dsvg-edge-back path {\n  stroke: var(--slidey-highlight-high);\n  fill: var(--slidey-background);\n}\n\n#root.theme-rose-pine-moon .dsvg-edge-recycle path {\n  fill: var(--slidey-background) !important;\n  stroke: var(--slidey-background) !important;\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow-recycle path {\n  fill: var(--slidey-background) !important;\n  stroke: var(--slidey-background) !important;\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary rect,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary rect,\n#root.theme-rose-pine-moon .dsvg-node rect {\n  stroke: var(--slidey-rose);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary rect {\n  fill: var(--slidey-highlight-muted);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary rect {\n  fill: var(--slidey-highlight-low);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-label,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-label {\n  fill: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-sub,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-sub,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-line,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-line {\n  fill: var(--slidey-text);\n}\n\n#root.theme-rose-pine-moon .trace-turn-user::before,\n#root.theme-rose-pine-moon .thread-system.thread-system-jira,\n#root.theme-rose-pine-moon .thread-system.thread-system-bitbucket {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .json-key,\n#root.theme-rose-pine-moon .code-key,\n#root.theme-rose-pine-moon .cards-bullet,\n#root.theme-rose-pine-moon .cards-card.cards-style-primary,\n#root.theme-rose-pine-moon .cards-col.accent-blue,\n#root.theme-rose-pine-moon .cards-col.accent-purple,\n#root.theme-rose-pine-moon .cards-qa-question,\n#root.theme-rose-pine-moon .cards-qa-answer,\n#root.theme-rose-pine-moon .mockup-blue,\n#root.theme-rose-pine-moon .tx-hud-app,\n#root.theme-rose-pine-moon .tx-card-turn {\n  color: var(--slidey-gold);\n  border-color: var(--slidey-rose);\n}\n\n\n#root.theme-rose-pine-moon #table-title,\n#root.theme-rose-pine-moon [id$=\"-title\"],\n#root.theme-rose-pine-moon #cta-wordmark,\n#root.theme-rose-pine-moon #cta-tagline,\n#root.theme-rose-pine-moon #cta-url {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #cta-wordmark {\n  background: linear-gradient(180deg, var(--slidey-gold), var(--slidey-rose));\n  -webkit-background-clip: text;\n  background-clip: text;\n  color: transparent !important;\n}\n\n#root.theme-rose-pine-moon #cta-url {\n  background: var(--slidey-overlay);\n  border-color: var(--slidey-highlight-high);\n}\n\n#root.theme-rose-pine-moon .spinner-bar,\n#root.theme-rose-pine-moon #spinner-bar {\n  background: linear-gradient(90deg, var(--slidey-gold), var(--slidey-rose)) !important;\n}\n\n#book-region .book-takeaway {\n  font-size: 24px;\n  line-height: 1.35;\n}\n\n#book-region .book-count-1 .book-takeaway {\n  font-size: 32px;\n  line-height: 1.3;\n}\n\n#book-region .book-caption {\n  font-size: 32px;\n  line-height: 1.4;\n  max-width: 1500px;\n}\n\n#narrative-region {\n  max-width: 1600px;\n}\n\n#narrative-body {\n  font-size: 68px;\n  line-height: 1.18;\n  max-width: 1380px;\n}\n\n#narrative-lede {\n  font-size: 36px;\n  line-height: 1.42;\n  max-width: 1360px;\n}\n#root.theme-rose-pine-moon .usecase-row,\n#root.theme-rose-pine-moon .persona-card {\n  background: var(--slidey-surface);\n  border-color: var(--slidey-highlight-muted);\n}\n#root.theme-rose-pine-moon .usecase-text {\n  border-left-color: var(--slidey-highlight-muted);\n}\n#root.theme-rose-pine-moon .usecase-action {\n  color: var(--slidey-text);\n}\n#root.theme-rose-pine-moon .usecase-detail,\n#root.theme-rose-pine-moon .persona-role,\n#root.theme-rose-pine-moon .persona-intro {\n  color: var(--slidey-subtle);\n}\n#root.theme-rose-pine-moon .personas-caption {\n  color: var(--slidey-subtle);\n}"
+    },
+    "narration": {
+      "voice": "en-AU-NatashaNeural"
+    },
+    "mode": "pitch",
+    "personas": [
+      {
+        "id": "pm",
+        "name": "Priya",
+        "role": "Product manager",
+        "intro": "Turns a one-line idea into a validated PRD and a mockup deck.",
+        "color": "#f4cf95",
+        "glyph": "🧭"
+      },
+      {
+        "id": "architect",
+        "name": "Arden",
+        "role": "Architect",
+        "intro": "Shapes requirements into a design epic, slices, and ADRs.",
+        "color": "#3aa3a0",
+        "glyph": "📐"
+      },
+      {
+        "id": "dev",
+        "name": "Andy",
+        "role": "Developer",
+        "intro": "Decomposes, fixes a mid-stream bug, refines, and ships — every step traceable.",
+        "color": "#c97b4a",
+        "glyph": "🛠️"
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Kitsoki · dev story",
+      "title": "From an idea to a merged PR",
+      "subtitle": "one feature and one bug, end to end, on kitsoki",
+      "narration": "This is one dev story end to end on the slidey repository — from a product idea to a merged pull request, with kitsoki driving every step."
+    },
+    {
+      "type": "personas",
+      "variant": "cast",
+      "title": "The cast",
+      "personas": [
+        "pm",
+        "architect",
+        "dev"
+      ],
+      "caption": "Three roles, one shared, traceable pipeline — every hand-off a notification, every artifact a validated, replayable output.",
+      "narration": "A product manager, an architect, and a developer share one traceable pipeline. Every hand-off is a notification, and every artifact is a validated, replayable output."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "Who does what",
+      "cases": [
+        {
+          "who": "pm",
+          "action": "Frames a one-line idea into a PRD + mockups",
+          "detail": "conversation-driven intake"
+        },
+        {
+          "who": "architect",
+          "action": "Turns the requirements into a design",
+          "detail": "epic, slices, ADRs, mermaid"
+        },
+        {
+          "who": "dev",
+          "action": "Decomposes the design into a work plan",
+          "detail": "agent-sized briefs"
+        },
+        {
+          "who": "dev",
+          "action": "Fixes a bug that lands mid-stream",
+          "detail": "one-shot, unsupervised, PR-ready"
+        },
+        {
+          "who": "dev",
+          "action": "Refines the feature from demo videos",
+          "detail": "spatial-oracle annotation"
+        },
+        {
+          "who": "dev",
+          "action": "Opens the pull requests",
+          "detail": "every step on the record"
+        }
+      ],
+      "narration": "Across the story, the product manager frames the idea, the architect designs it, and the developer decomposes, fixes a bug, refines the feature, and opens the pull requests."
+    },
+    {
+      "type": "title",
+      "eyebrow": "0 · Effortless bug reporting",
+      "title": "It starts in the app where users work",
+      "subtitle": "report directly from the meta menu → a captured replay + scrubbed trace → filed, no context-switch",
+      "narration": "Before any of this reaches a developer, the bug starts with a user. They hit something broken and report it right where it happened — no leaving the app, no hand-written repro. Kitsoki captures the replay and a scrubbed trace and files it for them."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · The report",
+      "title": "Right-click → report bug here",
+      "rrweb": "assets/dev-story-hybrid/report-bug.rrweb.json",
+      "chapters": "auto",
+      "caption": "Alt-right-click the exact element → a placed bug report with a captured rrweb replay + the clicked location, ready to file",
+      "narration": "The user alt-right-clicks the exact element that misbehaved. Kitsoki opens a placed bug report — the precise target, a captured replay of what they just did, and a scrubbed trace — so the report carries a real reproduction, not a vague description."
+    },
+    {
+      "type": "title",
+      "eyebrow": "0 · Where work lives",
+      "title": "It starts on GitHub",
+      "subtitle": "A real @kitsoki mention on a labelled issue → a run link in the reply → the kitsoki run page",
+      "narration": "Before any of this reaches the kitsoki composer, it starts where the work already lives: a real at-kitsoki mention on a labelled GitHub issue. The label decides the route, kitsoki replies with a run link, and that link opens the hosted run page."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "Bug label → bugfix",
+      "rrweb": "assets/dev-story-hybrid/github/bug-thread.rrweb.json",
+      "start": 0.25,
+      "chapters": "auto",
+      "caption": "@kitsoki on a bug-labelled issue → stories/bugfix. Live: github.com/bsacrobatix/Kitsoki/issues/44",
+      "narration": "A bug-labelled mention routes straight to the bugfix story — one mention, one claimed job, one run link."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "Feature label → dev story",
+      "rrweb": "assets/dev-story-hybrid/github/feature-thread.rrweb.json",
+      "start": 0.25,
+      "chapters": "auto",
+      "caption": "@kitsoki on a feature-labelled issue → the dev story that follows. Live: issues/45",
+      "narration": "A feature-labelled mention routes to the dev story you are about to watch — the same loop, opened from GitHub."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "Click it → the kitsoki run page",
+      "rrweb": "assets/dev-story-hybrid/github/run-page.rrweb.json",
+      "chapters": "auto",
+      "caption": "The run link opens the hosted kitsoki page: origin, a source link back to the issue, story, state, timeline",
+      "narration": "The run link opens a hosted run page — origin, a source link back to the exact issue, the story, the state, and a full timeline."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "0 · GitHub front door",
+      "title": "…and the same run as JSON",
+      "rrweb": "assets/dev-story-hybrid/github/run-api.rrweb.json",
+      "chapters": "auto",
+      "caption": "The same job as JSON — every run is queryable, not just viewable",
+      "narration": "And the same job is available as JSON, so every run is queryable, not just viewable."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "1 · Idea → PRD + mockups",
+      "cases": [
+        {
+          "who": "pm",
+          "action": "Types a one-line idea: add a feature to slidey",
+          "detail": "conversation-driven intake begins"
+        },
+        {
+          "who": "pm",
+          "action": "Answers clarifying questions; a PRD is drafted",
+          "detail": "plus an HTML mockup deck"
+        },
+        {
+          "who": "pm",
+          "action": "Publishes the validated PRD + mockups",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "The PRD and mockups are the validated output of the product-manager phase.",
+      "narration": "The product manager starts with a one-line idea: add a feature to slidey. Kitsoki runs a conversation-driven intake — clarifying questions, a drafted PRD, and a mockup deck — and the PRD plus mockups are the validated output."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "1 · Product manager",
+      "title": "Idea → PRD + mockups",
+      "rrweb": "assets/dev-story-hybrid/pm-idea.rrweb.json",
+      "chapters": "auto",
+      "caption": "Conversation-driven PRD intake — the PRD and a feature mockup, rendered inline",
+      "narration": "Here the PM drives the intake live: the brief is refined into a PRD, and the feature mockup the PRD describes is rendered right in the run — a self-contained handout embedded inline — all replayed deterministically with no model in the loop."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "2 · Requirements → design",
+      "cases": [
+        {
+          "who": "architect",
+          "action": "Reviews the new PRD and asks questions",
+          "detail": "notified: requirements ready"
+        },
+        {
+          "who": "architect",
+          "action": "Produces the design epic, slices, and ADRs",
+          "detail": "with mermaid diagrams"
+        },
+        {
+          "who": "architect",
+          "action": "Publishes the design, summarised in a slidey deck",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "The design — an epic broken into slices, with ADRs — is the architect phase's validated output.",
+      "narration": "The architect is notified that new requirements are ready. They review, ask questions, and produce the design — an epic broken into slices, ADRs, and mermaid diagrams — summarised in a slidey deck."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "2 · Architect",
+      "title": "Requirements → design",
+      "rrweb": "assets/dev-story-hybrid/architect-design.rrweb.json",
+      "chapters": "auto",
+      "caption": "PRD → design epic, slices, and ADRs",
+      "narration": "The architect walks from the PRD into a structured design, with each slice and decision captured as a traceable artifact."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "3 · Design → work plan",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Reviews the published design",
+          "detail": "notified: design ready"
+        },
+        {
+          "who": "dev",
+          "action": "Decomposes the epic and slices into right-sized tasks",
+          "detail": "agent-ready briefs"
+        },
+        {
+          "who": "dev",
+          "action": "Validates the work plan",
+          "detail": "runs in the background — it takes time"
+        }
+      ],
+      "caption": "The decomposed work plan is the output — and because it takes time, it runs in the background.",
+      "narration": "The developer reviews the new design and decomposes its epic and slices into right-sized tasks. The work plan is the output, and because it takes time, it runs in the background."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "3 · Developer · decomposition",
+      "title": "Design → work plan",
+      "rrweb": "assets/dev-story-hybrid/decomposition.rrweb.json",
+      "chapters": "auto",
+      "caption": "Design epic decomposed into agent-sized briefs",
+      "narration": "The design is decomposed into a validated manifest of agent-sized briefs, ready to fan out into development."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "4 · A bug lands mid-stream",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Triage recommends a one-shot, unsupervised fix",
+          "detail": "a new slidey bug is opened"
+        },
+        {
+          "who": "dev",
+          "action": "Says go — kitsoki reproduces, fixes, tests, self-reviews",
+          "detail": "in an isolated worktree, real test suite"
+        },
+        {
+          "who": "dev",
+          "action": "Validates the fix — closing out PR-ready",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "While the decomposition runs, the bug-fix room triages, fixes, and validates a real slidey bug.",
+      "narration": "Mid-stream, a bug is opened against slidey. The bug-fix room triages it as a one-shot unsupervised fix. The developer says go, and kitsoki reproduces, fixes, tests, reviews, and validates it — closing out ready for a pull request."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "4 · Developer · bug fix",
+      "title": "Bug → reproduce → fix → validate",
+      "rrweb": "assets/dev-story-hybrid/slidey-bugfix.rrweb.json",
+      "chapters": "auto",
+      "caption": "The bug-fix pipeline on a real slidey bug",
+      "narration": "Every room is a deterministic state-machine beat: reproduce, propose, implement in a worktree, run the real test suite, self-review, and validate."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "5 · Demo videos → spatial refine",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Reviews demo videos that land in the inbox",
+          "detail": "as tasks complete in the background"
+        },
+        {
+          "who": "dev",
+          "action": "Points at an exact element on the rendered frame",
+          "detail": "spatial-oracle annotation"
+        },
+        {
+          "who": "dev",
+          "action": "An anchored refine edits precisely that scene",
+          "detail": "location-tied feedback"
+        }
+      ],
+      "caption": "The developer refines the functionality by pointing right at it — location-tied, spatial-oracle feedback.",
+      "narration": "The work plan moves into background development. As portions complete, demo videos arrive in the inbox, and the developer refines the functionality by pointing right at it — location-tied, spatial-oracle feedback."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "5 · Developer · refine",
+      "title": "Demo videos → spatial refine",
+      "rrweb": "assets/dev-story-hybrid/feature-refine.rrweb.json",
+      "chapters": "auto",
+      "caption": "Annotate the rendered frame → an anchored refine pass",
+      "narration": "A reviewer points at an exact element on the rendered frame, and that anchor flows into a refine pass that edits precisely what was pointed at."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "6 · Open the PRs",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Reviews the bug-fix summary + validation video",
+          "detail": "notified: bug fix done"
+        },
+        {
+          "who": "dev",
+          "action": "Opens the pull request on slidey",
+          "detail": "reproduction + validation evidence"
+        },
+        {
+          "who": "dev",
+          "action": "Opens the feature epic's PR with its demo video",
+          "detail": "two PRs richer"
+        }
+      ],
+      "caption": "The story closes where it started: a slidey repo, now two pull requests richer — every step on the record.",
+      "narration": "The bug fix is done; the developer reviews its summary and opens the pull request. Then the feature epic's PR goes up with its demo video. Two pull requests, every step on the record."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "6 · Developer · ship",
+      "title": "Summary → open PR",
+      "rrweb": "assets/dev-story-hybrid/open-pr.rrweb.json",
+      "chapters": "auto",
+      "caption": "Reproduction + validation summary → pull request",
+      "narration": "The summary carries the reproduction and validation evidence straight into the pull request."
+    },
+    {
+      "type": "cta",
+      "narration": "And the whole film is a no-LLM, byte-deterministic replay: the runtime is a state machine, and the model is just a traceable callee.",
+      "wordmark": "Kitsoki",
+      "tagline": "Every frame is a deterministic, no-LLM replay",
+      "url": "the runtime is a state machine; the model is a traceable callee"
+    }
+  ]
+}

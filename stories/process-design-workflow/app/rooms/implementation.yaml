@@ -1,0 +1,121 @@
+states:
+  implementation:
+    description: "Optionally run an implementation story for the current item."
+    relevant_world: [current_item, implementation_result, implementation_job_id]
+    timeout:
+      after: "12m"
+      target: implementation_timed_out
+    view:
+      - heading: "Punch-list · implementation"
+      - kv:
+          pairs:
+            Item: '{{ world.current_item.id }}'
+            Story: '{{ world.current_item.implementation_story }}'
+            Status: '{{ world.implementation_result.status|default:"running" }}'
+            Trace: '{{ world.implementation_result.trace_path|default:"(pending)" }}'
+            Job: '{{ world.implementation_job_id|default:"(starting)" }}'
+      - prose: "This is still gated by profile/model policy. The independent verify room decides the final item result."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "skip", intent: skip_current, hint: "record this item as skipped and continue" }
+            - { label: "look", intent: look }
+    on_enter:
+      - set:
+          implementation_result: {}
+          implementation_status: ""
+          implementation_trace_path: ""
+          implementation_model: ""
+          implementation_job_id: ""
+      - invoke: host.agent.task
+        id: "punch_implementation-{{ world.current_item_id }}"
+        background: true
+        with:
+          agent: implementer
+          acceptance:
+            schema: schemas/drive_result.json
+          context:
+            prompt: prompts/implement_item.md
+            args:
+              item: "{{ world.current_item }}"
+              drive_result: "{{ world.drive_result }}"
+        bind:
+          implementation_job_id: job_id
+        on_complete:
+          - set:
+              implementation_result: "{{ world.last_job_result.submitted }}"
+              implementation_status: "{{ world.last_job_result.submitted.status }}"
+              implementation_trace_path: "{{ world.last_job_result.submitted.trace_path }}"
+              implementation_model: "{{ world.last_job_result.submitted.model }}"
+          - when: "world.current_item.require_trace_model == true && (((world.current_item.implementation_trace_path ?? '') != '' && world.last_job_result.submitted.trace_path != world.current_item.implementation_trace_path) || world.last_job_result.submitted.model != world.current_item.model)"
+            set:
+              last_error: "Implementation drive did not provide required trace/model evidence for {{ world.current_item.id }} (wanted model {{ world.current_item.model }} and trace {{ world.current_item.implementation_trace_path }}, got model {{ world.last_job_result.submitted.model }} and trace {{ world.last_job_result.submitted.trace_path }})."
+          - when: "world.current_item.require_trace_model == true && (((world.current_item.implementation_trace_path ?? '') != '' && world.last_job_result.submitted.trace_path != world.current_item.implementation_trace_path) || world.last_job_result.submitted.model != world.current_item.model)"
+            target: needs_human
+          - when: "world.last_job_result.submitted.status != 'passed'"
+            set:
+              last_error: "Implementation ended {{ world.last_job_result.submitted.status }} for {{ world.current_item.id }}: {{ world.last_job_result.submitted.summary }}"
+          - when: "world.last_job_result.submitted.status != 'passed'"
+            target: needs_human
+          - when: "world.last_job_result.submitted.status == 'passed' && (world.current_item.require_trace_model != true || (((world.current_item.implementation_trace_path ?? '') == '' || world.last_job_result.submitted.trace_path == world.current_item.implementation_trace_path) && world.last_job_result.submitted.model == world.current_item.model))"
+            target: verify
+        on_error: needs_human
+    on:
+      skip_current:
+        - target: record
+          effects:
+            - set:
+                implementation_result:
+                  status: "skipped"
+                  story: "{{ world.current_item.implementation_story }}"
+                  trace_path: "{{ world.current_item.implementation_trace_path }}"
+                  model: "{{ world.current_item.model }}"
+                  profile: "{{ world.current_item.profile }}"
+                  findings:
+                    - "Operator skipped the running implementation job {{ world.implementation_job_id }} before it returned a handoff."
+                  summary: "Operator skipped the running implementation before handoff."
+                implementation_status: "skipped"
+                implementation_trace_path: "{{ world.current_item.implementation_trace_path }}"
+                implementation_model: "{{ world.current_item.model }}"
+                verify_result: { status: "skipped", summary: "Operator skipped the running implementation before handoff." }
+                verify_status: "skipped"
+      implementation_done:
+        - when: "world.current_item.require_trace_model == true && (((world.current_item.implementation_trace_path ?? '') != '' && world.implementation_trace_path != world.current_item.implementation_trace_path) || world.implementation_model != world.current_item.model)"
+          target: needs_human
+          effects:
+            - set:
+                last_error: "Implementation drive did not provide required trace/model evidence for {{ world.current_item.id }} (wanted model {{ world.current_item.model }} and trace {{ world.current_item.implementation_trace_path }}, got model {{ world.implementation_model }} and trace {{ world.implementation_trace_path }})."
+        - when: "world.implementation_status != 'passed'"
+          target: needs_human
+          effects:
+            - set:
+                last_error: "Implementation ended {{ world.implementation_status }} for {{ world.current_item.id }}: {{ world.implementation_result.summary }}"
+        - when: "world.implementation_status == 'passed' && (world.current_item.require_trace_model != true || (((world.current_item.implementation_trace_path ?? '') == '' || world.implementation_trace_path == world.current_item.implementation_trace_path) && world.implementation_model == world.current_item.model))"
+          target: verify
+      look:
+        - target: .
+  implementation_timed_out:
+    description: "The implementation drive exceeded the operator patience budget."
+    view:
+      - heading: "Punch-list · implementation timed out"
+      - prose: "The implementation driver did not return a result before the punch-list timeout."
+    on_enter:
+      - set:
+          implementation_result:
+            status: "partial"
+            story: "{{ world.current_item.implementation_story }}"
+            trace_path: "{{ world.current_item.implementation_trace_path }}"
+            model: "{{ world.current_item.model }}"
+            profile: "{{ world.current_item.profile }}"
+            findings:
+              - "Implementation job {{ world.implementation_job_id }} exceeded the 12 minute punch-list timeout before returning a handoff."
+            summary: "Timed out waiting for the implementation handoff."
+          implementation_status: "partial"
+          implementation_trace_path: "{{ world.current_item.implementation_trace_path }}"
+          implementation_model: "{{ world.current_item.model }}"
+          last_error: "Implementation timed out for {{ world.current_item.id }} after 12 minutes without returning a handoff."
+      - emit_intent: implementation_timeout
+    on:
+      implementation_timeout:
+        - target: needs_human

@@ -1,6 +1,6 @@
 # ship-it — the single-brief delivery loop
 
-Slice 2 of the [delivery-loop epic](../../docs/proposals/delivery-loop.md). A
+Part of the shipped [delivery-loop story stack](../../docs/stories/delivery-loop.md). A
 scoped brief delivers itself: implemented in isolation by the cherny-loop maker,
 integrated to main lost-work-safely, **re-proven on the merged commit** by an
 independent re-verify, and cleaned up — exiting `@exit:shipped` or
@@ -108,5 +108,5 @@ flows still **mock the maker handoff** via the `integrate_existing` intent (a
 genuine operator affordance, and the same `worktree_path` + `workspace_branch`
 the maker's `@exit:achieved` leaves) — that mock remains the right shape for the
 deterministic delivery-half flows per the
-[QA plan](../../docs/proposals/notes/delivery-loop/qa-and-demo-plan.md), but the
+delivery-loop validation plan, but the
 maker path now settles end-to-end through the import when driven.

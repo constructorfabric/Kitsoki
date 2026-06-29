@@ -1,0 +1,8 @@
+inputs:
+  results:  { type: object, required: false }
+  rollup:   { type: object, required: false }
+  findings: { type: object, required: false }
+  out_path: { type: string, required: false }
+
+outputs:
+  deck_spec: { type: object }

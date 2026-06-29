@@ -609,6 +609,9 @@ func (p *chatStoreProbe) Get(_ context.Context, _ string) (*host.ChatRecord, err
 	p.onGet()
 	return nil, nil
 }
+func (p *chatStoreProbe) GetOrEnsure(_ context.Context, _ string) (*host.ChatRecord, error) {
+	return nil, nil
+}
 func (p *chatStoreProbe) Resolve(_ context.Context, _, _, _, _ string) (*host.ChatRecord, bool, error) {
 	return nil, false, nil
 }

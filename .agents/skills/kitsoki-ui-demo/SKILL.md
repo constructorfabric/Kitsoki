@@ -1,6 +1,6 @@
 ---
 name: kitsoki-ui-demo
-description: 'Produce a deterministic, no-LLM demo / tour video of the kitsoki web UI (plus per-scene screenshots and a shareable MP4 / GIF / contact sheet) by driving a real `kitsoki web` server through Playwright. Use when asked to make, record, refresh, or author a tour demo video, feature-spotlight tour, walkthrough video, demo, or screen-capture of the kitsoki browser UI — whether a tour of one feature (golden example: agent-actions), the generic onboarding tour, or a full-product walkthrough. Triggers on phrasings like "make a tour demo video", "record a demo of <feature>", "feature tour video", "walkthrough video".'
+description: 'Produce a deterministic, no-LLM demo / tour video of the kitsoki web UI (plus per-scene screenshots and a shareable MP4 / GIF / contact sheet) by driving a real `kitsoki web` server through Playwright. Use when asked to make, record, refresh, or author a tour demo video, feature-spotlight tour, walkthrough video, demo, or screen-capture of the kitsoki browser UI — whether a tour of one feature (golden example: agent-actions), the generic onboarding tour, or a full-product walkthrough. Also covers turning a REAL LLM-driven dogfood session into a deterministic demo: generating the no-LLM flow fixture + host cassette from a recorded trace via `kitsoki trace to-flow` (no hand-authoring, no LLM re-interpretation). Triggers on phrasings like "make a tour demo video", "record a demo of <feature>", "feature tour video", "walkthrough video", "turn this dogfood trace/session into a demo video".'
 ---
 
 # Kitsoki UI demo videos
@@ -44,16 +44,208 @@ flow tests (see [[feedback_no_llm_tests]] and `docs/web/README.md` →
 > for `<canvas>`/`<video>`/WebGL surfaces) and the **rrweb capture → replay-render**
 > mode (capture the DOM stream once, re-render server-free + offline, frame-exact)
 > — see **[rrweb capture → replay-render](#rrweb-capture--replay-render-deterministic-server-free-mode)**.
+>
+> **Composite deck rule:** if the deliverable is a **slidey deck** with embedded
+> acts, the primary artifact is the source deck named `*.slidey.json`, and it
+> should embed **rrweb logs** (`"rrweb": "clips/<act>.rrweb.json"`) rather than
+> rendered MP4/WebM clips (`"src": "*.mp4"`). MP4 is an optional rendered QA /
+> sharing export of the whole deck, not the source format for deck acts. Use MP4
+> `src` only for surfaces rrweb cannot reconstruct (`<canvas>`, `<video>`, WebGL)
+> or when the user explicitly requests a raw video splice.
+>
+> **Embedded rrweb must still be a tour, not a still frame.** A deck act that
+> navigates to a page, waits five seconds, and moves on is not a demo. Capture
+> visible reviewer behavior inside each rrweb segment: caption the purpose,
+> spotlight the control or evidence being inspected, scroll to the next relevant
+> region, and show the handoff the user would actually perform. If the source
+> surface is not the kitsoki SPA, use the portable `makeCaption` +
+> `makeSpotlight` helpers so the rrweb log still contains guided motion.
+>
+> **Use text emphasis for the actual trigger, not a detached label.** When a demo
+> depends on a short keyword/mention that would otherwise disappear inside a
+> larger page, use `makeTextBreath(page)` from
+> `tools/runstatus/tests/playwright/_helpers/demo.ts`. It wraps the real text
+> node in place, stamps rrweb custom events for `start`, `peak`, `small`, and
+> `settle`, and records class-state mutations so replay QA can prove the cue
+> grows, bolds, highlights, shrinks, and returns. For `@kitsoki` or similar
+> trigger demos, gate the captured rrweb logs by seeking the stamped peak/shrink
+> events and inspecting the replayed iframe; do not rely on a screenshot of the
+> live capture page or on a free-running CSS animation that rrweb pause cannot
+> sample deterministically. On pages with multiple matching mentions, call the
+> helper on the specific target element for the current narrative beat, not on
+> `body`; otherwise every match breathes at the start of the clip instead of in
+> the sequence the viewer is supposed to follow.
+>
+> **Make dense evidence readable with capture-only DOM overlays.** For comments,
+> JSON, code blocks, ticket metadata, and other small text boxes, use
+> `makeReadableZoom(page)` from `tools/runstatus/tests/playwright/_helpers/demo.ts`.
+> It must feel like the literal DOM element was selected: first show a glowing
+> border on the source element, hold it long enough to read as selected, then
+> animate a computed-style clone outward from that exact source rectangle into
+> focus. When the beat ends, animate the clone back to the source rectangle
+> before moving on. Do not paint a full-screen opacity/blur layer behind the
+> annotation; the selected page must remain visible, with the glow/panel doing
+> the work. Stamp or verify `sourceMatched`, `selectedBeforeExpand`,
+> `animatedFromSource`, return-to-source markers, and source/final geometry when
+> the zoom is part of the evidence contract; a demo should not ask reviewers to
+> read 12px text from a full-page capture, and a detached restyled card is not
+> enough. For GitHub or review-system comments, select the whole rendered
+> comment container, not the mention text, a paragraph, or a header anchor. The
+> expanded box must preserve the comment's surrounding chrome — avatar, username,
+> badges, timestamp context, body, and links — so the viewer can trust it is the
+> actual comment and can read the complete handoff.
+> Before trusting a change to this helper, run the focused visual regression:
+> `pnpm -C tools/runstatus exec playwright test readable-zoom-visual --project=chromium`.
+> It captures selected/expanded/returned frames under
+> `.artifacts/readable-zoom-visual-qa/` and fails if a dark source opens as a
+> light card, if light evidence on a dark page opens as a bright white card
+> instead of the dark focus treatment, if a definition-list metadata target
+> expands as a label-only strip instead of a label/value block, if a helper
+> reintroduces a page-wide dim/blur mask behind the annotation, or if the
+> expanded rectangle stops using uniform source scaling. The QA must also prove
+> the cloned content scales with the panel; a large selected box with source-sized
+> text, avatars, code blocks, or inner comment cards is still a failed zoom. For
+> live rrweb deck evidence, helper screenshots and marker
+> metadata are not enough: replay the actual captured logs and sample the zoom
+> moments with
+> `pnpm -C tools/runstatus exec playwright test github-agent-live-zoom-qa --project=chromium`
+> (or the scenario-specific equivalent). That gate compares the rendered panel
+> colors/text against the selected source surface in the rrweb replay, which is
+> the only thing reviewers will see in the Slidey deck.
+
+## Start from a real dogfood trace (generate the flow + cassette — don't hand-author)
+
+A demo's no-LLM `--flow` fixture + `--host-cassette` do **not** have to be written
+by hand. If the scenario you want to film already happened as a **real,
+LLM-driven session** (a dogfood run, a bugfix pipeline, a live drive), convert
+its recorded trace into the replay artifacts deterministically — no LLM
+re-interpretation, no transcription by hand:
+
+```bash
+# 1. Find the recorded session trace (JSONL). Live/record sessions write one to:
+#      ~/.kitsoki/sessions/<app>/<session-id>.jsonl
+#    or capture a fresh one via the MCP `session.trace` tool / `--trace-out`.
+
+# 2. Convert the trace → a flow fixture (+ sibling host cassette) — a pure transform:
+kitsoki trace to-flow <trace.jsonl> \
+  --app ../app.yaml \
+  --out stories/<story>/flows/<scenario>.yaml
+#   → writes <scenario>.yaml and (when the trace had host calls)
+#     <scenario>.cassette.yaml beside it, referenced via host_cassette:.
+
+# 3. Verify it replays no-LLM and capture a fresh trace:
+kitsoki test flows stories/<story>/app.yaml --flows stories/<story>/flows/<scenario>.yaml \
+  --trace-out .artifacts/<scenario>/replay.jsonl
+```
+
+The generated flow is exactly what the recording pipeline already consumes — point
+`kitsoki web --flow stories/<story>/flows/<scenario>.yaml` (or a `*-video.spec.ts`
+spec's `--flow` arg) at it and record as below. Two properties make this a clean
+fit for demos:
+
+- **Each `machine.transition` → one turn** (resolved intent name + slots,
+  verbatim, in order). The LLM/semantic routing decision is *not* re-run on
+  replay — the resolved intent is re-driven directly, so it's deterministic and
+  free.
+- **`display_input:` preserves the operator's real free-text words** (from the
+  trace's `turn.input`), so a conversation demo's user bubbles — and the strings
+  you type into the composer — are the operator's actual utterance, not a
+  synthetic `[intent] <name>`. This is what makes a trace-derived conversation
+  video followable (see [Demoing human usage](#demoing-human-usage--the-conversation-must-be-followable)).
+
+**Caveats, all by design** (full discussion + the trace→fixture mapping table:
+[`docs/tracing/trace-format.md` §11](../../tracing/trace-format.md#11-kitsoki-trace-to-flow--trace--replayable-flow-fixture)):
+
+- The converter emits **no `expect_state` / `expect_world`** (story-drift
+  tolerance). Add expectations by hand only if you want to pin a known-drift-free
+  path.
+- Per-call-varying agent/host responses replay correctly because each recorded
+  call becomes one **ordered** cassette episode (not `replay:any`) — the i-th call
+  consumes the i-th episode.
+- If the *current* story routes a turn into a room that didn't exist when the
+  trace was recorded, that room's `on_enter` may need a host call the cassette
+  has no episode for → a hard cassette miss / `on_error` bounce. That's honest
+  drift, not a tooling fault: re-record the trace against the current story.
+
+Once the flow + cassette exist, everything below (spec, pacing, MP4) is unchanged
+— the source of the fixture (hand-authored vs trace-derived) is invisible to the
+recorder.
+
+## Start from a real dogfood trace (generate the flow + cassette — don't hand-author)
+
+A demo's no-LLM `--flow` fixture + `--host-cassette` do **not** have to be written
+by hand. If the scenario you want to film already happened as a **real,
+LLM-driven session** (a dogfood run, a bugfix pipeline, a live drive), convert
+its recorded trace into the replay artifacts deterministically — no LLM
+re-interpretation, no transcription by hand:
+
+```bash
+# 1. Find the recorded session trace (JSONL). Live/record sessions write one to:
+#      ~/.kitsoki/sessions/<app>/<session-id>.jsonl
+#    or capture a fresh one via the MCP `session.trace` tool / `--trace-out`.
+
+# 2. Convert the trace → a flow fixture (+ sibling host cassette) — a pure transform:
+kitsoki trace to-flow <trace.jsonl> \
+  --app ../app.yaml \
+  --out stories/<story>/flows/<scenario>.yaml
+#   → writes <scenario>.yaml and (when the trace had host calls)
+#     <scenario>.cassette.yaml beside it, referenced via host_cassette:.
+
+# 3. Verify it replays no-LLM and capture a fresh trace:
+kitsoki test flows stories/<story>/app.yaml --flows stories/<story>/flows/<scenario>.yaml \
+  --trace-out .artifacts/<scenario>/replay.jsonl
+```
+
+The generated flow is exactly what the recording pipeline already consumes — point
+`kitsoki web --flow stories/<story>/flows/<scenario>.yaml` (or a `*-video.spec.ts`
+spec's `--flow` arg) at it and record as below. Two properties make this a clean
+fit for demos:
+
+- **Each `machine.transition` → one turn** (resolved intent name + slots,
+  verbatim, in order). The LLM/semantic routing decision is *not* re-run on
+  replay — the resolved intent is re-driven directly, so it's deterministic and
+  free.
+- **`display_input:` preserves the operator's real free-text words** (from the
+  trace's `turn.input`), so a conversation demo's user bubbles — and the strings
+  you type into the composer — are the operator's actual utterance, not a
+  synthetic `[intent] <name>`. This is what makes a trace-derived conversation
+  video followable (see [Demoing human usage](#demoing-human-usage--the-conversation-must-be-followable)).
+
+**Caveats, all by design** (full discussion + the trace→fixture mapping table:
+[`docs/tracing/trace-format.md` §11](../../tracing/trace-format.md#11-kitsoki-trace-to-flow--trace--replayable-flow-fixture)):
+
+- The converter emits **no `expect_state` / `expect_world`** (story-drift
+  tolerance). Add expectations by hand only if you want to pin a known-drift-free
+  path.
+- Per-call-varying agent/host responses replay correctly because each recorded
+  call becomes one **ordered** cassette episode (not `replay:any`) — the i-th call
+  consumes the i-th episode.
+- If the *current* story routes a turn into a room that didn't exist when the
+  trace was recorded, that room's `on_enter` may need a host call the cassette
+  has no episode for → a hard cassette miss / `on_error` bounce. That's honest
+  drift, not a tooling fault: re-record the trace against the current story.
+
+Once the flow + cassette exist, everything below (spec, pacing, MP4) is unchanged
+— the source of the fixture (hand-authored vs trace-derived) is invisible to the
+recorder.
 
 ## Prerequisites (once)
 
 ```bash
-make build                                  # bundle the SPA into ./kitsoki + bin/kitsoki
-cp ./kitsoki bin/kitsoki                    # the specs spawn bin/kitsoki
+make build-bin                              # stage SPA/stories + build bin/kitsoki (the specs spawn it), ad-hoc signed
 pnpm -C tools/runstatus playwright:install  # chromium + ffmpeg for Playwright (once)
 ```
 
-`make build` is **mandatory before every recording** — the SPA is `go:embed`'d
+**Never `cp ./kitsoki bin/kitsoki`.** On macOS, copying a Go linker-signed
+Mach-O invalidates its ad-hoc code signature; macOS then SIGKILLs the spawned
+server the instant it faults in an affected code page (e.g. the story-load
+path), so `kitsoki web --stories-dir …` dies with **exit 137 and zero output** —
+a silent landmine. `make build-bin` builds straight to `bin/kitsoki` and ad-hoc
+re-signs it, so the signature stays valid. (Plain `make build` produces the
+signed `./kitsoki`; it's `make build-bin` that yields the spawn binary the specs
+need.)
+
+`make build-bin` is **mandatory before every recording** — the SPA is `go:embed`'d
 into the binary, so an un-rebuilt binary serves a stale UI. Rebuild after any
 change under `tools/runstatus/src/`.
 
@@ -79,7 +271,8 @@ them.** The reference spec is `tests/playwright/diagram-showcase.spec.ts`.
   it — e.g. `judge_mode: human`.)
 - **Captions/overlays must be `pointer-events: none`** or they silently
   intercept clicks on the UI beneath (an opaque banner over the tab bar = every
-  tab click times out). `makeCaption(page)` already is; so is the curtain.
+  tab click times out). `makeCaption(page)` already is; so are the curtain,
+  `makeSpotlight(page)`, and `makeReadableZoom(page)`.
 - **Playwright's default `actionTimeout` is 0 (INFINITE)** — a click on a
   missing/covered element hangs the whole run with no error. The config now caps
   it (15s); keep it. Don't write un-timeouted `.click()` in a loop.
@@ -202,9 +395,35 @@ conversation. `kitsoki-ui-qa` now **fails** a demo that breaks any of these
     Wrap EVERY turn in it: `reveal(action, settle, label)`. Fixed `dwell()`s
     between turns + the component's native snap is exactly what makes a demo
     "jumpy" — never record that way.
+  - **Already captured a snapped clip (rrweb)? Re-render it followable, don't
+    re-record.** A conversation clip captured WITHOUT the revealTurn discipline
+    (e.g. a trace-derived dogfood capture) bakes in the component's
+    snap-to-bottom scroll and reads as jumpy/unreadable — even though the
+    `rrweb-pacing-scan` (TIME) passes it, the QA `rrweb-scroll-scan` (SCROLL)
+    flags it `UNFOLLOWABLE`. `slidey rrweb-reveal <in> <out>` fixes it offline,
+    deterministically: it replaces each recorded snap with a hold + eased ramp
+    through the same scroll trajectory (the revealTurn choreography, synthesized
+    from the captured y-values — no browser, no geometry). Run it on the clip(s)
+    a deck embeds; the scroll-scan then reads them followable. It owns SCROLL;
+    `slidey rrweb-repace` owns TIME — run reveal first, repace after if any
+    content reveal is still rushed. This does NOT fix CONTENT defects (an
+    unnatural first utterance, a missing routing chip, questions shown
+    already-answered) — those still need a real re-drive/re-capture.
 - **No overlapping tour labels.** A coachmark/popover/tooltip must never sit on top
   of the chat. Dismiss any onboarding/tour overlay before driving, and keep
   spotlight popovers off the conversation.
+- **Zoom dense text instead of hoping it is readable.** If the evidence is a
+  long GitHub comment, a JSON block, a code block, or a metadata panel, use the
+  readable-zoom helper after spotlighting the real element:
+  ```ts
+  const zoom = await makeReadableZoom(page);
+  await zoom('[data-testid="run-json"]', {
+    title: "Readable API payload",
+    fontSize: 17,
+  });
+  ```
+  Keep the zoom temporary and capture-only. It should clarify the real evidence,
+  not invent alternate content.
 - **Word intents naturally — never the raw `_` names.** Drive via natural language
   in the composer where the deterministic router allows; never type or surface the
   underscored internal intent names (`core__prd__start`). Visible labels (buttons,
@@ -397,7 +616,7 @@ What makes it the template:
 
 ```bash
 # 1. Rebuild the SPA into the binary (mandatory — go:embed)
-make build && cp ./kitsoki bin/kitsoki
+make build-bin   # build bin/kitsoki (ad-hoc signed; NEVER cp ./kitsoki — invalidates the sig → SIGKILL)
 
 # 2. Validate fast (assertions only, no dwells)
 cd tools/runstatus && WEB_CHAT_PACE=0 pnpm exec playwright test agent-actions-video --project=chromium
@@ -536,7 +755,7 @@ mutation-dense tours.
 ### Run it
 
 ```bash
-make build && cp ./kitsoki bin/kitsoki   # rebuild (go:embed) — capture drives a live server
+make build-bin   # stage + build bin/kitsoki (ad-hoc signed; NEVER cp — that SIGKILLs on macOS)
 
 # 1. CAPTURE (one live drive) → .artifacts/rrweb-eval/<tour>/<tour>.rrweb.json (+ .capture.json sidecar)
 cd tools/runstatus && pnpm exec playwright test agent-actions-rrweb-capture --project=chromium
@@ -656,7 +875,163 @@ Route mapping: `/` → `"home"`, `/s/:id/chat` → `"interactive"`,
 live overlay, so only anchor to elements that exist there (e.g. `view-mode-tabs`,
 `trace-event-row`, `confidence-bar`).
 
-## Cross-site / multi-act demos (driving a site other than kitsoki)
+## Compositing into a slidey deck (rrweb-embedded — the preferred multi-act path)
+
+**Don't ship a wall of MP4s.** When a demo is several acts — multiple kitsoki
+surfaces, or kitsoki **plus** an external page — the deliverable should be **one
+narrated [slidey](../../../../../slidey) deck** that brackets the act clips with
+title / persona / section / CTA slides, not a bare ffmpeg concat of `.mp4`s. And
+the source deck should be named `*.slidey.json` so VS Code and reviewers recognize
+it as the direct artifact to open. The act clips should be embedded as **rrweb
+DOM-session logs**, not transcoded MP4: rrweb is compact JSON (not pixels), stays
+a clean app capture (no baked-in overlays), is frame-deterministic and
+re-renderable offline, carries its own chapter markers, and gives the slidey
+**web viewer** a live, scrubbable, chapter-aware player. The MP4-concat path
+below is the **legacy fallback** — use it only for a surface rrweb can't capture
+(`<canvas>`/`<video>`/WebGL).
+
+**Never "fix" a slow or failing rrweb deck render by swapping the deck scenes to
+MP4 `src`.** That optimizes the wrong thing: it bloats artifacts, bakes pixels
+into the source deck, removes the scrubbable rrweb player from slidey's web view,
+and hides the actual capture/render defect. If rendering hangs, isolate the
+specific rrweb log or Slidey rasterizer issue; keep the deck contract as rrweb.
+For cross-origin or hard-navigation demos, capture each staged page/state as its
+own short rrweb log and embed multiple rrweb scenes rather than concatenating
+screenshots or MP4s.
+
+> **Worked references — copy these, don't start blank:**
+> the **@kitsoki GitHub-loop** demo (deck
+> `docs/proposals/demo-assets/kitsoki-github/deck/kitsoki-github.slidey.json`,
+> 11 scenes, two rrweb acts) and the richer **dev-story-hybrid** deck
+> (`.artifacts/slidey-hybrid/dev-story-hybrid.json` — title → personas(cast) →
+> use-cases → embedded rrweb `video` per phase → CTA). Read both; the deck is
+> just JSON. The full scene menu lives in the **slidey-authoring** skill
+> (`/Users/brad/code/slidey/.claude/skills/slidey-authoring/SKILL.md` §"Media
+> embedding").
+
+### 1. Produce an rrweb clip per act
+
+**Capture with slidey's own tour engine whenever you can** — both the static path
+and the SPA-drive path below run through it now (the SPA case via a small app
+adapter), so slidey stamps `slidey.chapter` events natively and the deck's
+`"chapters": "auto"` derives lower-thirds with **no sidecar**. The kitsoki rrweb
+harness fork is the **fallback** for what an adapter still can't express.
+
+- **Static / app-agnostic surface (a `file://` fixture, any plain page) → slidey's
+  own tour engine.** It drives a time-based storyboard and stamps `slidey.chapter`
+  events natively:
+  ```bash
+  node /Users/brad/code/slidey/src/index.js capture <act.tour.json> \
+    <deck-dir>/clips/<act>.rrweb.json --format rrweb
+  ```
+  The `tour.json` is `{ target:{url|launch,addr}, startPath, viewport, curtain,
+  pace, steps:[{id,label,caption,waitFor,target,dwellMs,kind,advance,before[]}] }`.
+  **Gotcha:** for a `file://` target use `"startPath": "#"`, never `"/"` — a `/`
+  appends a trailing slash (`…page.html/` → `ERR_FILE_NOT_FOUND`). Mirror an
+  existing `src/tour/*-manifest.ts`'s step ids/labels/dwellMs so the deck and the
+  live overlay can't drift. (Worked: `act1-github.tour.json` walking the static
+  `gh-thread.html` GitHub-thread fixture.)
+- **A kitsoki SPA drive that needs the composer / intent routing → ship a small
+  slidey tour ADAPTER, then capture with slidey's own engine.** slidey's tour
+  engine now has an **adapter seam** (proposal `docs/proposals/extensible-tour-engine.md`,
+  shipped to slidey main `c303cc0`): an app registers its own step verbs +
+  advance strategies, so the surfaces slidey core can't express (`typeAndSend`
+  prose→slot-intent routing, the `__kitsokiSubmitIntent` verb seam, a state-gated
+  advance) become ordinary tour steps. This collapses Act 2 back onto **one
+  capture path** — slidey injects `slidey.chapter` events **natively** (no
+  hand-stamping), and the same `tour.json` drives both freeze-frame PNG iteration
+  and the shippable rrweb clip. Prefer this over the harness fork.
+  - **Worked example** (kitsoki Act 2 of the @kitsoki GitHub-loop demo):
+    - adapter:  `tools/runstatus/src/tour/kitsoki-tour-adapter.cjs` —
+      `actions: { composeAndSend, submitIntent }` + `advancers: { 'state-match' }`
+      (waits the run's `state-badge` to a named machine state).
+    - tour:     `tools/runstatus/src/tour/act2-webviewer.tour.json` —
+      `"adapter": "./kitsoki-tour-adapter.cjs"` (module path resolved RELATIVE TO
+      THE SPEC FILE via `ctx.resolve`); steps use the adapter verbs in `drive:[]`
+      and the `state-match` advancer.
+    - clip:     `docs/proposals/demo-assets/kitsoki-github/deck/clips/act2-webviewer.rrweb.json`
+      (adapter-captured; written straight into `<deck-dir>/clips/`).
+  - **Capture** with slidey's engine (rrweb format, app-free core):
+    ```bash
+    node /Users/brad/code/slidey/src/index.js capture \
+      tools/runstatus/src/tour/act2-webviewer.tour.json \
+      docs/proposals/demo-assets/kitsoki-github/deck/clips/act2-webviewer.rrweb.json \
+      --format rrweb --adapter ./tools/runstatus/src/tour/kitsoki-tour-adapter.cjs
+    ```
+    (a CLI `--adapter` path is resolved against CWD; the spec's `adapter` field is
+    resolved relative to the spec. `captureToRrweb(tour, out, { adapter })` also
+    takes an adapter OBJECT, which wins over the spec field.) Adapter interface +
+    `{ baseAdapter, normalizeAdapter, registerAdapter, resolveAdapter }` are
+    documented at the `slidey/tour-adapter` subpath.
+  - **kitsoki rrweb harness fork = fallback only.** Keep the
+    `installCapture`/`dumpCapture`/`writeEvents` harness fork (worked:
+    `slidey-pm-idea-rrweb-capture.spec.ts`) ONLY for what an adapter still can't
+    express — e.g. reusing the app's `__startTourWithSteps` narration overlay, or a
+    drive that needs Playwright APIs the slidey engine doesn't surface. If you do
+    fork, stamp the chapter markers yourself:
+    ```ts
+    await page.evaluate(([id, title]) =>
+      window.rrweb.record.addCustomEvent("slidey.chapter", { id, title }),
+      [step.id, step.title]);
+    ```
+  - The **canvas/video boundary still applies** to BOTH paths (see the rrweb
+    section above): a tour with a `<canvas>`/`<video>`/WebGL tile can't
+    rrweb-capture and stays on the MP4 path — embed it via `"src"` instead of
+    `"rrweb"`.
+
+> **The `WEB_CHAT_PACE=0` trap.** A fast-validate run **overwrites the clip with a
+> collapsed-timing flash**. Always re-run the capture at watch speed (the default)
+> to restore the shippable clip after any PACE=0 validation.
+
+### 2. Embed each clip as a `video` scene
+
+```jsonc
+{ "type": "video", "mode": "embedded",       // inset in a slide with deck chrome
+  "rrweb": "clips/<act>.rrweb.json",          // ← the log, NOT an MP4 "src"
+  "chapters": "auto",                          // lower-thirds from the in-log markers
+  "eyebrow": "1 · The GitHub side", "title": "Mention → ack → run link",
+  "caption": "…", "narration": "…" }           // narration may be a string or {at|chapter,text}[]
+```
+`rrweb` paths resolve **relative to the deck file**. Save source decks with the
+`.slidey.json` suffix; avoid generic `.deck.json` names for review artifacts.
+The baked render
+seek-rasterizes each log via `Replayer.goto(t)` — real motion, deterministic,
+**but slow** (minutes for a multi-act deck; budget for it / run in the
+background). PNG/PDF export still shows a poster frame, so the layout-iteration
+loop keeps working without rendering video.
+
+### 3. Optional render + gate
+
+```bash
+npm --prefix /Users/brad/code/slidey run build:render   # MANDATORY after any slidey UI/component change
+node /Users/brad/code/slidey/src/index.js <deck>.json <out>.mp4   # → MP4 + <out>.mp4.chapters.json
+```
+(or `host.slidey.render` from a story — same engine; see
+`docs/architecture/hosts.md#hostslideyrender`).
+Only do this when a rendered video export or video QA gate was explicitly
+requested. For slidey-deck deliverables, the `*.slidey.json` source is the
+primary output and is directly reviewable.
+> **Slidey embed-staging trap (same class as the kitsoki go:embed one).** `slidey
+> src/index.js` renders off the **pre-built** `dist-render/render.html` bundle — it
+> does NOT recompile `web/` source per render. So a slidey component change
+> (persona avatars, scene layout, a new field) is **invisible to a baked video
+> until you `npm run build:render`**. Symptom: a deck change that's correct in the
+> JSON renders as the *old* behavior (e.g. a persona `avatar:` SVG shows the glyph
+> initials fallback instead of the image). If a render contradicts the deck, rebuild
+> the bundle before debugging anything else. Gate the composite with a spec
+that asserts the deck is **rrweb-embedded** (every `video` scene has `rrweb`, none
+has `src`), the section slides are present, the output duration exceeds the **sum
+of the clip durations** (proves both acts are in), the chapter sidecar is
+non-empty, and each embedded video window is **non-blank** (frame-size floor —
+catches a clip that failed to replay). Worked: `github-demo-composite.spec.ts`.
+Then QA the rendered deck with `kitsoki-ui-qa` like any other video (sample
+≥2fps for rrweb, per the rrweb section).
+
+## Cross-site / multi-act demos via ffmpeg concat (legacy fallback)
+
+> Prefer the **slidey rrweb-embedded deck** above. Reach for ffmpeg concat only
+> when an act can't be rrweb-captured (`<canvas>`/`<video>`/WebGL) or you need a
+> bare clip splice with no deck chrome.
 
 A demo can span **several surfaces** — multiple kitsoki acts, or kitsoki **plus
 an external site** — recorded separately and composited with ffmpeg. The worked
@@ -779,7 +1154,17 @@ make mcp-qa           # vision QA gate (GATED: local claude CLI)
 - **Golden feature-tour spec + manifest:**
   `tools/runstatus/tests/playwright/agent-actions-video.spec.ts` +
   `tools/runstatus/src/tour/agent-actions-manifest.ts`
-- **Cross-site / multi-act demo:** `gh-issue-review-video.spec.ts` +
+- **Slidey rrweb-embedded composite (preferred multi-act deliverable):**
+  `docs/proposals/demo-assets/kitsoki-github/deck/kitsoki-github.slidey.json` +
+  `deck/clips/*.rrweb.json` + `deck/tours/act1-github.tour.json`;
+  Act 2 via the **slidey tour adapter** —
+  `tools/runstatus/src/tour/kitsoki-tour-adapter.cjs` +
+  `tools/runstatus/src/tour/act2-webviewer.tour.json` (composer/intent SPA drive,
+  one slidey capture path); composite gate
+  `tools/runstatus/tests/playwright/github-demo-composite.spec.ts`;
+  richer reference `.artifacts/slidey-hybrid/dev-story-hybrid.json`; scene menu in
+  the `slidey-authoring` skill
+- **Cross-site / multi-act demo (legacy ffmpeg concat):** `gh-issue-review-video.spec.ts` +
   `src/tour/gh-issue-review-manifest.ts` + `fixtures/gh-issue-review.html`;
   composited by `scripts/record-gh-issues-demo.sh` + `scripts/concat-videos.sh`
 - **rrweb capture → replay-render (deterministic, server-free):**
@@ -802,6 +1187,10 @@ make mcp-qa           # vision QA gate (GATED: local claude CLI)
 - Shared helpers (video→MP4, server, pacing): `tests/playwright/_helpers/server.ts`
 - Playwright config + globalSetup: `tools/runstatus/playwright.config.ts`,
   `tools/runstatus/tests/playwright/_helpers/`
+- **Trace → flow/cassette generator (start a demo from a real dogfood session):**
+  `kitsoki trace to-flow` — CLI in `cmd/kitsoki/trace.go` (`traceToFlowCmd`),
+  transform in `internal/testrunner/fromtrace.go` (`ConvertTraceToFlow`),
+  authoritative docs in `docs/tracing/trace-format.md` §11
 - No-LLM posture + UI surfaces: `docs/web/README.md`
 - File:// snapshot artifacts (static, no server): `_helpers/artifact.ts`
 

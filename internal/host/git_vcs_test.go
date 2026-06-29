@@ -294,6 +294,41 @@ func TestGitVCS_PRStatus_NoGh(t *testing.T) {
 	}
 }
 
+func TestGitVCS_PRStatus_UsesRepoFlag(t *testing.T) {
+	fr := newFakeRunner()
+	fr.responses["gh --version"] = fakeResp{stdout: "gh version 2.0.0\n"}
+	fr.responses["gh pr view 7 --repo o/r --json state,statusCheckRollup"] = fakeResp{stdout: `{"state":"OPEN"}`}
+	restore := host.SetExecRunnerForTest(fr.run)
+	defer restore()
+
+	res, err := host.GitVCSHandler(context.Background(), map[string]any{
+		"op":    "pr_status",
+		"repo":  "o/r",
+		"pr_id": "7",
+	})
+	if err != nil {
+		t.Fatalf("infra: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("domain: %s", res.Error)
+	}
+	if res.Data["state"] != `{"state":"OPEN"}` {
+		t.Fatalf("state: %v", res.Data["state"])
+	}
+	if !containsCall(fr.calls, "gh pr view 7 --repo o/r --json state,statusCheckRollup") {
+		t.Fatalf("repo-scoped pr view not called; calls=%v", fr.calls)
+	}
+}
+
+func containsCall(calls []string, want string) bool {
+	for _, call := range calls {
+		if call == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGitVCS_Commit_StageAll_IncludesNewFile(t *testing.T) {
 	fr := newFakeRunner()
 	// stage_all: git add -A runs first, then git commit -m (no -a flag).

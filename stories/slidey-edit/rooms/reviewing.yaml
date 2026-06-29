@@ -19,9 +19,13 @@ states:
 
   reviewing:
     description: "Review the rendered deck; annotate a spot and refine, or accept."
-    relevant_world: [deck, deck_handle, semantic_handle, annotation, addressed, cycle]
+    relevant_world: [deck, deck_handle, annotation, addressed, cycle]
     view:
       - heading: "Slidey deck editor · reviewing"
+      # The reviser's summary of the edit it just made, shown in-body so it reads
+      # as the agent's reply (only after a refine; blank on first entry).
+      - prose: "✏️ {{ world.last_refine_summary }}"
+        when: "world.last_refine_summary != ''"
       - kv:
           pairs:
             Summary:  '{{ world.deck.summary|default:"—" }}'
@@ -32,6 +36,12 @@ states:
           handle:  "{{ world.deck_handle }}"
           kind:    slideshow
           caption: "{{ world.deck.summary }}"
+          # Annotations on the deck drive the refine intent: the composed
+          # instruction lands in `feedback` and the picked anchor rides the turn
+          # as the visual bundle, so the reviser edits the pointed-at scene
+          # (instead of a generic off-path note that never touches the deck).
+          annotate_intent: refine
+          annotate_feedback_slot: feedback
         when: "world.deck_handle != ''"
       - prose: "⚠️  Render failed — there's no deck to show. The renderer reported:\n\n    {{ world.last_error }}\n\nFix the render, then `rerender` to try again (or `refine` to edit the spec first)."
         when: "world.deck_handle == '' && world.last_error != ''"
@@ -44,6 +54,8 @@ states:
           items:
             - label: "accept"
               hint:  "this deck is good — finish"
+            - label: "revise feedback=…"
+              hint:  "reopen the deck for structural edits (add/move slides, templates, formats)"
             - label: "refine feedback=…"
               hint:  "edit the scene behind the annotation (baked anchor, or your inline note)"
             - label: "rerender"
@@ -84,9 +96,49 @@ states:
         - target: refining
           effects:
             # An inline feedback note overrides the baked annotation's instruction;
-            # the anchor (where the operator pointed) is unchanged.
+            # current_scene is the slide the operator is viewing (reported by the
+            # embed plugin) — it makes the refine target THAT slide, overriding any
+            # stale seed.
             - set:
                 refine_feedback: "{{ slots.feedback ?? '' }}"
+                current_scene: "{{ slots.current_scene ?? '' }}"
+            # Fold the LIVE anchor (what the operator actually clicked, sent as the
+            # `annotation_anchor` slot) into world.annotation so resolve_scene and
+            # the refine prompt target the picked element — not the baked seed.
+            # Without this, world.annotation only ever holds seed_annotation's
+            # default and "what was clicked" is lost (the anchor rides the visual
+            # ambient seam, which resolve_scene/the prompt's primary path can't
+            # read). No live pick (tour/baked drive) ⇒ keep the existing annotation.
+            - when: "slots.annotation_anchor != nil"
+              set:
+                annotation:
+                  anchor: "{{ slots.annotation_anchor }}"
+                  instruction: "{{ slots.feedback ?? '' }}"
+                  frame_handle: "{{ world.deck_handle }}"
+      revise:
+        - target: drafting
+          effects:
+            - set:
+                source_deck: "{{ world.deck }}"
+                draft_feedback: "{{ slots.feedback ?? '' }}"
+                deck: {}
+                # Restart drafting in place and refresh render binds.
+                deck_handle:     ""
+                semantic_handle: ""
+                deck_path:       ""
+                semantic_path:   ""
+                render_retries:  0
+                # Clear stale refine-only context so the next cycle is clean.
+                annotation:      {}
+                current_scene:   ""
+                scene_index:     -1
+                scene:           {}
+                scene_json:      ""
+                scene_label:     ""
+                refine_feedback: ""
+                refine_result:   {}
+                refine_gate:     false
+                refine_message:  ""
       rerender:
         - target: rendering
           effects:

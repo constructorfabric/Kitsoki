@@ -39,8 +39,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"kitsoki/internal/host"
+	"kitsoki/internal/world"
 )
 
 // turnStreamFrame is one SSE data payload for the /rpc/turn-stream endpoint.
@@ -80,6 +82,8 @@ func (s *Server) handleTurnStream(w http.ResponseWriter, r *http.Request) {
 		Input     string         `json:"input"`
 		Intent    string         `json:"intent"`
 		Slots     map[string]any `json:"slots"`
+		Visual    map[string]any `json:"visual"`
+		Anchor    map[string]any `json:"anchor"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
@@ -142,6 +146,29 @@ func (s *Server) handleTurnStream(w http.ResponseWriter, r *http.Request) {
 	unregister := s.registerActiveTurn(body.SessionID, cancelTurn)
 	defer unregister()
 	ctx := host.WithStreamSink(execCtx, &chanStreamSink{ch: ch})
+	// Lift an optional visual bundle / picked anchor (the media-annotation
+	// composer dispatches its intent over the streaming path) so the agent edits
+	// the pointed-at element. Build the params map with only the present keys so
+	// liftVisualAmbient's nil-checks stay accurate.
+	{
+		p := map[string]any{}
+		if body.Visual != nil {
+			p["visual"] = body.Visual
+		}
+		if body.Anchor != nil {
+			p["anchor"] = body.Anchor
+		}
+		if c2, ok := liftVisualAmbient(ctx, p); ok {
+			ctx = c2
+		}
+	}
+	// A free-text turn may carry lightweight ambient slots (e.g. `current_scene` —
+	// the deck slide the operator is currently looking at) so the routed intent
+	// targets it even with no annotation. Gap-fill only: the harness's own
+	// classification wins (see orchestrator.WithSupplementSlots).
+	if body.Method == "turn" && len(body.Slots) > 0 {
+		ctx = WithTurnSupplements(ctx, world.Slots(body.Slots))
+	}
 
 	type outcome struct {
 		tr  *turnResult
@@ -200,11 +227,22 @@ func (s *Server) handleTurnStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
+	// Heartbeat: a turn whose work emits no stream events (e.g. a
+	// host.agent.task reviser that runs 50–70s with no streamed narration)
+	// would leave the SSE connection idle the whole time. A dev proxy or the
+	// browser can drop a silent stream before the terminal `done` frame arrives,
+	// leaving the chat bubble stuck on "…". A periodic ping keeps the connection
+	// alive; the client ignores the unknown frame type.
+	heartbeat := time.NewTicker(10 * time.Second)
+	defer heartbeat.Stop()
+
 loop:
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-heartbeat.C:
+			emit(turnStreamFrame{Type: "ping"})
 		case ev, ok := <-ch:
 			if !ok {
 				break loop

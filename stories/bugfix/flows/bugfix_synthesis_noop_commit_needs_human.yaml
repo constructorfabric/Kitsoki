@@ -1,0 +1,98 @@
+# bugfix_synthesis_noop_commit_needs_human — the synthesis must NEVER false-ship
+# when the pre-fix test commit fails to land as a discrete commit.
+#
+# Regression guard for the defect a live bare-report dogfood exposed: the
+# synthesis commit (implementing/on_enter, iface.vcs.commit of the reproducer's
+# RED test) can no-op (ok:true, sha:"") when nothing stages. The latch is
+# UNCONDITIONAL (it derives gate_command regardless), so the deterministic
+# BACKSTOP is the testing room's HEAD~1 RED gate: if the test never became a
+# discrete pre-fix commit, HEAD~1 has no failing test → the gate runs GREEN →
+# regression_red_pre_fix:false → @exit:needs-human. Never a false ship.
+#
+# Here the commit_repro_test call returns sha:"" (no-op) AND the HEAD~1 gate is
+# stubbed GREEN (red:false) — simulating "the test is not at HEAD~1". The run must
+# dead-end at needs-human, NOT ship.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-NOREPRO-NOOP"
+  ticket_title:     "Bare ticket whose reproducer test commit no-ops"
+  thread:           "TKT-NOREPRO-NOOP"
+  workspace_id:     "noop-fix"
+  workdir:          ".worktrees/noop-fix"
+  worktree_path:    ".worktrees/noop-fix"
+  feature_branch:   "noop-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "direct-ship"
+  # NO gate_command — synthesis path.
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/noop-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Reproducer authored; fix applied"
+        summary_markdown: "Authored a RED reproducer, but the synthesis commit staged nothing (no-op). The fix is still applied."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        repro_command:    "go test ./internal/host/ -run TestRepro -count=1"
+        repro_test_paths: ["internal/host/repro_test.go"]
+        files_changed:    ["internal/host/fix.go"]
+  host.agent.ask:
+    data:
+      ok: true
+      submitted: { summary_title: "Fix proposal", summary_markdown: "Create-on-miss.", fix_description: "x", root_cause: "y", affected_files: ["internal/host/fix.go"] }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # the synthesis commit NO-OPS (nothing staged — test never flushed / wrong path).
+      commit_repro_test:
+        data: { ok: true, exit_code: 0, stdout_json: { sha: "", committed: false } }
+      # HEAD~1 gate runs (gate_command was latched) but the test isn't there → GREEN.
+      regression_gate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            red:     false
+            checked: true
+            log:     "ok (no failing test at HEAD~1 — the reproducer test was never a discrete pre-fix commit)"
+
+turns:
+  - intent: { name: start,  slots: {} }
+    expect_state: reproducing
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    # the latch fires UNCONDITIONALLY (gate derived), even though the commit no-op'd.
+    expect_world:
+      gate_command:    "go test ./internal/host/ -run TestRepro -count=1"
+      repro_committed: true
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    # the deterministic backstop: HEAD~1 gate ran GREEN (no discrete test commit).
+    expect_world:
+      regression_gate_checked: true
+      regression_red_pre_fix:  false
+  # accept from testing: never-RED → needs-human, NOT a false ship.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status: needs-human
+
+expect_terminal: true
+expect_no_errors: true

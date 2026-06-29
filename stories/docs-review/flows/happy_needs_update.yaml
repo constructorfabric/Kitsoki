@@ -1,8 +1,7 @@
 # happy_needs_update — the agent says docs are stale. Walks
 # idle → reviewing (auto-fires `done` after the three host calls) →
-# reviewed (auto-fires `fix_docs` because decision==needs_update) →
-# fixing (docs_writer applies edits, then artifacts_dir persists the
-# fix artifact, then emit_intent fix_done) → fixed → @exit:done.
+# reviewed, where the operator explicitly chooses whether to run the
+# write-capable docs_writer.
 
 test_kind: flow
 app: ../app.yaml
@@ -12,14 +11,19 @@ initial_world: {}
 host_cassette: cassettes/needs_update.cassette.yaml
 
 turns:
-  # start → reviewing → reviewed → fixing → fixed in a single turn.
-  # Every emit_intent fires post-bind, so the room cascade collapses.
+  # start → reviewing → reviewed. The audit writes a verdict artifact
+  # but does not mutate docs until the operator asks for fixes.
   - intent: { name: start, slots: {} }
-    expect_state: fixed
+    expect_state: reviewed
     expect_world:
       commit_sha:       "deadbeefcafefeed"
       artifact_path:    "/tmp/.artifacts/docs-review-deadbeefcafefeed.md"
       verdict_decision: "needs_update"
+
+  # The operator explicitly applies the fixes.
+  - intent: { name: fix_docs, slots: {} }
+    expect_state: fixed
+    expect_world:
       fix_summary:      "Patched docs/hosts.md by appending a host.bar row to the registry table at lines 80-92."
 
   # quit cleanly exits.

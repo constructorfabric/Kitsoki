@@ -1,0 +1,56 @@
+app:
+  id: gh-pr-beat
+  version: 0.1.0
+  title: "GitHub Agent — minimal PR autopilot beat"
+  author: "kitsoki"
+  license: "CC0"
+
+# Round-1 minimal PR autopilot beat: a single state reads pr_status via
+# host.git and a status comment is the dispatcher's job. The full
+# stories/pr-autopilot (CI-watch / rebase / resolve) is deferred.
+
+hosts:
+  - host.git
+
+world:
+  pr_id:     { type: string, default: "" }
+  pr_state:  { type: string, default: "" }
+
+intents:
+  start:
+    description: "Read PR status."
+    examples: ["start", "go", "check"]
+
+root: pr_check
+
+states:
+
+  pr_check:
+    description: "Reading PR status."
+    relevant_world: [pr_id, pr_state]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Reading PR status."
+    on:
+      start:
+        - target: done
+          effects:
+            - invoke: host.git
+              with:
+                op: "pr_status"
+                pr_id: '{{ world.pr_id }}'
+              bind: { pr_state: state }
+
+  done:
+    description: "PR status read."
+    relevant_world: [pr_state]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "PR status read."
+          - kv:
+              pairs:
+                State: '{{ world.pr_state|default:"(unknown)" }}'

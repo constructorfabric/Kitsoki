@@ -21,13 +21,47 @@ states:
 
   prd_published:
     description: "PRD published — continue into design, or return to main."
-    relevant_world: [prd__prd_file]
+    relevant_world: [prd__prd_file, prd_mockup_path, mockup_handle]
+    on_enter:
+      # Optional PRD-phase feature mockup. An instance that sets prd_mockup_path
+      # (slidey-dev points it at a self-contained speaker-notes-export handout
+      # mockup) gets it embedded inline below as the PRD's mockup; every other
+      # dev-story instance leaves it "" and this is a no-op. host.artifacts_dir
+      # runs for REAL under flow/replay (it is not cassette-stubbed), copying the
+      # HTML under the run's artifacts root and binding a content-addressed handle
+      # the media slideshow iframe resolves — so the mockup the PRD describes is
+      # shown in the run, no renderer and no LLM. once: keyed on its own bind.
+      - when: "world.prd_mockup_path != ''"
+        once: true
+        invoke: host.artifacts_dir
+        id: emit_prd_mockup
+        with:
+          artifacts_root: "{{ world.workdir }}/.artifacts/prd-mockup"
+          thread:   "feature-mockup"
+          src_path: "{{ world.workdir }}/{{ world.prd_mockup_path }}"
+          kind:     slideshow
+          mime:     text/html
+          label:    "Feature mockup — speaker-notes export"
+        bind:
+          mockup_handle: handle.id
+        on_error: .
     view:
       - banner:
           text:     "PRD PUBLISHED"
           subtitle: "Your PRD is written — carry it into design?"
           color:    "#10B981"
       - prose: "Your PRD is published at **{{ world.prd__prd_file }}**."
+      # The PRD's feature mockup, embedded inline (slidey-dev only; blank for
+      # instances that set no prd_mockup_path). The self-contained HTML boots in
+      # the sandboxed slideshow iframe so the operator sees the mockup the PRD
+      # describes right here in the run.
+      - heading: "Feature mockup"
+        when: "world.mockup_handle != ''"
+      - media:
+          handle:  "{{ world.mockup_handle }}"
+          kind:    slideshow
+          caption: "A printable per-scene speaker-notes handout — the mockup the PRD describes"
+        when: "world.mockup_handle != ''"
       - prose: >
           Continue into **design** to author the design from this PRD —
           the design intake reads it as prior art — or head back to the

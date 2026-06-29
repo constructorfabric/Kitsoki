@@ -1,0 +1,114 @@
+# bugfix_toolchain_passthrough — the project's real build/test commands reach the
+# bugfix gate. Proves (no LLM):
+#   - dev-story world.build_cmd / world.test_cmd are declared and default-overridable
+#   - the `bf` import's world_in: projects them into bf__build_cmd / bf__test_cmd
+#     so the bugfix testing/validating gates run the project's toolchain (cargo,
+#     pytest, …) instead of the host.local `go build ./...` / `go test ./...`
+#     defaults (internal/host/local_ci.go).
+# Regression for the gears-rust marathon finding F4: an onboarded non-Go repo
+# would otherwise silently fall back to Go at the build gate. Generic — names no
+# specific bug; any instance that sets build_cmd/test_cmd benefits.
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir:        ".worktrees/tkt-200"
+  workspace_id:   "ws-200"
+  base_branch:    "main"
+  feature_branch: "fix/tkt-200"
+  judge_mode:     "human"
+  # An instance (e.g. gears-rust-dev) sets these from its project profile.
+  build_cmd:      "cargo build -p cf-modkit-odata"
+  test_cmd:       "cargo test -p cf-modkit-odata --lib"
+
+host_handlers:
+  host.local_files.ticket:
+    data:
+      ok: true
+      tickets: "TKT-200: bar"
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git:
+    data: { ok: true, sha: "abc", diff: "", state: "success", url: "", pr_id: "" }
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.local:
+    data: { ok: true, state: "success", log: "" }
+  host.run:
+    by_call:
+      repro_det_gate:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ran: true
+            baseline_green: true
+            test_red: true
+            ok: true
+            summary: "GREEN->RED proven with project test_cmd"
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "Stub artifact body."
+        bug_verified:     true
+        root_cause:       "stub"
+        fix_description:  "stub fix"
+        affected_files:   []
+        confidence:       0.9
+        reasoning:        "stub"
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "stub"
+  host.agent.ask:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "Stub artifact body."
+        bug_verified:     true
+        root_cause:       "stub"
+        fix_description:  "stub fix"
+        affected_files:   []
+        confidence:       0.9
+        reasoning:        "stub"
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "stub"
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "Stub artifact body."
+        bug_verified:     true
+        root_cause:       "stub"
+        fix_description:  "stub fix"
+        affected_files:   []
+        confidence:       0.9
+        reasoning:        "stub"
+        verdict:          "pass"
+        intent:           "accept"
+        reason:           "stub"
+
+turns:
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+  - intent: { name: search_tickets, slots: { query: "open" } }
+    expect_state: ticket_searching
+  - intent: { name: pick_ticket, slots: { id: "TKT-200" } }
+    expect_state: ticket_search
+    expect_world:
+      ticket_id: "TKT-200"
+
+  # Into bf — world_in: must carry build_cmd / test_cmd into the child.
+  - intent: { name: go_bugfix, slots: {} }
+    expect_state: bf.reproducing
+    expect_world:
+      bf__build_cmd: "cargo build -p cf-modkit-odata"
+      bf__test_cmd:  "cargo test -p cf-modkit-odata --lib"
+
+expect_no_errors: true

@@ -2,7 +2,7 @@
 #
 #   cp .kitsoki.local.yaml.example .kitsoki.local.yaml
 #   export SYNTHETIC_API_KEY=sk-...      # in your shell / profile / .envrc
-#   kitsoki web --stories-dir stories    # then pick the provider in the header
+#   kitsoki web                          # then pick the provider in the header
 #   # …or in the TUI:  /provider synthetic-claude  ·  /model 2
 #
 # Load deep-merges this file on top of the checked-in `.kitsoki.yaml`, LOCAL
@@ -19,7 +19,16 @@
 # file, and is never recorded in any trace.
 
 # Point new sessions at one of the profiles below by default (optional).
-# default_profile: synthetic-claude
+# default_profile: codex-native
+
+# Project-local overrides can also replace checked-in project defaults from
+# .kitsoki/project-profile.yaml through root.overrides. For example, to dogfood
+# GitHub issues against a fork instead of the canonical constructorfabric repo:
+#
+# root:
+#   overrides:
+#     world:
+#       ticket_repo: bsacrobatix/Kitsoki
 
 harness_profiles:
   # claude-code pointed at synthetic.new (Anthropic-compatible endpoint).
@@ -32,6 +41,19 @@ harness_profiles:
     model: hf:zai-org/GLM-5.2
     models: [hf:zai-org/GLM-5.2]
     models_endpoint: https://api.synthetic.new/openai/v1/models
+    # Local guardrail: keep one GLM call active per kitsoki process and reserve
+    # a conservative token window so a long pipeline can finish before other
+    # jobs pile onto the same synthetic.new key. Raise tokens_per_window or
+    # max_concurrent when your plan has a higher published limit.
+    quota:
+      window: 1m
+      tokens_per_window: 120000
+      max_concurrent: 1
+      reserve_tokens: 30000
+      # Persistent, cross-process state. Leave shared across synthetic profiles
+      # that use the same key so parallel kitsoki processes coordinate.
+      state_path: .artifacts/quota/provider-state.json
+      lease_timeout: 45m
     env:
       ANTHROPIC_BASE_URL: https://api.synthetic.new/anthropic
       ANTHROPIC_AUTH_TOKEN: "${SYNTHETIC_API_KEY}"
@@ -46,6 +68,13 @@ harness_profiles:
     model: hf:zai-org/GLM-5.2
     models: [hf:zai-org/GLM-5.2]
     models_endpoint: https://api.synthetic.new/openai/v1/models
+    quota:
+      window: 1m
+      tokens_per_window: 120000
+      max_concurrent: 1
+      reserve_tokens: 30000
+      state_path: .artifacts/quota/provider-state.json
+      lease_timeout: 45m
     env:
       OPENAI_BASE_URL: https://api.synthetic.new/openai/v1
       OPENAI_API_KEY: "${SYNTHETIC_API_KEY}"
@@ -54,8 +83,8 @@ harness_profiles:
   # reasoning effort for codex is not wired (it ignores --effort), so no efforts.
   codex-native:
     backend: codex
-    model: gpt-5-codex
-    models: [gpt-5-codex, gpt-5]
+    model: gpt-5.5
+    models: [gpt-5-codex, gpt-5, gpt-5.5]
 
   # A local llama.cpp model via the builtin plugin (no backend CLI forked).
   llama-local:

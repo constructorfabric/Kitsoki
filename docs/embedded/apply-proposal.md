@@ -15,16 +15,16 @@ Pair this doc with:
 
 ## 1. The workflow (you are step 3)
 
-```
-1. Human runs:  kitsoki render app.yaml -o APP.md
-2. Human reads APP.md and writes a prose proposal referring to engine
-   names (e.g. "in room `foyer`, change the north-exit message").
-3. Human invokes you with:
-      - the proposal text
-      - the current app.yaml
-      - this doc (as context)
-4. You produce a minimal YAML diff that implements the proposal.
-5. Human reviews the diff, commits, and re-runs `kitsoki render`.
+```mermaid
+flowchart TD
+    render["Human runs<br/><code>kitsoki render app.yaml -o APP.md</code>"]
+    read["Human reads APP.md"]
+    proposal["Human writes a prose proposal<br/>using engine names"]
+    invoke["Human invokes the agent with<br/>proposal text + app.yaml + this doc"]
+    diff["Agent produces a minimal YAML diff"]
+    review["Human reviews, commits,<br/>and reruns <code>kitsoki render</code>"]
+
+    render --> read --> proposal --> invoke --> diff --> review
 ```
 
 You do **not** modify `APP.md`. It is a derived artifact; regeneration is

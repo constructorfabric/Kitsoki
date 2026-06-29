@@ -155,6 +155,46 @@ func TestCompile_Ternary(t *testing.T) {
 	require.Equal(t, "lit", v)
 }
 
+func TestCompile_LenNilSafe(t *testing.T) {
+	// Regression: `len(world.foo.questions)` must not crash when `foo` is an
+	// absent (nil) map — a nil argument counts as length 0 (Go semantics), so a
+	// guard reading "no questions yet" evaluates instead of aborting the turn.
+	// This is the dev-story prd clarifying emit_intent that crashed `kitsoki
+	// record` while `kitsoki test flows` passed.
+	p, err := expr.Compile(
+		"len(world.prd__clarifications.questions) > 0 && " +
+			"int(world.prd__answered_count) >= len(world.prd__clarifications.questions) ? 'submit_answers' : ''")
+	require.NoError(t, err)
+
+	// prd__clarifications is present (an initialised map) but its `questions`
+	// key is unset → `.questions` is nil → len(nil) must be 0, not a crash.
+	// This is the exact world shape that aborted `kitsoki record` at turn 5.
+	v, err := expr.EvalAny(p, expr.Env{
+		Slots: map[string]any{},
+		World: map[string]any{"prd__clarifications": map[string]any{}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "", v)
+
+	// Populated map with two questions and enough answers → 'submit_answers'.
+	v, err = expr.EvalAny(p, expr.Env{
+		Slots: map[string]any{},
+		World: map[string]any{
+			"prd__clarifications": map[string]any{"questions": []any{"q1", "q2"}},
+			"prd__answered_count": 2,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "submit_answers", v)
+
+	// Bare len(nil) returns 0, not an error.
+	p2, err := expr.Compile("len(world.missing)")
+	require.NoError(t, err)
+	v, err = expr.EvalAny(p2, expr.Env{World: map[string]any{}})
+	require.NoError(t, err)
+	require.Equal(t, 0, v)
+}
+
 func TestCompile_EffectValueExpr(t *testing.T) {
 	// set: { message_rumpled: "{{ world.disturbance > 2 }}" }
 	// The Render function handles the {{ }} wrapping; the inner expr is plain.

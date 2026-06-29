@@ -1,0 +1,69 @@
+# slideshow — DETERMINISTIC (no LLM). Render the report deck SPEC to a
+# self-contained static-HTML slidey deck + .semantic.json sidecar, then emit both
+# to host.artifacts_dir for stable media handles. This is the bake-off's
+# DELIVERABLE report, and it is EXACTLY the slidey-edit `rendering` room pattern
+# (stories/slidey-edit/rooms/rendering.yaml) — same host.slidey.render +
+# host.artifacts_dir sequence, same `slideshow` media kind.
+#
+# Each invoke is `once: true` keyed on its bind, so a re-entry re-renders cleanly.
+
+states:
+
+  slideshow:
+    description: "Rendering the report deck to a static-HTML slidey deck + semantic sidecar (deterministic)."
+    relevant_world: [deck, deck_handle, semantic_handle, deck_path, semantic_path]
+    view:
+      - heading: "Bake-off · slideshow (rendering the report)"
+      - kv:
+          pairs:
+            Deck:     '{{ world.deck.spec_path }}'
+            HTML:     '{{ world.deck_handle|default:"(rendering…)" }}'
+            Semantic: '{{ world.semantic_handle|default:"(rendering…)" }}'
+      - prose: "Rendering is deterministic — it produces the static HTML report deck plus a semantic sidecar, then routes to done."
+    on_enter:
+      # Render the deck spec → static HTML deck + .semantic.json sidecar.
+      - invoke: host.slidey.render
+        id: render_deck
+        once: true
+        with:
+          spec_path: "{{ world.deck.spec_path }}"
+          format:    html
+        bind:
+          deck_path:     path
+          semantic_path: semantic_path
+        on_error: reporting
+
+      # Emit the rendered HTML deck → deck_handle (media kind `slideshow`).
+      - invoke: host.artifacts_dir
+        id: emit_deck
+        once: true
+        with:
+          thread:   "task-bakeoff"
+          src_path: "{{ world.deck_path }}"
+          kind:     slideshow
+          mime:     text/html
+          label:    "{{ world.deck.summary }}"
+        bind:
+          deck_handle: handle.id
+        on_error: done
+
+      # Emit the semantic sidecar → semantic_handle.
+      - invoke: host.artifacts_dir
+        id: emit_semantic
+        once: true
+        with:
+          thread:   "task-bakeoff"
+          src_path: "{{ world.semantic_path }}"
+          kind:     data
+          label:    "semantic sidecar"
+        bind:
+          semantic_handle: handle.id
+        on_error: done
+
+      - when: "world.deck_handle != ''"
+        emit_intent: accept
+    on:
+      accept:
+        - target: done
+      look:
+        - target: .

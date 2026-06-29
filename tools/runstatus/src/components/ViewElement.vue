@@ -1,11 +1,43 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRoute } from "vue-router";
+import { installEmbedViewListener } from "../lib/embedView.js";
 import type { ViewElement } from "../types.js";
 import { createDataSource } from "../data/source.js";
 import type { AnnotationAnchor, MediaKind } from "../lib/annotationAnchor.js";
+import { serializeAnchor } from "../lib/annotationAnchor.js";
 import MarkdownModal from "./MarkdownModal.vue";
 import ArtifactAnnotator from "./ArtifactAnnotator.vue";
+import { useRunStore } from "../stores/run.js";
+
+// The live-run store owns the conversation transcript + turn streaming. Routing
+// an annotation dispatch through it (rather than calling the data source
+// directly) makes the annotation appear as a normal user message in the main
+// chat and streams the agent's edit + re-render back as the reply.
+const _run = useRunStore();
+
+// Track which place the embedded artifact (e.g. the live deck) reports it is
+// showing, via the generic `embed:view` postMessage protocol. The latest scope
+// rides a refine as `current_scene` so the edit targets the slide the operator
+// is actually looking at. Producer-neutral — kitsoki never interprets the scope.
+let _teardownEmbedView: (() => void) | null = null;
+function onKeydown(ev: KeyboardEvent): void {
+  // Esc dismisses the composer (parking the draft), like a click outside it.
+  if (ev.key === "Escape" && pendingAnchor.value) {
+    ev.stopPropagation();
+    dismissComposer();
+  }
+}
+onMounted(() => {
+  _teardownEmbedView = installEmbedViewListener((view) => _run.setEmbedView(view));
+  window.addEventListener("keydown", onKeydown);
+  void maybeAutoOpenAnnotate();
+});
+onBeforeUnmount(() => {
+  _teardownEmbedView?.();
+  _teardownEmbedView = null;
+  window.removeEventListener("keydown", onKeydown);
+});
 
 // Current route — used only to recover the active sessionId so a rendered video
 // can link to its /review feedback surface (the room view renders inline in
@@ -25,6 +57,15 @@ const _sessionId = computed<string>(() => {
 const _ds = createDataSource();
 function artifactUrl(handle: string): string {
   return _ds.artifactUrl(handle);
+}
+
+function withQuery(url: string, params: Record<string, string>): string {
+  const entries = Object.entries(params).filter(([, v]) => v !== "");
+  if (entries.length === 0) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}${entries
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&")}`;
 }
 
 const props = defineProps<{ element: ViewElement }>();
@@ -68,19 +109,37 @@ const mediaMime = computed<string>(() => {
 });
 
 // A `slideshow` media kind is a multi-scene deck (e.g. a slidey deck rendered to
-// a self-contained HTML file) whose pixels aren't an addressable still and whose
-// interactive HTML can't run inside the scripts-disabled sandbox iframe. Inline
-// we preview its poster FRAME (a real rendered still beside the artifact) and
-// link out to the live interactive deck; annotation floats the SemanticOverlay
-// over the same poster (the slidey annotator path).
+// a self-contained HTML file). Inline display embeds the static HTML deck; when
+// annotation is opened and a semantic sidecar exists, the annotator switches to
+// the slidey poster+overlay substrate.
 const isSlideshow = computed<boolean>(
   () => (el.value.MediaKind ?? "").toLowerCase() === "slideshow"
 );
-// The poster still beside a slideshow/deck artifact (`/artifact/<id>/poster`),
-// falling back to the artifact URL when the source has no poster convention.
-function posterUrl(handle: string): string {
-  return _ds.artifactPosterUrl ? _ds.artifactPosterUrl(handle) : artifactUrl(handle);
-}
+// The scene/step the freshly mounted deck should boot at. Captured ONCE per
+// handle: when a re-rendered deck arrives with a new content-addressed handle,
+// we want it to open where the operator was last looking (the embed:view scope
+// carried over from the previous deck). We must NOT track embedScope/embedStep
+// reactively — those update on every reveal as the operator navigates the LOADED
+// deck, and rebinding the iframe `src` on each reveal reloads the iframe (a
+// visible flicker) and resets the deck back to slide 1 (which also corrupts the
+// annotation anchor and makes an edited deck look unchanged). So we snapshot the
+// scope at handle-change time and keep the URL stable while the handle holds.
+const _bootScene = ref<string>(_run.embedScope);
+const _bootStep = ref<string>(_run.embedStep);
+watch(
+  mediaHandle,
+  () => {
+    _bootScene.value = _run.embedScope;
+    _bootStep.value = _run.embedStep;
+  },
+  { flush: "sync" }
+);
+const slideshowUrl = computed<string>(() =>
+  withQuery(artifactUrl(mediaHandle.value), {
+    scene: _bootScene.value,
+    step: _bootStep.value,
+  })
+);
 
 // ── Annotate affordance (unified ArtifactAnnotator) ──────────────────────────
 // A live media element (image / video / html / slideshow — never a pdf) can be
@@ -93,15 +152,14 @@ function posterUrl(handle: string): string {
 
 /** The engine's MediaKind ("video"|"image"|"html"|"slideshow"|"pdf") maps onto
  *  the annotator's MediaKind union. pdf is intentionally absent — a pdf is not
- *  annotatable, so `mediaAnnotatable` gates it out before this is consulted. The
- *  slideshow→slidey mapping is the DEFAULT; a media element whose base artifact
- *  is an mp4 but which HAS a semantic sidecar is promoted to "slidey" at
- *  annotate-open time (see openAnnotate) so the deck gets the SemanticOverlay. */
+ *  annotatable, so `mediaAnnotatable` gates it out before this is consulted. A
+ *  sidecar-bearing artifact is promoted to "slidey" at annotate-open time (see
+ *  openAnnotate) so the deck gets the SemanticOverlay. */
 const ENGINE_MEDIA_KIND: Record<string, MediaKind> = {
   video: "mp4",
   image: "png",
   html: "html",
-  slideshow: "slidey",
+  slideshow: "html",
 };
 
 /** The annotator MediaKind from the MIME family, when the engine kind is absent
@@ -130,6 +188,36 @@ const annotateKind = ref<MediaKind | null>(null);
 const annotateBusy = ref(false);
 const annotateSent = ref<string | null>(null);
 const annotateError = ref<string | null>(null);
+/** The anchor the operator just picked, held until they compose an instruction
+ *  and Send. Null when nothing is staged (the picker is live). */
+const pendingAnchor = ref<AnnotationAnchor | null>(null);
+/** The composed instruction for the staged anchor. */
+const instruction = ref("");
+
+/** The intent annotations on this media dispatch (e.g. a deck's `refine`), and
+ *  the slot the instruction rides. Empty intent ⇒ legacy off-path note. */
+const annotateIntent = computed<string>(() => el.value.AnnotateIntent ?? "");
+const annotateFeedbackSlot = computed<string>(
+  () => el.value.AnnotateFeedbackSlot || "feedback"
+);
+
+/** A short human label for the staged anchor. */
+function anchorLabel(anchor: AnnotationAnchor): string {
+  return anchor.target?.kind === "semantic_element"
+    ? anchor.target.label || anchor.target.ref
+    : (anchor.target?.kind ?? "annotation");
+}
+
+/** A stable key for an anchor, used to remember a half-typed instruction per
+ *  spot: dismissing the composer (click-outside / Esc) parks the draft here, and
+ *  re-picking the SAME element restores it. */
+function anchorKey(anchor: AnnotationAnchor): string {
+  return anchor.target?.kind === "semantic_element"
+    ? `el:${anchor.target.ref}`
+    : JSON.stringify(anchor.target ?? {});
+}
+/** Per-spot parked instruction drafts (keyed by anchorKey). */
+const drafts = ref<Record<string, string>>({});
 
 /** Open the annotator. Probe the semantic sidecar ONCE: a non-null map means the
  *  media (even an mp4 deck) carries producer-declared elements, so render with
@@ -141,46 +229,166 @@ async function openAnnotate(): Promise<void> {
   const engineKind = (el.value.MediaKind ?? "").toLowerCase();
   let kind: MediaKind =
     ENGINE_MEDIA_KIND[engineKind] ?? kindFromMime(mediaMime.value);
-  try {
-    if (_ds.semanticMap) {
-      const env = await _ds.semanticMap(_sessionId.value, mediaHandle.value);
-      if (env && env.elements.length > 0) kind = "slidey";
+  // A slideshow is a multi-scene deck that speaks the embed protocol on its own
+  // live surface — always annotate it via the `slidey` (live-embed) substrate so
+  // the operator points at real elements on the slide (no static poster/sidecar
+  // needed). Other kinds may still promote to slidey when a sidecar exists.
+  if (engineKind === "slideshow") {
+    kind = "slidey";
+  } else {
+    try {
+      if (_ds.semanticMap) {
+        const env = await _ds.semanticMap(_sessionId.value, mediaHandle.value);
+        if (env && env.elements.length > 0) kind = "slidey";
+      }
+    } catch {
+      /* no sidecar / probe failed — keep the MIME-mapped kind */
     }
-  } catch {
-    /* no sidecar / probe failed — keep the MIME-mapped kind */
   }
   annotateKind.value = kind;
   annotateOpen.value = true;
+}
+
+function shouldAutoOpenAnnotate(): boolean {
+  if (typeof window === "undefined") return false;
+  const raw = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("visual_annotate");
+  if (!raw) return false;
+  return raw === "1" || raw === "true" || raw === mediaHandle.value;
+}
+
+async function maybeAutoOpenAnnotate(): Promise<void> {
+  await nextTick();
+  if (!mediaAnnotatable.value || annotateOpen.value || !shouldAutoOpenAnnotate()) return;
+  await openAnnotate();
 }
 
 function closeAnnotate(): void {
   annotateOpen.value = false;
   annotateKind.value = null;
   annotateError.value = null;
+  pendingAnchor.value = null;
+  instruction.value = "";
+  drafts.value = {};
 }
 
-/** The annotator emitted an anchor — dispatch it as an anchored off-path note so
- *  it leaves the client (serializeAnchor projects it to the wire shape inside
- *  ds.offpath). A short confirmation is shown; the panel stays open for a
- *  follow-up pick. */
-async function onAnchor(anchor: AnnotationAnchor): Promise<void> {
+/** The annotator emitted an anchor — STAGE it (don't dispatch yet) so the
+ *  operator can compose an instruction describing what they want changed before
+ *  sending. Picking again before sending replaces the staged anchor. */
+function onAnchor(anchor: AnnotationAnchor): void {
+  if (annotateBusy.value) return;
+  pendingAnchor.value = anchor;
+  // Restore any instruction parked for THIS spot (re-picking the same element
+  // brings back what you'd typed before dismissing); a fresh spot starts blank.
+  instruction.value = drafts.value[anchorKey(anchor)] ?? "";
+  annotateError.value = null;
+  annotateSent.value = null;
+}
+
+/** Dismiss the composer WITHOUT discarding work: park the half-typed instruction
+ *  under this spot's key so re-picking it restores the text, then unstage. Fired
+ *  by a click outside the composer or Esc — the "close the input box" affordance.
+ *  No-op when nothing is staged. */
+function dismissComposer(): void {
+  const anchor = pendingAnchor.value;
+  if (!anchor || annotateBusy.value) return;
+  const text = instruction.value.trim();
+  if (text) drafts.value = { ...drafts.value, [anchorKey(anchor)]: instruction.value };
+  else {
+    const next = { ...drafts.value };
+    delete next[anchorKey(anchor)];
+    drafts.value = next;
+  }
+  pendingAnchor.value = null;
+}
+
+/** Discard the staged anchor AND its draft, returning to a clean pick. */
+function clearPending(): void {
+  const anchor = pendingAnchor.value;
+  if (anchor) {
+    const next = { ...drafts.value };
+    delete next[anchorKey(anchor)];
+    drafts.value = next;
+  }
+  pendingAnchor.value = null;
+  instruction.value = "";
+}
+
+/** Send the staged anchor + composed instruction. When the media element
+ *  declares an AnnotateIntent (e.g. a deck's `refine`), dispatch that intent
+ *  with the instruction in its feedback slot and the anchor riding the turn, so
+ *  the agent edits the pointed-at element. Otherwise fall back to a generic
+ *  anchored off-path note. */
+async function sendAnnotation(): Promise<void> {
+  const anchor = pendingAnchor.value;
+  if (!anchor || annotateBusy.value) return;
+  const text = instruction.value.trim();
+  // An intent dispatch needs an instruction (it's the feedback that drives the
+  // edit); a bare off-path note can stand on the anchor alone.
+  if (annotateIntent.value && !text) {
+    annotateError.value = "Describe what you want changed, then Send.";
+    return;
+  }
   annotateBusy.value = true;
   annotateError.value = null;
   annotateSent.value = null;
   try {
-    const label =
-      anchor.target?.kind === "semantic_element"
-        ? anchor.target.label || anchor.target.ref
-        : (anchor.target?.kind ?? "annotation");
-    await _ds.offpath(
-      _sessionId.value,
-      `Annotated ${label} on ${mediaHandle.value}.`,
-      undefined,
-      anchor
-    );
+    const label = anchorLabel(anchor);
+    if (annotateIntent.value) {
+      // Route through the run store (not _ds directly) so the dispatch shows up
+      // in the MAIN chat as a normal user message — carrying the annotation
+      // (deck frame + anchor) so it reads like an attached marked-up screenshot
+      // — and the agent's edit + re-render stream back as the reply.
+      await _run.submitIntent(
+        _ds,
+        _sessionId.value,
+        annotateIntent.value,
+        {
+          [annotateFeedbackSlot.value]: text,
+          // The slide the operator is looking at (from the deck's embed:view
+          // reports), so the refine targets THAT slide — not a guessed default.
+          ...(_run.embedScope ? { current_scene: _run.embedScope } : {}),
+          // WHAT the operator actually pointed at, as a slot (not just the
+          // visual-ambient seam) so the receiving room can fold the LIVE anchor
+          // into world.annotation — otherwise the refine reads only the baked
+          // seed and "what was clicked" is lost. Carries the on-wire anchor plus
+          // the UI label world.annotation.anchor.label renders.
+          ...(serializeAnchor(anchor)
+            ? {
+                annotation_anchor: {
+                  ...serializeAnchor(anchor),
+                  ...(label ? { label } : {}),
+                },
+              }
+            : {}),
+        },
+        // No displayLabel: the user bubble derives its text from the feedback
+        // slot. Passing the instruction as BOTH label and slot rendered it
+        // twice ("<text>: <text>").
+        undefined,
+        {
+          anchor,
+          annotation: { mediaHandle: mediaHandle.value, anchor },
+        }
+      );
+    } else {
+      await _ds.offpath(
+        _sessionId.value,
+        text ? `${text} (re: ${label} on ${mediaHandle.value})` : `Annotated ${label} on ${mediaHandle.value}.`,
+        undefined,
+        anchor
+      );
+    }
     annotateSent.value = label;
+    clearPending();
   } catch (e) {
-    annotateError.value = e instanceof Error ? e.message : String(e);
+    const msg = e instanceof Error ? e.message : String(e);
+    // The session chat is single-writer: while a refine/turn is still running
+    // its agent holds the chat lock, so a concurrent annotation dispatch comes
+    // back as "chat busy: held by pid …". Surface that as an actionable hint
+    // rather than the raw lock diagnostic.
+    annotateError.value = /chat busy/i.test(msg)
+      ? "The deck is still being refined — wait for the current edit to finish, then send your annotation again."
+      : msg;
   } finally {
     annotateBusy.value = false;
   }
@@ -345,10 +553,14 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
 
   <!-- media: dispatch on MIME family; fall back to a labeled download link. -->
   <div v-else-if="el.Kind === 'media'" class="ve-media" data-testid="media-element">
-    <template v-if="mediaHandle">
+    <!-- While annotating, the ArtifactAnnotator below renders the annotatable
+         substrate for this same handle; suppress the standalone player/iframe so
+         the deck is embedded ONCE (not stacked as a second instance). -->
+    <template v-if="mediaHandle && !annotateOpen">
       <!-- video/* → native player with Range-request support for seeking -->
       <video
         v-if="mediaMime.startsWith('video/')"
+        :key="mediaHandle"
         class="ve-media-video"
         data-testid="media-video"
         controls
@@ -374,6 +586,7 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
       <!-- image/* → lazy-loaded image -->
       <img
         v-else-if="mediaMime.startsWith('image/')"
+        :key="mediaHandle"
         class="ve-media-image"
         loading="lazy"
         :src="artifactUrl(mediaHandle)"
@@ -383,23 +596,29 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
       <!-- application/pdf → inline frame -->
       <iframe
         v-else-if="mediaMime === 'application/pdf'"
+        :key="mediaHandle"
         class="ve-media-iframe"
         :src="artifactUrl(mediaHandle)"
         :title="mediaCaption || mediaHandle"
       />
 
-      <!-- slideshow → poster-frame preview + a link to the live interactive deck.
-           The deck's interactive HTML can't run in the scripts-disabled sandbox
-           iframe below, so inline we show its rendered poster still (annotation
-           floats the SemanticOverlay over this same frame). MUST precede the
-           text/html branch — a slideshow's mime is text/html. -->
+      <!-- slideshow → embedded self-contained HTML deck + a direct-open link.
+           The iframe stays sandboxed to an opaque origin but allows scripts so
+           the static Slidey bundle can boot. MUST precede the text/html branch
+           because a slideshow's MIME is text/html. -->
       <template v-else-if="isSlideshow">
-        <img
-          class="ve-media-image"
-          data-testid="media-slideshow-poster"
-          loading="lazy"
-          :src="posterUrl(mediaHandle)"
-          :alt="mediaCaption || mediaHandle"
+        <!-- :key on the content-addressed handle forces Vue to REPLACE the
+             iframe DOM node when a refine re-renders the deck (the handle's
+             hash changes). Without it Vue patches src on the SAME element and
+             the browser keeps showing the stale cached render — the user-visible
+             "the deck never updates after I edit it" bug. -->
+        <iframe
+          :key="mediaHandle"
+          class="ve-media-iframe"
+          data-testid="media-slideshow-frame"
+          sandbox="allow-scripts"
+          :src="slideshowUrl"
+          :title="mediaCaption || mediaHandle"
         />
         <a
           class="ve-media-review-link"
@@ -410,11 +629,12 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
         >Open the interactive deck →</a>
       </template>
 
-      <!-- text/html → sandboxed frame (no scripts, no same-origin access) -->
+      <!-- text/html → sandboxed frame with scripts, no same-origin access -->
       <iframe
         v-else-if="mediaMime === 'text/html'"
+        :key="mediaHandle"
         class="ve-media-iframe"
-        sandbox=""
+        sandbox="allow-scripts"
         :src="artifactUrl(mediaHandle)"
         :title="mediaCaption || mediaHandle"
       />
@@ -458,8 +678,72 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
           :media-handle="mediaHandle"
           :media-kind="annotateKind"
           :poster-handle="mediaHandle"
+          :live-embed="isSlideshow"
+          :embed-scope="_run.embedScope"
+          :embed-step="_run.embedStep"
           @anchor="onAnchor"
         />
+
+        <!-- Click-outside backdrop: while the composer is open, a click anywhere
+             off it dismisses the input box (parking any typed draft for re-pick),
+             so the operator isn't forced to hunt for a button. -->
+        <div
+          v-if="pendingAnchor"
+          class="ve-media-annotate-backdrop"
+          data-testid="media-annotate-backdrop"
+          @click="dismissComposer"
+        ></div>
+
+        <!-- Composer: once an anchor is picked, the operator describes what they
+             want changed THERE, then Sends. This is what turns a pick into a
+             real edit (the AnnotateIntent runs with this instruction). -->
+        <div
+          v-if="pendingAnchor"
+          class="ve-media-annotate-composer"
+          data-testid="media-annotate-composer"
+        >
+          <div class="ve-media-annotate-pointed-row">
+            <span class="ve-media-annotate-pointed">
+              Pointed at: <strong>{{ anchorLabel(pendingAnchor) }}</strong>
+            </span>
+            <button
+              type="button"
+              class="ve-media-annotate-dismiss"
+              data-testid="media-annotate-dismiss"
+              title="Dismiss (keeps your text for this spot) — Esc"
+              aria-label="Dismiss"
+              @click="dismissComposer"
+            >×</button>
+          </div>
+          <textarea
+            v-model="instruction"
+            class="ve-media-annotate-input"
+            data-testid="media-annotate-input"
+            rows="2"
+            :placeholder="annotateIntent
+              ? 'Describe the change you want here…'
+              : 'Add a note about this spot (optional)…'"
+            :disabled="annotateBusy"
+            @keydown.enter.exact.prevent="sendAnnotation"
+          />
+          <div class="ve-media-annotate-actions">
+            <button
+              type="button"
+              class="ve-media-annotate-send"
+              data-testid="media-annotate-send"
+              :disabled="annotateBusy || (annotateIntent !== '' && instruction.trim() === '')"
+              @click="sendAnnotation"
+            >{{ annotateIntent ? "Send & refine" : "Send" }}</button>
+            <button
+              type="button"
+              class="ve-media-annotate-repick"
+              data-testid="media-annotate-repick"
+              :disabled="annotateBusy"
+              @click="clearPending"
+            >Clear &amp; pick another</button>
+          </div>
+        </div>
+
         <p v-if="annotateBusy" class="ve-media-annotate-status">Sending annotation…</p>
         <p v-else-if="annotateSent" class="ve-media-annotate-status ve-media-annotate-ok">
           Annotation sent: {{ annotateSent }}
@@ -734,11 +1018,110 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
 }
 
 .ve-media-annotate-panel {
+  position: relative;
   margin-top: 0.5em;
   padding: 0.6em;
   border: 1px solid var(--k-paper-border, #d8dbe2);
   border-radius: 8px;
   background: var(--k-paper-bg, #f6f7f9);
+}
+
+/* The composer FLOATS over the deck near where the operator pointed, instead of
+   being stacked below the annotator. Anchored to the lower-centre of the stage
+   as a compact card so it reads as "attached to" the annotation. */
+.ve-media-annotate-composer {
+  position: absolute;
+  left: 50%;
+  bottom: 3.25em;
+  transform: translateX(-50%);
+  z-index: 5;
+  width: min(92%, 440px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
+  padding: 0.6em 0.7em;
+  border: 1px solid var(--k-paper-border, #cfd3db);
+  border-radius: 10px;
+  background: var(--k-paper-bg, #ffffff);
+  box-shadow: 0 8px 28px rgba(15, 20, 30, 0.28);
+}
+
+/* Transparent click-catcher covering the whole panel while the composer is open;
+   a click anywhere off the composer (which sits above it at a higher z-index)
+   dismisses the input box. */
+.ve-media-annotate-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: transparent;
+  cursor: default;
+}
+
+.ve-media-annotate-pointed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+}
+.ve-media-annotate-pointed {
+  font-size: 12px;
+  color: var(--k-fg-muted, #4a5160);
+}
+.ve-media-annotate-dismiss {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--k-fg-muted, #6b7280);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 0.15em;
+  cursor: pointer;
+}
+.ve-media-annotate-dismiss:hover {
+  color: var(--k-fg, #1f2430);
+}
+
+.ve-media-annotate-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  padding: 0.45em 0.55em;
+  border: 1px solid var(--k-paper-border, #cfd3db);
+  border-radius: 7px;
+}
+
+.ve-media-annotate-actions {
+  display: flex;
+  gap: 0.5em;
+  justify-content: flex-end;
+}
+
+.ve-media-annotate-send {
+  background: var(--k-accent, #2f6df0);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35em 0.85em;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ve-media-annotate-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ve-media-annotate-repick {
+  background: transparent;
+  border: 1px solid var(--k-paper-border, #cfd3db);
+  color: var(--k-fg-muted, #6b7280);
+  border-radius: 6px;
+  padding: 0.35em 0.7em;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .ve-media-annotate-head {

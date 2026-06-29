@@ -128,6 +128,20 @@ func rebaseEffectPaths(states map[string]*State, childDir string) {
 	if childDir == "" {
 		return
 	}
+	// Absolutize childDir so rebased paths become absolute. This is what makes
+	// the rebase idempotent across TRANSITIVE imports: when story A imports B
+	// which imports C, C's prompt paths are first rebased to C's dir, then B
+	// (with C folded in) is rebased again at A's level. If the first rebase
+	// left a RELATIVE path (which it does when the app was loaded via a relative
+	// path, e.g. `stories/pets-dev`), the second pass re-prefixes it with B's
+	// dir — producing `stories/A/stories/C/prompts/...`. Making the first rebase
+	// absolute means the second pass's filepath.IsAbs guard (in rebaseWithMap)
+	// skips the already-rebased path, so C's prompts resolve to C's real dir.
+	if !filepath.IsAbs(childDir) {
+		if abs, err := filepath.Abs(childDir); err == nil {
+			childDir = abs
+		}
+	}
 	for _, s := range states {
 		if s == nil {
 			continue
@@ -147,8 +161,10 @@ func rebaseEffectPaths(states map[string]*State, childDir string) {
 func rebaseEffectPathsInEffects(effs []Effect, childDir string) {
 	for i := range effs {
 		rebaseWithMap(effs[i].With, childDir)
+		rebaseEffectPathsInEffects(effs[i].Effects, childDir)
 		for j := range effs[i].OnComplete {
 			rebaseWithMap(effs[i].OnComplete[j].With, childDir)
+			rebaseEffectPathsInEffects(effs[i].OnComplete[j].Effects, childDir)
 		}
 	}
 }
@@ -220,6 +236,9 @@ func applyPromptOverridesToEffects(effs []Effect, resolved map[string]string) {
 		}
 		if len(effs[i].OnComplete) > 0 {
 			applyPromptOverridesToEffects(effs[i].OnComplete, resolved)
+		}
+		if len(effs[i].Effects) > 0 {
+			applyPromptOverridesToEffects(effs[i].Effects, resolved)
 		}
 	}
 }

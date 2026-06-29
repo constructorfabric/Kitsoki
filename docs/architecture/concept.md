@@ -35,6 +35,11 @@ Kitsoki takes the forgiving entrance of a chat agent and the
 predictability of a CLI, and gets there by **inverting control**
 between the LLM and the runtime.
 
+The competitive claim is deliberately narrow: Kitsoki is for workflows where
+"the model probably does the right thing" is not enough. If a run needs operator
+handoff, policy gates, durable state, replay, cost control, or a defensible audit
+record, the control boundary has to live outside the model.
+
 ---
 
 ## 2. Control inversion
@@ -44,8 +49,11 @@ runtime is its tool belt. The LLM holds the plan; the runtime exposes
 capabilities; the LLM picks which capability to invoke and when. The
 runtime executes.
 
-```
-[ LLM (plan, reason, decide) ] ──calls──▶ [ runtime (execute) ]
+```mermaid
+flowchart LR
+    llm["LLM<br/>plan, reason, decide"]
+    runtime["Runtime<br/>execute tools"]
+    llm -->|"calls"| runtime
 ```
 
 Kitsoki flips this. The **runtime is in charge** — a YAML state
@@ -57,12 +65,12 @@ it *calls the LLM* for that narrow sub-task, with maximum context and
 tightly-scoped tooling, then takes the result and resumes
 deterministic execution.
 
-```
-[ runtime (state machine, transitions, effects) ]
-        │                            ▲
-        │ "resolve this sub-task"    │ structured output
-        ▼                            │
-        [ LLM (narrow domain) ] ─────┘
+```mermaid
+flowchart LR
+    runtime["Runtime<br/>state machine, transitions, effects"]
+    llm["LLM<br/>narrow domain, scoped tools"]
+    runtime -->|"resolve this sub-task"| llm
+    llm -->|"named intent / typed payload / artifact"| runtime
 ```
 
 The arrow that matters is the LLM's *return* arrow. It produces a
@@ -70,6 +78,13 @@ named intent (or a typed payload, or a finished artifact). It does
 not write the world, it does not pick the next room, it does not fire
 effects, it does not call hosts. Those are the runtime's job, and
 they happen only along edges the author declared.
+
+That is the point a structured-output wrapper cannot reach on its own. Schema
+validation can prove that one response has the right shape. It cannot prove that
+the model was allowed to make only this decision, that the next transition was
+declared before the call, that a rejected submission was handled inside a
+bounded retry loop, or that the same conversation can replay later without a
+live model.
 
 This is "control inversion" in the same sense as dependency injection
 turns over object construction: the thing that used to be on top (the
@@ -179,33 +194,16 @@ they start as an idea, a description, a "wouldn't it be nice if".
 Kitsoki is built around the lifecycle that takes an idea and grows
 it into something predictable.
 
-```
-       idea / description
-              │
-              ▼
-   ┌──────────────────────┐
-   │  prove the workflow  │   LLM does most of the work,
-   │  end-to-end by       │   prompts carry the intent,
-   │  running it          │   the trace records every decision
-   └──────────────────────┘
-              │
-              ▼
-   ┌──────────────────────┐
-   │  identify decision   │   read the trace; find the
-   │  points that recur   │   places the LLM is being asked
-   │                      │   the same question repeatedly
-   └──────────────────────┘
-              │
-              ▼
-   ┌──────────────────────┐
-   │  convert prompt to   │   replace open-ended prompt
-   │  flow                │   instruction with an explicit
-   │                      │   room/intent/transition/effect
-   └──────────────────────┘
-              │
-              ▼
-       more deterministic
-       (loop back)
+```mermaid
+flowchart TD
+    idea["Idea / description"]
+    prove["Prove the workflow end-to-end<br/>LLM does most of the work<br/>trace records every decision"]
+    inspect["Identify recurring decision points<br/>read the trace for repeated model judgment"]
+    convert["Convert prompt to flow<br/>replace prompt prose with rooms, intents,<br/>transitions, and effects"]
+    deterministic["More deterministic workflow"]
+
+    idea --> prove --> inspect --> convert --> deterministic
+    deterministic -. "loop back" .-> inspect
 ```
 
 At each iteration:
@@ -280,7 +278,7 @@ the deterministic state machine: the user (or an LLM judge with
 confidence thresholds) reviews the artifact, accepts or refines it,
 and the conversation moves on to the next deterministic phase.
 
-This is the bug-fix pipeline in `stories/kitsoki-dev/`: reproduce →
+This is the bug-fix pipeline in `.kitsoki/stories/kitsoki-dev/`: reproduce →
 propose → implement → test → review → validate → done → PR refinement
 → merge. Each room can host as much LLM latitude as the author
 thinks the task deserves; the *boundaries between rooms* stay

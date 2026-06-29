@@ -1,0 +1,78 @@
+# Candidate models for the bug-fix benchmark — the provider/profile axis, shared
+# across every project (kitsoki-self and third-party repos alike). Each candidate
+# names a kitsoki harness profile; the profile's model+effort supersede the
+# bench-bugfix agent-defs, so driving a session under `profile` makes that model
+# the worker (reproducer/implementer/judge).
+#
+# `short` is the branch/worktree suffix (bench-<bug>-<short>). Keep it filesystem
+# safe. Add a candidate by adding a profile to .kitsoki.local.yaml and a row here.
+#
+# Consumed by drive_cell.sh + escalate.sh. Non-Claude providers are the point of
+# the study (does kitsoki's structure make a cheaper/open model competitive?),
+# but any configured profile works.
+#
+# ── EFFORT IS A PROFILE PROPERTY ──────────────────────────────────────────────
+# `session.new` takes only {profile}; it has NO model/effort param, and the
+# profile (.kitsoki.yaml: harness_profiles) carries BOTH `model` and `effort`.
+# So a candidate row = one (model, effort) point, realized by its `profile`.
+# `model:`/`effort:` here are LABELS (for the report + ladder); the profile is
+# what actually selects them. To escalate effort on the SAME model, add a profile
+# with the higher effort and a candidate row pointing at it (see glm-5.2-high).
+candidates:
+  - key: gpt-5.3-spark
+    short: spark
+    profile: codex-spark        # GPT-5.3-codex-spark — cheap/fast OpenAI Codex tier
+    provider: openai-codex
+    model: gpt-5.3-codex-spark
+    effort: medium
+    metered: false              # subscription auth → trace carries no cost_usd
+  - key: glm-5.2
+    short: glm
+    profile: synthetic-claude   # GLM-5.2 via synthetic.new (Anthropic-format)
+    provider: synthetic.new
+    model: GLM-5.2
+    effort: medium
+    metered: true               # trace carries payload.meta.cost_usd
+  # Effort-escalation example: SAME model as glm-5.2, higher effort. Requires a
+  # `synthetic-claude-high` profile (copy synthetic-claude, set effort: high) in
+  # .kitsoki.local.yaml before this row is drivable.
+  - key: glm-5.2-high
+    short: glmhi
+    profile: synthetic-claude-high
+    provider: synthetic.new
+    model: GLM-5.2
+    effort: high
+    metered: true
+  - key: gpt-5.5
+    short: gpt
+    profile: codex-native       # OpenAI Codex (ChatGPT subscription auth)
+    provider: openai-codex
+    model: gpt-5.5
+    effort: medium
+    metered: false
+  - key: opus-4.8
+    short: opus
+    profile: claude-native      # Anthropic Opus (native subscription auth)
+    provider: anthropic
+    model: opus
+    effort: high
+    metered: false
+
+# ── ESCALATION LADDERS ────────────────────────────────────────────────────────
+# An ordered list of candidate keys, CHEAPEST FIRST. escalate.sh runs each bug up
+# the ladder, stopping at the first rung that reaches `solved` (the deterministic
+# bench.py oracle verdict). The default ladder climbs model AND effort: cheap
+# model → same model higher effort → bigger model → biggest model high effort.
+# Override per run with `escalate.sh --ladder <name>` or `--rungs k1,k2,...`.
+#
+# `default` uses ONLY profiles that ship configured (codex-spark, synthetic-claude,
+# codex-native, claude-native) so it runs out-of-the-box. The effort rungs
+# (*-high) need an extra profile in .kitsoki.local.yaml (copy the base profile,
+# set effort: high), so they live in their own ladder, NOT in default — a ladder
+# must never reference an unconfigured profile or the drive fails at that rung.
+ladders:
+  default: [gpt-5.3-spark, glm-5.2, gpt-5.5, opus-4.8]
+  # Pure effort sweep on one model (needs the synthetic-claude-high profile):
+  effort-only: [glm-5.2, glm-5.2-high]
+  # Cheapest-viable open model only:
+  open: [glm-5.2, glm-5.2-high]

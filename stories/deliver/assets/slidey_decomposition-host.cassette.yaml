@@ -1,0 +1,74 @@
+# Generated from stories/deliver/flows/slidey_decomposition.yaml host_handlers (no LLM): backs host.* under --harness replay.
+kind: host_cassette
+app_id: deliver
+app_version: 0.1.0
+match_on:
+- handler
+- call
+episodes:
+- id: task_decomposer
+  match:
+    handler: host.agent.task
+    call: decomposer
+  replay: any
+  response:
+    data:
+      submitted:
+        briefs:
+        - id: notes-model
+          brief: 'Add a SceneNotes struct in internal/notes/ (narration + scene title + ordinal) derived
+            from the deck spec. Gate: go test ./internal/notes/...'
+          gate_command: go test ./internal/notes/...
+          deps: []
+        - id: notes-renderer
+          brief: 'Add RenderHandout in internal/notes/render/ turning []SceneNotes into a printable per-scene
+            handout. Gate: go test ./internal/notes/render/...'
+          gate_command: go test ./internal/notes/render/...
+          deps:
+          - notes-model
+        - id: notes-cli-flag
+          brief: 'Register a --notes <path> flag on the slidey CLI that renders the handout over the parsed
+            deck spec. Gate: go test ./cmd/slidey/...'
+          gate_command: go test ./cmd/slidey/...
+          deps:
+          - notes-renderer
+- id: run_lint
+  match:
+    handler: host.run
+    call: lint
+  replay: any
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        route: ok
+        error: ''
+- id: run_fleet_load
+  match:
+    handler: host.run
+    call: fleet_load
+  replay: any
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        fleet_briefs:
+        - id: notes-model
+          brief: Add a SceneNotes struct...
+          gate_command: go test ./internal/notes/...
+          status: pending
+          last_error: ''
+        - id: notes-renderer
+          brief: Add RenderHandout...
+          gate_command: go test ./internal/notes/render/...
+          status: pending
+          last_error: ''
+        - id: notes-cli-flag
+          brief: Register a --notes <path> flag...
+          gate_command: go test ./cmd/slidey/...
+          status: pending
+          last_error: ''
+        fleet_state_path: /tmp/fleet-slidey-decomp-test.json
+        error: ''

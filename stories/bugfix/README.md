@@ -15,7 +15,7 @@ kitsoki run stories/bugfix/app.yaml
 ```
 
 Imported (see Wave 2's `stories/dev-story/app.yaml` or
-`stories/kitsoki-dev/app.yaml`).
+`.kitsoki/stories/kitsoki-dev/app.yaml`).
 
 ## Contract
 
@@ -95,14 +95,40 @@ ticket-driven pipeline (`reuse`, don't reinvent):
   *before* the LLM reproducer / maker budget is spent.
 
 This makes `reproduction_artifact.bug_verified` an **evidenced** fact rather than
-an LLM assertion. **Backward compatible:** an empty `gate_command` (a legacy
-ticket with no `repro_command`) skips the gate entirely and falls through to the
-current LLM-only reproducing behaviour, unchanged.
+an LLM assertion.
+
+### The synthesised gate — ship a bare bug report autonomously
+
+A bug report often arrives with **no `repro_command`** (gate_command empty). Such
+a ticket used to dead-end at `@exit:needs-human`: the ship guard refuses a fix
+whose regression gate was never proven RED pre-fix, and with no gate there was
+nothing to prove. The pipeline now **synthesises the gate from the reproducer's
+own work** so a bare report still ships:
+
+- The `reproducing` room's reproducer ALWAYS authors a RED test (prompt-enforced)
+  and now emits a structured **`repro_command`** + **`repro_test_paths`**
+  (`schemas/reproducing_artifact.json`).
+- On `accept`, when `gate_command` is empty, the room **commits that test as a
+  discrete pre-fix commit** (`test(repro): RED reproducer for <ticket>`) and sets
+  `gate_command` / `landing_gate` from the artifact's `repro_command`
+  (latched by `repro_committed`).
+- Because the test is committed BEFORE the fix (implementing commits the fix as
+  the next tip), the `testing` room's HEAD~1 RED gate runs the test on the
+  test-without-fix snapshot → **RED**, and the tail's `verify` re-runs it on the
+  merged commit → **GREEN**. The ship guard is satisfied exactly as it is for a
+  ticket-supplied `repro_command`.
+
+Guarded on `gate_command == ''`, so a ticket that DID carry a `repro_command` is
+completely unaffected. Supplying `repro_command` is still preferred — it proves
+the bug reproduces (the RED-gate below) **before** any maker budget is spent;
+without it, the budget is spent first and the synthesised gate proves RED after.
+Verified by `flows/bugfix_synthesizes_gate_and_ships.yaml`.
 
 | Flow | Proves |
 |---|---|
 | `bugfix_repro_red_then_proceed` | RED gate (non-zero exit) → `reproducing` holds for the LLM reproducer → `accept` → `proposing`. The bug reproduces; maker budget is justified. |
 | `bugfix_repro_green_not_reproducible` | GREEN gate (zero exit) → `not_reproducible` emit → `@exit:not-reproducible`; the LLM reproducer never runs. The don't-spend-on-a-phantom case. |
+| `bugfix_synthesizes_gate_and_ships` | a ticket with NO `repro_command` → the reproducer's test is committed + `gate_command` derived → testing RED pre-fix → `@exit:shipped`. Bare report, autonomous to main. |
 
 ### Direct-ship flows (no-LLM)
 
@@ -138,9 +164,10 @@ in `app.yaml`'s `world:` block so the child loads standalone for tests.
 | `thread` | string | The transport's thread identifier (file path / Jira key / chat ID). | `""` |
 | `workspace_id` | string | `iface.workspace.sync` arg. | `""` |
 | `workdir` | string | Most `iface.{vcs,ci}.*` calls. | `""` |
-| `base_branch` | string | `iface.vcs.open_pr.base`. | `""` |
+| `base_branch` | string | The PR target (`iface.vcs.open_pr.base`); also the worktree cut-point when `base_commit` is empty. | `main` |
+| `base_commit` | string | Pins the worktree CUT-POINT to a specific committish (branch/tag/**SHA** — anything `git worktree add` accepts). Takes precedence over `base_branch` for the cut. Set this (not `base_branch`) to reproduce/fix against a detached baseline, e.g. a bug's pre-fix SHA in a bake-off cell. | `""` |
 | `feature_branch` | string | `iface.vcs.branch.name`. | `""` |
-| `gate_command` | string | The ticket's `repro_command` (repro RED-gate in `reproducing`; re-used as the regression gate in `testing` + the shared `verify`). Empty ⇒ gates skipped. | `""` |
+| `gate_command` | string | The ticket's `repro_command` (repro RED-gate in `reproducing`; re-used as the regression gate in `testing` + the shared `verify`). Empty ⇒ the `reproducing` room synthesises it from the reproducer's authored test on `accept` (see "The synthesised gate"). | `""` |
 | `bugfix_mode` | string | `full` (walk every room) \| `quick` (Wave 2 shortcut). | `full` |
 | `judge_mode` | string | `human` \| `llm` \| `llm_then_human` — see Judge polymorphism below. | `human` |
 | `judge_confidence_threshold` | float | Floor for auto-firing the LLM's verdict (Wave 2 — runtime gap). | `0.8` |

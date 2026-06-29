@@ -1,0 +1,35 @@
+# done — gallery. The bake-off produced a rendered slidey report deck. Show the
+# final media + the headline rollup. Terminal: `accept` lifts @exit:done (which
+# requires deck_handle — a real rendered report exists). Deterministic, no host
+# calls.
+
+states:
+
+  done:
+    description: "Bake-off complete — the report deck is rendered."
+    relevant_world: [deck, deck_handle, summary, report_markdown]
+    view:
+      - heading: "Bake-off · done"
+      - media:
+          handle: "{{ world.deck_handle }}"
+      - kv:
+          pairs:
+            Report:  '{{ world.deck.summary }}'
+            Deck:    '{{ world.deck_handle }}'
+            Cells:   "{{ world.summary.cells|length }}"
+      - prose: "The matrix bake-off report deck is rendered. Accept to finish."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "finish (@exit:done)"
+              intent: accept
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on:
+      accept:
+        - target: "@exit:done"
+      look:
+        - target: .

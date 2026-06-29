@@ -85,6 +85,13 @@ type WebConfig struct {
 	// fail-fast in Load via resolveRoot, mirroring harness profiles. See
 	// docs/stories/imports.md "The blank root that grows".
 	Root *RootConfig `yaml:"root,omitempty"`
+
+	// ProjectProfile names the declarative project profile to fold into the
+	// implicit dev-story root. Empty means the conventional
+	// .kitsoki/project-profile.yaml beside this config, when that file exists.
+	// The profile supplies community/project conventions; root.overrides remains
+	// the explicit escape hatch and wins on conflicts.
+	ProjectProfile string `yaml:"project_profile,omitempty"`
 }
 
 // InterceptConfig is the operator's binding for the pre-LLM intercept gate. It
@@ -274,9 +281,27 @@ type HarnessProfile struct {
 	// + ANTHROPIC_AUTH_TOKEN to retarget claude at synthetic.new). ${VAR}-expanded
 	// at load time. Never recorded in traces.
 	Env map[string]string `yaml:"env,omitempty"`
+	// Quota, when present, enables kitsoki-side throttling before calls reach the
+	// provider. It is intentionally provider-neutral: a profile may describe an
+	// API-token bucket, a subscription request bucket, or any other local budget
+	// we can estimate and update from observed usage.
+	Quota *QuotaControl `yaml:"quota,omitempty"`
 	// Plugin routes the profile through an agent plugin (e.g. builtin.local_llm
 	// for llama.cpp) instead of forking a backend CLI. Optional.
 	Plugin string `yaml:"plugin,omitempty"`
+}
+
+// QuotaControl configures the local provider limiter for a harness profile.
+// Window is a Go duration string (for example "1m"). TokensPerWindow caps the
+// estimated tokens started inside that window; MaxConcurrent caps simultaneous
+// calls; ReserveTokens is a floor for calls whose prompt estimate is tiny.
+type QuotaControl struct {
+	Window          string `yaml:"window,omitempty"`
+	TokensPerWindow int64  `yaml:"tokens_per_window,omitempty"`
+	MaxConcurrent   int    `yaml:"max_concurrent,omitempty"`
+	ReserveTokens   int64  `yaml:"reserve_tokens,omitempty"`
+	StatePath       string `yaml:"state_path,omitempty"`
+	LeaseTimeout    string `yaml:"lease_timeout,omitempty"`
 }
 
 var validBackends = map[string]bool{"": true, "claude": true, "copilot": true, "codex": true}
@@ -284,10 +309,10 @@ var validBackends = map[string]bool{"": true, "claude": true, "copilot": true, "
 // validEfforts mirrors the engine's --effort levels (internal/app loader).
 var validEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
-// Load reads WebConfig from the given base path, then deep-merges the sibling
-// local override (see LocalConfigPath) on top of it. A missing base or local
-// file is not an error — each absent file contributes nothing, so an empty repo
-// returns a zero WebConfig and the caller falls back to the default via Resolve.
+// Load reads WebConfig from the given base path, then deep-merges the local
+// override (see LocalConfigPath) on top of it. A missing base or local file is
+// not an error — each absent file contributes nothing, so an empty repo returns
+// a zero WebConfig and the caller falls back to the default via Resolve.
 //
 // Merge happens before validation, so ${VAR} expansion and the backend / model
 // / effort / default_profile checks all run once against the effective config:
@@ -299,13 +324,16 @@ func Load(path string) (WebConfig, error) {
 	if err != nil {
 		return WebConfig{}, err
 	}
-	local, hadLocal, err := parseConfig(LocalConfigPath(path))
+	local, hadLocal, err := parseFirstConfig(LocalConfigPathCandidates(path))
 	if err != nil {
 		return WebConfig{}, err
 	}
 	cfg := base
 	if hadLocal {
 		cfg = mergeConfig(base, local)
+	}
+	if err := cfg.resolveProjectProfile(path); err != nil {
+		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := cfg.resolveHarnessProfiles(); err != nil {
 		return WebConfig{}, fmt.Errorf("%s: %w", path, err)
@@ -331,6 +359,29 @@ func LocalConfigPath(path string) string {
 	return strings.TrimSuffix(path, ext) + ".local" + ext
 }
 
+// LocalConfigPathCandidates returns the local override paths Load checks, in
+// precedence order. The sibling local file wins. When running from a linked git
+// worktree, the primary checkout's same relative local file is a fallback so
+// gitignored machine config does not need to be copied into every worktree.
+func LocalConfigPathCandidates(path string) []string {
+	local := LocalConfigPath(path)
+	candidates := []string{local}
+	if primaryLocal, ok := primaryWorktreeLocalConfigPath(path); ok && primaryLocal != local {
+		candidates = append(candidates, primaryLocal)
+	}
+	return candidates
+}
+
+func parseFirstConfig(paths []string) (WebConfig, bool, error) {
+	for _, path := range paths {
+		cfg, exists, err := parseConfig(path)
+		if err != nil || exists {
+			return cfg, exists, err
+		}
+	}
+	return WebConfig{}, false, nil
+}
+
 // parseConfig reads and YAML-unmarshals one config file WITHOUT validating or
 // expanding it — validation is deferred to Load so it runs once on the merged
 // result. A missing file yields a zero WebConfig and exists=false; any other
@@ -349,6 +400,90 @@ func parseConfig(path string) (cfg WebConfig, exists bool, err error) {
 	return cfg, true, nil
 }
 
+func primaryWorktreeLocalConfigPath(configPath string) (string, bool) {
+	absConfig, err := filepath.Abs(configPath)
+	if err != nil {
+		return "", false
+	}
+	localAbs, err := filepath.Abs(LocalConfigPath(configPath))
+	if err != nil {
+		return "", false
+	}
+	worktreeRoot, gitDir, ok := findGitRoot(filepath.Dir(absConfig))
+	if !ok {
+		return "", false
+	}
+	commonDir, ok := gitCommonDir(gitDir)
+	if !ok {
+		return "", false
+	}
+	primaryRoot := filepath.Dir(commonDir)
+	if samePath(primaryRoot, worktreeRoot) {
+		return "", false
+	}
+	rel, err := filepath.Rel(worktreeRoot, localAbs)
+	if err != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
+		return "", false
+	}
+	return filepath.Join(primaryRoot, rel), true
+}
+
+func findGitRoot(start string) (root, gitDir string, ok bool) {
+	dir := start
+	for {
+		gitPath := filepath.Join(dir, ".git")
+		info, err := os.Stat(gitPath)
+		if err == nil {
+			if info.IsDir() {
+				return dir, gitPath, true
+			}
+			b, err := os.ReadFile(gitPath)
+			if err != nil {
+				return "", "", false
+			}
+			const prefix = "gitdir:"
+			text := strings.TrimSpace(string(b))
+			if !strings.HasPrefix(text, prefix) {
+				return "", "", false
+			}
+			gd := strings.TrimSpace(strings.TrimPrefix(text, prefix))
+			if !filepath.IsAbs(gd) {
+				gd = filepath.Join(dir, gd)
+			}
+			return dir, filepath.Clean(gd), true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", "", false
+		}
+		dir = parent
+	}
+}
+
+func gitCommonDir(gitDir string) (string, bool) {
+	commonDir := gitDir
+	if b, err := os.ReadFile(filepath.Join(gitDir, "commondir")); err == nil {
+		commonDir = strings.TrimSpace(string(b))
+		if !filepath.IsAbs(commonDir) {
+			commonDir = filepath.Join(gitDir, commonDir)
+		}
+	}
+	commonDir = filepath.Clean(commonDir)
+	if filepath.Base(commonDir) != ".git" {
+		return "", false
+	}
+	return commonDir, true
+}
+
+func samePath(a, b string) bool {
+	aa, errA := filepath.Abs(a)
+	bb, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return filepath.Clean(aa) == filepath.Clean(bb)
+}
+
 // mergeConfig deep-merges a local override onto a base config, local-wins:
 //   - story_dirs and default_profile are scalars/lists — a non-empty local value
 //     replaces the base value; an absent local value leaves the base untouched.
@@ -365,6 +500,9 @@ func mergeConfig(base, local WebConfig) WebConfig {
 	if local.DefaultProfile != "" {
 		out.DefaultProfile = local.DefaultProfile
 	}
+	if local.ProjectProfile != "" {
+		out.ProjectProfile = local.ProjectProfile
+	}
 	// The intercept binding is a single coherent block, so the local file
 	// replaces it whole (matching the per-profile "restate, don't field-merge"
 	// rule above) rather than field-merging into the base binding.
@@ -380,6 +518,215 @@ func mergeConfig(base, local WebConfig) WebConfig {
 			merged[k] = v
 		}
 		out.HarnessProfiles = merged
+	}
+	return out
+}
+
+// projectProfile is the minimal project-profile/v1 surface the implicit-root
+// loader consumes. The full profile is intentionally broader; unknown fields
+// remain owned by onboarding/docs/tooling.
+type projectProfile struct {
+	Schema          string                 `yaml:"schema"`
+	Commands        map[string]string      `yaml:"commands"`
+	Repo            projectProfileRepo     `yaml:"repo"`
+	Kitsoki         projectProfileKitsoki  `yaml:"kitsoki"`
+	DevStoryProfile projectDevStoryProfile `yaml:"dev_story_profile"`
+}
+
+type projectProfileRepo struct {
+	Root string `yaml:"root"`
+}
+
+type projectProfileKitsoki struct {
+	Instance  projectProfileInstance `yaml:"instance"`
+	JudgeMode string                 `yaml:"judge_mode"`
+}
+
+type projectProfileInstance struct {
+	Bindings map[string]string `yaml:"bindings"`
+}
+
+type projectDevStoryProfile struct {
+	Docs   projectProfileDocs   `yaml:"docs"`
+	Bugfix projectProfileBugfix `yaml:"bugfix"`
+}
+
+type projectProfileDocs struct {
+	PublishDurablePath string `yaml:"publish_durable_path"`
+	PRDDocFilename     string `yaml:"prd_doc_filename"`
+	DesignTemplateDir  string `yaml:"design_template_dir"`
+	DesignDurablePath  string `yaml:"design_durable_path"`
+	DesignDocFilename  string `yaml:"design_doc_filename"`
+	DesignTicketDir    string `yaml:"design_ticket_dir"`
+	TicketRepo         string `yaml:"ticket_repo"`
+}
+
+type projectProfileBugfix struct {
+	BuildCmd string `yaml:"build_cmd"`
+	TestCmd  string `yaml:"test_cmd"`
+}
+
+// resolveProjectProfile folds .kitsoki/project-profile.yaml into Root before
+// root validation. Explicit root.overrides in .kitsoki.yaml are the highest
+// precedence layer, so a project can use the profile for shared conventions and
+// still override one key without duplicating the whole profile.
+func (cfg *WebConfig) resolveProjectProfile(configPath string) error {
+	profilePath := cfg.ProjectProfile
+	if profilePath == "" {
+		profilePath = filepath.Join(".kitsoki", "project-profile.yaml")
+	}
+	if !filepath.IsAbs(profilePath) {
+		profilePath = filepath.Join(filepath.Dir(configPath), profilePath)
+	}
+	b, err := os.ReadFile(profilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("project_profile: read %s: %w", profilePath, err)
+	}
+	var profile projectProfile
+	if err := yaml.Unmarshal(b, &profile); err != nil {
+		return fmt.Errorf("project_profile: parse %s: %w", profilePath, err)
+	}
+	if profile.Schema != "" && profile.Schema != "project-profile/v1" {
+		return fmt.Errorf("project_profile: %s has schema %q, want project-profile/v1", profilePath, profile.Schema)
+	}
+
+	profileRoot := profileRootConfig(profile)
+	if profileRoot == nil {
+		return nil
+	}
+	cfg.Root = mergeRootConfig(profileRoot, cfg.Root)
+	return nil
+}
+
+func profileRootConfig(profile projectProfile) *RootConfig {
+	overrides := &RootOverrides{}
+	if len(profile.Kitsoki.Instance.Bindings) > 0 {
+		overrides.Bindings = copyStringMap(profile.Kitsoki.Instance.Bindings)
+	}
+	world := map[string]any{}
+	if root := strings.TrimSpace(profile.Repo.Root); root != "" {
+		world["workdir"] = root
+		world["repo_root"] = root
+	} else {
+		world["workdir"] = "."
+		world["repo_root"] = "."
+	}
+	if profile.Kitsoki.JudgeMode != "" {
+		world["judge_mode"] = profile.Kitsoki.JudgeMode
+	}
+	docs := profile.DevStoryProfile.Docs
+	setStringWorld(world, "publish_durable_path", docs.PublishDurablePath)
+	setStringWorld(world, "prd_doc_filename", docs.PRDDocFilename)
+	setStringWorld(world, "design_template_dir", docs.DesignTemplateDir)
+	setStringWorld(world, "design_durable_path", docs.DesignDurablePath)
+	setStringWorld(world, "design_doc_filename", docs.DesignDocFilename)
+	setStringWorld(world, "design_ticket_dir", docs.DesignTicketDir)
+	setStringWorld(world, "ticket_repo", docs.TicketRepo)
+	buildCmd := profile.DevStoryProfile.Bugfix.BuildCmd
+	if buildCmd == "" {
+		buildCmd = profile.Commands["build"]
+	}
+	testCmd := profile.DevStoryProfile.Bugfix.TestCmd
+	if testCmd == "" {
+		testCmd = profile.Commands["test"]
+	}
+	setStringWorld(world, "build_cmd", buildCmd)
+	setStringWorld(world, "test_cmd", testCmd)
+	if len(world) > 0 {
+		overrides.World = world
+	}
+	if len(overrides.Bindings) == 0 && len(overrides.World) == 0 {
+		return nil
+	}
+	return &RootConfig{Import: app.RootStoryName, Overrides: overrides}
+}
+
+func mergeRootConfig(base, override *RootConfig) *RootConfig {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	out := &RootConfig{Import: base.Import, Overrides: &RootOverrides{}}
+	if override.Import != "" {
+		out.Import = override.Import
+	}
+	if base.Overrides != nil {
+		out.Overrides.Bindings = copyStringMap(base.Overrides.Bindings)
+		out.Overrides.World = copyAnyMap(base.Overrides.World)
+		out.Overrides.Synonyms = copyStringSliceMap(base.Overrides.Synonyms)
+	}
+	if override.Overrides != nil {
+		if len(override.Overrides.Bindings) > 0 {
+			if out.Overrides.Bindings == nil {
+				out.Overrides.Bindings = map[string]string{}
+			}
+			for k, v := range override.Overrides.Bindings {
+				out.Overrides.Bindings[k] = v
+			}
+		}
+		if len(override.Overrides.World) > 0 {
+			if out.Overrides.World == nil {
+				out.Overrides.World = map[string]any{}
+			}
+			for k, v := range override.Overrides.World {
+				out.Overrides.World[k] = v
+			}
+		}
+		if len(override.Overrides.Synonyms) > 0 {
+			if out.Overrides.Synonyms == nil {
+				out.Overrides.Synonyms = map[string][]string{}
+			}
+			for k, v := range override.Overrides.Synonyms {
+				out.Overrides.Synonyms[k] = append([]string(nil), v...)
+			}
+		}
+	}
+	if out.Import == "" {
+		out.Import = app.RootStoryName
+	}
+	return out
+}
+
+func setStringWorld(world map[string]any, key, value string) {
+	if value != "" {
+		world[key] = value
+	}
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func copyAnyMap(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func copyStringSliceMap(in map[string][]string) map[string][]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(in))
+	for k, v := range in {
+		out[k] = append([]string(nil), v...)
 	}
 	return out
 }
@@ -493,6 +840,27 @@ func (cfg *WebConfig) resolveHarnessProfiles() error {
 			}
 			if len(p.Efforts) > 0 && !contains(p.Efforts, p.Effort) {
 				return fmt.Errorf("harness_profiles.%s: effort %q is not in its efforts catalog", name, p.Effort)
+			}
+		}
+		if p.Quota != nil {
+			if p.Quota.Window != "" {
+				if _, err := time.ParseDuration(p.Quota.Window); err != nil {
+					return fmt.Errorf("harness_profiles.%s: quota.window %q is not a valid duration: %w", name, p.Quota.Window, err)
+				}
+			}
+			if p.Quota.LeaseTimeout != "" {
+				if _, err := time.ParseDuration(p.Quota.LeaseTimeout); err != nil {
+					return fmt.Errorf("harness_profiles.%s: quota.lease_timeout %q is not a valid duration: %w", name, p.Quota.LeaseTimeout, err)
+				}
+			}
+			if p.Quota.TokensPerWindow < 0 {
+				return fmt.Errorf("harness_profiles.%s: quota.tokens_per_window must not be negative", name)
+			}
+			if p.Quota.MaxConcurrent < 0 {
+				return fmt.Errorf("harness_profiles.%s: quota.max_concurrent must not be negative", name)
+			}
+			if p.Quota.ReserveTokens < 0 {
+				return fmt.Errorf("harness_profiles.%s: quota.reserve_tokens must not be negative", name)
 			}
 		}
 		cfg.HarnessProfiles[name] = p

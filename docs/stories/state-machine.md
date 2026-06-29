@@ -604,9 +604,35 @@ What you **cannot** do:
 - No shell-out, file I/O, time-of-day. Inject those via host handlers
   and reflect them into world.
 
-Templates (inside `view:`, `say:`, and string-valued fields like
-`with:`) accept `{{ … }}` expressions plus the `{{ if }}…{{ end }}`,
-`{{ if }}…{{ else }}…{{ end }}`, and `{{ range }}…{{ end }}` blocks.
+### 7.1 Expressions vs. templates — which syntax goes where
+
+kitsoki has **two** evaluation contexts. Which one applies is fixed by the
+*position* — it is not a style choice:
+
+| Context | Syntax | Positions |
+|---|---|---|
+| **expr-lang** | a **bare** expression, no delimiters (`world.x && slots.y`) | `when:` guards (transition **and** element-level), readonly-`fields.<n>.expr`, off-ramp / contextual-route guards |
+| **template** | wrapped in `{{ … }}` (plus the `{{ if }}…{{ end }}` / `{{ range }}…{{ end }}` blocks) | `view:`, `say:`, and **every string-valued effect / arg**: `set:` values, `with:` / `inputs:` / `args:`, compound `initial:` |
+
+The expression grammar *inside* `{{ }}` is the same expr-lang vocabulary as a
+guard (`??`, `?.`, `in`, `len()`, ternary `a ? b : c`), so `{{ world.x ?? "" }}`
+evaluates exactly like the guard `world.x ?? ""`. The only thing the `{{ }}` adds
+is "evaluate me." Two rules that bite if you forget them:
+
+- **A *sole* `{{ expr }}` preserves the typed value.** `count: "{{ world.n }}"`
+  binds the **int** `world.n`, not its string form — so a value wired to a typed
+  sink (a `host.starlark.run` input declared `int`, an increment) stays typed.
+  Interpolating (`"n={{ world.n }}"`) or using more than one `{{ }}` always
+  yields a string.
+- **A bare expression in a *template* position is NOT evaluated — it is passed
+  verbatim as a literal string.** `spec_path: "world.deck.spec_path"` (no `{{ }}`)
+  reaches the handler as the literal text `"world.deck.spec_path"`, silently
+  breaking everything downstream — the single most common authoring footgun.
+  Always template value positions: `"{{ world.deck.spec_path }}"`. For
+  `host.starlark.run` the loader now rejects a bare-expression `inputs:` value (or
+  a literal that can't satisfy its declared type) **at load**
+  ([hosts.md → the sidecar contract](../architecture/hosts.md#the-sidecar-contract));
+  `kitsoki validate <app.yaml>` surfaces it without a session.
 
 ---
 
@@ -718,6 +744,13 @@ Make `on_enter` idempotent with one of:
   call that filled the cache is still recorded as before. It is
   entry-kind-agnostic — the same check protects `/reload`, self-transitions,
   and `on_error` re-entry.
+
+  During authoring, `/reload --force` bypasses this `once:` skip for that
+  single reload turn. Use it when a prompt or `on_enter` host-call edit must
+  be exercised against the current room without manually clearing bind targets.
+  The forced rerun is recorded on the reload turn (`force_once: true`) so traces
+  explain why an otherwise cached call re-fired. Plain `/reload` remains the
+  safe default.
 
   **Decide-then-write pairs** (a `decide` that binds an object, then an
   `artifacts_dir` write that binds the path) each key off their **own** bind.

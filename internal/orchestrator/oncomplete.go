@@ -115,6 +115,17 @@ func (o *Orchestrator) handleJobTerminal(ctx context.Context, sid app.SessionID,
 		return nil
 	}
 
+	staleCompletion := journey.State != j.OriginState
+	if staleCompletion {
+		o.logger.InfoContext(ctx, trace.EvJobTerminal,
+			slog.String("session_id", string(sid)),
+			slog.String("job_id", ev.JobID),
+			slog.String("phase", "stale_origin_state"),
+			slog.String("origin_state", string(j.OriginState)),
+			slog.String("current_state", string(journey.State)),
+		)
+	}
+
 	// Recover on_complete effects from the job payload. They were stored as a
 	// JSON-encoded []app.Effect under the "__on_complete" key.
 	var onComplete []app.Effect
@@ -162,6 +173,10 @@ func (o *Orchestrator) handleJobTerminal(ctx context.Context, sid app.SessionID,
 	// below) also updates it.  This is what the synthetic TurnOutcome reports
 	// as NewState to observers.
 	currentState := j.OriginState
+	if staleCompletion {
+		currentState = journey.State
+		onComplete = nil
+	}
 	// onErrorRedirected, when true, signals that a host-call inside the
 	// on_complete chain hit its on_error path and the session has already
 	// landed on the error state.  In that case the Target effect's transition

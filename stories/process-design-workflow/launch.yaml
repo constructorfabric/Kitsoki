@@ -1,0 +1,3 @@
+state: idle
+world:
+  manifest_path: stories/process-design-workflow/manifest.yaml

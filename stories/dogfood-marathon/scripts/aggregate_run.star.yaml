@@ -1,0 +1,6 @@
+inputs:
+  results:  { type: object, required: false }
+  findings: { type: object, required: false }
+
+outputs:
+  rollup: { type: object }

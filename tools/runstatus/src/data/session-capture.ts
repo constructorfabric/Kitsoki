@@ -26,6 +26,16 @@ export interface RrwebEvent {
   [k: string]: unknown;
 }
 
+export interface RrwebEnvelope {
+  schemaVersion: 1;
+  source: string;
+  viewport: { width: number; height: number; deviceScaleFactor?: number };
+  startTime: number;
+  endTime: number;
+  durationMs: number;
+  events: RrwebEvent[];
+}
+
 const FULL_SNAPSHOT = 2;
 // type=4 is a Meta event (href + viewport width/height). The Replayer needs a
 // Meta before the first FullSnapshot to size its iframe; without it the replay
@@ -141,6 +151,36 @@ export function snapshotSessionEvents(): RrwebEvent[] {
     }
   }
   return events;
+}
+
+export function buildSessionEnvelope(
+  events: RrwebEvent[] = snapshotSessionEvents(),
+  opts: { source?: string; viewport?: { width: number; height: number; deviceScaleFactor?: number } } = {}
+): RrwebEnvelope {
+  const first = timestampOf(events[0], 0);
+  const last = timestampOf(events[events.length - 1], first);
+  return {
+    schemaVersion: 1,
+    source: opts.source ?? "kitsoki-visual-record",
+    viewport: opts.viewport ?? rrwebViewport(events),
+    startTime: first,
+    endTime: last,
+    durationMs: Math.max(0, last - first),
+    events,
+  };
+}
+
+function timestampOf(event: RrwebEvent | undefined, fallback: number): number {
+  return typeof event?.timestamp === "number" ? event.timestamp : fallback;
+}
+
+function rrwebViewport(events: RrwebEvent[]): { width: number; height: number } {
+  const meta = events.find((event) => event.type === META && event.data && typeof event.data === "object");
+  const data = meta?.data as { width?: unknown; height?: unknown } | undefined;
+  if (typeof data?.width === "number" && typeof data?.height === "number") {
+    return { width: data.width, height: data.height };
+  }
+  return { width: window.innerWidth || 1600, height: window.innerHeight || 900 };
 }
 
 /** Stop recording and reset. Mainly for tests. */

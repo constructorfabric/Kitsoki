@@ -56,7 +56,8 @@ and the engine gives it:
   agent/host output to the workspace **as soon as it's produced** (a schema'd
   [artifact-format](artifact-format.md) file); the world carries only a handle,
   the on-disk artifact is the source of truth (the
-  [media-artifact-substrate](media-artifact-substrate.md) rule).
+  recorded-media rule documented in
+  [`story-style.md`](../stories/story-style.md#37-media--showing-a-recorded-artifact).
 - **Resume + update mode.** On entry the story discovers existing in-progress
   instances and offers **re-join**; the operator can step *back* to an earlier
   phase, edit it, and **re-run** the pipeline in update mode — downstream
@@ -81,9 +82,10 @@ and the engine gives it:
   owns the per-file schema/round-trip; [`lifecycle-taxonomy.md`](lifecycle-taxonomy.md)
   owns the domain-model containers (Features/Proposals/Plans/TestSpecs) — this
   epic is the *orchestration* layer that produces and manages instances of
-  artifacts that may be either format; [`media-artifact-substrate.md`](media-artifact-substrate.md)
-  owns recorded media handles, whose "artifact-of-record, not world" rule we
-  inherit.
+  artifacts that may be either format; the shipped media substrate in
+  [`host.artifacts_dir`](../architecture/hosts.md#hostartifacts_dir) and
+  [`artifact.emitted`](../tracing/trace-format.md#artifact-event-kind) owns
+  recorded media handles, whose "artifact-of-record, not world" rule we inherit.
 - **Docs on ship:** a new `docs/stories/artifact-driven-stories.md` (the
   author-facing pattern, with the migrated design pipeline as its example),
   cross-linked from `docs/stories/authoring.md`, `docs/stories/state-machine.md`,
@@ -125,8 +127,10 @@ These span slices; children defer here rather than re-litigating.
    semantics `chats.Store.Resolve` gives meta-mode (`internal/chats/`). Same key →
    re-join; new key → new instance.
 3. **Artifact-of-record, not world.** Each phase persists its output to the
-   workspace immediately; the world holds only a handle/pointer. Inherited
-   verbatim from [`media-artifact-substrate.md`](media-artifact-substrate.md).
+   workspace immediately; the world holds only a handle/pointer. This follows
+   the same rule as recorded media artifacts:
+   [`artifact.emitted`](../tracing/trace-format.md#artifact-event-kind) is the
+   durable record and world carries only a handle.
 4. **One file format, not a new one.** Every artifact is an
    [artifact-format](artifact-format.md) file (frontmatter+body or data-primary);
    this epic never re-defines the file shape, it only decides *where files live
@@ -153,5 +157,6 @@ These span slices; children defer here rather than re-litigating.
   owns Features/Proposals/Plans/TestSpecs.
 - **Not real-time co-editing.** Collaboration here is *over time* via shared
   drafts and re-join, not simultaneous multi-cursor editing of one instance.
-- **Not a media producer.** [`visual-outputs.md`](visual-outputs.md) owns
-  generating MP4/PNG artifacts; this epic only places and dispositions them.
+- **Not a media producer.** `host.slidey.render`, `host.contact_sheet`, and
+  `host.artifacts_dir` media emit own generating and recording MP4/PNG
+  artifacts; this epic only places and dispositions them.

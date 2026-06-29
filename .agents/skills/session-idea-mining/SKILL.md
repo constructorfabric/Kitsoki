@@ -133,7 +133,7 @@ file tickets in `issues/` per the format in `issues/README.md` /
   Severity rationale / Files involved. Cite the mining brief.
 
 Tickets filed here are immediately searchable + workable from
-`kitsoki run stories/kitsoki-dev/app.yaml` (the dogfood reads `issues/`).
+`kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml` (the dogfood reads `issues/`).
 Themes that are **design**-shaped (a new mechanism, not a defect) usually want a
 proposal via the `proposal-authoring` skill, not a bug ticket — say so rather than
 forcing them into the bug tracker.

@@ -135,6 +135,39 @@ export interface FeedbackNote {
   anchor?: AnnotationAnchor;
 }
 
+export interface WorkflowValidationReport {
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface WorkflowReceipt {
+  workflow_id: string;
+  goal: string;
+  slug: string;
+  created_at: string;
+  draft_dir: string;
+  template_story_dir: string;
+  app_path: string;
+  manifest_path: string;
+  launch_basis_path: string;
+  trace_path?: string;
+  events_path?: string;
+  launch_command?: string;
+  validation: WorkflowValidationReport;
+  validation_path?: string;
+  export_path?: string;
+  export_report_path?: string;
+  session_id?: string;
+  session_handle?: string;
+  url?: string;
+}
+
+export interface WorkflowExportOptions {
+  target?: string;
+  allow_base_story?: boolean;
+}
+
 export interface DataSource {
   listSessions(): Promise<SessionHeader[]>;
   getSession(sessionId: string): Promise<SessionHeader>;
@@ -184,7 +217,8 @@ export interface DataSource {
   submit(
     sessionId: string,
     intent: string,
-    slots?: Record<string, unknown>
+    slots?: Record<string, unknown>,
+    anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor
   ): Promise<TurnResult>;
   /** Free-text turn: hand raw input to the interpreter to pick an intent. */
   sendTurn(sessionId: string, input: string): Promise<TurnResult>;

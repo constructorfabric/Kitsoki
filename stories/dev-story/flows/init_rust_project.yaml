@@ -1,0 +1,119 @@
+# init_rust_project -- project onboarding for a Cargo/Makefile repo should
+# preserve the clean external-instance architecture: dev-story stays general,
+# while the target repo owns a thin `@kitsoki/dev-story` instance and command
+# profile. Host calls are stubbed; no LLM or real checkout mutation happens.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/tmp/kitsoki-init-fixtures/acme-rust"
+  repo_root: "/tmp/kitsoki-init-fixtures/acme-rust"
+
+host_handlers:
+  host.run:
+    by_call:
+      discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target_path":"/tmp/kitsoki-init-fixtures/acme-rust","project_id":"acme-rust","project_title":"Acme Rust","stack":"rust project","dev_command":"make dev","test_command":"make test","build_command":"make build","conventions":"hybrid","tracker":"none"}'
+          stdout_json:
+            target_path: "/tmp/kitsoki-init-fixtures/acme-rust"
+            project_id: "acme-rust"
+            project_title: "Acme Rust"
+            stack: "rust project"
+            dev_command: "make dev"
+            test_command: "make test"
+            build_command: "make build"
+            conventions: "hybrid"
+            tracker: "none"
+      apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"status":"applied","config_path":"/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml","profile_path":"/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml","instance_path":"/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml","gitignore_path":"/tmp/kitsoki-init-fixtures/acme-rust/.gitignore","writes":["/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml","/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml","/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml","/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/README.md"]}'
+          stdout_json:
+            status: "applied"
+            config_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+            profile_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+            instance_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml"
+            gitignore_path: "/tmp/kitsoki-init-fixtures/acme-rust/.gitignore"
+            writes:
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/README.md"
+      install_tools:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target":"/tmp/kitsoki-init-fixtures/acme-rust","skills":["kitsoki-story-authoring"],"agents":["kitsoki-mcp-driver.md"],"mcp_path":"/tmp/kitsoki-init-fixtures/acme-rust/.mcp.json","mcp_written":true}'
+          stdout_json:
+            target: "/tmp/kitsoki-init-fixtures/acme-rust"
+            skills:
+              - "kitsoki-story-authoring"
+            agents:
+              - "kitsoki-mcp-driver.md"
+            mcp_path: "/tmp/kitsoki-init-fixtures/acme-rust/.mcp.json"
+            mcp_written: true
+
+turns:
+  - intent: { name: work, slots: { request: "onboard ~/code/acme-rust" } }
+    expect_state: init_discover
+    expect_world:
+      init_request: "onboard ~/code/acme-rust"
+      init_target_path: "/tmp/kitsoki-init-fixtures/acme-rust"
+      init_project_id: "acme-rust"
+      init_project_title: "Acme Rust"
+      init_stack: "rust project"
+      init_dev_command: "make dev"
+      init_test_command: "make test"
+      init_build_command: "make build"
+      init_profile_status: "discovering"
+    expect_view_matches: "continue"
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+    expect_world:
+      init_profile_status: "draft"
+      init_test_command: "make test"
+      init_build_command: "make build"
+    expect_view_matches: "make test"
+
+  - intent: { name: confirm_init, slots: {} }
+    expect_state: init_apply
+    expect_world:
+      init_profile_status: "applying"
+      init_apply_result:
+        status: "applied"
+        config_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+        profile_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+        instance_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml"
+        gitignore_path: "/tmp/kitsoki-init-fixtures/acme-rust/.gitignore"
+        writes:
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/README.md"
+      init_tools_ok: true
+    expect_view_matches: "studio MCP"
+
+  - intent: { name: init_applied, slots: {} }
+    expect_state: init_done
+    expect_world:
+      init_profile_status: "applied"
+      init_apply_result:
+        status: "applied"
+        config_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+        profile_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+        instance_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml"
+        gitignore_path: "/tmp/kitsoki-init-fixtures/acme-rust/.gitignore"
+        writes:
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/README.md"
+    expect_view_matches: "acme-rust-dev"
+
+expect_no_errors: true

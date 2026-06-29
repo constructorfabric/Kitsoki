@@ -1,0 +1,40 @@
+{
+  "bug": "bug9",
+  "candidate": "opus-4.8",
+  "treatment": "kitsoki",
+  "profile": "claude-native",
+  "model": "opus",
+  "effort": "medium",
+  "provider": "anthropic",
+  "outcome": {
+    "oracle_pass": false,
+    "oracle_status": "fail",
+    "build_pass": true,
+    "suite_pass": false,
+    "quality": "solved",
+    "adjudicated": true,
+    "adjudication_note": "Valid alternative fix: per-session working folder (distinct checkouts) \u2014 the ticket's own proposed fix. Committed 419999f8 + regression test. Oracle expects the sentinel-refusal approach; parked needs-human (RED-gate, no repro_command)."
+  },
+  "compliance": {
+    "reproduced_red": false,
+    "added_regression_test": true,
+    "suite_green": false,
+    "in_scope": false,
+    "stage_order": false,
+    "rate": 0.2
+  },
+  "metrics": {
+    "input_tokens": 11061,
+    "output_tokens": 50227,
+    "cache_read_tokens": 3504121,
+    "cache_write_tokens": 463776,
+    "total_tokens": 4029185,
+    "cost_usd": 7.734292,
+    "cost_exact": true,
+    "wall_time_s": 1056.0,
+    "guidance_turns": 1
+  },
+  "transcript_path": "/Users/brad/code/Kitsoki/.artifacts/bugfix-bakeoff/traces/bug9-opus-4.8-kitsoki.jsonl",
+  "trace_found": true,
+  "notes": "oracle TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP: rc=1; cost from native meta.cost_usd"
+}

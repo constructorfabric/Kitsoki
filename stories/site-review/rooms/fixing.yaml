@@ -1,0 +1,118 @@
+# fixing — close the gaps the verdict described.
+#
+# Reached from `reviewed` when the operator picks `fix_gaps` on a
+# needs_update verdict. Walks the `gaps[]` listing and hands it to a
+# write-capable opus agent (`site_writer`) that authors the missing
+# features/*.yaml entries and patches the stale site copy.
+#
+# The agent does NOT commit — changes are left uncommitted in the
+# working tree for the operator to review, stage, and run
+# `make features` against. Matches site-review's hands-off positioning
+# (no vcs/workspace plumbing; the story doesn't own a worktree).
+#
+# on_enter chain (mirrors the reviewing room's shape):
+#
+#   1. host.agent.task: hand site_writer the verdict + rendered
+#      worklist; agent edits files; submits a site_fix_artifact.
+#   2. host.artifacts_dir: write the fix artifact to
+#      .artifacts/site-review-fix-<sha>.json as pure JSON (same
+#      thread-extension convention reviewing uses for its verdict).
+#   3. emit_intent: fix_done — guarded against the pre-bind world
+#      snapshot the same way reviewing.yaml does.
+
+states:
+
+  fixing:
+    description: "Closing the catalog/site gaps (write-capable agent)."
+    view:
+      - banner:
+          text:     "CLOSING SITE GAPS"
+          subtitle: "Site writer is authoring catalog entries / patching copy"
+          color:    "#8B5CF6"
+      - kv:
+          pairs:
+            "Commit":   "{{ world.commit_sha }}"
+            "Decision": "{{ world.verdict.decision }}"
+            "Gaps":     '{{ world.verdict.gaps|length|default:"0" }}'
+            "Applied":  '{% if world.fix_artifact.applied == true %}yes{% elif world.fix_artifact.applied == false %}no (see blockers){% else %}(pending — agent has not returned){% endif %}'
+      - heading: "Worklist (read-only render of verdict.gaps)"
+      - code: |
+          {% for g in world.verdict.gaps %}[{{ g.kind }}] {{ g.target }}{% if g.detail %} — {{ g.detail }}{% endif %}
+          {% for e in g.evidence %}    [{{ e.commit }}{% if e.source %} · {{ e.source }}{% endif %}] {{ e.change }}
+              → {{ e.reason }}
+          {% endfor %}{% empty %}(no gaps — should not be here){% endfor %}
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "quit"
+              hint:   "abandon the fix run (any edits already on disk are kept)"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [commit_sha, verdict, fix_artifact]
+    on_enter:
+      # Live progress breadcrumb — fires BEFORE the (slow) site_writer
+      # agent call so the operator sees what's happening during the wait
+      # rather than a silent screen.
+      - say: 'Closing site gaps — handing {{ world.verdict.gaps|length }} cited gap(s) to the site writer…'
+      # 1. Hand the verdict to the site writer.
+      - invoke: host.agent.task
+        id: site-writer
+        with:
+          agent: site_writer
+          acceptance:
+            schema: schemas/site_fix_artifact.json
+          context:
+            prompt: prompts/fix.md
+            args:
+              # context.args are rendered as single-expression (expr-lang),
+              # NOT pongo2 — passing typed maps/arrays through `{{ … }}`
+              # works, but {% for %} / {% if %} blocks do not. The
+              # iteration lives in prompts/fix.md (which IS pongo2).
+              commit_sha:          "{{ world.commit_sha }}"
+              verdict_summary:     "{{ world.verdict.summary }}"
+              gaps:                "{{ world.verdict.gaps }}"
+              recommended_actions: "{{ world.verdict.recommended_actions }}"
+              verdict_json:        "{{ world.verdict }}"
+        bind:
+          fix_artifact: submitted
+          # Scalar sentinel — `summary` is required (minLength 10), so
+          # its presence reliably indicates a real submit. Mirrors the
+          # `verdict_decision` pattern in reviewing.yaml.
+          fix_summary:  submitted.summary
+        on_error: review_failed
+
+      # 2. Persist the fix artifact next to the verdict so downstream
+      # tooling (or a later run) can see exactly which edits landed.
+      # Same thread-extension trick as reviewing.yaml — `.json` suffix
+      # bypasses the markdown wrapper.
+      - invoke: host.artifacts_dir
+        id: site-fix-artifact
+        with:
+          thread: "site-review-fix-{{ world.commit_sha }}.json"
+          mode:   "replace"
+          body:   "{{ world.fix_artifact }}"
+        on_error: review_failed
+
+      # 3. Hand off. Single conditional emit — guarded against the
+      # pre-bind world snapshot the same way reviewing.yaml does.
+      # `fix_summary` is bound from `submitted.summary` (schema-required,
+      # minLength 10), so it is non-empty iff a real submit landed. As in
+      # docs-review/rooms/fixing.yaml we deliberately do NOT add a
+      # symmetric fix_failed emit: every world var stable pre- and
+      # post-bind was populated by `reviewing`, so there is no clean
+      # sentinel for "didn't run" vs "ran but empty". on_error:
+      # review_failed already catches the failure modes that matter; a
+      # true empty-but-ok submit just sticks at `fixing` and the operator
+      # quits.
+      - emit_intent: fix_done
+        when: "world.fix_summary != ''"
+    on:
+      fix_done:
+        - target: fixed
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

@@ -125,7 +125,7 @@ The authoritative source is `internal/host/starlark/` (the sandbox) and
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `script` | string | yes | Path to the `.star` file, relative to the app root. The loader resolves it against the manifest dir, rejects `../` escapes, and requires both the `.star` and its `.star.yaml` sidecar to exist at load time. By dispatch the path is absolute. Templated (`{{…}}`) paths skip the load-time check and are validated at runtime. |
-| `inputs` | object | no | The named inputs exposed to the script as `ctx.inputs["name"]`. Type-validated against the sidecar's `inputs:` block before evaluation. Values are templated like any other `with:` arg. |
+| `inputs` | object | no | The named inputs exposed to the script as `ctx.inputs["name"]`. Type-validated against the sidecar's `inputs:` block before evaluation. Values are templated like any other `with:` arg — **wrap every value in `{{ }}`** (a *sole* `{{ expr }}` preserves the typed value, so a declared `int` stays an `int`). A **bare** `world.foo` is NOT evaluated — it reaches the script as the literal string `"world.foo"`, silently breaking resolution (the general rule: [state-machine.md §7.1](../stories/state-machine.md#71-expressions-vs-templates--which-syntax-goes-where)). The loader rejects bare-expression inputs at load (see below). |
 
 Returns: the script's `main(ctx)` **must return a dict**; each key/value becomes
 a named output. The output dict is validated against the sidecar's `outputs:`
@@ -159,7 +159,14 @@ type means `any`; an unknown type fails the app load). Validation semantics:
 
 - **Inputs** — a missing `required: true` input, or a type mismatch, is an
   error. Inputs *not* declared in the sidecar pass through untouched (the script
-  may still read them via `ctx.inputs`).
+  may still read them via `ctx.inputs`). `validateStarlarkEffects` additionally
+  rejects two wiring mistakes **at load** (run `kitsoki validate <app.yaml>` to
+  surface them without a session): an `inputs:` value that is a **bare
+  expression** (`world.x` / uses `??` / `?.` with no `{{ }}`) — it would reach the
+  script as that literal string — and a **non-template literal** wired to an input
+  whose declared type it can never satisfy (e.g. a string to a declared `int`,
+  which has no coercion). Both are the silent "the script saw a literal, not the
+  value" footgun; template the value (`"{{ world.x }}"`) to fix it.
 - **Outputs** — when `outputs:` is non-empty, **every declared output must be
   returned** (a forgotten one is an error) and **every returned key must be
   declared** (an undeclared return is rejected), each value type-checked. This
@@ -256,19 +263,26 @@ vanished after load) is a Go error.
 
 ### Flow of one call
 
-```
-with.inputs ─▶ validate inputs against sidecar (types, required)
-                 │  bad shape ─▶ DomainError ─▶ Result.Error ─▶ on_error:
-                 ▼
-            sandboxed eval: main(ctx)
-                 │   ctx = { inputs, world(read-only), http, fs, probe }
-                 │   ctx.http.*       ─▶ HTTPClient (recording in prod / replay in tests)
-                 │   ctx.fs/ctx.probe ─▶ Inspector  (rooted+allow-listed / replay in tests)
-                 ▼
-            validate returned dict against sidecar outputs (declared + types)
-                 │  bad shape ─▶ DomainError ─▶ Result.Error ─▶ on_error:
-                 ▼
-            Result.Data = outputs (+ __http_exchanges) ─▶ effect bind:
+```mermaid
+flowchart TD
+    inputs["with.inputs"]
+    validateIn{"Validate against sidecar<br/>types + required"}
+    eval["sandboxed eval<br/>main(ctx)"]
+    http["ctx.http.*<br/>HTTPClient recording / replay"]
+    fs["ctx.fs / ctx.probe<br/>rooted allow-list / replay"]
+    validateOut{"Validate returned dict<br/>declared outputs + types"}
+    result["Result.Data<br/>outputs + __http_exchanges"]
+    bind["effect bind"]
+    domain["DomainError<br/>Result.Error -> on_error"]
+
+    inputs --> validateIn
+    validateIn -->|"bad shape"| domain
+    validateIn -->|"ok"| eval
+    eval --> http
+    eval --> fs
+    eval --> validateOut
+    validateOut -->|"bad shape"| domain
+    validateOut -->|"ok"| result --> bind
 ```
 
 ### Record / replay (HTTP cassettes)
@@ -1338,10 +1352,21 @@ Two input modes:
 - **`{paths: [...], base: "HEAD"}`** — review already-applied working-tree
   edits against a base (the "we edited this, review it" case).
 
-```
-room ──"review the diff?"──▶ invoke host.diff.open ──┬─ surface=ide      ─▶ verdict ∈ {accept,reject} ─▶ branch on verdict
-                                                     ├─ surface=difftool ─▶ verdict=null, reviewed ────▶ ask accept/refine (normal intent)
-                                                     └─ surface=none     ─▶ reviewed=false ────────────▶ render diff inline / open_file
+```mermaid
+flowchart LR
+    room["room<br/>review the diff?"]
+    open["invoke host.diff.open"]
+    ide["surface=ide<br/>verdict in {accept,reject}"]
+    difftool["surface=difftool<br/>verdict=null, reviewed"]
+    none["surface=none<br/>reviewed=false"]
+    branch["branch on verdict"]
+    ask["ask accept/refine<br/>normal intent"]
+    inline["render diff inline<br/>or open_file"]
+
+    room --> open
+    open --> ide --> branch
+    open --> difftool --> ask
+    open --> none --> inline
 ```
 
 **The moat.** The interpretive decision (does the operator accept?) is made
@@ -1648,10 +1673,13 @@ The handler runs `--validate` against the spec before the full render. A
 validation failure sets `Result.Error` rather than attempting a broken render.
 For an `mp4` render the handler also emits a [chapter sidecar](#the-chapter-sidecar)
 beside the output (`<output>.chapters.json`) mapping each slidey scene back to
-the moment it produced. Slidey itself emits a sibling `<output>.semantic.json`
-declaring the deck's addressable scene elements (and stamps `data-slidey-el`) —
-the producer half of the [unified annotation](artifact-annotation.md) plugin
-contract; `host.artifacts_dir` travels it with the media.
+the moment it produced. For annotation, an **interactive** `html` deck is the
+live producer half of the [unified annotation](artifact-annotation.md) contract:
+the rendered deck speaks the [embed protocol](artifact-annotation.md#the-embed-protocol-live-producer-surfaces)
+(`~/code/slidey/web/embed-annotate.js`), so picks come from the live slide — no
+static `<output>.semantic.json` sidecar is emitted. (A baked producer may still
+ship the static [semantic-sidecar](artifact-annotation.md#the-semantic-sidecar-plugin-contract),
+which `host.artifacts_dir` travels with the media.)
 
 **Example (render then emit):**
 
@@ -1789,7 +1817,7 @@ tour recorder mirrors the JSON shape in
 
 The `ticket` host_interface backed by the GitHub `gh` CLI. It mirrors the
 file-backed `host.local_files.ticket` surface so the dogfood app
-(`stories/kitsoki-dev`) rebinds `iface.ticket → host.gh.ticket` without touching
+(`.kitsoki/stories/kitsoki-dev`) rebinds `iface.ticket → host.gh.ticket` without touching
 room YAML. Auth rides the operator's existing `gh auth` — kitsoki handles no
 tokens. Every op degrades cleanly (a `Result.Error`, not a crash) when `gh` is
 missing/unauthenticated, so rooms route the `on_error:` arc. All shell-outs go
@@ -1810,7 +1838,7 @@ GitHub in tests). Implementation:
 
 **Repo pin.** Every call takes a `repo` arg (`owner/repo`); the dogfood pins it
 to `constructorfabric/Kitsoki` via the `ticket_repo` world key
-(`stories/kitsoki-dev/app.yaml`) so it never silently resolves the operator's
+(`.kitsoki/stories/kitsoki-dev/app.yaml`) so it never silently resolves the operator's
 `origin` (a personal fork). The slug is data, not a Go constant — a fork-of-a-
 fork or downstream project overrides the world key.
 
@@ -1896,6 +1924,7 @@ archive ([`issues/DEPRECATED.md`](../../issues/DEPRECATED.md)). Implementation:
 
 See [`developer-guide.md` §5.2](developer-guide.md#52-adding-a-new-built-in-host-handler).
 The contract is small: implement `host.Handler` (a function with
-signature `func(ctx, args, store) (Result, error)`), document the
-`with:` and bind-able result keys, and register it in
-`internal/host/handlers.go`.
+signature `func(ctx context.Context, args map[string]any) (Result, error)`),
+document the `with:` and bind-able result keys, and register it in
+`internal/host/handlers.go`. Dependencies such as secrets are supplied through
+context.

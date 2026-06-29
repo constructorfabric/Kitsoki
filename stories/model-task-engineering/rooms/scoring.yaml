@@ -1,0 +1,69 @@
+states:
+  scoring:
+    description: "Run the offline score command and capture evidence paths."
+    relevant_world: [bench_manifest, trace_path, report_json, score_status, score_error]
+    view:
+      - heading: "Model task engineering · scoring"
+      - kv:
+          pairs:
+            Bench: "{{ world.bench_manifest }}"
+            Trace: '{{ world.trace_path|default:"(manifest trace)" }}'
+            Status: '{{ world.score_status|default:"(pending)" }}'
+            Report: '{{ world.report_markdown|default:"(pending)" }}'
+      - prose: 'Error: {{ world.score_error ?? "(pending)" }}'
+        when: "world.score_error != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "done", intent: done, hint: "accept the evidence" }
+            - { label: "rescore", intent: rescore, hint: "rerun offline scoring" }
+            - { label: "quit", intent: quit, hint: "abandon the workflow" }
+            - { label: "look", intent: look }
+    on_enter:
+      - invoke: host.run
+        id: model_task_score
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "stories/model-task-engineering/scripts/score.py"
+            - "--bench"
+            - "{{ world.bench_manifest }}"
+            - "--case"
+            - "{{ world.case_id }}"
+            - "--trace"
+            - "{{ world.trace_path }}"
+            - "--out-dir"
+            - "{{ world.output_dir }}"
+        bind:
+          score_status: "stdout_json.status"
+          score_summary: "stdout_json.summary"
+          score_error: "stdout_json.error"
+          score_stdout: "stdout_json.stdout"
+          report_json: "stdout_json.report_json"
+          report_markdown: "stdout_json.report_markdown"
+          report_deck: "stdout_json.report_deck"
+        on_error: scoring
+    on:
+      done:
+        - when: "world.report_json != '' && world.report_markdown != '' && world.report_deck != ''"
+          target: "@exit:done"
+        - target: .
+          effects:
+            - say: "Scoring has not produced all artifacts yet."
+      rescore:
+        - target: scoring
+          effects:
+            - set:
+                score_status: ""
+                score_summary: ""
+                score_error: ""
+                score_stdout: ""
+                report_json: ""
+                report_markdown: ""
+                report_deck: ""
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

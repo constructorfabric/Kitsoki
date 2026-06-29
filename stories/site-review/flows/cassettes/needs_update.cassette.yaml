@@ -1,0 +1,110 @@
+# Cassette for happy_needs_update.yaml — reviewing.on_enter fires
+# three host calls in order; fixing.on_enter fires two more. One
+# episode per (handler, call).
+
+kind: host_cassette
+app_id: site-review
+generated_at: 2026-06-28T00:00:00Z
+match_on: [handler, call]
+
+episodes:
+  # 1. host.run preflight — synthesises the {sha, recent_log,
+  #    recent_changes, feature_catalog, site_pages} envelope.
+  - id: preflight_run
+    match:
+      handler: host.run
+      call: site-preflight
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |
+          {"sha":"deadbeefcafefeed","recent_log":"b6937f1 feat(host): upload bug evidence to GitHub","recent_changes":" internal/host/github.go | 80 ++++"}
+        stdout_json:
+          sha: "deadbeefcafefeed"
+          commit_count: "21"
+          review_mode: "recent"
+          recent_log: "b6937f1 feat(host): upload bug evidence to GitHub\n96edfa7 feat(story): deck-review"
+          recent_changes: " internal/host/github.go | 80 ++++\n stories/deck-review/app.yaml | 60 ++++"
+          working_tree_diff: ""
+          feature_catalog: "agent-actions\nchat-stream\ndynamic-workflows\noperator-ask\ntrace-features\nweb-inbox"
+          site_pages: "tools/site/src/index.md\ntools/site/src/features/index.md"
+    replay: any
+
+  # 2. host.agent.decide — opus verdict citing an uncataloged capability.
+  - id: agent_decide
+    match:
+      handler: host.agent.decide
+      call: site-reviewer
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        submitted:
+          decision: "needs_update"
+          summary:  "Commit b6937f1 shipped the GitHub agent (report-bug → GitHub, evidence as release assets) but there is no features/github-agent.yaml, so the capability never reaches the promo site."
+          confidence: 0.78
+          commits:
+            - sha: "b6937f1"
+              subject: "feat(host): upload bug evidence to GitHub as release assets"
+              capability: "an agent can file a bug to GitHub and attach captured evidence as a release asset"
+            - sha: "96edfa7"
+              subject: "feat(story): deck-review"
+              capability: "operators can view a slidey deck full-screen inside kitsoki"
+          gaps:
+            - kind: "missing-catalog-entry"
+              target: "github-agent"
+              detail: "GitHub agent capability is uncataloged"
+              evidence:
+                - commit: "b6937f1"
+                  source: "internal/host/github.go"
+                  change: "added GitHub issue filing + release-asset upload"
+                  reason: "no features/github-agent.yaml exists, so the promo grid has no card for it"
+          recommended_actions:
+            - "author features/github-agent.yaml (kind: feature, promoted) with a no-LLM flow + cassette + video spec"
+    replay: any
+
+  # 3. host.artifacts_dir — write the verdict artifact.
+  - id: artifacts_dir_write
+    match:
+      handler: host.artifacts_dir
+      call: site-verdict-artifact
+    response:
+      data:
+        ok: true
+        path: "/tmp/.artifacts/site-review-recent-deadbeefcafefeed.json"
+        message_id: "site-review-recent-deadbeefcafefeed#0"
+    replay: any
+
+  # 4. host.agent.task — site_writer authors the catalog entry. Triggered
+  #    when the operator picks fix_gaps in `reviewed`.
+  - id: site_writer_task
+    match:
+      handler: host.agent.task
+      call: site-writer
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        submitted:
+          applied: true
+          summary: "Authored features/github-agent.yaml as a promoted catalog entry with a stubbed demo spec; the demo recording still needs authoring."
+          files_changed:
+            - path: "features/github-agent.yaml"
+              change: "new promoted catalog entry for the GitHub agent; demo spec points at the intended tests/playwright path"
+          unresolved:
+            - target: "github-agent"
+              reason: "demo recording (flow + cassette + Playwright spec) still needs authoring before the card shows a video"
+          blockers: []
+    replay: any
+
+  - id: fix_artifacts_dir_write
+    match:
+      handler: host.artifacts_dir
+      call: site-fix-artifact
+    response:
+      data:
+        ok: true
+        path: "/tmp/.artifacts/site-review-fix-deadbeefcafefeed.json"
+        message_id: "site-review-fix-deadbeefcafefeed#0"
+    replay: any

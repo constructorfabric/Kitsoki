@@ -1,0 +1,12 @@
+# gate_edited_scene — every edited ref must share the targeted scene_index.
+inputs:
+  scene_index: { type: int, required: true }
+  edited:      { type: list, required: false }
+  scene_label: { type: string, required: false }
+  summary:     { type: string, required: false }
+
+outputs:
+  ok:           { type: bool }
+  stray:        { type: list }
+  edited_count: { type: int }
+  message:      { type: string }

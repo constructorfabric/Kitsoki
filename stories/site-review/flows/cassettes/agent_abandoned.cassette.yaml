@@ -1,0 +1,37 @@
+# Simulates the agent.decide handler exhausting its nudge budget
+# (5 validator retries × 3 outer --resume iterations) without a
+# successful submit(). The host returns an envelope with Error set,
+# which routes through on_error: review_failed.
+
+kind: host_cassette
+app_id: site-review
+generated_at: 2026-06-28T00:00:00Z
+match_on: [handler]
+
+episodes:
+  - id: preflight_run
+    match:
+      handler: host.run
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |
+          {"sha":"feedfacecafe0000","commit_count":"1","recent_log":"aaa0000 Initial commit","recent_changes":""}
+        stdout_json:
+          sha: "feedfacecafe0000"
+          commit_count: "1"
+          review_mode: "recent"
+          recent_log: "aaa0000 Initial commit"
+          recent_changes: ""
+          working_tree_diff: ""
+          feature_catalog: "agent-actions"
+          site_pages: "tools/site/src/index.md"
+    replay: any
+
+  - id: agent_abandoned
+    match:
+      handler: host.agent.decide
+    response:
+      error: "host.agent.decide: validator: session abandoned without successful submit after 3 outer iteration(s), 5 attempt(s)"
+    replay: any

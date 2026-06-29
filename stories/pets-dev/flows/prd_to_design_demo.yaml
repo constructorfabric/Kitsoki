@@ -1,0 +1,246 @@
+# prd_to_design_demo (pets-dev) — the WHOLE PRD → Design walk on the kitsoki
+# repo, one session, no LLM.
+#
+# A sibling of stories/slidey-dev/flows/prd_to_design_demo.yaml, retargeted onto
+# the kitsoki repo itself. pets-dev imports @kitsoki/dev-story as `core`
+# (root: core), so this flow drives the SAME rooms as the dev-story walk but
+# through the `core.` / `core__` projection.
+#
+# Themed content = the seam. Every agent call (host.agent.decide / task /
+# converse / search, host.chat.resolve, host.run) is stubbed with pet-themed
+# content about ONE real, small kitsoki feature:
+#
+#   "trace-column pet" — a tiny animated SVG sprite (VS-Code-Pets / tamagotchi
+#   style) anchored at the BOTTOM of the kitsoki web trace column that idles
+#   (bob/blink) while a session runs, pure inline SVG + CSS, no deps. It is a
+#   self-contained component + a trace-column dock seam + an opt-in toggle,
+#   which is why the design naturally yields an epic, slices, and ADRs.
+#
+# Two deterministic rrweb tour clips are sliced out of this one walk:
+#   * pets-pm-idea           — landing → prd → … → prd_published  (PM/PRD half)
+#   * pets-architect-design  — prd_published → continue → design → design_done
+#
+# workdir is "." (self-contained .artifacts) — the real writes land in the
+# kitsoki checkout's gitignored .artifacts.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world:
+  judge_mode: "human"
+  core__workdir:               "."
+  core__publish_durable_path:  "docs/prd"
+  core__prd_doc_filename:      ""
+  core__design_durable_path:   "docs/proposals"
+  core__design_doc_filename:   ""
+  core__design_template_dir:   "docs/proposals/templates"
+  core__design_ticket_dir:     "issues/features"
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: false }
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "Trace pet idea", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "A tiny animated SVG pet anchored at the bottom of the trace column that bobs while you watch the run.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  host.agent.search:
+    data: { hits: [], top: null }
+  host.agent.decide:
+    # prd clarifying question generation (the un-id'd decide).
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary actor and where do they see the pet?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+    by_call:
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q1: developers watching a long kitsoki session's trace column\nQ2: opt-in-pet-enabled-sessions\n"
+            answered_ids_append: "|1||2|"
+            matched_count:       2
+      name_slug:
+        data:
+          ok: true
+          submitted: { slug: "trace-pet", rationale: "the kitsoki feature the design is authored for" }
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "A net-new ambient sprite anchored in the existing trace column; no overlap with existing web UI surfaces." }
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/prd/trace-pet.md", sections: "§5", rationale: "the PRD this design realizes" }
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "continue", reason: "Crisp why, clear metric, components named.", questions: [] }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/trace-pet/001-brief.md", message_id: "out#1" }
+  host.agent.task:
+    by_call:
+      # PRD author (prd drafting) — id: prd_author. The full PRD body about the
+      # kitsoki trace-column-pet feature.
+      prd_author:
+        data:
+          ok: true
+          submitted:
+            title:            "PRD: Trace-Column Pet"
+            summary_markdown: |
+              # PRD: Trace-Column Pet
+
+              ## Problem & Context
+              Watching a long kitsoki session is a lonely wait at the trace
+              column — the right-hand observer panel just ticks by while the agent
+              works. A small ambient companion adds warmth and life to that wait
+              without taking screen space.
+
+              ## Target Users
+              Developers watching a long kitsoki session's trace column in the
+              web UI.
+
+              ## Goals
+              - A single small animated SVG pet anchored at the BOTTOM of the
+                trace column that idles (bob/blink) while the session runs.
+              - Opt-in and never in the way — it must never block trace content or
+                displace trace rows.
+
+              ## Requirements
+              - Functional: an inline-SVG sprite with a CSS keyframe idle
+                animation, optionally a subtle reaction when a turn is running.
+              - Non-functional: pure inline SVG + CSS, no images, no deps;
+                headline metric is opt-in-pet-enabled-sessions.
+
+              ## Open Questions
+              - Should the pet react when a turn is running, or only idle?
+            file_path:           ".artifacts/prd/trace-pet/004-prd.md"
+            confidence:          0.84
+            needs_clarification: false
+            follow_up_questions: []
+      # DESIGN author (design_draft) — id: design_author. The kitsoki design with
+      # mermaid + the component/seam model.
+      design_author:
+        data:
+          ok: true
+          submitted:
+            title:            "Web: trace-column pet"
+            kind:             "runtime"
+            summary_markdown: |
+              ## Web: trace-column pet
+
+              Realizes the trace-pet PRD as a tiny, opt-in animated SVG sprite
+              anchored at the bottom of the existing trace column — pure inline
+              SVG + CSS, no images, no deps.
+
+              ### Epic
+              Dock a small animated SVG pet at the BOTTOM of the kitsoki web trace
+              column that idles (bob/blink) while a session runs, absolutely
+              positioned so it never displaces trace rows.
+
+              ### Slices
+              1. `TracePet.vue` — a self-contained inline-SVG sprite component
+                 with a CSS keyframe idle animation (bob/blink); no images, no
+                 deps.
+              2. Trace-column dock seam — anchor `TracePet` at the bottom of the
+                 trace column in the trace-column layout (InteractiveView.vue /
+                 trace column component), absolutely positioned over the column
+                 footer.
+              3. Opt-in setting — a persisted toggle, off by default, that mounts
+                 the pet only when enabled.
+
+              ### Data flow
+
+              ```mermaid
+              flowchart LR
+                col[trace column layout] --> pet[TracePet anchored bottom]
+                pet --> svg[inline SVG sprite]
+              ```
+
+              ### ADRs
+              - ADR-1: Inline SVG + CSS keyframes only — zero dependencies, zero
+                added network — so the pet ships no assets and can't slow the UI.
+              - ADR-2: Opt-in, absolutely positioned at the column bottom so it
+                never displaces trace rows or blocks trace content.
+            file_path:           "docs/proposals/.workspace/trace-pet/004-proposal.md"
+            confidence:          0.82
+            needs_clarification: false
+            follow_up_questions: []
+      refine_brief:
+        data:
+          ok: true
+          submitted:
+            summary: "Idea is clear; the design sections need the component model and the trace-column dock seam."
+            gaps:    ["Name the sprite component and where it docks in the trace column", "Specify the idle animation and the opt-in toggle"]
+      refine_brief_update:
+        data:
+          ok: true
+          submitted:
+            summary: "Folded in the operator's note — the TracePet component, dock seam, and idle animation are now scoped."
+            gaps:    ["Specify the opt-in setting persistence"]
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "trace-pet", workspace: ".artifacts/prd/trace-pet" }
+      uniquify:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "trace-pet", workspace: "docs/proposals/.workspace/trace-pet" }
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            prd_file:     "docs/prd/trace-pet.md"
+            design_file:  "docs/proposals/trace-pet.md"
+            ticket_id:    "F-2026-06-23T120000Z-trace-pet"
+            ticket_path:  "issues/features/F-2026-06-23T120000Z-trace-pet.md"
+            ticket_title: "kitsoki trace-column pet"
+
+turns:
+  # ── PRD half (pets-pm-idea clip) ────────────────────────────────────────────
+  - intent: { name: core__go_prd, slots: {} }
+    expect_state: core.prd.idle
+  - intent: { name: core__prd__discuss, slots: { message: "I want a tiny SVG pet at the bottom of the kitsoki trace column" } }
+    expect_state: core.prd.idle
+  - intent: { name: core__prd__start, slots: {} }
+    expect_state: core.prd.search
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.clarifying
+  - intent: { name: core__prd__answer, slots: { text: "developers watching a long kitsoki trace; metric is opt-in-pet-enabled-sessions" } }
+    expect_state: core.prd.clarifying
+  - intent: { name: core__prd__submit_answers, slots: {} }
+    expect_state: core.prd.brief
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.references
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.drafting
+  - intent: { name: core__prd__accept, slots: {} }
+    expect_state: core.prd_published
+
+  # ── PRD → Design handoff ────────────────────────────────────────────────────
+  - intent: { name: core__continue, slots: {} }
+    expect_state: core.design
+
+  # ── Design half (pets-architect-design clip) ────────────────────────────────
+  - intent: { name: core__discuss, slots: { message: "realize the trace-pet PRD as a kitsoki web design" } }
+    expect_state: core.design_search
+  - intent: { name: core__confirm, slots: {} }
+    expect_state: core.design_refine
+  - intent: { name: core__discuss, slots: { message: "name the sprite component and the trace-column dock seam, and the idle animation" } }
+    expect_state: core.design_refine
+  - intent: { name: core__ready, slots: {} }
+    expect_state: core.design_draft
+  - intent: { name: core__accept, slots: {} }
+    expect_state: core.design_done
+  - intent: { name: core__go_main, slots: {} }
+    expect_state: core.landing
+
+expect_no_errors: true

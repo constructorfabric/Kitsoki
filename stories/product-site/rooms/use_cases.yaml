@@ -1,0 +1,28 @@
+states:
+  use_cases:
+    description: "What is it for?"
+    relevant_world: [section]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Kitsoki's flagship use is dogfooding software work: the dev-story hub drives bug fixes, PRD→design, and feature implementation as conversational pipelines. The same machinery powers product-journey QA, deterministic demo videos, and onboarding a new repo to a runnable instance."
+        choices:
+          - heading: "Tour"
+          - list:
+              items:
+                - label: "next"
+                  hint: "get started"
+                - label: "restart"
+                - label: "look"
+    on:
+      next:
+        - target: get_started
+          effects:
+            - set: { section: "get_started" }
+      restart:
+        - target: overview
+          effects:
+            - set: { section: "overview" }
+      look:
+        - target: use_cases

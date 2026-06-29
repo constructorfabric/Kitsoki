@@ -24,7 +24,7 @@ import (
 // RunInitialOnEnter, which previously fired only the resolved LEAF's on_enter,
 // silently skipped the ancestor compound and the child kept its own default.
 //
-// This is the regression the gears-rust external-target instance exposed: its
+// This is the regression the example-app external-target instance exposed: its
 // profile keys (workdir, durable paths, template_dir, …) are projected into
 // the imported dev-story hub purely via the root import's world_in, and none
 // of them reached the child. The fix walks the full root→leaf on_enter chain

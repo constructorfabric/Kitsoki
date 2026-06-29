@@ -1,0 +1,98 @@
+[
+  {
+    "index": 0,
+    "id": "spm-intro-home",
+    "label": "PM starts with an idea",
+    "start_ms": 71,
+    "end_ms": 5575,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "features/slidey-dev-prd-design.yaml",
+      "step_id": "spm-intro-home"
+    }
+  },
+  {
+    "index": 1,
+    "id": "spm-story-card",
+    "label": "The slidey-dev hub",
+    "start_ms": 5575,
+    "end_ms": 10577,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "features/slidey-dev-prd-design.yaml",
+      "step_id": "spm-story-card"
+    }
+  },
+  {
+    "index": 2,
+    "id": "spm-new-session",
+    "label": "Spin up a run",
+    "start_ms": 10577,
+    "end_ms": 16523,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "features/slidey-dev-prd-design.yaml",
+      "step_id": "spm-new-session"
+    }
+  },
+  {
+    "index": 3,
+    "id": "spm-prd-discovery",
+    "label": "Talk through the PRD",
+    "start_ms": 16523,
+    "end_ms": 30645,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "features/slidey-dev-prd-design.yaml",
+      "step_id": "spm-prd-discovery"
+    }
+  },
+  {
+    "index": 4,
+    "id": "spm-prd-search",
+    "label": "Scan for prior art first",
+    "start_ms": 30645,
+    "end_ms": 38651,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "features/slidey-dev-prd-design.yaml",
+      "step_id": "spm-prd-search"
+    }
+  },
+  {
+    "index": 5,
+    "id": "spm-prd-clarify",
+    "label": "Clarify the actor and the metric",
+    "start_ms": 38651,
+    "end_ms": 53381,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "features/slidey-dev-prd-design.yaml",
+      "step_id": "spm-prd-clarify"
+    }
+  },
+  {
+    "index": 6,
+    "id": "spm-prd-draft",
+    "label": "Review the drafted PRD",
+    "start_ms": 53381,
+    "end_ms": 64161,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "features/slidey-dev-prd-design.yaml",
+      "step_id": "spm-prd-draft"
+    }
+  },
+  {
+    "index": 7,
+    "id": "spm-prd-published",
+    "label": "Published to slidey's docs/prd/",
+    "start_ms": 64161,
+    "end_ms": 72776,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "features/slidey-dev-prd-design.yaml",
+      "step_id": "spm-prd-published"
+    }
+  }
+]

@@ -231,7 +231,7 @@ room's choice menu so a staged operator can pick it.
   staged (turn rests at the room, view rendered) and **auto-fires** the
   default/LLM intent in one-shot; LLM low-confidence verdict **bails to
   human**. Each test must fail without the change (today it auto-chains).
-- Story flows mirroring `stories/kitsoki-dev/flows/pickup_autonomous_then_bail.yaml`
+- Story flows mirroring `.kitsoki/stories/kitsoki-dev/flows/pickup_autonomous_then_bail.yaml`
   and `stories/dev-story/flows/bf_llm_auto_advance.yaml`.
 - End-to-end: replay the docs-review world at `reviewed`; staged renders
   at `reviewed` instead of jumping to `fixed`; trace shows `gate.decided`.

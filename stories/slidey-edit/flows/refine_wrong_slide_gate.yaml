@@ -1,0 +1,82 @@
+# refine_wrong_slide_gate — the GATE in action: the operator is viewing scene 9,
+# but the reviser strays and edits scene 3. The gate must catch it and the
+# reviewing reply must say so honestly (not a false "done"). This pins the wiring
+# that ties an edit to the slide the operator is looking at.
+#
+# resolve_scene + gate_edited_scene are stubbed by call id to model the
+# wrong-slide verdict deterministically (their pure logic is unit-tested against
+# the real deck in scripts/scene_gate_scripts_test.go). What this flow proves is
+# the ROOM wiring: current_scene flows in, the gate's message lands in
+# last_refine_summary, and the deck still re-renders.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "deck" }
+  deck_handle: "slidey-edit#1"
+  annotation:
+    anchor:
+      kind: "semantic_element"
+      semantic_element: { plugin: "slidey", ref: "9/image", bbox: [0, 0, 100, 100] }
+      label: "Scene 9 · Cat Wrangling"
+    instruction: "swap the cat image for a cowboy herding cats"
+    frame_handle: "slidey-edit#1"
+  addressed: { items: [] }
+  cycle: 0
+  refine_budget: 6
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      resolve_scene:
+        data: { scene_index: 9, scene_label: "Scene 9 · Cat Wrangling", scene: { type: "image", title: "Cat Wrangling" }, scene_json: '{"title":"Cat Wrangling","type":"image"}', scene_count: 35 }
+      gate_edited_scene:
+        data: { ok: false, stray: ["3/card_0"], edited_count: 1, message: "⚠️ That edit touched the wrong slide (3/card_0), not Scene 9 · Cat Wrangling — try again." }
+      accumulate_addressed:
+        data:
+          addressed:
+            items:
+              - deck_handle: "slidey-edit#1"
+                anchor_label: "Scene 9 · Cat Wrangling"
+                instruction: "swap the cat image for a cowboy herding cats"
+                edited: ["3/card_0"]
+
+  host.agent.task:
+    by_call:
+      refine_deck:
+        data:
+          ok: true
+          submitted: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Edited a card.", edited: ["3/card_0"] }
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data: { ok: true, path: "stories/slidey-edit/baked/deck.html", semantic_path: "stories/slidey-edit/baked/deck.semantic.json" }
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "slideshow", mime: "text/html" } }
+
+turns:
+  # refine carrying the viewed scene (9) but the reviser strays to scene 3 → the
+  # gate fails and the reply is the honest wrong-slide note, NOT "done".
+  - intent: { name: refine, slots: { feedback: "swap the cat image for a cowboy herding cats", current_scene: "9" } }
+    expect_state: reviewing
+    expect_world:
+      cycle: 1
+      current_scene: ""          # cleared after the pass
+      scene_index: -1            # cleared after the pass
+      refine_gate: false
+      last_refine_summary: "⚠️ That edit touched the wrong slide (3/card_0), not Scene 9 · Cat Wrangling — try again."
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: "resolve_scene" }
+      - handler: host.agent.task
+        args: { call: "refine_deck" }
+      - handler: host.starlark.run
+        args: { call: "gate_edited_scene" }
+
+expect_no_errors: true

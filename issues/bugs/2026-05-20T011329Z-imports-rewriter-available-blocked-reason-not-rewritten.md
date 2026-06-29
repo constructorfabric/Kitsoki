@@ -98,7 +98,7 @@ need `available('core__bf__accept')` to render correctly.
 
 ### Repro
 
-1. `kitsoki run stories/kitsoki-dev/app.yaml`
+1. `kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml`
 2. `tickets` → land on `core.ticket_search`.
 3. `pick_ticket id=<any>` to set world.ticket_id.
 4. Look at the Actions list. Expected: green `continue`. Actual:

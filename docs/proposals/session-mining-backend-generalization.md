@@ -4,7 +4,8 @@
 contract, JSONL source adapters, and kitsoki trace-pattern substrate are in
 `internal/mining/corpus.go` and `internal/mining/kitsokipattern/`; pipeline
 driver integration, ambient miner source registry wiring, and CLI/report
-surfaces remain.
+surfaces remain. Focused package tests for `internal/mining/...` pass in the
+current checkout.
 **Kind:** Epic
 **Date:** 2026-06-22
 

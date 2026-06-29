@@ -1,0 +1,9 @@
+inputs:
+  case:           { type: object, required: false }
+  triage_verdict: { type: object, required: false }
+  drive_result:   { type: object, required: false }
+  verify_result:  { type: object, required: false }
+
+outputs:
+  results:  { type: object }
+  findings: { type: object }

@@ -1,0 +1,47 @@
+# slideshow — render the report deck spec → a self-contained static-HTML slidey
+# report, then emit it to artifacts_dir for a stable media handle. Deterministic,
+# no LLM. Same producer + shape as stories/slidey-edit/rooms/rendering.yaml:
+# host.slidey.render (format: html → a static HTML deck, NOT an mp4) →
+# host.artifacts_dir (kind slideshow) → report_handle.
+
+states:
+
+  slideshow:
+    description: "Rendering the marathon report to a static-HTML slidey deck (deterministic)."
+    relevant_world: [deck_spec, deck_path, report_handle]
+    view:
+      - heading: "Dogfood marathon · slideshow"
+      - kv:
+          pairs:
+            Spec:   '{{ world.deck_spec.spec_path }}'
+            Report: '{{ world.report_handle|default:"(rendering…)" }}'
+      - prose: "Rendering the report deck to a self-contained static HTML deck, then publishing it as a media handle for the gallery."
+    on_enter:
+      - invoke: host.slidey.render
+        id: render_report
+        once: true
+        with:
+          spec_path: "{{ world.deck_spec.spec_path }}"
+          format:    html
+        bind:
+          deck_path: path
+        on_error: slideshow
+      - invoke: host.artifacts_dir
+        id: emit_report
+        once: true
+        with:
+          thread:   "dogfood-marathon"
+          src_path: "{{ world.deck_path }}"
+          kind:     slideshow
+          mime:     text/html
+          label:    "{{ world.deck_spec.summary }}"
+        bind:
+          report_handle: handle.id
+        on_error: slideshow
+      - when: "world.report_handle != ''"
+        emit_intent: rendered
+    on:
+      rendered:
+        - target: done
+      look:
+        - target: .

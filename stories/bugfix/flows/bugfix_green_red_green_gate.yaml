@@ -1,0 +1,104 @@
+# bugfix_green_red_green_gate — the deterministic GREEN→RED gate (synthesis path).
+#
+# No ticket-supplied repro_command (gate_command == ''), but the project carries a
+# test_cmd. The reproducer authors a failing test and returns its repro_command +
+# repro_test_paths. implementing/on_enter then, AFTER committing that test as the
+# discrete pre-fix tip and BEFORE the implementer spends maker budget, runs the
+# DETERMINISTIC gate (host.run id=repro_det_gate):
+#
+#   GREEN (baseline) : test_cmd on a HEAD~1 scratch worktree (branch before the
+#                      reproducer's test) exits 0.
+#   RED   (reproducer): repro_command on the current tip (test present, no fix) is
+#                      non-zero.
+#   ⇒ repro_gate_ok=true → the implementer proceeds → testing.
+#
+# The GREEN(fix) leg is proven in `testing` (HEAD~1 RED→GREEN regression gate).
+# The gate lives in implementing (not reproducing) because the reproducer is an
+# async host.agent.task whose artifact + file write are durable only a turn later.
+# The failure path (gate ran but !ok → restart_from reproducing, no maker spend)
+# is exercised by bugfix_green_red_green_gate_refine.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-GRG-1"
+  ticket_title:     "Dashed gear env override is dropped"
+  thread:           "TKT-GRG-1"
+  workspace_id:     "grg-fix"
+  workdir:          ".worktrees/grg-fix"
+  feature_branch:   "grg-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "open-PR"
+  gate_command:     ""                       # synthesis path — no ticket oracle
+  test_cmd:         "cargo test -p demo --lib"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/grg-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Dashed gear env override reproduced"
+        summary_markdown: "The reproducer authors a unit test asserting that an underscore env var override (APP__GEARS__STATIC_AUTHZ_PLUGIN__CONFIG__PRIORITY) applies to the dashed gear key. The test fails on the unfixed tree because the dashed HashMap key is never matched. This markdown is intentionally padded to satisfy the reproducing_artifact schema minimum length so the flow exercises the deterministic gate rather than a schema bounce in the harness path."
+        bug_verified:     true
+        involved_components: [{ name: "config", reason: "the dashed gear key lives here" }]
+        repro_command:    "cargo test -p demo --lib dashed_gear_env_override"
+        repro_test_paths: ["src/config.rs"]
+        status:           "passed"
+        outcome:          "pass"
+        applied:          true
+        files_changed:    []
+  host.agent.ask:
+    data: { ok: true, submitted: { summary_title: "p", summary_markdown: "proposal padded to two hundred chars so the proposing artifact schema is satisfied and the flow advances through proposing into implementing where the deterministic GREEN to RED gate runs against the committed reproducer test.", fix_description: "remap the gear-name segment", root_cause: "dashed key never matched", affected_files: ["src/config.rs"] } }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # The discrete pre-fix commit of the reproducer's RED test.
+      commit_repro_test:
+        data: { ok: true, exit_code: 0, stdout_json: { sha: "deadbeef", committed: true } }
+      # The deterministic GREEN→RED gate: baseline GREEN on HEAD~1 + reproducer RED.
+      repro_det_gate:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ran:            true
+            baseline_green: true
+            test_red:       true
+            ok:             true
+            summary:        "✅ GREEN→RED proven · baseline GREEN (test_cmd exit 0 on HEAD~1) → reproducer RED (repro_command exit 101)"
+            log:            "baseline(GREEN) test_cmd exit=0 on HEAD~1 | reproducer(RED) repro_command exit=101"
+
+turns:
+  # start → reproducing. on_enter: reproducer authors the test (on disk via the
+  # durability barrier), then the DETERMINISTIC GREEN→RED gate runs FIRST and
+  # proves the lifecycle's first two legs — BEFORE the LLM judge.
+  - intent: { name: start, slots: {} }
+    expect_state: reproducing
+    expect_world:
+      repro_gate_ran:       true
+      repro_baseline_green: true
+      repro_test_red:       true
+      repro_gate_ok:        true
+  # accept → proposing.
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+  # accept → implementing (synthesise + commit the repro test).
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    expect_world:
+      repro_committed: true
+  # accept → testing (implementer applied the fix).
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+
+expect_no_errors: true

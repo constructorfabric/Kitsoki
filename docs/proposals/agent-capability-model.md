@@ -1,6 +1,12 @@
 # Epic: a unified capability model for every agent
 
-**Status:** Draft v1. No slices implemented yet.
+**Status:** Draft v1. No slices implemented as proposed. Adjacent safety work
+has shipped (`write_mode: read_only`, bash profiles including sandboxed-write,
+validator sandboxing, converse/read-only tool policy, and load-time
+`external_side_effect` cross-checks), but the proposed `effect:` taxonomy,
+named `toolboxes:`, `tools_add:`/`tools_remove:`, unified enforcement surface,
+and task filesystem sandbox are not present. `external_side_effect` remains the
+real story vocabulary.
 **Kind:**   epic
 **Slices:** 3 (0/3 shipped) + a conformance check folded into `agent-contract-eval.md`
 

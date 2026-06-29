@@ -29,7 +29,7 @@ states:
           text:     "INTAKE"
           subtitle: "Describe your idea — search runs next"
           color:    "#10B981"
-      - template: "⚠ **Something went wrong** — the slug-naming step failed. Send your idea again{{ world.design_idea != '' ? ': **' + world.design_idea + '**' : '' }}."
+      - template: "⚠ **Could not prepare a proposal name.** Send the idea again{{ world.design_idea != '' ? ': **' + world.design_idea + '**' : '' }}."
         when: "world.last_error != ''"
       - prose: 'Seeded from your ideas backlog: **{{ world.design_seed_idea }}** — describe or expand it to start the search.'
         when: "world.design_seed_idea != ''"
@@ -49,16 +49,15 @@ states:
                 design_idea: "{{ world.design_seed_idea != '' ? world.design_seed_idea + ' — ' + slots.message : slots.message }}"
                 design_seed_idea: ""
                 last_error: ""
-            - invoke: host.agent.decide
+            - invoke: host.run
               id: name_slug
-              agent: agent.local_llm
               with:
-                prompt_path: prompts/design_slug.md
-                schema: schemas/slug.json
+                cmd: python3
                 args:
-                  idea: "{{ world.design_seed_idea != '' ? world.design_seed_idea + ' — ' + slots.message : slots.message }}"
+                  - "stories/dev-story/scripts/design_workspace.py"
+                  - "{{ world.design_seed_idea != '' ? world.design_seed_idea + ' — ' + slots.message : slots.message }}"
               bind:
-                design_slug: "submitted.slug"
+                design_slug: "stdout_json.slug"
               on_error: design
             # NB: the workspace folder is deliberately NOT minted here. The
             # scout (design_search.on_enter) runs FIRST, so an idea that

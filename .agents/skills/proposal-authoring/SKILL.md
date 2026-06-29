@@ -52,7 +52,7 @@ the `prd_published` room to carry it into the design intake — see the
 [dev-story README](../../../stories/dev-story/README.md#prd--design-walk)):
 
 ```
-kitsoki run stories/kitsoki-dev/app.yaml   # land in main; type `idea` (or `prd`)
+kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml   # land in main; type `idea` (or `prd`)
 ```
 
 > **Naming:** the in-story pipeline is the **design** pipeline (rooms

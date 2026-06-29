@@ -67,11 +67,11 @@ host_handlers:
                 reason: "the flag table does not list --bar"
         recommended_actions:
           - "document --bar in §2"
-  # The needs_update verdict auto-routes through `fixing`, which calls
-  # host.agent.task and a second host.artifacts_dir write. Stub the
-  # task call inline; the artifacts_dir write goes through the real
-  # handler (same temp $KITSOKI_ARTIFACTS_ROOT). The fix artifact path
-  # is asserted by the wrapping Go test.
+  # The operator-selected `fix_docs` path calls host.agent.task and a
+  # second host.artifacts_dir write. Stub the task call inline; the
+  # artifacts_dir write goes through the real handler (same temp
+  # $KITSOKI_ARTIFACTS_ROOT). The fix artifact path is asserted by the
+  # wrapping Go test.
   host.agent.task:
     data:
       ok: true
@@ -87,10 +87,14 @@ host_handlers:
 
 turns:
   - intent: { name: start, slots: {} }
-    expect_state: fixed
+    expect_state: reviewed
     expect_world:
       commit_sha:       "abc1234"
       verdict_decision: "needs_update"
+
+  - intent: { name: fix_docs, slots: {} }
+    expect_state: fixed
+    expect_world:
       fix_summary:      "Documented --bar in §2 of docs/foo.md."
 
   - intent: { name: quit, slots: {} }

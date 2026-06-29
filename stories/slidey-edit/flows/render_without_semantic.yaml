@@ -1,0 +1,58 @@
+# render_without_semantic — live HTML bundles may not emit a semantic sidecar.
+#
+# Regression for a real web session where host.slidey.render returned a static
+# HTML deck path but no semantic_path. The review view should still get the deck
+# handle and must not route through rendering.on_error just because the optional
+# sidecar is absent.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  source_deck:
+    spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+    summary: "Existing slidey deck"
+  deck: {}
+  addressed: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "docs/decks/kitsoki-pitch.slidey.html"
+
+  host.starlark.run:
+    by_call:
+      seed_annotation:
+        data:
+          annotation:
+            anchor:
+              kind: "semantic_element"
+              semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+              label: "Scene 1 · card 0"
+            instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+            frame_handle: "slidey-edit#1"
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "slideshow", mime: "text/html" }, path: "docs/decks/kitsoki-pitch.slidey.html", kind: "slideshow", mime: "text/html" }
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: reviewing
+    expect_world:
+      deck:
+        spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+        summary: "Existing slidey deck"
+      deck_handle: "slidey-edit#1"
+      semantic_path: ""
+      semantic_handle: ""
+      last_error: ""
+
+expect_terminal: false
+expect_no_errors: true

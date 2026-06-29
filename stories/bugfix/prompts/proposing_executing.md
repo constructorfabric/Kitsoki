@@ -46,6 +46,12 @@ Before submitting:
 - `confidence` is your own estimate in [0.0, 1.0]; under 0.3 is rejected
   downstream.
 - `reasoning` is the chain from evidence → cause → fix.
+- Propose the **smallest, most local** change that addresses the root cause.
+  Favour a narrow edit at the bug's own site over a broad change to shared or
+  engine-level internals — the latter is far likelier to break unrelated
+  tests. The fix must resolve the bug WITHOUT regressing existing behaviour; if
+  the only correct fix is invasive, say so and name the call sites most at risk
+  so the implementer verifies them.
 
 ## Output
 

@@ -1,0 +1,49 @@
+# look_in_place — `look` re-renders the current section without leaving it.
+#
+# Regression guard: every room's view footer advertises a `look` action and the
+# app header promises it "re-renders in place", but the rooms originally wired
+# no `look` transition — so submitting it was rejected with
+# INTENT_NOT_ALLOWED_IN_STATE. This flow proves `look` is now a real no-op
+# re-render in each section the persona can reach.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: overview
+initial_world: {}
+
+host_handlers: {}
+
+turns:
+  # look in the very first room — stays put.
+  - intent: { name: look, slots: {} }
+    expect_state: overview
+    expect_world:
+      section: "overview"
+
+  - intent: { name: next, slots: {} }
+    expect_state: how_it_works
+
+  - intent: { name: look, slots: {} }
+    expect_state: how_it_works
+
+  - intent: { name: next, slots: {} }
+    expect_state: use_cases
+
+  - intent: { name: look, slots: {} }
+    expect_state: use_cases
+
+  - intent: { name: next, slots: {} }
+    expect_state: get_started
+    expect_world:
+      checkpoint_rating: 5
+      status: "discovered"
+
+  # look at the advertised CTA room — the action the persona was offered and
+  # the runtime previously rejected.
+  - intent: { name: look, slots: {} }
+    expect_state: get_started
+    expect_world:
+      checkpoint_rating: 5
+      status: "discovered"
+
+expect_no_errors: true

@@ -18,7 +18,7 @@
 # design_done (was design_publish in the prior 6-stage pipeline).
 #
 # Decide calls are stubbed by their invoke `id:` (existing_scan,
-# references_research, brief_check); the two host.run sites (uniquify,
+# references_research, brief_check); host.run sites (name_slug, uniquify,
 # publish) likewise; the task sites split by_call (refine_brief) vs the
 # default (draft author).
 
@@ -33,10 +33,6 @@ host_handlers:
     data: { ok: true, connected: true }
   host.agent.decide:
     by_call:
-      name_slug:
-        data:
-          ok: true
-          submitted: { slug: "first-class-working-folder", rationale: "the runtime primitive being proposed" }
       existing_scan:
         data:
           ok: true
@@ -77,6 +73,12 @@ host_handlers:
         follow_up_questions: []
   host.run:
     by_call:
+      name_slug:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"slug":"first-class-working-folder","workspace":"docs/proposals/.workspace/first-class-working-folder"}'
+          stdout_json: { slug: "first-class-working-folder", workspace: "docs/proposals/.workspace/first-class-working-folder" }
       uniquify:
         data:
           ok: true
@@ -110,13 +112,13 @@ turns:
         overlaps:     []
         roadmap_fit:  "A net-new runtime primitive; no overlap with the current queue."
     expect_host_calls:
-      - handler: host.agent.decide
+      - handler: host.run
         args: { call: "name_slug" }
       # Stage 2 on_enter — the scout only. No folder, no references here.
       - handler: host.agent.decide
         args: { call: "existing_scan" }
     # The folder + reference work is deferred behind the gate.
-    expect_no_host_calls: [host.run, host.artifacts_dir]
+    expect_no_host_calls: [host.agent.search, host.artifacts_dir]
 
   # Stage 2: Search — no overlap → confirm → design_materialize → (auto-
   # advance via emit_intent) → design_refine, all in one turn.

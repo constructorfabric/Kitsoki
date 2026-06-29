@@ -1,0 +1,22 @@
+# empty_submitted — agent.decide returns ok=true but the submitted
+# payload is {} (missing every required field). Without the defensive
+# guard on reviewing.done the story walks to `reviewed` and renders
+# garbage; with the guard it bounces to review_failed.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+
+host_cassette: cassettes/empty_submitted.cassette.yaml
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: review_failed
+    expect_world:
+      commit_sha: "deadbeef00000000"
+
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__abandoned
+
+expect_terminal: true

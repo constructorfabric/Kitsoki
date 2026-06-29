@@ -17,17 +17,45 @@ states:
 
   refining:
     description: "Refining the scene behind the annotation anchor."
-    relevant_world: [annotation, refine_feedback, refine_result, deck, addressed, cycle, deck_handle]
+    relevant_world: [annotation, refine_feedback, refine_result, deck, addressed, cycle, deck_handle, current_scene, scene_index, scene_label, scene_json, refine_gate]
     view:
       - heading: "Slidey deck editor · refining"
       - kv:
           pairs:
+            Slide:       '{{ world.scene_label|default:"(no slide identified)" }}'
             Pointed:     '{{ world.annotation.anchor.label|default:"(none)" }}'
             Instruction: '{{ world.refine_feedback|default:world.annotation.instruction|default:"(none)" }}'
             Cycle:       "{{ world.cycle }}"
             Edited:      '{{ world.refine_result.edited|length }}'
-      - prose: "Editing the scene the annotation points at, then re-rendering the before/after."
+      - prose: "Editing the slide the operator is looking at, then re-rendering the before/after."
     on_enter:
+      # 1) Resolve WHICH slide this refine targets (viewed scene > anchor ref),
+      #    and pull that scene's CURRENT content so the reviser edits a concrete,
+      #    named slide instead of guessing. All slidey-specific knowledge lives
+      #    in the story scripts — kitsoki core stays producer-agnostic.
+      - invoke: host.starlark.run
+        id: resolve_scene
+        once: true
+        with:
+          script: scripts/resolve_scene.star
+          # inputs to host.starlark.run are NOT expr-evaluated by the host — the
+          # machine resolves each value first, and ONLY strings wrapping the whole
+          # value in `{{ }}` are evaluated (a sole `{{ expr }}` preserves the typed
+          # value, so scene_index stays an int). A bare `world.foo` is passed to the
+          # script VERBATIM as the literal string "world.foo" (never the value) —
+          # which silently breaks resolution (deck-not-found, "expected int, got
+          # string"). Always template these. See starlark-enrich's README.
+          inputs:
+            spec_path:     "{{ world.deck.spec_path }}"
+            anchor_ref:    '{{ world.annotation?.anchor?.semantic_element?.ref ?? "" }}'
+            current_scene: '{{ string(world.current_scene ?? "") }}'
+        bind:
+          scene_index: scene_index
+          scene_label: scene_label
+          scene:       scene
+          scene_json:  scene_json
+        on_error: reviewing
+
       - invoke: host.agent.task
         id: refine_deck
         once: true
@@ -43,8 +71,34 @@ states:
               deck:            "{{ world.deck }}"
               annotation:      "{{ world.annotation }}"
               refine_feedback: "{{ world.refine_feedback }}"
+              scene_index:     "{{ world.scene_index }}"
+              scene_label:     "{{ world.scene_label }}"
+              scene:           "{{ world.scene }}"
+              scene_json:      "{{ world.scene_json }}"
         bind:
           refine_result: submitted
+        on_error: reviewing
+
+      # 2) Gate: every edited ref must share the targeted scene. A stray edit to
+      #    another slide is flagged so the operator isn't told "done" on a
+      #    wrong-slide change. Reached only after refine_deck binds refine_result
+      #    (a task error redirects to reviewing first), so no `when` guard needed.
+      - invoke: host.starlark.run
+        id: gate_edited_scene
+        once: true
+        with:
+          script: scripts/gate_edited_scene.star
+          # Templated, not bare expr — a sole `{{ }}` keeps scene_index a typed int
+          # (the sidecar declares it `int`); a bare "world.scene_index" reaches the
+          # script as the literal string and fails type validation. See resolve_scene.
+          inputs:
+            scene_index: "{{ world.scene_index }}"
+            edited:      "{{ world.refine_result.edited }}"
+            scene_label: '{{ world.scene_label ?? "" }}'
+            summary:     '{{ world.refine_result.summary ?? "Applied your edit." }}'
+        bind:
+          refine_gate: ok
+          refine_message: message
         on_error: reviewing
 
       # Record the addressed anchor and re-render. emit_intent fires once the
@@ -55,6 +109,14 @@ states:
       rerender:
         - target: rendering
           effects:
+            # Persist the reviser's one-line summary of what it changed so the
+            # NEXT reviewing view (the agent's reply bubble) shows it in-body —
+            # not as a separate narration line.
+            # The gate script composes the summary (reviser's on success; an
+            # honest wrong-slide / no-op note otherwise), so the reviewing reply
+            # bubble never falsely reads "done" on a wrong-slide edit.
+            - set:
+                last_refine_summary: "{{ world.refine_message ?? 'Applied your edit.' }}"
             # Append the iteration record (the deck reviewed + the anchor
             # addressed this pass). expr-lang can't append to a list, so the
             # record is built in starlark (ui-fix pattern).
@@ -62,10 +124,14 @@ states:
               id: accumulate_addressed
               with:
                 script: scripts/accumulate_addressed.star
+                # Templated, not bare expr — see resolve_scene/gate above. `edited`
+                # rides as a resolved input (not ctx.world.refine_result, which is a
+                # stale snapshot inside this transition effect).
                 inputs:
-                  deck_handle:  "world.deck_handle"
-                  anchor_label: 'world.annotation?.anchor?.label ?? "(unanchored)"'
-                  instruction:  'world.refine_feedback != "" ? world.refine_feedback : (world.annotation?.instruction ?? "")'
+                  deck_handle:  "{{ world.deck_handle }}"
+                  anchor_label: '{{ world.annotation?.anchor?.label ?? "(unanchored)" }}'
+                  instruction:  '{{ world.refine_feedback != "" ? world.refine_feedback : (world.annotation?.instruction ?? "") }}'
+                  edited:       "{{ world.refine_result.edited }}"
               bind:
                 addressed: addressed
             - set:
@@ -76,9 +142,17 @@ states:
                 deck_path:       ""
                 semantic_path:   ""
                 render_retries:  0   # fresh deck — reset the auto-fix budget
-                # Clear the once: bind + the consumed annotation.
+                # Clear the once: bind + the consumed annotation + scene targeting
+                # so the NEXT refine re-resolves the slide freshly.
                 refine_result:   {}
                 refine_feedback: ""
                 annotation:      {}
+                current_scene:   ""
+                scene_index:     -1
+                scene:           {}
+                scene_json:      ""
+                scene_label:     ""
+                refine_gate:     false
+                refine_message:  ""
       look:
         - target: .

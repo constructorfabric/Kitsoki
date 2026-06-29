@@ -1,0 +1,127 @@
+# pm_idea (pets-dev) — the PM/PRD HALF of the PRD → Design walk on kitsoki.
+#
+# The capture flow for the `pets-pm-idea` rrweb tour clip: a product manager
+# starts with an idea (a tiny SVG pet docked at the bottom of the kitsoki web
+# trace column that idles/reacts while a session runs), talks it through
+# discovery + clarification, the PRD is drafted and published. Same stubs as
+# prd_to_design_demo.yaml (the full walk); this one stops at core.prd_published
+# so the clip is the PM half only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world:
+  judge_mode: "human"
+  core__workdir:               "."
+  core__publish_durable_path:  "docs/prd"
+  core__prd_doc_filename:      ""
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: false }
+  host.chat.resolve:
+    data: { ok: true, chat_id: "chat-1", title: "Trace pet idea", is_new: true }
+  host.agent.converse:
+    data: { ok: true, answer: "A tiny animated SVG pet anchored at the bottom of the trace column that bobs while you watch the run.", chat_id: "chat-1", claude_session_id: "sess-1" }
+  host.agent.search:
+    data: { hits: [], top: null }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        questions:
+          - { id: "q1", question: "Who is the primary actor and where do they see the pet?", why: "scopes the persona" }
+          - { id: "q2", question: "What is the single most important success metric?", why: "defines done" }
+    by_call:
+      match_answer:
+        data:
+          ok: true
+          submitted:
+            answers_block:       "Q1: developers watching a long kitsoki session's trace column\nQ2: opt-in-pet-enabled-sessions\n"
+            answered_ids_append: "|1||2|"
+            matched_count:       2
+      name_slug:
+        data:
+          ok: true
+          submitted: { slug: "trace-pet", rationale: "the kitsoki feature the design is authored for" }
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "A net-new ambient sprite anchored in the existing trace column; no overlap with existing web UI surfaces." }
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/prd/trace-pet.md", sections: "§5", rationale: "the PRD this design realizes" }
+  host.agent.task:
+    by_call:
+      prd_author:
+        data:
+          ok: true
+          submitted:
+            title:            "PRD: Trace-Column Pet"
+            summary_markdown: |
+              # PRD: Trace-Column Pet
+
+              ## Problem & Context
+              Watching a long kitsoki session is a lonely wait at the trace
+              column — the right-hand observer panel just ticks by. A small
+              ambient companion adds warmth and life without taking screen space.
+
+              ## Target Users
+              Developers watching a long kitsoki session's trace column in the
+              web UI.
+
+              ## Goals
+              - A single small animated SVG pet anchored at the BOTTOM of the
+                trace column that idles (bob/blink) while the session runs.
+              - Opt-in and never in the way — it must never block trace content.
+
+              ## Requirements
+              - Functional: an inline-SVG sprite with a CSS keyframe idle
+                animation, optionally a subtle reaction when a turn is running.
+              - Non-functional: pure inline SVG + CSS, no images, no deps;
+                headline metric is opt-in-pet-enabled-sessions.
+
+              ## Open Questions
+              - Should the pet react when a turn is running, or only idle?
+            file_path:           ".artifacts/prd/trace-pet/004-prd.md"
+            confidence:          0.84
+            needs_clarification: false
+            follow_up_questions: []
+  host.run:
+    by_call:
+      mint_workspace:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "trace-pet", workspace: ".artifacts/prd/trace-pet" }
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            prd_file: "docs/prd/trace-pet.md"
+
+turns:
+  - intent: { name: core__go_prd, slots: {} }
+    expect_state: core.prd.idle
+  - intent: { name: core__prd__discuss, slots: { message: "I want a tiny SVG pet at the bottom of the kitsoki trace column" } }
+    expect_state: core.prd.idle
+  - intent: { name: core__prd__start, slots: {} }
+    expect_state: core.prd.search
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.clarifying
+  - intent: { name: core__prd__answer, slots: { text: "developers watching a long kitsoki trace; metric is opt-in-pet-enabled-sessions" } }
+    expect_state: core.prd.clarifying
+  - intent: { name: core__prd__submit_answers, slots: {} }
+    expect_state: core.prd.brief
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.references
+  - intent: { name: core__prd__confirm, slots: {} }
+    expect_state: core.prd.drafting
+  - intent: { name: core__prd__accept, slots: {} }
+    expect_state: core.prd_published
+
+expect_no_errors: true

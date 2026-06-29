@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kitsoki.dev/schemas/project-profile/v1.json",
+  "title": "Project profile (project-profile/v1)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema", "id", "title", "repo", "stack", "kitsoki"],
+  "properties": {
+    "schema": { "const": "project-profile/v1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "title": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string" },
+    "repo": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["root", "vcs"],
+      "properties": {
+        "root": { "type": "string" },
+        "vcs": { "enum": ["git", "hg", "svn", "none"] },
+        "default_branch": { "type": "string" },
+        "remote": { "type": "string" },
+        "monorepo": { "type": "boolean" }
+      }
+    },
+    "stack": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["frontend", "backend", "fullstack", "service", "cli", "library", "monorepo", "rust", "go", "node", "generic", "other"] },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "frameworks": { "type": "array", "items": { "type": "string" } },
+        "package_managers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "kitsoki": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["story", "instance"],
+      "properties": {
+        "story": { "const": "dev-story" },
+        "instance": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["id", "path", "bindings"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+            "path": { "type": "string" },
+            "bindings": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ticket", "vcs", "ci", "workspace", "transport"],
+              "properties": {
+                "ticket": { "type": "string" },
+                "vcs": { "type": "string" },
+                "ci": { "type": "string" },
+                "workspace": { "type": "string" },
+                "transport": { "type": "string" }
+              }
+            }
+          }
+        },
+        "judge_mode": { "enum": ["human", "llm", "llm_then_human"] },
+        "autonomy": { "enum": ["supervised", "autonomous"] }
+      }
+    }
+  }
+}

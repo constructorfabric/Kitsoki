@@ -52,7 +52,12 @@ func TestCodexLiveSmoke(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	prompt := "Call the `" + toolName + "` tool exactly once with {\"answer\":\"hello\"}. Do nothing else."
+	// codex ≥0.142 defers MCP tools behind tool_search, so the production prompt
+	// carries codexMCPToolSearchPreamble (TranslateInvocation injects it whenever an
+	// MCP config is registered). Mirror that here so the smoke proves the SAME
+	// discovery path the real reviser uses, not a fictional eager-tool world.
+	prompt := codexMCPToolSearchPreamble + "\n\n---\n\n" +
+		"Call the `" + toolName + "` tool exactly once with {\"answer\":\"hello\"}. Do nothing else."
 	cmd := exec.CommandContext(ctx, codexBin, "exec",
 		// Bypass flag required: codex exec auto-cancels MCP tool calls without
 		// it, so the validator submit tool would never execute. Mirrors the

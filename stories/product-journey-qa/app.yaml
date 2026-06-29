@@ -1,0 +1,290 @@
+app:
+  id: product-journey-qa
+  version: 0.1.0
+  title: "Product journey QA"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+
+world:
+  project:        { type: string, default: "gears-rust" }
+  persona:        { type: string, default: "core-maintainer" }
+  seed:           { type: string, default: "default" }
+  matrix_id:      { type: string, default: "" }
+  matrix_dir:     { type: string, default: "" }
+  matrix_personas: { type: string, default: "primary" }
+  matrix_target_count: { type: int, default: 0 }
+  matrix_assignment_count: { type: int, default: 0 }
+  matrix_scenario_count: { type: int, default: 0 }
+  matrix_persona_mode: { type: string, default: "" }
+  target_proof_id: { type: string, default: "" }
+  target_proof_dir: { type: string, default: "" }
+  target_proof_file: { type: string, default: "" }
+  target_proof_summary: { type: object, default: {} }
+  target_proof_checked_at: { type: string, default: "" }
+  target_proof_passed: { type: int, default: 0 }
+  target_proof_failed: { type: int, default: 0 }
+  target_proof_errors: { type: int, default: 0 }
+  target_proof_ready: { type: string, default: "" }
+  rollup_run_dir: { type: string, default: "" }
+  rollup_path:    { type: string, default: "" }
+  rollup_deck_path: { type: string, default: "" }
+  rollup_markdown_path: { type: string, default: "" }
+  rollup_summary: { type: object, default: {} }
+  rollup_runs_found: { type: int, default: 0 }
+  rollup_assignments: { type: int, default: 0 }
+  rollup_reviewed_runs: { type: int, default: 0 }
+  rollup_ready_runs: { type: int, default: 0 }
+  rollup_missing_assignment_count: { type: int, default: 0 }
+  rollup_present_evidence_count: { type: int, default: 0 }
+  rollup_required_evidence_count: { type: int, default: 0 }
+  rollup_persona_outcomes: { type: int, default: 0 }
+  rollup_scenario_outcomes: { type: int, default: 0 }
+  rollup_driver_journal_rows: { type: int, default: 0 }
+  rollup_driver_journal_events: { type: int, default: 0 }
+  rollup_driver_journal_evidence_refs: { type: int, default: 0 }
+  rollup_driver_journal_blocked_events: { type: int, default: 0 }
+  rollup_quality_gate_satisfied_runs: { type: int, default: 0 }
+  rollup_quality_gate_total_runs: { type: int, default: 0 }
+  rollup_quality_gate_proof_minimum_evidence_count: { type: int, default: 0 }
+  rollup_quality_gate_minimum_evidence_count: { type: int, default: 0 }
+  rollup_missing_proof_evidence_rows: { type: int, default: 0 }
+  rollup_quality_gate_missing_proof_evidence_count: { type: int, default: 0 }
+  rollup_missing_proof_handoff_summary: { type: string, default: "" }
+  dogfood_id:    { type: string, default: "" }
+  dogfood_dir:   { type: string, default: "" }
+  dogfood_report_path: { type: string, default: "" }
+  dogfood_deck_path: { type: string, default: "" }
+  dogfood_matrix_deck_path: { type: string, default: "" }
+  dogfood_run_deck_path: { type: string, default: "" }
+  dogfood_rollup_deck_path: { type: string, default: "" }
+  dogfood_review_warnings: { type: int, default: 0 }
+  dogfood_review_failed: { type: int, default: 0 }
+  dogfood_review_passed: { type: int, default: 0 }
+  dogfood_review_total: { type: int, default: 0 }
+  dogfood_review_backlog_summary: { type: string, default: "" }
+  dogfood_run_validation_warnings: { type: int, default: 0 }
+  dogfood_matrix_validation_warnings: { type: int, default: 0 }
+  dogfood_run_validation_issue_summary: { type: string, default: "" }
+  dogfood_matrix_validation_issue_summary: { type: string, default: "" }
+  driver_replay_scenario: { type: string, default: "" }
+  driver_replay_persona: { type: string, default: "" }
+  driver_replay_attached_evidence_count: { type: int, default: 0 }
+  driver_replay_scenario_count: { type: int, default: 0 }
+  driver_replay_playback_scenarios: { type: int, default: 0 }
+  driver_replay_media_manifest_path: { type: string, default: "" }
+  driver_replay_journal_path: { type: string, default: "" }
+  driver_replay_handoff_path: { type: string, default: "" }
+  corpus_validation_status: { type: string, default: "" }
+  corpus_validation_errors: { type: int, default: 0 }
+  corpus_validation_warnings: { type: int, default: 0 }
+  run_id:         { type: string, default: "" }
+  run_dir:        { type: string, default: "" }
+  deck_path:      { type: string, default: "" }
+  execution_plan_path: { type: string, default: "" }
+  driver_plan_path: { type: string, default: "" }
+  driver_journal_path: { type: string, default: "" }
+  agent_brief_path: { type: string, default: "" }
+  driver_handoff_path: { type: string, default: "" }
+  media_manifest_path: { type: string, default: "" }
+  scenario_outcomes_path: { type: string, default: "" }
+  persona_starting_surface: { type: string, default: "" }
+  persona_first_question: { type: string, default: "" }
+  persona_evidence_emphasis: { type: string, default: "" }
+  persona_escalation_trigger: { type: string, default: "" }
+  persona_finding_bias: { type: string, default: "" }
+  proof_evidence_count: { type: int, default: 0 }
+  demo_evidence_count: { type: int, default: 0 }
+  finding_total_count: { type: int, default: 0 }
+  strength_count: { type: int, default: 0 }
+  weakness_count: { type: int, default: 0 }
+  issue_count: { type: int, default: 0 }
+  fix_count: { type: int, default: 0 }
+  blocked_count: { type: int, default: 0 }
+  missing_evidence_count: { type: int, default: 0 }
+  missing_proof_evidence_count: { type: int, default: 0 }
+  proof_minimum_evidence_count: { type: int, default: 0 }
+  minimum_evidence_count: { type: int, default: 0 }
+  missing_proof_summary: { type: string, default: "" }
+  driver_contract_summary: { type: string, default: "" }
+  next_driver_capture: { type: string, default: "" }
+  next_driver_attach_command: { type: string, default: "" }
+  next_driver_blocker_command: { type: string, default: "" }
+  scenario:       { type: string, default: "" }
+  evidence_kind:  { type: string, default: "" }
+  evidence_path:  { type: string, default: "" }
+  evidence_source: { type: string, default: "" }
+  notes:          { type: string, default: "" }
+  finding_kind:   { type: string, default: "" }
+  finding_title:  { type: string, default: "" }
+  finding_summary: { type: string, default: "" }
+  finding_severity: { type: string, default: "" }
+  dispatch_mode:  { type: string, default: "" }
+  driver_status:  { type: string, default: "" }
+  driver_summary: { type: string, default: "" }
+  mcp_tools:      { type: string, default: "" }
+  evidence_refs:  { type: string, default: "" }
+  blockers:       { type: string, default: "" }
+  driver_event_id: { type: string, default: "" }
+  review_status:  { type: string, default: "" }
+  review_summary: { type: string, default: "" }
+  review_passed_count: { type: int, default: 0 }
+  review_failed_count: { type: int, default: 0 }
+  review_warning_count: { type: int, default: 0 }
+  review_total_count: { type: int, default: 0 }
+  review_backlog_summary: { type: string, default: "" }
+  validation_status: { type: string, default: "" }
+  validation_errors: { type: int, default: 0 }
+  validation_warnings: { type: int, default: 0 }
+  validation_issue_summary: { type: string, default: "" }
+  last_result:    { type: object, default: {} }
+  status:         { type: string, default: "idle" }
+
+intents:
+  start:
+    description: "Create a deterministic product-journey QA run bundle."
+    examples: ["start", "create a product journey run", "begin qa run"]
+    priority: 90
+    slots:
+      project: { type: string, required: false }
+      persona: { type: string, required: false }
+      seed: { type: string, required: false }
+  matrix:
+    description: "Create a deterministic 10-repo GitHub product-journey matrix."
+    examples: ["create github matrix", "plan ten repo sweep", "emit matrix with target proof"]
+    priority: 88
+    slots:
+      seed: { type: string, required: false }
+      matrix_personas: { type: string, required: false }
+      target_proof_file: { type: string, required: false }
+  dogfood_smoke:
+    description: "Run the deterministic no-LLM product-journey smoke from matrix through rollup and decks."
+    examples: ["dogfood smoke", "run dogfood smoke", "prove artifact loop"]
+    priority: 89
+    slots:
+      seed: { type: string, required: false }
+  driver_replay_smoke:
+    description: "Run a deterministic no-LLM one-scenario reusable-driver replay with cassette proof evidence."
+    examples: ["driver replay smoke", "prove driver replay", "run cassette driver smoke"]
+    priority: 88
+    slots:
+      seed: { type: string, required: false }
+      scenario: { type: string, required: false }
+      persona: { type: string, required: false }
+  driver_replay_sweep:
+    description: "Run deterministic no-LLM reusable-driver replays for every product-journey scenario."
+    examples: ["driver replay sweep", "prove all driver replays", "run all cassette driver smokes"]
+    priority: 87
+    slots:
+      seed: { type: string, required: false }
+      persona: { type: string, required: false }
+  validate_corpus:
+    description: "Validate the reusable personas, scenarios, and GitHub target catalog."
+    examples: ["validate corpus", "check persona scenario catalog", "preflight journey corpus"]
+    priority: 88
+  refresh_targets:
+    description: "Refresh GitHub open-bug proof for the 10-repo target catalog."
+    examples: ["refresh github targets", "check target bug counts", "prove target matrix"]
+    priority: 87
+    slots:
+      seed: { type: string, required: false }
+  load:
+    description: "Load an existing product-journey run bundle into the story so the reusable driver can attach evidence."
+    examples: ["load run", "open run bundle", "load run_dir=.artifacts/product-journey/run-123"]
+    priority: 86
+    slots:
+      run_dir: { type: string, required: true }
+  rollup:
+    description: "Create or refresh the matrix rollup deck."
+    examples: ["rollup", "create rollup", "refresh matrix rollup"]
+    priority: 86
+    slots:
+      rollup_run_dir: { type: string, required: false }
+  validate_matrix:
+    description: "Validate the current GitHub matrix bundle without rewriting artifacts."
+    examples: ["validate matrix", "check matrix bundle", "verify matrix contract"]
+    priority: 84
+  validate_matrix_strict:
+    description: "Validate the current GitHub matrix as a live sweep contract requiring refreshed GitHub proof."
+    examples: ["validate matrix strict", "strict matrix validation", "require target proof"]
+    priority: 85
+  attach:
+    description: "Attach captured evidence to the current product-journey run."
+    examples: ["attach evidence", "add bugfix video", "record trace evidence"]
+    priority: 85
+    slots:
+      scenario: { type: string, required: true }
+      evidence_kind: { type: string, required: true }
+      evidence_path: { type: string, required: true }
+      source: { type: string, required: false }
+      notes: { type: string, required: false }
+  record:
+    description: "Record a strength, weakness, issue, or fix for the run summary deck."
+    examples: ["record finding", "note a weakness", "record a fix", "add strength"]
+    priority: 82
+    slots:
+      finding_kind: { type: string, required: true }
+      title: { type: string, required: true }
+      summary: { type: string, required: true }
+      scenario: { type: string, required: false }
+      severity: { type: string, required: false }
+      evidence_path: { type: string, required: false }
+  blocker:
+    description: "Record that a scenario was attempted but blocked before evidence could be captured."
+    examples: ["record blocker", "block scenario", "mark onboarding blocked"]
+    priority: 81
+    slots:
+      scenario: { type: string, required: true }
+      title: { type: string, required: true }
+      summary: { type: string, required: true }
+      evidence_path: { type: string, required: false }
+  driver_event:
+    description: "Record what the reusable driver actually attempted for a scenario."
+    examples: ["record driver event", "driver attempted bugfix", "journal visual observe"]
+    priority: 80
+    slots:
+      scenario: { type: string, required: true }
+      summary: { type: string, required: true }
+      dispatch_mode: { type: string, required: false }
+      driver_status: { type: string, required: false }
+      mcp_tools: { type: string, required: false }
+      evidence_refs: { type: string, required: false }
+      blockers: { type: string, required: false }
+  seed_demo:
+    description: "Attach deterministic demo evidence and findings to the current run."
+    examples: ["seed demo evidence", "dogfood the demo bundle", "populate demo"]
+    priority: 78
+  handoff:
+    description: "Prepare the reusable product-journey QA driver handoff artifact."
+    examples: ["prepare driver handoff", "handoff to driver", "show driver prompt"]
+    priority: 77
+  review:
+    description: "Review the current product-journey bundle for readiness."
+    examples: ["review run", "check readiness", "is this bundle reviewable"]
+    priority: 76
+  validate:
+    description: "Validate the current run bundle without rewriting artifacts."
+    examples: ["validate run", "check artifact contract", "verify bundle"]
+    priority: 74
+  accept:
+    description: "Accept the current report bundle and finish."
+    examples: ["accept", "done", "looks good"]
+    priority: 70
+  quit:
+    description: "Abandon the product-journey QA wrapper."
+    examples: ["quit", "abort", "stop"]
+    priority: 40
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "status", "show me"]
+    priority: 10
+
+exports:
+  intents: [start, matrix, dogfood_smoke, driver_replay_smoke, driver_replay_sweep, validate_corpus, refresh_targets, load, rollup, validate_matrix, validate_matrix_strict, attach, record, blocker, driver_event, seed_demo, handoff, review, validate, accept, quit, look]
+
+root: idle
+
+include:
+  - rooms/*.yaml

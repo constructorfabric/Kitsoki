@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "case_result",
+  "description": "One per-case marathon record appended to world.results.items by record_case.star.",
+  "type": "object",
+  "required": ["case_id", "exit", "verify_status"],
+  "properties": {
+    "case_id":       { "type": "string", "description": "The case identifier (ticket / bug id)." },
+    "title":         { "type": "string", "description": "Human title of the case." },
+    "triage":        { "type": "string", "enum": ["", "ALREADY-FIXED", "STILL-LIVE", "PARTIAL", "UNCLEAR"], "description": "The read-only triage verdict." },
+    "exit":          { "type": "string", "description": "The inner pipeline's terminal exit (shipped | needs-human | not-reproducible | abandoned | skipped)." },
+    "verify_status": { "type": "string", "enum": ["solved", "partial", "failed", "skipped"], "description": "The INDEPENDENT oracle outcome — the grade (never the maker's self-report)." },
+    "verify_how":    { "type": "string", "description": "How the independent verify was performed." },
+    "cost_usd":      { "type": "number", "description": "Summed trace cost (USD, secondary axis)." },
+    "tokens":        { "type": "number", "description": "Total tokens (primary, provider-neutral axis)." },
+    "wall_s":        { "type": "number", "description": "Wall-clock seconds for the drive." },
+    "trace":         { "type": "string", "description": "Path to the drive's trace (cost/token evidence)." }
+  },
+  "additionalProperties": true
+}

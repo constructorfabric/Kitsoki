@@ -63,6 +63,46 @@ func TestDigestTurns_SurfacesErrors(t *testing.T) {
 	assert.Contains(t, out, "git.commit: nothing to commit")
 }
 
+// hostIOTrace mirrors the real slidey-edit "edits never show" session: a
+// host.starlark.run call whose `inputs:` reached the script as UNEVALUATED expr
+// strings (the bare-expr bug), so resolve_scene looked up a file literally named
+// "world.deck.spec_path" (fs miss → scene_index -1) and the gate received a
+// string scene_index → a type error. The digest must surface the resolved inputs,
+// the returned outputs, and the fs inspection so the cause is visible without jq.
+const hostIOTrace = `{"turn":1,"kind":"turn.start","state_path":"refining","payload":{"input":"make it pop","routed_by":"llm"}}
+{"turn":1,"kind":"harness.called","state_path":"refining","payload":{"namespace":"host.starlark.run","args":{"call":"resolve_scene","inputs":{"spec_path":"world.deck.spec_path","current_scene":"str(world.current_scene ?? \"\")"}}}}
+{"turn":1,"kind":"harness.returned","state_path":"refining","payload":{"namespace":"host.starlark.run","data":{"scene_index":-1,"scene_label":"(deck not found)","__inspections":[{"op":"exists","target":"world.deck.spec_path","status":"missing"}]}}}
+{"turn":1,"kind":"harness.called","state_path":"refining","payload":{"namespace":"host.starlark.run","args":{"call":"gate_edited_scene","inputs":{"scene_index":"world.scene_index"}}}}
+{"turn":1,"kind":"harness.returned","state_path":"refining","payload":{"namespace":"host.starlark.run","error":"host.starlark.run: input \"scene_index\": expected int, got string"}}
+{"turn":1,"kind":"turn.end","state_path":"refining","payload":{"outcome":"transitioned","to":"reviewing"}}
+`
+
+func TestDigestTurns_SurfacesHostInputsAndOutputs(t *testing.T) {
+	// Compact --turns view: the call id, an inputs summary, the output summary,
+	// the fs inspection, and the error all appear.
+	var compact bytes.Buffer
+	require.NoError(t, digestTurns(strings.NewReader(hostIOTrace), &compact, 0))
+	c := compact.String()
+	assert.Contains(t, c, "host.starlark.run [resolve_scene]", "names the call site")
+	assert.Contains(t, c, "in=", "resolved inputs are surfaced (truncated in compact)")
+	assert.Contains(t, c, "scene_index=-1", "the returned output is visible")
+	assert.Contains(t, c, "exists world.deck.spec_path→missing", "the fs inspection (the smoking gun, untruncated) is visible")
+	assert.Contains(t, c, `expected int, got string`, "the gate error is visible")
+
+	// Focused --turn view: inputs/outputs print one line per key (100% detail),
+	// paired to the right call (resolve_scene's data vs the gate's error).
+	var full bytes.Buffer
+	require.NoError(t, digestTurns(strings.NewReader(hostIOTrace), &full, 1))
+	f := full.String()
+	assert.Contains(t, f, "in   spec_path: world.deck.spec_path")
+	assert.Contains(t, f, "out  scene_label: (deck not found)")
+	assert.Contains(t, f, "fs   exists world.deck.spec_path→missing")
+	// The error is paired to the SECOND host.starlark.run call (the gate), not the
+	// first (resolve_scene returned data) — proves FIFO-by-namespace pairing.
+	assert.Contains(t, f, "in   scene_index: world.scene_index")
+	assert.Contains(t, f, `err  host.starlark.run: input "scene_index": expected int, got string`)
+}
+
 func TestDigestTurns_FocusShowsFullPrompt(t *testing.T) {
 	// A long prompt that the default (truncated) view would cut off.
 	long := "do the thing\\n\\n## Active editor selection (via /ide)\\n\\n" + strings.Repeat("x", 400)

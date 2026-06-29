@@ -1,22 +1,26 @@
 # Story: dev-story project init — onboard a project, fine-tune the loop
 
-**Status:** Draft v1. A deterministic dev-story onboarding spine now works:
+**Status:** Partially implemented and currently fragile. A deterministic dev-story onboarding spine works:
 `go_init` and raw `onboard ...` requests run local discovery, render a reviewed
 profile, and apply `.kitsoki.yaml`, `.kitsoki/project-profile.yaml`, and a
-`stories/<id>-dev/` instance only after accept. `flows/init_slidey_dogfood.yaml`
+`.kitsoki/stories/<id>-dev/` instance only after accept. `flows/init_slidey_dogfood.yaml`
 uses Slidey as the first external dogfood target and stubs discovery/apply with
-no LLM. Mining, profile synthesis, schema validation, readiness verification,
-and the full report loop are still pending. Slidey has also been hand-onboarded
-with a materialized `stories/slidey-dev/` instance and
-`.kitsoki/project-profile.yaml`. The report schema is drafted + proven
-(`notes/project-profile.schema.json`, validated in §Verification).
+no LLM, and `flows/init_tools_failed.yaml` covers loud tool-install failure.
+Direct `story_validate` passes for `stories/dev-story`, but running the init
+flows currently fails while loading imported `bf` states because expressions of
+the form `world.*|default:world.*` are rejected by the expression parser. Mining,
+profile synthesis, schema validation, readiness verification, and the full
+report loop are still pending. Slidey has also been hand-onboarded with a
+materialized `.kitsoki/stories/slidey-dev/` instance and `.kitsoki/project-profile.yaml`.
+The report schema is drafted + proven (`notes/project-profile.schema.json`,
+validated in §Verification).
 **Kind:**   story
 **Epic:**   — standalone <!-- becomes an epic if Open question 1 (first-class dev-server lifecycle) is taken — that slice is runtime -->
 
 ## Why
 
 Today a project adopts kitsoki by **hand-authoring an instance**: someone copies
-`stories/kitsoki-dev/app.yaml` (or the gears team's external instance, which imports `@kitsoki/dev-story` from the gears repo), rebinds
+`.kitsoki/stories/kitsoki-dev/app.yaml` (or the gears team's external instance, which imports `@kitsoki/dev-story` from the gears repo), rebinds
 dev-story's five `host_interfaces:` to concrete providers, fills the
 External-target profile world keys, and figures out — from nothing — which dev
 server to run, which tests exist, what conventions to use, and what's safe to
@@ -83,7 +87,7 @@ evidence, and a `setup_plan` listing exactly what will be written/run on
 confirm.
 
 **The profile is the declarative source; on confirm it compiles to a generated
-dev-story instance** (`stories/<id>-dev/app.yaml`) — the same artifact
+dev-story instance** (`.kitsoki/stories/<id>-dev/app.yaml`) — the same artifact
 `kitsoki-dev` and `gears-rust` are by hand, now discovered and emitted. That
 framing is the spine of the whole feature: init generalizes the instance-binding
 pattern that already exists.
@@ -133,7 +137,7 @@ This is the proof the feature is composition, not invention.
 | Re-check the report deterministically | pinned JSON Schema validator script (the validation sandwich) | `decompose_validate.py` pattern; proven in §Verification |
 | Checkpoint gate (accept/refine/quit) | `accept`/`refine(feedback)` + cycle budget, judge polymorphism | `dev-story-mining/rooms/mine.yaml:61-108`; `stories/bugfix` |
 | Propose-then-confirm | dry-run artifact, then a guarded `confirm` that runs the deterministic mutation | design publish; ideas `apply` gate (dev-story README §ideas) |
-| Compile profile → instance | render `stories/<id>-dev/app.yaml` from the bindings | `stories/kitsoki-dev/app.yaml:131`; `gears-rust` External-target profile (`stories/dev-story/app.yaml:365-381`) |
+| Compile profile → instance | render `.kitsoki/stories/<id>-dev/app.yaml` from the bindings | `.kitsoki/stories/kitsoki-dev/app.yaml:131`; `gears-rust` External-target profile (`stories/dev-story/app.yaml:365-381`) |
 | Set up conventions + `.gitignore` | deterministic write script | `publish_design.py` / `ideas_reconcile.py` pattern |
 | Run readiness + tests | `host.run`, integrating the project's own `commands`/`testing` | `iface.ci.run_tests`/`build`; `make test` |
 | Classify a verify failure (regression vs pre-existing) | `host.agent.decide` over a baseline re-run | the "pre-existing vs regression" gate, [`dev-story-from-transcripts.md`](../../.context/dev-story-from-transcripts.md) theme A |
@@ -156,8 +160,10 @@ shape:
 | `golden_path` | the UI (or api/cli) clickthrough init proves, + regenerable `evidence` |
 | `conventions` | kitsoki / project / hybrid; per-dir `.context`/`.artifacts`/`.worktrees`; the managed `.gitignore` block |
 | `rules[]` | project rules (discovered from AGENTS.md/CLAUDE.md/.cursorrules, mined, or operator-stated) |
-| `kitsoki` | the dev-story **instance binding** (ticket/vcs/ci/workspace/transport) + External-target `external_profile` + judge_mode/autonomy |
+| `kitsoki` | the dev-story **instance binding** (ticket/vcs/ci/workspace/transport) + judge_mode/autonomy |
+| `dev_story_profile` | reusable dev-story knobs: docs placement/templates/ticket policy plus bugfix build/test gates |
 | `mining` | the fine-tuning evidence (job, sample, themes with already-modeled/enrich/gap) |
+| `onboarding` | pre-init baseline commit + first onboarding commit for deterministic replay and gated live recording runs |
 | `setup_plan` | **the propose-then-confirm contract**: `writes[]`, `dirs_create[]`, `gitignore_additions[]`, `verifications[]` — nothing runs until confirm |
 | `readiness` | verify results; the dry-run report carries `status: not-run` |
 
@@ -230,11 +236,12 @@ no-write outcome.)
 
 ### `init_apply` — write the safe scaffolding (gated behind confirm)
 - **`on_enter`:** `host.run scripts/apply_profile.py` renders
-  `stories/<id>-dev/app.yaml` from `kitsoki.instance.bindings` (+
-  `external_profile`), merges `.kitsoki.yaml` (`story_dirs`, default profile),
-  creates the convention dirs, appends the managed `.gitignore` block, and writes
-  the profile to `.kitsoki/project-profile.yaml`. Idempotent; stamps
-  `generated.at`. Binds `init_apply_result`.
+  `.kitsoki/stories/<id>-dev/app.yaml` from `kitsoki.instance.bindings` (+
+  `dev_story_profile`), merges `.kitsoki.yaml` (`story_dirs`,
+  `project_profile`, default profile), creates the convention dirs, appends the
+  managed `.gitignore` block, and writes the profile to
+  `.kitsoki/project-profile.yaml`. Idempotent; stamps `generated.at`. Binds
+  `init_apply_result`.
 
 ### `init_verify` — prove the loop (gated behind confirm)
 - **`on_enter`:** runs each `setup_plan.verifications[]` via `host.run`,
@@ -266,6 +273,10 @@ The regression contract. All agent/mining/verify host calls are cassette-backed.
 - `init_verify_failure` — a `required` verification fails; `init_done` reports
   the failure (gates on profile-written, not on green): gate on deliverable
   existence, surface the failure, never false-pass.
+- sister-project onboarding starts from each profile's
+  `onboarding.baseline_commit`; live recording runs are allowed only when
+  explicitly requested and the profile says `recording_policy:
+  gated-live-allowed`.
 
 ## Verification
 
@@ -291,7 +302,7 @@ JSON twin is throwaway under `.artifacts/` (gitignored).
 - [x] 0.3 Hand-author a second profile for a NON-kitsoki repo (a foreign frontend) against the
           schema; adjust the schema from friction, not theory
           (Slidey: `/Users/brad/code/slidey/.kitsoki/project-profile.yaml`
-          plus `stories/slidey-dev/app.yaml`)
+          plus `.kitsoki/stories/slidey-dev/app.yaml`)
 
 ## 1. Deterministic spine
 - [x] 1.1 scripts/init_discover.py + Slidey flow fixture coverage
@@ -302,7 +313,7 @@ JSON twin is throwaway under `.artifacts/` (gitignored).
 ## 2. The init phase
 - [x] 2.1 init_discover/init_review/init_apply/init_done rooms + go_init intent
 - [ ] 2.2 Probe each room (kitsoki turn …); lock the graph
-- [ ] 2.3 Flow fixtures pass (done: Slidey mocked happy path + refine; pending: decline, budget_exhausted, verify_failure)
+- [ ] Partial: flow fixtures exist for Slidey mocked happy path/refine and tool-install failure, but currently fail to load because imported `bf` expressions use `|default:`
 - [ ] 2.4 Host cassette for a recorded end-to-end (discover + mine + synthesize + verify), no live LLM
 
 ## 3. Live + document
@@ -325,9 +336,10 @@ JSON twin is throwaway under `.artifacts/` (gitignored).
    source of truth; init only *merges* the existing `story_dirs`/profile keys
    into `.kitsoki.yaml`.*
 3. **Generate the instance vs. profile-as-runtime-config.** v1 *compiles* the
-   profile to a checked-in `stories/<id>-dev/app.yaml` (visible, diffable, the
-   kitsoki-dev pattern). Alternatively the runtime could bind dev-story directly
-   from the profile at load with no generated file. *Lean: generate — it's the
+   profile to a checked-in `.kitsoki/stories/<id>-dev/app.yaml` (visible,
+   diffable, the kitsoki-dev pattern). Alternatively the runtime could bind
+   dev-story directly from the profile at load with no generated file. *Lean:
+   generate — it's the
    established pattern and stays inspectable; revisit if the generated file
    becomes noise.*
 4. **Mining without prior transcripts.** A brand-new project has no Claude Code

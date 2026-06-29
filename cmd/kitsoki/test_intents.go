@@ -123,6 +123,7 @@ Exit codes:
 						Effort: profile.Effort,
 						Env:    profile.Env,
 					},
+					Quota: profile.Quota,
 				}
 			}
 

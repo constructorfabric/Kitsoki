@@ -1,0 +1,40 @@
+states:
+  verify:
+    description: "Run independent deterministic verification for the current item."
+    relevant_world: [current_item, verify_result]
+    view:
+      - heading: "Punch-list · verify"
+      - kv:
+          pairs:
+            Item: '{{ world.current_item.id }}'
+            Status: '{{ world.verify_result.status|default:"verifying" }}'
+      - prose: "{{ world.verify_result.summary|default:'' }}"
+    on_enter:
+      - set:
+          verify_result: {}
+          verify_status: ""
+      - invoke: host.run
+        id: "punch_verify-{{ world.current_item_id }}"
+        with:
+          cmd: python3
+          args:
+            - "stories/punch-list/scripts/punch_verify.py"
+            - "{{ world.state_path }}"
+            - "{{ world.current_item_id }}"
+        bind:
+          verify_result: "stdout_json.verify_result"
+          verify_status: "stdout_json.verify_result.status"
+        on_error: record
+      - when: "world.verify_status != ''"
+        emit_intent: verify_done
+    on:
+      next_item:
+        - target: verify
+      verify_done:
+        - target: board
+          effects:
+            - set:
+                _record_status: "{{ world.verify_status }}"
+                _record_error: "{{ world.verify_result.summary }}"
+      look:
+        - target: .

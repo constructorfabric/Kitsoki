@@ -1,0 +1,35 @@
+states:
+  get_started:
+    description: "How do I get started?"
+    relevant_world: [section, next_action, checkpoint_rating]
+    on_enter:
+      # The newcomer has seen overview → how → use cases → here, so they can
+      # name what Kitsoki does and the next action. Record that as the
+      # discovery checkpoint the product-journey QA scenario asserts.
+      - set:
+          next_action: "Run `kitsoki run stories/dev-story/app.yaml` to open the dev-story hub, where the onboarding flow profiles your repo into a runnable instance."
+          checkpoint_rating: 5
+          status: "discovered"
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "You now know what Kitsoki is, how stories work, and what it's for. Pick up the dev-story hub to see it drive real engineering work, or onboard your own repository."
+          - kv:
+              pairs:
+                Next action: "{{ world.next_action }}"
+                Understood: "{{ world.checkpoint_rating }}/5"
+        choices:
+          - heading: "Tour"
+          - list:
+              items:
+                - label: "restart"
+                  hint: "back to the overview"
+                - label: "look"
+    on:
+      restart:
+        - target: overview
+          effects:
+            - set: { section: "overview" }
+      look:
+        - target: get_started

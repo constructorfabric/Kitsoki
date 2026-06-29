@@ -9,7 +9,7 @@ free-form workbench [`landing`](#the-free-form-workbench-landing), which
 replaced the former `main` catalog.
 
 This app does **not** bind providers. Concrete bindings happen at the
-INSTANCE level: `stories/kitsoki-dev/` (Wave 3) for local-file
+INSTANCE level: `.kitsoki/stories/kitsoki-dev/` (Wave 3) for local-file
 providers; `cyber-repo/stories/devstory/` (Phase 7) for Jira /
 Bitbucket / Jenkins.
 
@@ -91,19 +91,14 @@ dev-story's composition. The walk is exercised by
 The PRD → Design walk above publishes into kitsoki's own `docs/` by
 default, but the *document shape* and *placement* are a **profile** an
 instance app can override — no engine or room change needed. An instance
-points the same hub at a foreign repo (different doc shape, fixed
-filenames, per-scope tree) purely by setting world keys. The worked,
-copy-me example is the **gears repo** ([`stories/gears-rust/`](https://github.com/constructorfabric/gears-rust/tree/docs/kitsoki-integration/stories/gears-rust)),
-which retargets
-[`constructorfabric/gears-rust`](https://github.com/constructorfabric/gears-rust)
-and lands gears-sdlc-shaped `PRD.md` / `DESIGN.md` under
-`gears/<gear>/docs/`. External targets now live in their **own** repo (a
-zero-config `stories/<name>/` instance, discovered by the default `./stories`
-walk — no `.kitsoki.yaml` needed), importing this base via
-`@kitsoki/dev-story` from the binary's embedded story library — see
+points the same hub at another repository or at a project-specific docs tree
+purely by setting world keys: different templates, fixed filenames, local file
+tickets, GitHub issues, or no follow-up ticket at all. External targets live in
+their **own** repo as a zero-config `stories/<name>/` instance, discovered by
+the default `./stories` walk, importing this base via `@kitsoki/dev-story` from
+the binary's embedded story library — see
 [`kitsoki-as-dependency.md`](../../docs/proposals/kitsoki-as-dependency.md)
-for the full epic, including how to render the demo via `kitsoki tour`
-(slice 2) and the slice-3 migration mechanics.
+for the broader dependency story.
 
 The profile is the "External-target profile" world block in
 [`app.yaml`](./app.yaml) (search `External-target profile`). Every key has
@@ -113,10 +108,10 @@ the profile**:
 | World key | Default | Effect |
 |---|---|---|
 | `repo_root` | `""` | external checkout root (forward-compat; ticket passthrough is the deferred gh-adapter slice) |
-| `publish_durable_path` | `docs/prd` | PRD publish home (relative to `workdir`); projected into the `prd` import via `world_in`. Per-gear: `gears/<gear>/docs` |
+| `publish_durable_path` | `docs/prd` | PRD publish home (relative to `workdir`); projected into the `prd` import via `world_in`. |
 | `prd_doc_filename` | `""` | fixed PRD filename (e.g. `PRD` → `PRD.md`); `""` ⇒ slug-named (`<slug>.md`) |
 | `design_template_dir` | `docs/proposals/templates` | dir the design author reads its doc templates from |
-| `design_durable_path` | `docs/proposals` | DESIGN publish home (relative to `workdir`). Per-gear: `gears/<gear>/docs` |
+| `design_durable_path` | `docs/proposals` | DESIGN publish home (relative to `workdir`). |
 | `design_doc_filename` | `""` | fixed DESIGN filename (e.g. `DESIGN` → `DESIGN.md`); `""` ⇒ slug-named |
 | `design_ticket_dir` | `issues/features` | where the linking feature ticket is minted; `""` ⇒ **skip** minting (an external target tracks work elsewhere, e.g. GitHub issues) |
 | `ticket_repo` | `""` | `owner/repo` for GitHub-issue tickets; **non-empty ⇒ the feature publish mints a GitHub feature issue** (labels `target:kitsoki` + `comp:proposal`, body links the proposal) instead of a local file — takes precedence over `design_ticket_dir`. `kitsoki-dev` pins `constructorfabric/Kitsoki`. See [hosts.md → host.gh.ticket](../../docs/architecture/hosts.md#hostghticket--github-issues-backed-tracker). |
@@ -142,12 +137,11 @@ positional args:
   value mints the kitsoki feature ticket there (`issues/features` by
   default); an **empty** `ticket_dir` skips ticket minting entirely.
 
-Per-gear placement is expressed simply as `publish_durable_path:
-gears/<gear>/docs` (a plain relative dir) plus the `doc_filename`
-override — there is no placement enum. For the filled profile, its
-scenario, and the two no-LLM flows that assert the resolved paths, see
-[the gears-rust instance in the gears repo](https://github.com/constructorfabric/gears-rust/tree/docs/kitsoki-integration/stories/gears-rust)
-([README](https://github.com/constructorfabric/gears-rust/blob/docs/kitsoki-integration/stories/gears-rust/README.md)).
+Project-specific placement is expressed as a plain relative directory plus an
+optional fixed `doc_filename` override — there is no placement enum. The clean
+layering is: community/shared patterns live in dev-story, organization or
+project conventions live in the importing instance's profile, and local
+exceptions are explicit world defaults in that instance.
 
 ## Provider neutrality
 
@@ -524,23 +518,19 @@ straight into impl.
 The dev-story hub's PRD → Design walk is recorded as a **deterministic, no-LLM
 tour video** — the golden example for conversation-driven development (the
 [`conversation-driven-development`](../../docs/proposals/conversation-driven-development.md)
-epic). The same walk (minus the feature ticket) drives the **gears-rust**
-external-target demo (which now lives in the gears repo as a `stories/gears-rust/`
-instance — see the [Doc profile](#doc-profile--targeting-an-external-project)
-section above); this one is kitsoki's self-targeting parallel —
-**"kitsoki on kitsoki"**.
+epic). The same walk can be retargeted by an importing project instance — see
+the [Doc profile](#doc-profile--targeting-an-external-project) section above;
+this one is kitsoki's self-targeting parallel — **"kitsoki on kitsoki"**.
 
 - **Flow fixture (no-LLM):**
   [`flows/prd_to_design_full.yaml`](./flows/prd_to_design_full.yaml) — the
   single-session walk: `main → prd` (discovery + multi-round clarification) →
   `prd_published` (landing) → `continue` → `design` (intake seeded from the PRD)
   → `design_refine` (conversational brief refinement) → `design_draft`
-  (publish + mint feature ticket) → `main`. The gears-rust variant (in the gears
-  repo's [`stories/gears-rust/`](https://github.com/constructorfabric/gears-rust/tree/docs/kitsoki-integration/stories/gears-rust)
-  instance) is the same structure retargeted to an external repo, with
-  `design_ticket_dir: ""` (skips the ticket mint) and fixed `PRD.md` / `DESIGN.md`
-  filenames. This one uses the dev-story **defaults** — slug-named docs in
-  kitsoki's own tree and a feature ticket on publish.
+  (publish + mint feature ticket) → `main`. Importing instances can reuse the
+  same structure with a different doc tree, template directory, fixed filenames,
+  or ticket policy. This one uses the dev-story **defaults** — slug-named docs
+  in kitsoki's own tree and a feature ticket on publish.
 
 - **IDE-driven variant (VS Code extension demo):**
   [`flows/prd_to_design_demo.yaml`](./flows/prd_to_design_demo.yaml) — the PRD
@@ -639,6 +629,10 @@ Flow fixtures that exercise those imports carry `host.agent.decide:` and
 
 ## See also
 
+- [`docs/project-onboarding.md`](../../docs/project-onboarding.md) /
+  [`docs/stories/dev-story-onboarding.md`](../../docs/stories/dev-story-onboarding.md)
+  — the project onboarding pipeline (the `init` rooms) that installs a runnable
+  instance + studio MCP + skill/agent toolkit into a target repo.
 - [`docs/case-studies/bug-fix.md`](../../docs/case-studies/bug-fix.md)
   — the design.
 - [`docs/proposals/notes/dev-story-implementation-contract.md`](../../docs/proposals/notes/dev-story-implementation-contract.md)

@@ -98,8 +98,9 @@ Attribution must be **reproducible from the same inputs** so a replay lines up:
   a cassette). The same trace pair → byte-identical `ranked` ordering.
 - `decision_ref`s reuse existing **deterministic** event ids; attribution adds no
   new ids to the decisions themselves.
-- The annotation is written to a **sidecar** keyed by `episode_id` (the pattern
-  established for [`agent-action-transcripts.md`](agent-action-transcripts.md)),
+- The annotation is written to a **sidecar** keyed by `episode_id` (the same
+  pointer-not-inline pattern used by
+  [`transcript_ref`](../tracing/trace-format.md#agent-action-transcript-sidecar)),
   not inlined into the trace — so a pre-change trace plus its attribution is
   exactly the old trace with a separate file beside it.
 

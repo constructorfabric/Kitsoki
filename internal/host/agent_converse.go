@@ -358,7 +358,7 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 	// Wave 3-agent: write AgentCalled to the JSONL sink at dispatch time.
 	appendAgentCalledEvent(ctx, callStart, callID, question, calledPayload)
 
-	chat, err := cs.Get(ctx, chatID)
+	chat, err := cs.GetOrEnsure(ctx, chatID)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("host.agent.converse: get chat %s: %v", chatID, err)}, nil
 	}
@@ -414,7 +414,7 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 	cliArgs = appendAllowedToolsFlag(cliArgs, tools)
 	cliArgs = appendDisallowedToolsFlag(cliArgs, disallowedTools)
 
-	cr, _, runErr := AgentStreamer{
+	cr, returnedSID, runErr := AgentStreamer{
 		Bin:        bin,
 		CLIArgs:    cliArgs,
 		Stdin:      question,
@@ -424,6 +424,54 @@ func doConverseChatTurn(ctx context.Context, cs ChatStore, chatID, question, wor
 
 	if runErr != nil {
 		return Result{}, runErr
+	}
+
+	// Self-heal a stale/foreign resume id. A chat may hold a session id the
+	// active backend can't resume — most commonly a codex chat whose stored id
+	// was a pre-mint uuid codex never created, so `exec resume <uuid>` fails with
+	// "thread/resume … no rollout found". Rather than wedge on every turn, mint a
+	// fresh session and retry ONCE without --resume so the chat recovers; the
+	// persisted id is then corrected to whatever the backend actually mints.
+	if !firstTurn && cr.ExitCode != 0 &&
+		(strings.Contains(cr.Stderr+cr.Stdout, "no rollout found") ||
+			strings.Contains(cr.Stderr+cr.Stdout, "thread/resume")) {
+		fresh := newUUID()
+		if err := cs.SetClaudeSessionID(ctx, chatID, fresh); err == nil {
+			retry := make([]string, 0, len(cliArgs))
+			for i := 0; i < len(cliArgs); i++ {
+				if cliArgs[i] == "--resume" { // drop the flag and its value
+					i++
+					continue
+				}
+				retry = append(retry, cliArgs[i])
+			}
+			retry = append(retry, "--session-id", fresh)
+			claudeSID = fresh
+			cr, returnedSID, runErr = AgentStreamer{
+				Bin:        bin,
+				CLIArgs:    retry,
+				Stdin:      question,
+				WorkingDir: workingDir,
+			}.Run(ctx)
+			durationMS = time.Since(callStart).Milliseconds()
+			if runErr != nil {
+				return Result{}, runErr
+			}
+		}
+	}
+
+	// Persist the backend's ACTUAL session id when it differs from the one we
+	// passed. codex ignores our pre-minted --session-id and mints its own
+	// thread_id (surfaced via thread.started); without persisting it, the next
+	// turn's `--resume <our-uuid>` targets a thread codex never created and
+	// fails with "thread/resume … no rollout found for thread id <uuid>". The
+	// streamer extracts the real id; adopt it so subsequent resumes hit the
+	// thread the backend actually owns. (For claude this is a no-op — it honors
+	// the id we passed, so returnedSID == claudeSID.)
+	if returnedSID != "" && returnedSID != claudeSID {
+		if err := cs.SetClaudeSessionID(ctx, chatID, returnedSID); err == nil {
+			claudeSID = returnedSID
+		}
 	}
 
 	chatInputDesc := map[string]any{

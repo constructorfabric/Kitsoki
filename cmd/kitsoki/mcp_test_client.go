@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -92,7 +93,7 @@ Examples:
 			}
 			opts := studioMCPTestOptions{
 				ServerCommand: serverCommand,
-				ServerArgs:    studioMCPTestServerArgs(serverArgs, storiesDir, workspace, readOnly),
+				ServerArgs:    studioMCPTestServerArgs(serverArgs, storiesDir, workspace, readOnly, os.TempDir()),
 				ListTools:     listTools,
 				ToolName:      toolName,
 				ToolArgs:      toolArgs,
@@ -161,7 +162,7 @@ type studioMCPToolReport struct {
 	Result   map[string]interface{} `json:"result"`
 }
 
-func studioMCPTestServerArgs(override []string, storiesDir, workspace string, readOnly bool) []string {
+func studioMCPTestServerArgs(override []string, storiesDir, workspace string, readOnly bool, tempRoot string) []string {
 	if len(override) > 0 {
 		return append([]string(nil), override...)
 	}
@@ -175,6 +176,10 @@ func studioMCPTestServerArgs(override []string, storiesDir, workspace string, re
 	if readOnly {
 		args = append(args, "--read-only")
 	}
+	if tempRoot == "" {
+		tempRoot = os.TempDir()
+	}
+	args = append(args, "--db", filepath.Join(tempRoot, fmt.Sprintf("kitsoki-mcp-test-%d", time.Now().UnixNano()), "sessions.db"))
 	return args
 }
 

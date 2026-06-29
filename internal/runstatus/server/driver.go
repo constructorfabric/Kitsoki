@@ -18,6 +18,7 @@ import (
 	"kitsoki/internal/jobs"
 	kitsokimcp "kitsoki/internal/mcp"
 	"kitsoki/internal/orchestrator"
+	"kitsoki/internal/world"
 	"kitsoki/internal/render/elements"
 	"kitsoki/internal/store"
 )
@@ -240,7 +241,30 @@ var ErrNoInbox = errors.New("session has no inbox configured")
 // read-only rather than as a dead link.
 var ErrNotTeleportable = errors.New("notification is not teleportable")
 
+// turnSupplementsKey carries per-turn supplemental slots from the transport onto
+// a free-text Turn. A surface attaches lightweight ambient context (e.g. the deck
+// scene the operator is currently viewing) so it merges into the routed intent's
+// slots — gap-filling only; the harness's own classification always wins. Carried
+// on the ctx (like the visual ambient) so the Driver interface stays unchanged.
+type turnSupplementsKey struct{}
+
+// WithTurnSupplements attaches supplemental slots to ctx for the next Turn.
+func WithTurnSupplements(ctx context.Context, slots world.Slots) context.Context {
+	if len(slots) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, turnSupplementsKey{}, slots)
+}
+
+func turnSupplementsFromCtx(ctx context.Context) world.Slots {
+	s, _ := ctx.Value(turnSupplementsKey{}).(world.Slots)
+	return s
+}
+
 func (d OrchestratorDriver) Turn(ctx context.Context, input string) (*orchestrator.TurnOutcome, error) {
+	if sup := turnSupplementsFromCtx(ctx); len(sup) > 0 {
+		return d.Orch.Turn(ctx, d.SID, input, orchestrator.WithSupplementSlots(sup))
+	}
 	return d.Orch.Turn(ctx, d.SID, input)
 }
 

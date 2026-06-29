@@ -110,6 +110,12 @@ type ListDrivesFilter struct {
 // Use internal/chathost.NewAdapter to wrap a *chats.Store.
 type ChatStore interface {
 	Get(ctx context.Context, chatID string) (*ChatRecord, error)
+	// GetOrEnsure returns the chat with the given ID. If no row exists, it
+	// inserts a minimal placeholder (blank app/room/scopeKey, title "untitled
+	// chat") and returns it. Used by host.agent.converse under --harness replay
+	// where the preceding host.chat.resolve cassette skips the real Resolve so
+	// no row was ever inserted.
+	GetOrEnsure(ctx context.Context, chatID string) (*ChatRecord, error)
 	// Resolve performs a transactional get-or-create on (app, room, scopeKey).
 	// The bool reports whether the chat was newly created (true) or returned
 	// from existing rows (false).

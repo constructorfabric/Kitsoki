@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -33,6 +34,7 @@ import (
 	"kitsoki/internal/app"
 	"kitsoki/internal/chathost"
 	"kitsoki/internal/chats"
+	"kitsoki/internal/clock"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
 	"kitsoki/internal/inbox"
@@ -42,6 +44,7 @@ import (
 	"kitsoki/internal/runstatus"
 	rsserver "kitsoki/internal/runstatus/server"
 	"kitsoki/internal/store"
+	"kitsoki/internal/testrunner"
 	"kitsoki/internal/tui"
 )
 
@@ -110,13 +113,18 @@ type sessionRuntime struct {
 	// turn-level failure the agent should see, not a transport error.
 	lastTurnErr error
 
-	// inFlight is the suspend broker for an operator-ask-parked turn (the
-	// session.answer fallback). Non-nil only while a suspendable drive is parked
-	// awaiting the operator; cleared when the turn goroutine completes. Single
-	// in-flight suspendable turn per handle (the handle is single-writer).
+	// inFlight is the suspend broker for a drive that has not settled yet: either
+	// parked on operator-ask (session.answer fallback) or still running after
+	// session.drive returned a bounded-wait response. Single in-flight turn per
+	// handle.
 	inFlight *suspendBroker
 
 	closers []func()
+}
+
+type runningDrive struct {
+	input     string
+	startedAt time.Time
 }
 
 type studioBackgroundObserver struct {
@@ -161,7 +169,7 @@ func (rt *sessionRuntime) Close() {
 // backend (synthetic, codex, …) instead of the static default — the same
 // remap `kitsoki turn --profile` applies. An empty map leaves the session on the
 // legacy default-backend path (selectedProfile is then ignored).
-func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harness.Harness, profiles map[string]orchestrator.HarnessProfile, selectedProfile string, initialWorld map[string]any, resolver app.ImportResolver, chatStore *chats.Store, configureHosts HostRegistryConfigurer) (*sessionRuntime, error) {
+func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harness.Harness, profiles map[string]orchestrator.HarnessProfile, selectedProfile string, initialWorld map[string]any, hostCassette string, resolver app.ImportResolver, chatStore *chats.Store, configureHosts HostRegistryConfigurer) (*sessionRuntime, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -252,6 +260,12 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 			return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: configure host registry: %v", err)}
 		}
 	}
+	if hostCassette != "" {
+		if err := applyStudioHostCassette(hostReg, hostCassette, sink); err != nil {
+			rt.Close()
+			return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: apply host cassette: %v", err)}
+		}
+	}
 	if err := hostReg.ValidateAllowList(def.Hosts); err != nil {
 		rt.Close()
 		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: validate hosts: %v", err)}
@@ -277,6 +291,16 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 			orchestrator.WithChatStore(chathost.NewAdapter(chatStore)),
 			orchestrator.WithChatsConcrete(chatStore),
 		)
+	}
+	// Honor the global semantic-routing toggle when explicitly set via env. The
+	// `kitsoki mcp` command exports KITSOKI_SEMANTIC_ROUTING from
+	// --semantic-routing (default false → LLM-only routing). When the env var is
+	// absent — the posture of flow/cassette tests that drive the studio
+	// directly — routing defers to the per-app routing.enabled config so the
+	// existing deterministic test fixtures keep matching. See
+	// docs/architecture/semantic-routing.md.
+	if opt, ok := semanticRoutingEnvOption(); ok {
+		orchOpts = append(orchOpts, opt)
 	}
 	// A non-empty profile map routes agent dispatch (host.agent.*) through the
 	// declared backend; selectedProfile becomes the session's initial selection.
@@ -346,6 +370,25 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 	}
 
 	return rt, nil
+}
+
+func applyStudioHostCassette(hostReg *host.Registry, cassettePath string, sink store.EventSink) error {
+	cas, err := testrunner.LoadCassette(cassettePath)
+	if err != nil {
+		return fmt.Errorf("load host cassette: %w", err)
+	}
+	stateOf := func() string { return "" }
+	seen := map[string]bool{}
+	for _, ep := range cas.Episodes {
+		hn, ok := ep.Match["handler"].(string)
+		if !ok || hn == "" || seen[hn] {
+			continue
+		}
+		seen[hn] = true
+		fallback, _ := hostReg.Get(hn)
+		hostReg.Replace(hn, testrunner.BuildCassetteDispatcherWithSink(cas, hn, stateOf, fallback, nil, clock.Real(), sink, nil))
+	}
+	return nil
 }
 
 // newComposerModel seeds the headless TUI model used solely as the slice-1
@@ -437,42 +480,100 @@ func (rt *sessionRuntime) driveElicit(ctx context.Context, input string, cols, r
 // The background ctx is the host-supplied ctx wrapped with the operator-ask
 // timeout (inside the bridge), so a never-answered park falls through to the
 // headless tool-error path on its own.
-func (rt *sessionRuntime) driveSuspendable(ctx context.Context, input string, cols, rows int) (res turnResult, pq *pendingQuestion, turnDone bool, err error) {
+func (rt *sessionRuntime) driveSuspendable(ctx context.Context, input string, cols, rows int, wait time.Duration) (res turnResult, pq *pendingQuestion, turnDone bool, running *runningDrive, err error) {
+	rt.mu.Lock()
 	if rt.inFlight != nil {
-		return turnResult{}, nil, false, fmt.Errorf("a turn is already awaiting the operator; answer it with session.answer before driving again")
+		rt.mu.Unlock()
+		return turnResult{}, nil, false, nil, fmt.Errorf("a turn is already running or awaiting the operator; wait for it to finish or answer it with session.answer before driving again")
 	}
-	broker := newSuspendBroker()
+	startedAt := time.Now()
+	snap, snapErr := rt.driveSnapshot()
+	if snapErr != nil {
+		rt.mu.Unlock()
+		return turnResult{}, nil, false, nil, snapErr
+	}
+	broker := newSuspendBroker(input, startedAt, snap)
 	rt.inFlight = broker
+	rt.mu.Unlock()
 	prompter := newStudioOperatorPrompter(&suspendTransport{broker: broker})
 
 	// The turn goroutine owns rt.model mutation; it runs to completion (possibly
 	// across several park/answer cycles) before finish() unblocks a waiter, so no
-	// handler touches rt.model while the goroutine is live.
-	turnCtx := host.WithOperatorPrompter(context.WithoutCancel(ctx), prompter)
+	// handler touches rt.model while the goroutine is live. The turn is detached
+	// from the MCP request only after it parks on an operator question; if the
+	// request times out before any result/question, cancel the hidden turn rather
+	// than leaving it to mutate the session later.
+	turnBase, cancelTurn := context.WithCancel(context.WithoutCancel(ctx))
+	turnCtx := host.WithOperatorPrompter(turnBase, prompter)
 	turnCtx = host.WithKitsokiSessionID(turnCtx, string(rt.sid))
 	go func() {
 		out, frame := rt.drive(turnCtx, input, cols, rows)
 		broker.finish(turnResult{outcome: out, frame: frame, err: rt.lastTurnErr})
+		rt.clearInFlightIf(broker)
 	}()
 
-	r, q, werr := broker.waitNext(ctx)
+	waitCtx := ctx
+	var cancelWait context.CancelFunc
+	if wait > 0 {
+		waitCtx, cancelWait = context.WithTimeout(ctx, wait)
+		defer cancelWait()
+	}
+	r, q, werr := broker.waitNext(waitCtx)
 	if werr != nil {
-		// The drive ctx was cancelled before a result/question. The turn goroutine
-		// still owns turnCtx (uncancelled) and will fall through on its own timeout.
-		return turnResult{}, nil, false, werr
+		if wait > 0 && werr == context.DeadlineExceeded {
+			return turnResult{}, nil, false, &runningDrive{startedAt: startedAt}, nil
+		}
+		cancelTurn()
+		rt.clearInFlightIf(broker)
+		// The drive ctx was cancelled before a result/question; cancel the turn
+		// context too so a timed-out MCP call does not keep writing late trace/model
+		// updates behind the client's back.
+		return turnResult{}, nil, false, nil, werr
 	}
 	if q != nil {
-		return turnResult{}, q, false, nil
+		return turnResult{}, q, false, nil, nil
 	}
-	rt.inFlight = nil
-	return r, nil, true, nil
+	rt.clearInFlightIf(broker)
+	return r, nil, true, nil, nil
+}
+
+func (rt *sessionRuntime) clearInFlightIf(broker *suspendBroker) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.inFlight == broker {
+		rt.inFlight = nil
+	}
+}
+
+func (rt *sessionRuntime) driveSnapshot() (driveSnapshot, error) {
+	j, err := rt.orch.LoadJourney(rt.sid)
+	if err != nil {
+		return driveSnapshot{}, fmt.Errorf("session.drive: load pre-drive snapshot: %w", err)
+	}
+	allowed := rt.orch.AllowedIntents(j.State, j.World)
+	allowedNames := make([]string, 0, len(allowed))
+	for _, ai := range allowed {
+		allowedNames = append(allowedNames, ai.Name)
+	}
+	view, verr := rt.orch.RenderState(j.State, j.World)
+	if verr != nil {
+		view = fmt.Sprintf("<render error: %v>", verr)
+	}
+	return driveSnapshot{
+		state:          string(j.State),
+		world:          cloneAnyMap(j.World.Vars),
+		allowedIntents: allowedNames,
+		lastView:       view,
+	}, nil
 }
 
 // resumeSuspendable delivers the operator's answer to a parked question and
 // blocks until the turn completes or parks on the NEXT operator-ask. It is the
 // runtime half of session.answer: deliver → waitNext → {outcome | awaiting}.
 func (rt *sessionRuntime) resumeSuspendable(ctx context.Context, questionID string, answers map[string]any) (res turnResult, pq *pendingQuestion, turnDone bool, ok bool, err error) {
+	rt.mu.Lock()
 	broker := rt.inFlight
+	rt.mu.Unlock()
 	if broker == nil {
 		return turnResult{}, nil, false, false, nil
 	}
@@ -486,7 +587,7 @@ func (rt *sessionRuntime) resumeSuspendable(ctx context.Context, questionID stri
 	if q != nil {
 		return turnResult{}, q, false, true, nil
 	}
-	rt.inFlight = nil
+	rt.clearInFlightIf(broker)
 	return r, nil, true, true, nil
 }
 
@@ -574,6 +675,14 @@ func (rt *sessionRuntime) worldVars() (map[string]any, error) {
 	if rt.orch == nil {
 		return nil, fmt.Errorf("session.world: runtime has no orchestrator")
 	}
+	rt.mu.Lock()
+	broker := rt.inFlight
+	rt.mu.Unlock()
+	if broker != nil {
+		if snap, ok := broker.snapshotState(); ok {
+			return snap.world, nil
+		}
+	}
 	j, err := rt.orch.LoadJourney(rt.sid)
 	if err != nil {
 		return nil, fmt.Errorf("session.world: load journey: %w", err)
@@ -619,6 +728,117 @@ func (rt *sessionRuntime) history() store.History {
 		return nil
 	}
 	return rt.sink.History()
+}
+
+// releaseWorktreeOwners clears any .kitsoki-owner sentinel that still names
+// this session. A session may have created a worktree through host.git_worktree
+// during its lifetime; session.close must release that ownership marker so a
+// later session can re-use the ticket-local checkout after the owner exits.
+// This is best-effort and deliberately narrow: only sentinels that match the
+// closing session id are removed.
+func (rt *sessionRuntime) releaseWorktreeOwners() {
+	if rt == nil || rt.orch == nil {
+		return
+	}
+	vars, err := rt.worldVars()
+	if err != nil {
+		vars = nil
+	}
+	hist := rt.history()
+	for i := len(hist) - 1; i >= 0; i-- {
+		ev := hist[i]
+		if ev.Kind != store.HostReturned || len(ev.Payload) == 0 {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			continue
+		}
+		if fmt.Sprint(payload["namespace"]) != "host.git_worktree" {
+			continue
+		}
+		path := extractWorktreePath(payload)
+		if path == "" {
+			continue
+		}
+		if clearWorktreeOwner(path, worktreeOwnerIDs(vars, string(rt.sid))...) {
+			return
+		}
+	}
+	if vars == nil {
+		return
+	}
+
+	var candidates []string
+	if repo, _ := vars["repo"].(string); strings.TrimSpace(repo) != "" {
+		if workspaceID, _ := vars["workspace_id"].(string); strings.TrimSpace(workspaceID) != "" {
+			candidates = append(candidates, filepath.Join(repo, ".worktrees", workspaceID))
+		}
+	}
+	if worktreePath, _ := vars["worktree_path"].(string); strings.TrimSpace(worktreePath) != "" {
+		candidates = append(candidates, worktreePath)
+	}
+
+	for _, candidate := range candidates {
+		if clearWorktreeOwner(candidate, worktreeOwnerIDs(vars, string(rt.sid))...) {
+			return
+		}
+	}
+}
+
+func extractWorktreePath(payload map[string]any) string {
+	if data, ok := payload["data"].(map[string]any); ok {
+		if path, _ := data["path"].(string); strings.TrimSpace(path) != "" {
+			return path
+		}
+		if path, _ := data["worktree_path"].(string); strings.TrimSpace(path) != "" {
+			return path
+		}
+	}
+	if path, _ := payload["path"].(string); strings.TrimSpace(path) != "" {
+		return path
+	}
+	if path, _ := payload["worktree_path"].(string); strings.TrimSpace(path) != "" {
+		return path
+	}
+	return ""
+}
+
+func worktreeOwnerIDs(vars map[string]any, fallback string) []string {
+	seen := map[string]bool{}
+	var ids []string
+	if vars != nil {
+		if sid, _ := vars["session_id"].(string); strings.TrimSpace(sid) != "" {
+			ids = append(ids, strings.TrimSpace(sid))
+			seen[strings.TrimSpace(sid)] = true
+		}
+	}
+	if fallback = strings.TrimSpace(fallback); fallback != "" && !seen[fallback] {
+		ids = append(ids, fallback)
+	}
+	return ids
+}
+
+func clearWorktreeOwner(path string, ownerIDs ...string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" || len(ownerIDs) == 0 {
+		return false
+	}
+	ownerPath := filepath.Join(path, ".kitsoki-owner")
+	b, err := os.ReadFile(ownerPath)
+	if err != nil {
+		return false
+	}
+	owner := strings.TrimSpace(string(b))
+	for _, sid := range ownerIDs {
+		if strings.TrimSpace(sid) != "" && owner == strings.TrimSpace(sid) {
+			if err := os.Remove(ownerPath); err != nil {
+				return false
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // AppDef implements runstatus/server.Source for the browser surface used by

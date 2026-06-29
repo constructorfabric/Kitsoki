@@ -1442,7 +1442,7 @@ function onPhaseClick(phase: Phase): void {
   left: 1rem;
   font-size: 0.7rem;
   color: var(--k-border-subtle, #334155);
-  background: var(--k-bg, #0f172a);
+  background: inherit;
   padding: 0 0.2rem;
   pointer-events: none;
   z-index: 1;
@@ -1455,7 +1455,7 @@ function onPhaseClick(phase: Phase): void {
 
 .state-diagram__phase--current {
   border-color: var(--k-border-focus, #60a5fa);
-  background: var(--k-bg-selection, #0c1a36);
+  background: #2a1e05;
 }
 
 .state-diagram__phase--highlight-target {

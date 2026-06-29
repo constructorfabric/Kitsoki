@@ -1,0 +1,115 @@
+<!doctype html>
+<!--
+  pm_idea-mockup.html — the PRD-phase MOCKUP for the slidey-dev dev story.
+
+  A self-contained, dependency-free HTML mockup of the proposed feature: the
+  `slidey deck.json --notes out.md` speaker-notes export — a printable per-scene
+  handout exported straight from the deck spec. It is emitted by the dev-story
+  prd_published room (host.artifacts_dir, kind: slideshow) and embedded inline in
+  kitsoki web via the media slideshow iframe, so the PM can see the mockup the
+  PRD describes rendered in the run — no real renderer, no LLM.
+
+  Sandbox note: the host iframe is `sandbox="allow-scripts"` on an opaque origin,
+  so everything here is inline (no external CSS/JS/fonts, no same-origin access).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>slidey --notes · speaker-notes export (mockup)</title>
+<style>
+  :root {
+    --base: #1c140d; --surface: #2a1a10; --overlay: #3d2419;
+    --text: #f3ead8; --subtle: #c1a188; --muted: #7b5f4d;
+    --gold: #f4cf95; --love: #e0a23a; --pine: #c97b4a; --rose: #a8492b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(120% 120% at 50% 0%, #241810 0%, var(--base) 60%);
+    color: var(--text);
+    font-family: 'Inter', 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 4vh 4vw;
+  }
+  .paper {
+    width: 100%; max-width: 1180px; background: var(--surface);
+    border: 1px solid var(--overlay); border-radius: 16px;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.45);
+    overflow: hidden;
+  }
+  .cli {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 22px; background: #160f09;
+    border-bottom: 1px solid var(--overlay);
+    font-family: 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 15px; color: var(--subtle);
+  }
+  .cli .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .cli .dot.r { background: #e0533f; } .cli .dot.y { background: var(--love); } .cli .dot.g { background: #3aa07a; }
+  .cli code { color: var(--gold); }
+  .cli .out { margin-left: auto; color: var(--muted); }
+  .head { padding: 26px 34px 10px; }
+  .eyebrow { text-transform: uppercase; letter-spacing: 0.16em; font-size: 13px; color: var(--love); margin: 0 0 8px; }
+  .head h1 { margin: 0; font-size: 30px; line-height: 1.15; color: var(--gold); }
+  .head p { margin: 8px 0 0; color: var(--subtle); font-size: 16px; }
+  .grid { padding: 14px 34px 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .card { background: #20140c; border: 1px solid var(--overlay); border-left: 3px solid var(--pine); border-radius: 10px; padding: 16px 18px; }
+  .card .scene { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+  .card h2 { margin: 0 0 10px; font-size: 18px; color: var(--text); }
+  .card .notes { margin: 0; color: var(--subtle); font-size: 14.5px; line-height: 1.5; }
+  .card .cue { display: inline-block; margin-top: 12px; font-size: 12.5px; color: var(--love); border: 1px solid var(--rose); border-radius: 999px; padding: 3px 10px; }
+  .foot { padding: 0 34px 26px; display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 13px; }
+  .foot .badge { color: var(--gold); border: 1px solid var(--overlay); border-radius: 8px; padding: 5px 10px; background: #160f09; }
+  .foot .spacer { margin-left: auto; }
+</style>
+</head>
+<body>
+  <div class="paper" role="document" aria-label="Speaker-notes export mockup">
+    <div class="cli">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span>$ <code>slidey deck.json --notes handout.md</code></span>
+      <span class="out">→ wrote handout.md · 4 scenes · 0.2s · no render</span>
+    </div>
+
+    <div class="head">
+      <p class="eyebrow">Mockup · per-scene speaker-notes handout</p>
+      <h1>Rehearse the talk without rendering the video</h1>
+      <p>One Markdown section per scene, in spec order — eyebrow, body, and narration — straight from the same deck spec the video, PDF, and web outputs share.</p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <p class="scene">Scene 1 · Title</p>
+        <h2>From an idea to a merged PR</h2>
+        <p class="notes">Open warm. Land the one-line promise: a single dev story, end to end, on a real repo — then get out of the way.</p>
+        <span class="cue">~20s · breathe before the cast</span>
+      </div>
+      <div class="card">
+        <p class="scene">Scene 2 · Cast</p>
+        <h2>Three roles, one pipeline</h2>
+        <p class="notes">Name the PM, the architect, the developer. Stress the shared thread: every hand-off a notification, every artifact replayable.</p>
+        <span class="cue">~25s · point at each card</span>
+      </div>
+      <div class="card">
+        <p class="scene">Scene 3 · Idea → PRD</p>
+        <h2>Talk the idea into a PRD</h2>
+        <p class="notes">It's a conversation, not a form. Pitch the feature, answer the actor + metric, watch the PRD and this mockup fall out.</p>
+        <span class="cue">~30s · let the doc settle</span>
+      </div>
+      <div class="card">
+        <p class="scene">Scene 4 · Handoff</p>
+        <h2>Architect picks it up</h2>
+        <p class="notes">Close the loop: the PRD is a validated output the next phase reads as prior art. No re-explaining, no lost context.</p>
+        <span class="cue">~20s · transition to design</span>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="badge">slidey · speaker-notes export</span>
+      <span>Deterministic: same spec in, same notes out.</span>
+      <span class="spacer">Mockup — generated in the PRD phase</span>
+    </div>
+  </div>
+</body>
+</html>

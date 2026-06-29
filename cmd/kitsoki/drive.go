@@ -28,6 +28,7 @@ import (
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/store"
 	"kitsoki/internal/tui"
+	"kitsoki/internal/webconfig"
 )
 
 // driveFrame is the per-turn JSON object `kitsoki drive` writes to stdout, one
@@ -72,6 +73,8 @@ func driveCmd() *cobra.Command {
 		cols        int
 		rows        int
 		scriptPath  string
+		profileName string
+		configPath  string
 	)
 
 	cmd := &cobra.Command{
@@ -110,6 +113,8 @@ Examples:
 				cols:        cols,
 				rows:        rows,
 				scriptPath:  scriptPath,
+				profileName: profileName,
+				configPath:  configPath,
 			})
 		},
 	}
@@ -121,6 +126,8 @@ Examples:
 	cmd.Flags().IntVar(&cols, "cols", 100, "frame width in columns")
 	cmd.Flags().IntVar(&rows, "rows", 30, "frame height in rows")
 	cmd.Flags().StringVar(&scriptPath, "script", "", "optional batch input file (newline-separated; CI smoke)")
+	cmd.Flags().StringVar(&profileName, "profile", "", "harness profile from .kitsoki.yaml/.kitsoki.local.yaml; supplies backend, model, quota, and provider env")
+	cmd.Flags().StringVar(&configPath, "config", webconfig.DefaultConfigFile, "config file used with --profile")
 
 	return cmd
 }
@@ -135,6 +142,8 @@ type driveCmdConfig struct {
 	cols        int
 	rows        int
 	scriptPath  string
+	profileName string
+	configPath  string
 
 	// harnessOverride, when non-nil, replaces buildDriveHarness — the DI seam
 	// tests use to inject a stub live harness (or a failing live harness behind
@@ -151,6 +160,10 @@ func runDrive(cmd *cobra.Command, cfg driveCmdConfig) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	profiles, defaultProfile, activeProfile, err := resolveDriveProfiles(cfg)
+	if err != nil {
+		return err
+	}
 
 	// Build the routing harness BEFORE the trace session so a bad
 	// harness/cassette config fails before any session bootstrap. The harness
@@ -159,7 +172,7 @@ func runDrive(cmd *cobra.Command, cfg driveCmdConfig) error {
 	h := cfg.harnessOverride
 	if h == nil {
 		var err error
-		h, err = buildDriveHarness(cfg)
+		h, err = buildDriveHarness(cfg, activeProfile)
 		if err != nil {
 			return err
 		}
@@ -167,7 +180,16 @@ func runDrive(cmd *cobra.Command, cfg driveCmdConfig) error {
 
 	// setupTraceSession takes ownership of h: on a returned error h is already
 	// closed; on success ts.Close tears it down.
-	ts, err := setupTraceSession(ctx, cfg.appPath, cfg.tracePath, h)
+	var orchOpts []orchestrator.Option
+	if len(profiles) > 0 {
+		orchOpts = append(orchOpts, orchestrator.WithHarnessProfiles(profiles, defaultProfile))
+		if cfg.profileName != "" {
+			orchOpts = append(orchOpts, func(o *orchestrator.Orchestrator) {
+				_ = o.SetSelection(cfg.profileName, "", "")
+			})
+		}
+	}
+	ts, err := setupTraceSession(ctx, cfg.appPath, cfg.tracePath, h, orchOpts...)
 	if err != nil {
 		return err
 	}
@@ -260,7 +282,7 @@ func runDrive(cmd *cobra.Command, cfg driveCmdConfig) error {
 //     LiveHarness fall-through. Requires a cassette path and live credentials.
 //   - --harness live with --record none and no cassette: a bare LiveHarness
 //     (every turn live; nothing recorded).
-func buildDriveHarness(cfg driveCmdConfig) (harness.Harness, error) {
+func buildDriveHarness(cfg driveCmdConfig, activeProfile *orchestrator.HarnessProfile) (harness.Harness, error) {
 	mode, err := harness.ParseVCRMode(cfg.recordMode)
 	if err != nil {
 		return nil, infraError("%v", err)
@@ -272,7 +294,7 @@ func buildDriveHarness(cfg driveCmdConfig) (harness.Harness, error) {
 		var live harness.Harness
 		if mode != harness.VCRModeNone {
 			// Recording modes need a live fall-through.
-			live, err = newDriveLiveHarness(cfg)
+			live, err = newDriveLiveHarness(cfg, activeProfile)
 			if err != nil {
 				return nil, err
 			}
@@ -291,7 +313,7 @@ func buildDriveHarness(cfg driveCmdConfig) (harness.Harness, error) {
 	// record mode would never demand a cassette to write to).
 	switch cfg.harnessType {
 	case "live":
-		return newDriveLiveHarness(cfg)
+		return newDriveLiveHarness(cfg, activeProfile)
 	case "replay":
 		return nil, infraError("--harness replay requires --cassette")
 	default:
@@ -303,7 +325,7 @@ func buildDriveHarness(cfg driveCmdConfig) (harness.Harness, error) {
 // the app def to give the harness its prompt context. Returns a clear infra
 // error when credentials or the app are unavailable so a headless run fails
 // loudly rather than hanging.
-func newDriveLiveHarness(cfg driveCmdConfig) (harness.Harness, error) {
+func newDriveLiveHarness(cfg driveCmdConfig, activeProfile *orchestrator.HarnessProfile) (harness.Harness, error) {
 	if cfg.appPath == "" {
 		return nil, infraError("--harness live requires the app.yaml positional argument for prompt context")
 	}
@@ -311,15 +333,41 @@ func newDriveLiveHarness(cfg driveCmdConfig) (harness.Harness, error) {
 	if err != nil {
 		return nil, infraError("%v", err)
 	}
-	client, _, err := newLiveClient()
+	env := map[string]string(nil)
+	model := ""
+	if activeProfile != nil {
+		env = activeProfile.Env
+		model = activeProfile.Model
+	}
+	client, _, err := newLiveClientWithEnv(env)
 	if err != nil {
 		return nil, infraError("%v", err)
 	}
-	lh, err := harness.NewLive(&client, "", def)
+	lh, err := harness.NewLive(&client, model, def)
 	if err != nil {
 		return nil, infraError("%v", err)
 	}
 	return lh, nil
+}
+
+func resolveDriveProfiles(cfg driveCmdConfig) (map[string]orchestrator.HarnessProfile, string, *orchestrator.HarnessProfile, error) {
+	if strings.TrimSpace(cfg.profileName) == "" {
+		return nil, "", nil, nil
+	}
+	configPath := cfg.configPath
+	if strings.TrimSpace(configPath) == "" {
+		configPath = webconfig.DefaultConfigFile
+	}
+	webCfg, err := webconfig.Load(configPath)
+	if err != nil {
+		return nil, "", nil, infraError("load --config %q: %v", configPath, err)
+	}
+	profiles, defaultProfile := harnessProfilesFromConfig(webCfg)
+	profile, ok := profiles[cfg.profileName]
+	if !ok {
+		return nil, "", nil, infraError("unknown --profile %q", cfg.profileName)
+	}
+	return profiles, defaultProfile, &profile, nil
 }
 
 // newDriveModel builds the headless TUI model used solely as the slice-1 Frame

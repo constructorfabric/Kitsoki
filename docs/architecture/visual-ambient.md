@@ -42,16 +42,20 @@ forward-compatible seam for the deferred arbitrary-media path (epic non-goal).
 
 ## How it threads into an oracle
 
-```
-web/tui surface builds the bundle (spatial-capture.md / spatial-handoff.md)
-   └▶ session.offpath RPC param  visual:{…}   (server.go lifts it)
-        └▶ host.WithVisualAmbient(ctx, VisualAmbient{…})
-             └▶ oracle handler (converse / ask / ask_with_mcp)
-                  ├▶ {{ args.visual.* }}  available to the prompt  (opt-in)
-                  ├▶ appendVisualAmbient → "## Operator is pointing at the screen"
-                  │    "Element: [data-testid=intent-btn-run] (role=button,
-                  │     text "Run") at (1180,540). Frame: <path>."
-                  └▶ claude -p  ── read-only guidance ──▶ recorded (input.visual)
+```mermaid
+flowchart TD
+    surface["web / TUI surface<br/>builds VisualAmbient bundle"]
+    rpc["session.offpath RPC<br/>visual:{...}"]
+    ctx["host.WithVisualAmbient(ctx, bundle)"]
+    handler["agent handler<br/>converse / ask / ask_with_mcp"]
+    args["args.visual.*<br/>available to prompt, opt-in"]
+    prompt["appendVisualAmbient<br/>Operator is pointing at the screen"]
+    claude["claude -p<br/>read-only guidance"]
+    trace["recorded as input.visual"]
+
+    surface --> rpc --> ctx --> handler
+    handler --> args
+    handler --> prompt --> claude --> trace
 ```
 
 This mirrors `ide_ambient.go` **exactly** — the principle-of-least-surprise

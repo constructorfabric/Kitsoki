@@ -1,0 +1,91 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-123
+            run_dir: .artifacts/product-journey/run-123
+            project: vscode
+            persona: ide-first-engineer
+            seed: driver-load
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+            persona_starting_surface: "visual-first; use web, TUI PNG, or editor-like surfaces before terminal archaeology"
+            persona_first_question: "Can I understand current state and next action from the visible UI?"
+            persona_evidence_emphasis: "visual frames, retained image IDs, operator-question state, navigation traces, and key interaction video"
+            persona_escalation_trigger: "state that is only visible in logs, silent operator defaults, confusing navigation, or unreadable layout"
+            persona_finding_bias: "Favor visible-state, affordance, and navigation findings."
+            proof_evidence_count: 1
+            demo_evidence_count: 0
+            finding_total_count: 4
+            strength_count: 1
+            weakness_count: 1
+            issue_count: 1
+            fix_count: 1
+            blocked_count: 0
+            missing_evidence_count: 29
+            missing_proof_evidence_count: 29
+            proof_minimum_evidence_count: 1
+            minimum_evidence_count: 30
+            missing_proof_summary: "product-discovery: checkpoint_rating, navigation_trace, page_url; project-onboarding: generated_config_diff, onboarding_smoke_result, rendered_tui_frame, session_trace"
+            driver_contract_summary: "Driver contract: 7 scenarios (product-discovery, project-onboarding, dependency-bugfix, prd-design, feature-implementation, +2 more); 7 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
+            next_driver_capture: "Next capture: product-discovery/checkpoint_rating. Rate whether the persona could proceed without private context."
+            next_driver_attach_command: 'python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind checkpoint_rating --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Rate whether the persona could proceed without private context."'
+            next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
+            review_status: needs_evidence
+            review_summary: "needs_evidence: 17/19 checks passed, 1 warnings, 1 failures"
+            review_passed_count: 17
+            review_failed_count: 1
+            review_warning_count: 1
+            review_total_count: 19
+            review_backlog_summary: "fail: quality-gates (project-onboarding (0/4))"
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-123
+    expect_state: run_created
+    expect_world:
+      status: run_loaded
+      run_id: run-123
+      run_dir: .artifacts/product-journey/run-123
+      project: vscode
+      persona: ide-first-engineer
+      seed: driver-load
+      finding_total_count: 4
+      strength_count: 1
+      weakness_count: 1
+      issue_count: 1
+      fix_count: 1
+      blocked_count: 0
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      proof_evidence_count: 1
+      missing_proof_evidence_count: 29
+      review_status: needs_evidence
+      review_passed_count: 17
+      review_total_count: 19
+      driver_contract_summary: "Driver contract: 7 scenarios (product-discovery, project-onboarding, dependency-bugfix, prd-design, feature-implementation, +2 more); 7 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
+      next_driver_capture: "Next capture: product-discovery/checkpoint_rating. Rate whether the persona could proceed without private context."
+      next_driver_attach_command: 'python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind checkpoint_rating --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Rate whether the persona could proceed without private context."'
+      next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
+    expect_view_matches: "RUN CREATED[\\s\\S]*Driver handoff[\\s\\S]*driver-handoff.md[\\s\\S]*Starting surface[\\s\\S]*visual-first[\\s\\S]*Finding matrix[\\s\\S]*4 total; strength 1, weakness 1, issue 1, fix 1, blocked 0[\\s\\S]*Review checks[\\s\\S]*17 / 19 passed[\\s\\S]*Driver contract: 7 scenarios[\\s\\S]*last_result\\.driver_scenarios[\\s\\S]*last_result\\.driver_final_gates[\\s\\S]*Next capture: product-discovery/checkpoint_rating[\\s\\S]*--attach-evidence[\\s\\S]*--evidence-kind checkpoint_rating[\\s\\S]*--record-blocker[\\s\\S]*project-onboarding"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+expect_no_errors: true

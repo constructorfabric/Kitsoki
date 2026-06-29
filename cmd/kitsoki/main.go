@@ -94,6 +94,11 @@ See docs/ in the repo for the narrative documentation.`,
 					_ = os.Setenv(kitrepo.EnvVar, repo)
 				}
 			}
+			// Record whether the operator explicitly passed --semantic-routing so
+			// semanticRoutingOption can let it override KITSOKI_SEMANTIC_ROUTING
+			// and the default. Persistent flags are inherited, so cmd.Flags()
+			// resolves it for every subcommand.
+			semanticRoutingFlagSet = cmd.Flags().Changed("semantic-routing")
 			return nil
 		},
 	}
@@ -102,6 +107,13 @@ See docs/ in the repo for the narrative documentation.`,
 	// every subcommand; see buildImportResolver for the precedence order.
 	root.PersistentFlags().StringVar(&kitsokiRepoFlag, "kitsoki-repo", "",
 		"path to a kitsoki source checkout; resolves @kitsoki/NAME imports against <path>/stories/NAME (overrides $KITSOKI_REPO and the embedded story library)")
+
+	// Global toggle for the deterministic semantic-routing stack. Off by default:
+	// free-text routing is an isolated main-model decision (see
+	// docs/architecture/semantic-routing.md). Overrides per-app routing.enabled
+	// and $KITSOKI_SEMANTIC_ROUTING when passed explicitly.
+	root.PersistentFlags().BoolVar(&semanticRoutingFlag, "semantic-routing", false,
+		"enable the deterministic semantic-routing stack (semroute, turn-cache, default_intent sink, free-form fallback); default off routes free text via the main model (env: KITSOKI_SEMANTIC_ROUTING)")
 
 	root.AddCommand(versionCmd())
 	root.AddCommand(runCmd())
@@ -139,11 +151,17 @@ See docs/ in the repo for the narrative documentation.`,
 	root.AddCommand(migrateAgentCmd())
 	root.AddCommand(cassetteCmd())
 	root.AddCommand(evalCmd())
+	root.AddCommand(agentBenchCmd())
 	root.AddCommand(exportStatusCmd())
 	root.AddCommand(statusCmd())
 	root.AddCommand(webCmd())
 	root.AddCommand(tourCmd())
 	root.AddCommand(materializeCmd())
+	root.AddCommand(newGHAgentCmd())
+	root.AddCommand(projectProfileCmd())
+	root.AddCommand(projectToolsCmd())
+	root.AddCommand(validateCmd())
+	root.AddCommand(workflowCmd())
 
 	return root
 }

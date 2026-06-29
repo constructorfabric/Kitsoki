@@ -91,6 +91,22 @@ func (o *Orchestrator) routingEnabled() bool {
 	return o.def.Routing.Enabled
 }
 
+// semanticStackEnabled reports whether the deterministic semantic-routing stack
+// (semroute + turn-cache + default_intent sink + free-form fallback) should run
+// for this turn. A process-level override (WithSemanticRouting, wired from the
+// CLI / KITSOKI_SEMANTIC_ROUTING) wins when set; otherwise it defers to the
+// per-app routing.enabled config via routingEnabled. The exact display/example
+// match (TryDeterministic) is intentionally NOT gated here — it is zero-cost and
+// always runs so typed menu labels resolve without an LLM hop. When this returns
+// false the turn falls straight through to the main-model interpreter
+// (harness.RunTurn), keeping routing a distinct, isolated decision.
+func (o *Orchestrator) semanticStackEnabled() bool {
+	if o.semanticOverride != nil {
+		return *o.semanticOverride
+	}
+	return o.routingEnabled()
+}
+
 // extractLLMOnNoMatch reports whether the app opted the semantic router into
 // invoking the host.agent.extract LLM tier on a no_match (RoutingConfig.
 // ExtractLLMOnNoMatch). Default false: a nil Routing block leaves it off, and

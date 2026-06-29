@@ -1,8 +1,10 @@
 # Runtime: contextual room routing and persistent room chats
 
-**Status:** Slices 1–4 shipped (20bb2911, 9311197a, 1e062a54, 615e8c10). Remaining:
-task 4.3 TUI/web UI controls (route receipt display, switch-route, rewind action);
-optionally 5.2 additional flow fixtures for help/meta_edit verdict classes.
+**Status:** Mostly shipped. Runtime slices 1–4 shipped (20bb2911, 9311197a,
+1e062a54, 615e8c10), web route receipt + rewind plumbing exists, and
+`Orchestrator.RewindRoute` now covers lane and intent-class redispatch paths.
+Remaining: switch-route ergonomics, TUI parity for receipt/rewind controls, and
+optional extra no-LLM fixtures for help/meta_edit verdict classes.
 **Kind:**   runtime
 **Epic:**   — standalone
 **Relation:** builds on [`ad-hoc-structured-plan.md`](ad-hoc-structured-plan.md)
@@ -16,12 +18,12 @@ rewind, no-LLM replay).
 ## Remaining work
 
 ```
-## 4.3 TUI/web controls (UI — not yet implemented)
+## 4.3 TUI/web controls
 - [ ] Route receipt display in TUI (class badge, reason, alternatives)
 - [ ] Switch-route action (immediate re-dispatch without full rewind when state/world unchanged)
 - [ ] Start new / resume lane chat controls
-- [ ] Rewind action surfaced in TUI/web (calls Orchestrator.RewindRoute)
-- [ ] Web UI equivalents of all of the above
+- [ ] Partial: rewind action surfaced in web (calls Orchestrator.RewindRoute); TUI parity still open
+- [ ] Partial: web UI equivalents of all of the above are partial: receipt/rewind exists, switch-route/start-resume controls still need review
 
 ## 5.2 Additional flow fixtures (optional)
 - [ ] Dedicated no-LLM flow fixtures for help and meta_edit verdict classes

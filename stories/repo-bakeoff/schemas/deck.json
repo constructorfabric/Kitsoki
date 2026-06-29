@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "deck",
+  "description": "The slidey deck source for the bake-off report — the render entrypoint (reused verbatim from stories/slidey-edit/schemas/deck.json).",
+  "type": "object",
+  "required": ["spec_path"],
+  "properties": {
+    "spec_path": { "type": "string", "description": "Path to the deck JSON spec — the host.slidey.render entrypoint." },
+    "summary":   { "type": "string", "description": "One-line human summary of the report deck." }
+  },
+  "additionalProperties": true
+}

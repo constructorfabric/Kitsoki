@@ -1,0 +1,42 @@
+# intake — load the backlog of cases from the configured source. Deterministic.
+#
+# host.starlark.run (load_backlog.star) reads the backlog source (a dir of tickets
+# / bugs) and projects a normalized {items:[{id,title,baseline,repro_command}]}.
+# Under flow tests the call is stubbed by id so the backlog is seeded directly.
+# Once the backlog is bound, route into the per-case dispatcher.
+
+states:
+
+  intake:
+    description: "Loading the backlog of cases to process (deterministic)."
+    relevant_world: [backlog_source, backlog, backlog_limit, inner_pipeline]
+    view:
+      - heading: "Dogfood marathon · intake"
+      - kv:
+          pairs:
+            Source: '{{ world.backlog_source }}'
+            Loaded: '{{ world.backlog.items|length }}'
+            Limit:  '{{ world.backlog_limit }}'
+      - prose: "Loading the backlog. Each case carries its id, title, baseline (the buggy state the inner pipeline reproduces against), and any repro_command."
+    on_enter:
+      - invoke: host.starlark.run
+        id: load_backlog
+        with:
+          script: scripts/load_backlog.star
+          inputs:
+            source:         "{{ world.backlog_source }}"
+            limit:          "{{ world.backlog_limit }}"
+            baseline_policy: "{{ world.baseline_policy }}"
+        bind:
+          backlog: backlog
+        on_error: idle
+      # Route unconditionally into the per-case dispatcher (processing). The
+      # dispatcher's pick_case handles an EMPTY backlog (it returns no case →
+      # backlog_drained → aggregating), so intake needs no fragile length guard
+      # here — the drain decision lives in one place (the dispatcher).
+      - emit_intent: enter_processing
+    on:
+      enter_processing:
+        - target: processing
+      look:
+        - target: .

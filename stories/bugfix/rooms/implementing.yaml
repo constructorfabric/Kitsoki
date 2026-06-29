@@ -61,7 +61,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact, implement_artifact]
+    relevant_world: [ticket_id, ticket_title, workspace_id, workdir, feature_branch, propose_fix_artifact, implement_artifact, reproduction_artifact, gate_command, landing_gate, repro_committed, test_cmd, repro_gate_ran, repro_gate_ok, repro_baseline_green, repro_test_red, repro_gate_summary]
     on_enter:
       # Self-heal the workspace before we touch it. bf.idle's auto-
       # create only runs when `!bf_autostart_attempted`, so once that
@@ -74,12 +74,15 @@ states:
       # branch; reattaches an orphaned branch when the dir was
       # deleted), so calling it here costs nothing in the happy case
       # and rescues the bounce case.
+      # Idempotent re-create: same cut-point precedence as the idle autostart
+      # (explicit base_commit, else base_branch) so a bounce-recovery rebuild
+      # lands on the same baseline the reproducer used.
       - when: "world.workspace_id != '' && world.feature_branch != ''"
         invoke: iface.workspace.create
         with:
           id:   "{{ world.workspace_id }}"
           name: "{{ world.feature_branch }}"
-          base: "{{ world.base_branch }}"
+          base: "{{ world.base_commit != '' ? world.base_commit : world.base_branch }}"
         on_error: idle
       # The iface.workspace.sync + iface.vcs.commit are the workspace-
       # side write seams (instance bindings: host.git_worktree / host.git
@@ -92,6 +95,74 @@ states:
           id: "{{ world.workspace_id }}"
         on_error: idle
 
+      # ── SYNTHESISE the regression gate (autonomous from a bare bug report) ──
+      # When the ticket carried NO repro_command (gate_command empty), the
+      # reproducer authored a RED test (a prior phase) and emitted a structured
+      # repro_command + repro_test_paths. The deterministic GREEN→RED gate already
+      # ran in reproducing/on_enter (FIRST, before the LLM judge), so by here the
+      # reproduction is mechanically proven. DERIVE the regression gate_command from
+      # the artifact and commit the test as a discrete pre-fix commit
+      # (commit_repro_test below), BEFORE the implementer agent. This is safe because
+      # host.agent.task carries a DURABILITY BARRIER (internal/host/agent_task.go
+      # waitForAgentWorktreeWrites) that blocks the reproducer call until the maker
+      # backend's file writes have synced back to the worktree, so the reproducer's
+      # RED test is provably on disk. (Historically the writes synced back at an
+      # UNBOUNDED later moment, so the commit had to hand-roll a poll — the barrier
+      # removes that race.) Guarded on gate_command=='' so a ticket-supplied
+      # repro_command is untouched; latched (one-shot). The latch
+      # is unconditional: if the test never becomes a discrete pre-fix commit,
+      # testing's HEAD~1 gate finds it GREEN → @exit:needs-human — never a false
+      # ship. That deterministic gate is the backstop.
+      - when: |
+          world.gate_command == '' && !world.repro_committed &&
+          (world.reproduction_artifact.repro_command ?? '') != '' &&
+          len(world.reproduction_artifact.repro_test_paths ?? []) > 0
+        set:
+          gate_command:    "{{ world.reproduction_artifact.repro_command }}"
+          landing_gate:    "{{ world.reproduction_artifact.repro_command }}"
+          repro_committed: true
+
+      # Commit the reproducer's RED test as the DISCRETE pre-fix commit — BEFORE
+      # the implementer applies the fix, so the only dirty change is the test and
+      # `git add -A` captures it whatever path the reproducer actually wrote (the
+      # reproducer's reported repro_test_paths proved unreliable — a path-specific
+      # `git add` silently no-op'd while the file WAS on disk). We stage ALL (minus
+      # the .kitsoki-owner sentinel), safe because nothing else is dirty yet (the
+      # implementer hasn't run).
+      # NOTE: the old per-call poll loop (POLL git status up to ~12s for the maker
+      # backend's unbounded file flush) is GONE — host.agent.task now carries a
+      # DURABILITY BARRIER (internal/host/agent_task.go waitForAgentWorktreeWrites)
+      # that blocks the reproducer call until its writes are durable on disk before
+      # reproducing/on_enter returns, so by here the test file is provably present.
+      # Synthesis path only (repro_committed latched above). A stray no-commit is
+      # caught by testing's HEAD~1 gate (GREEN → needs-human) — never a false ship.
+      - when: "world.repro_committed && world.workdir != ''"
+        invoke: host.run
+        id: commit_repro_test
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set +e
+              export GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              WT="{{ world.workdir }}"
+              cd "$WT" || { printf '{"sha":"","committed":false}\n'; exit 0; }
+              git add -A
+              git reset -q -- .kitsoki-owner 2>/dev/null
+              if git diff --cached --quiet; then
+                printf '{"sha":"","committed":false}\n'
+              else
+                git commit -q -m "test(repro): RED reproducer for {{ world.ticket_id }}" >/dev/null 2>&1
+                printf '{"sha":"%s","committed":true}\n' "$(git -C "$WT" rev-parse HEAD)"
+              fi
+          cwd: "{{ world.workdir }}"
+        on_error: idle
+
+      # NOTE: the DETERMINISTIC GREEN→RED gate now runs in `reproducing/on_enter`
+      # (deterministic-FIRST, before the LLM quality judge) — host.agent.task carries
+      # a durability barrier so the reproducer's test is on disk there. This room only
+      # synthesises + commits that test (above) and applies the fix (below).
       # Apply the proposed fix. The agent runs with cwd=workdir
       # (the bugfix worktree), reads the proposal artifact, and uses
       # Edit/Write to make the actual code changes. Without this
@@ -139,14 +210,12 @@ states:
         with:
           workdir: "{{ world.workdir }}"
           message: "{{ world.propose_fix_artifact.summary_title }}"
-          # Stage the agent's files explicitly. `git commit -a`
-          # picks up modifications to tracked files but does NOT
-          # stage new files — so a `Write`-based edit (agent
-          # creating a helper) would silently vanish without this
-          # explicit add. files_changed comes from the
-          # implementing artifact and is the agent's record of
-          # everything it touched.
-          files: "{{ world.implement_artifact.files_changed }}"
+          # Stage the agent's full worktree delta. The implementation artifact's
+          # files_changed list is bound by the previous on_enter effect, but
+          # same-room effect args may be rendered before that bind is visible.
+          # stage_all keeps new files from vanishing when the implementer creates
+          # helpers or tests that were not named by the proposal.
+          stage_all: true
         on_error: idle
 
       # Guard on a title being bound: during the autonomous auto-advance
@@ -164,11 +233,21 @@ states:
           effects:
             - set:
                 restart_from_stage:    "reproducing"
-                refine_feedback:       ""
+                # Carry any feedback (e.g. the deterministic GREEN→RED gate's
+                # verdict when it bounced an untrustworthy reproducer) so the
+                # re-authored reproduction addresses it.
+                refine_feedback:       "{{ slots.feedback ?? '' }}"
                 reproducing_cycle:     0
                 cycle:                 0
                 # Clear reproducing's once: bind so it re-runs fresh.
                 reproduction_artifact: {}
+                # Re-arm the synthesis + deterministic GREEN→RED gate so a fresh
+                # reproducer test is re-committed and re-checked from scratch.
+                repro_committed:       false
+                gate_command:          ""
+                repro_gate_ran:        false
+                repro_gate_ok:         false
+                repro_gate_summary:    ""
         - when: "slots.stage == 'proposing' || slots.stage == 'propose_fix'"
           target: proposing
           effects:

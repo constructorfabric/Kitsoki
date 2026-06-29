@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "artifact_root": ".artifacts/product-journey/<run-id>",
+  "stages": [
+    "discover_product",
+    "follow_tutorial",
+    "onboard_project",
+    "plan_project_work",
+    "fix_bug",
+    "file_product_issue",
+    "score_and_report"
+  ],
+  "run_result": {
+    "required": ["run_id", "created_at", "mode", "project", "persona", "stages", "scenarios", "artifacts"],
+    "artifacts": ["run.json", "journey.md", "metrics.json", "bugs.json", "findings.json", "scenario-outcomes.json", "scenario-outcomes.md", "evidence.json", "media-manifest.json", "scenarios.json", "execution-plan.json", "execution-plan.md", "driver-plan.json", "driver-plan.md", "driver-journal.json", "driver-journal.md", "agent-brief.json", "agent-brief.md", "driver-handoff.json", "driver-handoff.md", "review.json", "deck.slidey.json"]
+  },
+  "scenario_outcomes": {
+    "required": ["run_id", "items", "summary"],
+    "item_required": ["scenario", "label", "stage", "primary_story", "evidence_status", "required_evidence_count", "present_evidence_count", "finding_counts", "findings", "outcome"],
+    "outcomes": ["not_started", "evidence_captured", "strength_observed", "weakness_found", "issue_found", "blocked", "fix_recorded"]
+  },
+  "media_manifest": {
+    "required": ["run_id", "items", "summary"],
+    "item_required": ["scenario", "evidence_kind", "media_kind", "path", "status", "source", "playback"],
+    "media_kinds": ["video", "image", "trace", "document", "artifact"]
+  },
+  "agent_brief": {
+    "required": ["run_id", "project", "persona", "mission", "persona_contract", "operating_rules", "scenario_order", "missing_evidence", "finalize_commands"],
+    "persona_lens_required": ["starting_surface", "first_question", "evidence_emphasis", "escalation_trigger", "finding_bias"],
+    "scenario_required": ["id", "label", "task", "primary_story", "mcp_tools", "success_criteria", "evidence", "quality_gate"]
+  },
+  "execution_plan": {
+    "required": ["run_id", "project", "persona", "summary", "steps", "finalize_commands"],
+    "step_required": ["scenario", "primary_story", "mcp_steps", "evidence", "success_criteria", "quality_gate", "attach_commands", "record_blocker_command"],
+    "attach_command_tokens": ["--attach-evidence", "--run-dir", "--scenario", "--evidence-kind", "--evidence-path", "--evidence-source"]
+  },
+  "driver_plan": {
+    "required": ["run_id", "driver_agent", "project", "persona", "scenarios", "final_gates"],
+    "scenario_required": ["scenario", "label", "primary_story", "harness", "visual_surface", "required_mcp", "resolved_mcp_tools", "evidence", "success_criteria", "quality_gate", "driver_actions", "persona_lens", "attach_commands", "record_finding_command", "record_blocker_command", "journal_command"],
+    "driver_action_required": ["id", "goal", "tools", "resolved_tools", "evidence", "record"],
+    "driver_action_ids": ["open_surface", "read_current_frame", "act_as_persona", "capture_required_evidence", "journal_attempt"],
+    "persona_lens_required": ["starting_surface", "first_question", "evidence_emphasis", "escalation_trigger", "finding_bias"],
+    "quality_gate_required": ["minimum_evidence", "done_when", "block_if"]
+  },
+  "driver_handoff": {
+    "required": ["run_id", "created_at", "driver_agent", "run_dir", "project", "persona", "status", "inputs", "dispatch_modes", "operator_warning", "suggested_prompt", "finalize_commands", "missing_evidence", "missing_proof_evidence"],
+    "status_required": ["review_status", "present_evidence_count", "required_evidence_count", "missing_evidence_count", "proof_evidence_count", "proof_minimum_evidence_count", "minimum_evidence_count", "missing_proof_evidence_count", "findings_count"],
+    "inputs_required": ["agent_brief", "driver_plan", "driver_journal", "execution_plan", "evidence", "scenario_outcomes", "media_manifest"],
+    "missing_proof_slot_required": ["kind", "capture_hint", "attach_command"],
+    "dispatch_modes": ["replay", "record", "live"]
+  },
+  "driver_journal": {
+    "required": ["run_id", "items", "summary"],
+    "item_required": ["id", "created_at", "scenario", "dispatch_mode", "status", "summary", "mcp_tools", "evidence_refs", "blockers"],
+    "dispatch_modes": ["replay", "record", "live"],
+    "statuses": ["attempted", "captured", "blocked", "validated"]
+  },
+  "matrix_result": {
+    "required": ["matrix_id", "created_at", "seed", "selection_contract", "target_proof", "target_count", "assignment_count", "scenario_count", "targets", "assignments", "artifacts"],
+    "artifacts": ["matrix.json", "matrix.md", "deck.slidey.json"],
+    "target_count": 10,
+    "assignment_required": ["id", "target", "persona", "scenarios", "scenario_tasks", "seed", "status", "evidence_dir", "emit_run_command"],
+    "scenario_task_required": ["scenario", "label", "target", "persona", "primary_story", "required_mcp", "evidence", "success_criteria", "task_prompt", "evidence_dir"]
+  },
+  "matrix_rollup": {
+    "required": ["matrix_id", "summary", "runs", "persona_outcomes", "scenario_outcomes", "driver_journal", "quality_gates", "missing_proof_evidence", "artifacts"],
+    "artifacts": ["rollup.json", "rollup.md", "rollup.slidey.json"]
+  },
+  "stage_statuses": ["planned", "ready", "captured", "cached_validated", "validated", "blocked", "error"],
+  "scenario": {
+    "required": ["id", "label", "stage", "task", "task_prompt", "primary_story", "required_mcp", "evidence", "success_criteria"]
+  },
+  "evidence_statuses": ["missing", "captured", "validated", "rejected"],
+  "evidence_sources": ["demo", "retained", "external", "local", "cassette", "unknown"],
+  "finding_kinds": ["strength", "weakness", "issue", "fix"],
+  "review_statuses": ["not_reviewed", "needs_evidence", "ready"],
+  "review_check_statuses": ["pass", "warn", "fail"],
+  "review_check_ids": ["required-files", "scenario-contract", "scenario-attempts", "driver-journal-coverage", "driver-evidence-linked", "driver-action-contract", "captured-evidence", "non-demo-evidence", "key-video", "media-manifest", "playback-artifacts-resolve", "playback-or-blocker", "findings-summary", "balanced-findings", "observed-findings", "scenario-outcomes", "quality-gates", "no-rejected-evidence", "deck-generated"],
+  "demo_seed": {
+    "evidence_items": 25,
+    "findings": 4
+  }
+}

@@ -1,0 +1,34 @@
+states:
+  done:
+    description: "Harness parity QA finished."
+    relevant_world: [parity_result, status, markdown_path, output_root]
+    view:
+      - banner:
+          text: "DONE"
+          subtitle: "Parity QA artifacts are ready for review."
+          color: "#16A34A"
+      - kv:
+          pairs:
+            Status: "{{ world.status }}"
+            Passed: '{{ world.parity_result.passed|default:false }}'
+            Markdown: '{{ world.parity_result.markdown_path|default:world.markdown_path }}'
+            Summary JSON: '{{ world.parity_result.summary_path|default:"(none)" }}'
+      - heading: "Summary"
+      - code: '{{ world.parity_result.summary_markdown|default:"No parity report was produced." }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "rerun"
+              intent: rerun
+            - label: "look"
+              intent: look
+    on:
+      rerun:
+        - target: running
+          effects:
+            - set:
+                parity_result: {}
+                status: "running"
+      look:
+        - target: .

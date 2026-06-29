@@ -1,0 +1,14 @@
+version: punch-list/v1
+defaults:
+  harness: live
+  profile: claude-native
+  model: claude-opus-4-8
+items:
+  - id: wrong-model
+    title: This live item must be rejected
+    story: stories/punch-list/app.yaml
+    mode: drive
+    prompt: "This should never run live."
+    verify:
+      - kind: command
+        cmd: "true"

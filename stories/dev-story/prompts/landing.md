@@ -55,10 +55,17 @@ plan; keep what still holds and change only what the adjustment touches.
 
 ## Close out
 
-When you are done, call `submit()` with a one-line `summary` of what you
-did or found (and, optionally, `details` and `next_steps`). Keep it
-honest and skimmable — the operator stays in the workbench and can ask
-for more, pick a quick action, or drive a pipeline next.
+When you are done, call `submit()` with a JSON object that matches
+`schemas/landing-note.json`. The payload must be an object, not a bare
+string. The minimal valid close-out is:
+
+```json
+{"summary":"One line describing what you did or found."}
+```
+
+Add `details` and `next_steps` when they help the operator recover context.
+Keep it honest and skimmable — the operator stays in the workbench and can
+ask for more, pick a quick action, or drive a pipeline next.
 
 ### When the request is concrete, actionable work — propose a `plan`
 

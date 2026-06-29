@@ -13,20 +13,6 @@ initial_world:
   judge_mode: "human"
 
 host_handlers:
-  host.agent.decide:
-    by_call:
-      name_slug:
-        data:
-          ok: true
-          submitted: { slug: "idea-x", rationale: "the proposed change" }
-  host.run:
-    by_call:
-      uniquify:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"idea-x","workspace":"docs/proposals/.workspace/idea-x"}'
-          stdout_json: { slug: "idea-x", workspace: "docs/proposals/.workspace/idea-x" }
   # Search on_enter fires when we land in design_search; stub it to avoid errors.
   host.artifacts_dir:
     data: { ok: true, path: "docs/proposals/.workspace/idea-x/out.md", message_id: "out#1" }

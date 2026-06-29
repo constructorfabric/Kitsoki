@@ -1,0 +1,93 @@
+# Test persistent orchestrator chat, parse, and execute.
+test_kind: flow
+app: ../app.yaml
+initial_state: configuring
+
+host_handlers:
+  host.git_worktree: { data: { ok: true, path: ".worktrees/cherny-loop" } }
+  host.run:
+    by_call:
+      gate-0: { data: { ok: false, exit_code: 1, stdout: "failed baseline" } }
+      merge-a: { data: { ok: true, exit_code: 0 } }
+      gate-1: { data: { ok: true, exit_code: 0, stdout: "all tests passed" } }
+  host.chat.resolve: { data: { chat_id: "chat-1" } }
+  host.chat.transcript: { data: { rendered: "(empty transcript)" } }
+  host.agent.converse:
+    by_call:
+      converse-orchestrator:
+        data:
+          answer: |
+            I've updated the plan. Let's start with Slot A.
+            ```json
+            {
+              "plan": "Persistent orchestrating plan",
+              "slot_a_task": "Implement feature A",
+              "slot_a_active": true,
+              "slot_b_task": "",
+              "slot_b_active": false,
+              "status": "iterating"
+            }
+            ```
+  host.agent.decide:
+    by_call:
+      parse-converse:
+        data:
+          submitted:
+            plan: "Persistent orchestrating plan"
+            slot_a_task: "Implement feature A"
+            slot_a_active: true
+            slot_b_task: ""
+            slot_b_active: false
+            status: "iterating"
+  host.agent.task:
+    by_call:
+      maker-a-1: { data: { submitted: { summary: "Implemented feature A" } } }
+  host.artifacts_dir: { data: { ok: true } }
+  host.git: { data: { ok: true, sha: "abc1234" } }
+
+turns:
+  - intent:
+      name: configure
+      slots:
+        goal: "Implement feature A"
+        gate_command: "go test ./..."
+        gate_mode: "script"
+        use_orchestrator: "true"
+        orchestrator_mode: "persistent"
+    expect_state: configuring
+  - intent: { name: launch, slots: {} }
+    expect_state: __exit__achieved
+    expect_world:
+      goal_achieved: true
+      terminal_reason: "achieved"
+      iteration: 1
+      slot_a_done: true
+      slot_b_done: false
+    expect_host_calls:
+      - handler: host.run
+        args: { call: gate-0 }
+        times: 1
+      - handler: host.chat.resolve
+        args: { app: cherny-loop }
+        times: 1
+      - handler: host.chat.transcript
+        args: { chat_id: chat-1 }
+        times: 1
+      - handler: host.agent.converse
+        args: { chat_id: chat-1, agent: orchestrator }
+        times: 1
+      - handler: host.agent.decide
+        args: { call: parse-converse }
+        times: 1
+      - handler: host.agent.task
+        args: { call: maker-a-1 }
+        times: 1
+      - handler: host.run
+        args: { call: merge-a }
+        times: 1
+      - handler: host.run
+        args: { call: gate-1 }
+        times: 1
+
+expect_terminal: true
+expect_no_errors: true

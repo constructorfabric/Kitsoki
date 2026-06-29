@@ -1,0 +1,39 @@
+states:
+  configure:
+    description: "Configure an offline model-task score run."
+    relevant_world: [bench_manifest, case_id, trace_path, output_dir]
+    view:
+      - heading: "Model task engineering"
+      - kv:
+          pairs:
+            Bench: "{{ world.bench_manifest }}"
+            Case: '{{ world.case_id|default:"(single-case manifest)" }}'
+            Trace: '{{ world.trace_path|default:"(manifest trace)" }}'
+            Output: "{{ world.output_dir }}"
+      - prose: "Score an existing trace and emit JSON, Markdown, and Slidey evidence. Live provider calls stay outside this story."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "score", intent: score, hint: "run offline scoring and write artifacts" }
+            - { label: "quit", intent: quit, hint: "abandon the workflow" }
+            - { label: "look", intent: look }
+    on:
+      score:
+        - target: scoring
+          effects:
+            - set:
+                bench_manifest: "{{ slots.bench_manifest ?? world.bench_manifest }}"
+                case_id: "{{ slots.case_id ?? world.case_id }}"
+                trace_path: "{{ slots.trace_path ?? world.trace_path }}"
+                output_dir: "{{ slots.output_dir ?? world.output_dir }}"
+                score_status: ""
+                score_summary: ""
+                score_error: ""
+                report_json: ""
+                report_markdown: ""
+                report_deck: ""
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

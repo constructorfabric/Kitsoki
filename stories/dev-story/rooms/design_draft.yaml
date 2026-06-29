@@ -8,17 +8,11 @@
 # design_change_target in place. working_dir is the repo root so both the
 # workspace write and an amend of docs/proposals/<file>.md resolve.
 #
-# On `accept`: publish_design.py moves 004-proposal.md from the workspace
-# to docs/proposals/<slug>.md (collision-safe) AND mints a feature ticket
-# under issues/features/ that links back to the published proposal. It emits a
-# JSON envelope so the one call binds design_file plus the new ticket's
-# id / path / title; the accept arc pins ticket_type=feature so design_done's
-# `implement` action (go_implementation) routes straight into the impl
-# pipeline. The room then transitions to design_done (a confirmation view,
-# inline in this file) without going through a separate room. The prior
-# design_publish room is gone.
+# `accept` publishes the proposal and files a feature ticket. `accept_no_ticket`
+# publishes only. Both use publish_design.py; the save-only path passes an empty
+# ticket_dir so no implementation ticket is minted.
 #
-# Checkpoint exits: accept → publish (+ file ticket) → design_done;
+# Checkpoint exits: accept → publish (+ optional file ticket) → design_done;
 #                   refine → re-draft (budget-capped);
 #                   clarify → design_refine (keep search results, redo brief).
 
@@ -57,8 +51,11 @@ states:
           prompt: "Actions"
           items:
             - label:  "accept"
-              hint:   "publish — the design is ready"
+              hint:   "publish and file a feature ticket"
               intent: accept
+            - label:  "publish only"
+              hint:   "save the proposal without filing a ticket"
+              intent: accept_no_ticket
             - label:  "refine"
               hint:   "re-draft with feedback (same inputs)"
               intent: refine
@@ -171,6 +168,36 @@ states:
             - set:
                 ticket_type: "feature"
 
+      accept_no_ticket:
+        - target: design_done
+          effects:
+            - invoke: host.run
+              id: publish
+              with:
+                cmd: python3
+                args:
+                  - "stories/dev-story/scripts/publish_design.py"
+                  - "{{ world.design_workspace }}"
+                  - "{{ world.design_slug }}"
+                  - "{{ world.design_change_target }}"
+                  - "{{ world.design_artifact.title }}"
+                  - "{{ world.design_idea }}"
+                  - "{{ world.workdir }}"
+                  - "{{ world.design_durable_path }}"
+                  - "{{ world.design_doc_filename }}"
+                  - ""
+                  - ""
+              bind:
+                design_file: stdout_json.design_file
+                ticket_id:     stdout_json.ticket_id
+                ticket_title:  stdout_json.ticket_title
+                ticket_url:    stdout_json.ticket_url
+                thread:        stdout_json.ticket_id
+                design_ticket_path: stdout_json.ticket_path
+              on_error: design_draft
+            - set:
+                ticket_type: ""
+
       # Same inputs, revise the prose. Budget gate → main.
       refine:
         - when: "world.design_draft_cycle >= world.design_draft_budget"
@@ -278,7 +305,7 @@ states:
     view:
       - banner:
           text:     "PUBLISHED"
-          subtitle: "Design moved into the queue"
+          subtitle: "Design published"
           color:    "#10B981"
       - kv:
           pairs:
@@ -292,11 +319,11 @@ states:
           pairs:
             Ticket: '{{ world.ticket_id }} — {{ world.design_ticket_path }}'
         when: "world.ticket_id != ''"
-      - prose: "A **feature ticket** was filed for this design — it links back to the published doc. Choose **implement** to drive it into the implementation pipeline now, or **main** to return to your day (the ticket is waiting in your queue)."
+      - prose: "Feature ticket filed. Choose **implement** to drive it now, or **main** to return."
         when: "world.ticket_id != ''"
       # External-target profile (design_ticket_dir=\"\"): no kitsoki ticket is
       # minted — the target tracks work in its own issues — so don't claim one.
-      - prose: "The design is published. No kitsoki feature ticket was filed (this target tracks work in its own issues) — choose **main** to return to your day."
+      - prose: "Published without filing a feature ticket."
         when: "world.ticket_id == ''"
       - choice:
           mode: single
@@ -305,6 +332,7 @@ states:
             - label:  "implement"
               hint:   "drive the new feature ticket into the implementation pipeline"
               intent: go_implementation
+              when: "world.ticket_id != ''"
             - label:  "main"
               hint:   "back to the engineer's day landing"
               intent: go_main

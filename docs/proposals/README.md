@@ -60,6 +60,35 @@ thought.
 
 ## Current proposals
 
+- [`kitsoki-github-agent.md`](kitsoki-github-agent.md) — **epic.** `@kitsoki` in
+  a GitHub issue or PR dispatches a kitsoki run, observable + driveable through a
+  public trace/artifact web service, with kitsoki reporting progress back to the
+  thread. Six slices: GitHub ingress + comment substrate
+  ([`gh-event-ingress.md`](gh-event-ingress.md), runtime), job dispatch
+  ([`gh-job-dispatch.md`](gh-job-dispatch.md), runtime), the PR-autopilot story
+  ([`pr-autopilot-story.md`](pr-autopilot-story.md), story), a persistent
+  trace+artifact service ([`trace-artifact-service.md`](trace-artifact-service.md),
+  tracing), the web viewer + operator-drive surface
+  ([`gh-web-operator-viewer.md`](gh-web-operator-viewer.md), tui), and the
+  tour-driven demo + slidey composite
+  ([`kitsoki-github-demo.md`](kitsoki-github-demo.md)). Round-1 decisions: poll
+  ingest, Postgres state + filesystem artifacts, Postgres job locking,
+  owner-only driving, GitHub-native auth (App token + OAuth). Nothing
+  implemented yet.
+- [`generic-feedback-sdk-slidey-reports.md`](generic-feedback-sdk-slidey-reports.md)
+  — **epic.** Turn Kitsoki's built-in web bug reporting, rrweb capture,
+  spatial oracle, and Slidey media substrate into a framework-neutral browser
+  feedback SDK. The proposal centers privacy-by-design: data avoidance first,
+  reviewed/redacted bundles as the remote boundary, a mandatory privacy
+  manifest, chromeless UI, plugin-contributed context, a Slidey narrative report
+  deck, and a generic sink contract for the parallel GitHub agent.
+- [`top10-gpt55-dogfood-ingestion.md`](top10-gpt55-dogfood-ingestion.md)
+  — **epic.** Drive the current top-10 backlog through Kitsoki Studio MCP with
+  the right story entrypoint per item, real human-like operator turns,
+  trace-backed findings, and a strict implementation policy: live implementation
+  sessions use `profile: codex-native` / `gpt-5.5`, not Claude. This now
+  consumes the generic [`punch-list`](../stories/punch-list.md) story rather than a
+  top-10-specific runner.
 - [`session-mining-backend-generalization.md`](session-mining-backend-generalization.md)
   — **epic.** Generalize session mining from Claude Code-shaped ingestion into a
   backend-normal corpus for Claude Code, Codex, kitsoki traces, and imported
@@ -88,29 +117,32 @@ thought.
   failure→success credit assignment ([`credit-assignment.md`](credit-assignment.md),
   tracing), and the **optimizer step + validation gate**
   ([`training-loop.md`](training-loop.md), runtime+story).
-- [`agent-action-transcripts.md`](agent-action-transcripts.md) — (tracing)
-  surface langfuse-grade per-tool-call detail for every agent in the web UI by
-  persisting the claude stream-json we already capture (`ClaudeRun.RawEvents`)
-  to a per-call **sidecar** keyed by `call_id` — referenced from the trace by a
-  pointer only (no detail inlined) — and generalizing it as an optional
-  `AskResponse.Transcript` Agent-interface seam (claude / `local_llm` /
-  subprocess). Detailed prior-art survey (Langfuse, OTel GenAI, Phoenix et al.,
-  Claude Code jsonl, OSS viewers). Nothing implemented yet.
+- [`repo-history-training-loop.md`](repo-history-training-loop.md) — **epic.**
+  Treat repository history as training material for Kitsoki's own workflows:
+  onboarding, bug fixing, feature spec and design, feature implementation, and
+  dev lifecycle / SDLC. Feasibility-reviewed against the existing
+  `internal/mining`, session-mining, bugfix-bakeoff, `internal/agenteval`, and
+  model-harness/reporting substrates: the plan is to generalize those surfaces
+  into a curated history corpus, lane-neutral task/oracle manifests,
+  traceable precedent selection, and a gated autonomous runner. Nothing
+  implemented yet; slices are sketched but not cut.
 - [`contextual-room-routing.md`](contextual-room-routing.md) — (runtime)
   make the final LLM routing tier classify unmatched room input as exactly one
   of: explicit intent with slots, read-only help, in-room free-form request, or
   room-scoped meta edit. Adds persistent room chat lanes, route receipts, and
   one-decision rewind so operators can correct a bad routing choice. Builds on
   the in-progress ad-hoc structured-plan workbench and existing meta modes.
-  Runtime slices shipped; remaining work is TUI/web controls for receipts,
-  switch-route, and rewind plus optional extra flow fixtures.
+  Runtime slices shipped; web receipt/rewind plumbing and intent-class rewind
+  exist. Remaining work is switch-route ergonomics, TUI parity for
+  receipt/rewind controls, and optional extra flow fixtures.
 - [`multi-hop-contextual-routing.md`](multi-hop-contextual-routing.md) —
   (runtime) extend the contextual routing tier with an opt-in `route_plan`
   verdict for bounded cross-room commands: leave the current room, execute a
   validated intent in another room, optionally return, and surface one plan
   receipt/rewind target so bad-route correction can restore the conversation to
-  the pre-plan state and choose a different interpretation. Nothing implemented
-  yet.
+  the pre-plan state and choose a different interpretation. Multi-hop
+  `route_plan` itself is not implemented; base contextual-routing substrate has
+  advanced since this draft.
 - [`ai-collaboration-proposal.md`](ai-collaboration-proposal.md) —
   one remaining AI-collaborator surface (per-state `loading_view`).
   Three v1 surfaces shipped (`docs/architecture/developer-guide.md` §6);
@@ -123,8 +155,9 @@ thought.
   view/navigation/intuitiveness/objective findings. Its frame composer / drive /
   shot / web-screenshot substrate **shipped** as the
   [`mcp-studio` epic](../architecture/mcp-studio.md) (the `kitsoki mcp` studio
-  server + `kitsoki drive`/`shot`/`web-shot`); only the one remaining slice is
-  owned here:
+  server + `kitsoki drive`/`shot`/`web-shot`). A local skill scaffold and
+  `tools/story-qa/run.py` wrapper now exist; the remaining slice is the live
+  persona/scenario drive loop:
   - [`qa-agent-skill.md`](qa-agent-skill.md) (tooling) — the `story-qa`
     subagent: persona + scenario → studio drive loop → scored UX rubric +
     report + screenshots + bug list.
@@ -146,29 +179,22 @@ thought.
   slice (GitHub integration comes later):
   - [`gh-ticket-adapter.md`](gh-ticket-adapter.md) (runtime, deferred) — a `gh`-backed
     glue provider satisfying the `ticket` interface against GitHub issues.
-- [`github-issues-tracker.md`](github-issues-tracker.md) — **epic.** Move
-  kitsoki's own bug + feature tracker from the in-repo `issues/*.md` pile to
-  **GitHub Issues** on `constructorfabric/Kitsoki` (canonical even from a
-  personal fork). **Slices #1–#3 shipped** (the `create` op + conventions, bug
-  filing via CLI + the web Report-bug modal with developer-local `.artifacts/`
-  evidence, and the design-pipeline feature publish) — their detail now lives in
-  [`hosts.md → host.gh.ticket`](../architecture/hosts.md#hostghticket--github-issues-backed-tracker)
-  and the child proposals are deleted. **Slice #4's tooling is shipped**
-  (`kitsoki issues migrate` + the `issues/` freeze); only the **cutover** remains
-  — the real bulk migration + rebinding `kitsoki-dev` to `host.gh.ticket`. Hard
-  cutover; supersedes `bug-sync-proposal.md`. One slice left:
-  - [`issues-migration-to-github.md`](issues-migration-to-github.md) (runtime) —
-    `kitsoki issues migrate` is shipped + the `issues/` archive frozen; the
-    `kitsoki-dev` rebind to `host.gh.ticket` (the cutover) is the deferred last
-    step.
+- [`issues-migration-to-github.md`](issues-migration-to-github.md) (runtime) —
+  the GitHub Issues tracker substrate is shipped and documented in
+  [`hosts.md → host.gh.ticket`](../architecture/hosts.md#hostghticket--github-issues-backed-tracker);
+  the only remaining step is the maintainer-triggered real bulk migration of the
+  frozen `issues/` archive onto `constructorfabric/Kitsoki`.
 - [`agent-capability-model.md`](agent-capability-model.md) — **epic.**
   One capability model governing **every** agent (decide / ask / converse /
   task), unifying three ad-hoc restrictions and an overloaded boolean. Four
   cooperating layers — **toolbox** (a named, reusable tool grant) → **effect
   class** (`pure | read | write | external` + `deterministic`) → **layered
   enforcement** (tool allowlist for pure/read; OS sandbox for write/external) →
-  **conformance** (the trace proves the box held). Nothing implemented yet;
-  decomposed into three runtime slices + a conformance check:
+  **conformance** (the trace proves the box held). The proposal slices are not
+  implemented as proposed; adjacent safety work exists (`write_mode: read_only`,
+  bash profiles, validator sandboxing, converse/read-only tool policy), while
+  `external_side_effect` remains the real vocabulary. Decomposed into three
+  runtime slices + a conformance check:
   - [`effect-taxonomy.md`](effect-taxonomy.md) (runtime) — the classification
     substrate: `effect`/`deterministic` on host calls **and** agents, replacing
     `external_side_effect`; a load-time hard-fail for a read-only call holding a
@@ -209,13 +235,6 @@ thought.
   per-state decider. Engine core, CLI/flow surface, and docs-review
   migration shipped; pre-bind staging and the bugfix-story migration
   remain (§8).
-- [`idempotent-on-enter.md`](idempotent-on-enter.md) — an opt-in `once:`
-  flag on `invoke:` effects so the engine skips an on_enter host call whose
-  `bind:` target is already populated — making `/reload` (and re-entry)
-  idempotent without per-room `when:` guards. **`once:` shipped** (see
-  `docs/stories/state-machine.md` §"`on_enter` must be idempotent"; the
-  `proposal_*.yaml` rooms are migrated); the `/reload --force` companion to
-  bypass it during authoring (Open question 1) remains.
 - [`lifecycle-taxonomy.md`](lifecycle-taxonomy.md) — **runtime.** A YAML
   domain model for the early project lifecycle: composable **Features**
   (media / help / tutorials / acceptance criteria at every level) →
@@ -273,11 +292,7 @@ thought.
   `runstatus` trace viewing (inspired by a Langfuse comparison) while leaning
   into the decision-provenance moat: co-equal view modes, decision-first
   detail, recorded decide alternatives, human annotation, and single-call
-  operator replay. Nothing implemented yet; decomposed into six slices:
-  - [`trace-observation-kinds.md`](trace-observation-kinds.md) (tracing) — a
-    derived semantic kind taxonomy over `EventKind` (decision / agent-call /
-    host-call / narration / world-mutation / routing / lifecycle) so every
-    consumer badges, colors, and collapses by category; no wire change.
+  operator replay. Observation kinds shipped; remaining slices:
   - [`trace-decision-detail.md`](trace-decision-detail.md) (tui) — hero the
     gate/routing detail with the decision (available → chosen → confidence-vs-
     threshold → reason → bailed) and demote prompt/response to an evidence
@@ -304,25 +319,13 @@ thought.
   [`docs/architecture/embeddings.md`](../architecture/embeddings.md) (substrate
   + `agent.search`) and [`docs/architecture/semantic-routing.md`](../architecture/semantic-routing.md)
   §6 (routing tier). Child slice files deleted.
-- [`visual-outputs.md`](visual-outputs.md) — **epic.** Make a visual output
-  a step produces (MP4 / PNG slideshow / slidey deck) a first-class,
-  **recorded** media artifact: emitted under `.artifacts/`, recorded in the
-  trace, shown inline in the web UI, pointed at in the TUI. Nothing
-  implemented yet; decomposed into three slices:
-  - [`media-artifact-substrate.md`](media-artifact-substrate.md) (runtime) —
-    producer-agnostic core: a recorded `artifact` datapoint + opaque world
-    handle + a `media` typed-view element + minimal TUI pointer rendering.
-  - [`visual-producers.md`](visual-producers.md) (runtime) —
-    `host.slidey.render` + `host.contact_sheet` host calls wrapping the
-    existing standalone slidey + `contact-sheet.sh`, deterministically.
-  - [`web-media-rendering.md`](web-media-rendering.md) (tui) — Vue `media`
-    element (`<video>`/`<img>`/embed) + a `kitsoki web` route serving
-    artifact binaries (live) and sidecar files (static export).
 - [`view-rendering-readability.md`](view-rendering-readability.md) —
   **epic.** Make the typed element tree the single canonical view
   representation so prose reads cleanly across the TUI and the web,
-  and give authors a `kitsoki view` proofing command + lint. Nothing
-  implemented yet; decomposed into four slices:
+  and give authors a `kitsoki view` proofing command + lint. Partially
+  implemented: typed views are wired broadly through TUI/web, but some
+  legacy/template paths still fall back to the preformatted string and there is
+  no `kitsoki view` command yet. Decomposed into four slices:
   - [`view-canonical-typed.md`](view-canonical-typed.md) (runtime) —
     normalize every view shape to typed elements at load; always
     populate `TypedView`; `say:`→leading prose; demote `View string`.
@@ -335,17 +338,6 @@ thought.
   - [`view-proofing-tooling.md`](view-proofing-tooling.md) (tui) —
     `kitsoki view` + lint catalog + cross-env golden/property tests +
     authoring-skill wiring.
-- [`ui-fix-story.md`](ui-fix-story.md) — **story.** A new `stories/ui-fix/`
-  review→per-group fix pipeline over the `kitsoki-ui-review` skill's
-  `verdict.json`: a deterministic dedup (`host.starlark.run`) feeds an
-  interpretive **pattern-review** gate (`host.agent.decide` clusters 371
-  findings into ranked root-cause **groups** — never blind iteration), then a
-  loop fixes **one group per agent instance** (`host.agent.task` scoped to
-  `tools/runstatus/src/`) with a human diff checkpoint, a no-LLM geometry+axe
-  re-audit proving it cleared, and a **before/after slideshow/video per
-  group** via the shipped `visual-outputs` media seam (`host.contact_sheet` /
-  `host.slidey.render` → `media` element). `done` is a before/after gallery.
-  Composes existing hosts only. Nothing implemented yet.
 - ~~story-editor-view (epic) + story-graph-api / story-editor-shell /
   agent-workbench (slices)~~ — **shipped.** The story editor surface
   (`/editor` route, BFS room list, hook / domain-model / typed-view detail,
@@ -355,8 +347,8 @@ thought.
 - [`mockup-video-studio.md`](mockup-video-studio.md) — **epic.** Author UI
   design-proposal walkthrough videos as a recorded process **and** improve
   them in the web UI: flag a scene or time-range, grab the frame, instruct
-  the LLM, watch the video re-render. Builds on the `visual-outputs` media
-  seam (slices 2–3 are prerequisites). Nothing implemented yet; decomposed
+  the LLM, watch the video re-render. Builds on the shipped media artifact
+  seam. Nothing implemented yet; decomposed
   into three slices:
   - [`video-frame-seam.md`](video-frame-seam.md) (runtime) — a
     producer-agnostic **chapter sidecar** (scene↔timestamp + `source_ref`) +
@@ -386,8 +378,10 @@ thought.
   (`stories/<id>-dev/`, generalizing the `kitsoki-dev`/`gears-rust` binding),
   adopts conventions, and verifies the loop (boot → readiness → tests →
   golden-path UI). Composes existing hosts only. Initial no-write `go_init`
-  profile review slice is in progress with Slidey as the dogfood target;
-  discovery/mining/apply/verify remain unimplemented.
+  profile review slice is partially implemented with Slidey as the dogfood
+  target: discovery/apply rooms and scripts exist, but mining/synthesis/schema
+  validation/readiness remain open, and init flow loading is currently blocked
+  by imported `bf` expressions using `|default:`.
 - [`work-decomposition.md`](work-decomposition.md) — **story.** A new
   `stories/decompose/` sub-story imported into dev-story: hand it an accepted
   proposal (or epic + children) and an interactive discovery conversation
@@ -396,20 +390,9 @@ thought.
   it to `decomposition.yaml` (acyclic DAG, coverage), an adversarial
   `agent.decide` judges feasibility + completeness, and a coordination board
   dispatches each brief into the `impl` import one at a time with a human gate.
-  Nothing implemented yet.
-- [`delivery-loop.md`](delivery-loop.md) — **epic.** Turn the hand-run
-  delivery pattern (scoped brief → background maker in an isolated worktree →
-  deterministic gate → lost-work-safe integrate → independent re-verify on the
-  *merged* commit → cleanup, fanned out behind a merge-lock) into kitsoki
-  stories. Three slices (0/3): **git-ops smoothing**
-  ([`git-ops-smoothing.md`](git-ops-smoothing.md), story — operand-as-slot, stop
-  swallowing failures, force/confirm cleanup, one-shot rebase-onto-moved-main),
-  **ship-it** ([`ship-it.md`](ship-it.md), story — imports cherny-loop + git-ops
-  + a new independent `verify` room, chaining configure→maker→integrate→re-verify
-  →cleanup→`shipped`\|`needs-human`), and **fleet** ([`fleet.md`](fleet.md), story
-  — fans ship-it over a `decomposition.yaml` brief list behind a merge-lock).
-  Consumes [`work-decomposition.md`](work-decomposition.md)'s output and lands its
-  deferred parallel-fan-out non-goal. Nothing implemented yet.
+  Partially superseded: `stories/decompose/` has not shipped, but the
+  work-decomposition skill and `stories/deliver/` cover a simpler
+  validated-manifest path that hands briefs to `stories/fleet/`.
 - [`hybrid-session-driving.md`](hybrid-session-driving.md) — **runtime.** Let
   `kitsoki web` drive a live session (e.g. `stories/bugfix`) from the browser
   while Jira/Bitbucket keep receiving artifacts write-only. Decouples *driving*

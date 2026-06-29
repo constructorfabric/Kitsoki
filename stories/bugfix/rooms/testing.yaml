@@ -274,15 +274,19 @@ states:
                 implement_artifact: {}
 
         # ── direct-ship (slice 4) — passed AND bugfix_exit=direct-ship ──────
-        # The RED→GREEN regression gate's RED half is enforced HERE: the fix is
-        # only allowed into the ship-it tail if the regression test was RED on
-        # the pre-fix snapshot. A characterization test (passed pre-fix, was
-        # never RED) routes straight to @exit:needs-human — it must NEVER reach
-        # @exit:shipped. The GREEN half (gate green on the MERGED commit) is the
-        # tail's `verify` room. Post the test review, set the worktree handoff
-        # (worktree_path = the maker worktree), then enter the ship-it tail.
+        # The RED→GREEN regression gate's RED half is enforced HERE — but ONLY
+        # when a regression gate was actually configured (the ticket carried a
+        # repro_command → gate_command != ""). A configured gate that was never
+        # RED pre-fix is a characterization test, not a regression test, and must
+        # NEVER reach @exit:shipped → @exit:needs-human. When the ticket has NO
+        # repro_command (gate_command == ""), there is no RED-pre-fix fact to
+        # enforce; the fix still LANDS by default, and the tail re-verifies
+        # default_landing_gate (build + suite) on the merged commit so we never
+        # ship blind. The GREEN half (gate green on the MERGED commit) is the
+        # tail's `verify` room either way.
         - when: |
             world.bugfix_exit == 'direct-ship' &&
+            world.gate_command != '' &&
             !world.regression_red_pre_fix
           target: "@exit:needs-human"
           effects:
@@ -306,6 +310,9 @@ states:
                 # worktree_path + workspace_branch (== feature_branch). workdir IS
                 # the maker worktree.
                 worktree_path:     "{{ world.workdir }}"
+                # What the tail re-verifies on the merged commit: the regression
+                # gate when present, else the default build/test landing gate.
+                landing_gate:      "{{ world.gate_command != '' ? world.gate_command : world.default_landing_gate }}"
 
         # passed (or legacy/missing status), open-PR exit — post and advance. The
         # bugfix_mode=quick path skips reviewing + validating and lands

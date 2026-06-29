@@ -1,0 +1,54 @@
+# driving — drive the inner kitsoki pipeline LIVE over the current case. Tracked.
+#
+# DELEGATION (the heart of the dogfood method): a real marathon drives the inner
+# pipeline through the kitsoki-mcp-driver agent — session_new harness:live, an
+# explicit profile: (the maker model), an explicit trace: path (else the trace
+# lands in a random temp file and the cost/token evidence is lost — SKILL.md
+# gotcha #12), base = the case's baseline SHA (gotcha #11), a scoped test_cmd
+# (gotcha #13), and a FRESH per-case worktree (never shared — gotcha #1). Here
+# that whole live drive is modeled as ONE host.agent.task (driver persona) that
+# returns the pipeline's terminal exit + the worktree/branch + the trace path for
+# cost/token accounting. Under flow/no-LLM tests it is stubbed by id.
+#
+# CRITICAL HONESTY CONTROL: the drive result is NOT the grade. The driver does not
+# self-grade — the verifying room runs the operator's OWN oracle on the produced
+# worktree and gates on that (SKILL.md: "never trust the maker's self-report").
+
+states:
+
+  driving:
+    description: "Driving the inner pipeline live over the current case (tracked)."
+    relevant_world: [current_case, inner_pipeline, profile, drive_result]
+    view:
+      - heading: "Dogfood marathon · driving"
+      - kv:
+          pairs:
+            Case:     '{{ world.current_case.id }}'
+            Pipeline: '{{ world.inner_pipeline }}'
+            Profile:  '{{ world.profile }}'
+            Exit:     '{{ world.drive_result.exit|default:"(driving…)" }}'
+            Trace:    '{{ world.drive_result.trace|default:"—" }}'
+      - prose: "Driving the inner pipeline to its terminal exit. The exit, worktree/branch, and trace are captured for the independent verify and cost/token accounting — the maker's self-report is NOT the grade."
+    on_enter:
+      - invoke: host.agent.task
+        id: drive_case
+        with:
+          agent: driver
+          acceptance:
+            schema: schemas/drive_result.json
+          context:
+            prompt: prompts/drive_case.md
+            case:           "{{ world.current_case }}"
+            inner_pipeline: "{{ world.inner_pipeline }}"
+            profile:        "{{ world.profile }}"
+            baseline_policy: "{{ world.baseline_policy }}"
+        bind:
+          drive_result: submitted
+        on_error: verifying   # a dead/failed driver can still have landed edits — verify anyway
+      - when: "world.drive_result.exit != ''"
+        emit_intent: drive_done
+    on:
+      drive_done:
+        - target: verifying
+      look:
+        - target: .

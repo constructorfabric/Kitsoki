@@ -1,0 +1,53 @@
+# Simulates the "silent failure" mode: agent.decide returns ok=true
+# with submitted == {} (an empty map). This bypasses on_error:
+# review_failed, so without the defensive `when:` guard on
+# reviewing.done the story walks to `reviewed` and renders a verdict
+# block full of (missing)s. The matched flow asserts the guard catches
+# this and routes to review_failed instead.
+
+kind: host_cassette
+app_id: site-review
+generated_at: 2026-06-28T00:00:00Z
+match_on: [handler]
+
+episodes:
+  - id: preflight_run
+    match:
+      handler: host.run
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |
+          {"sha":"deadbeef00000000","commit_count":"2","recent_log":"abc1234 sub","recent_changes":""}
+        stdout_json:
+          sha: "deadbeef00000000"
+          commit_count: "2"
+          review_mode: "recent"
+          recent_log: "abc1234 sub"
+          recent_changes: ""
+          working_tree_diff: ""
+          feature_catalog: "agent-actions"
+          site_pages: "tools/site/src/index.md"
+    replay: any
+
+  # The bug: ok=true, but the agent never submitted anything coherent.
+  - id: agent_empty_submit
+    match:
+      handler: host.agent.decide
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        submitted: {}
+    replay: any
+
+  - id: artifacts_dir_write
+    match:
+      handler: host.artifacts_dir
+    response:
+      data:
+        ok: true
+        path: "/tmp/.artifacts/site-review-recent-deadbeef00000000.json"
+        message_id: "site-review-recent-deadbeef00000000#0"
+    replay: any

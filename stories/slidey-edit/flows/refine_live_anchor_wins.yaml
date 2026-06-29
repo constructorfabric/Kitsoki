@@ -1,0 +1,96 @@
+# refine_live_anchor_wins — REGRESSION GUARD for "what the operator clicked is
+# lost". The live pick the operator made on the rendered deck rides the `refine`
+# turn as the `annotation_anchor` slot (ViewElement.sendAnnotation). The
+# reviewing→refining transition MUST fold that live anchor into world.annotation
+# so resolve_scene + the refine prompt + the addressed record target the picked
+# element — NOT the baked seed_annotation default.
+#
+# The bug: world.annotation was only ever written by seed_annotation (`once:`),
+# so a live pick never reached the refine. The refine prompt showed the SEED
+# ("Scene 1 · card 0") and the operator's actual target was silently dropped.
+#
+# This flow seeds a DEFAULT annotation (label "Scene 1 · card 0"), then drives
+# refine with a LIVE annotation_anchor slot carrying a DIFFERENT label
+# ("LIVE · operator pick"). host.starlark.run runs REAL (inspect cassette), so
+# accumulate_addressed records world.annotation.anchor.label verbatim. The
+# assertion: the addressed record's anchor_label is the LIVE label — proof the
+# live anchor overwrote the seed. Without the fix it stays "Scene 1 · card 0"
+# and the flow fails.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Spatial-annotation explainer deck (3 scenes)." }
+  deck_handle: "slidey-edit#1"
+  # The baked seed — what a non-live (tour) drive would refine against. The live
+  # pick below must WIN over this.
+  annotation:
+    anchor:
+      kind: "semantic_element"
+      semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+      label: "Scene 1 · card 0"
+    instruction: "seed"
+    frame_handle: "slidey-edit#1"
+  addressed: { items: [] }
+  cycle: 0
+  scene_index: -1
+  refine_budget: 6
+
+# Real resolve_scene / gate / accumulate_addressed against machine-resolved inputs.
+starlark_inspect_cassette: ../cassettes/refine_resolves_scene.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      refine_deck:
+        data:
+          ok: true
+          submitted:
+            spec_path: "stories/slidey-edit/baked/deck.json"
+            summary: "Applied the operator's live pick on scene 1, card 0."
+            edited: ["1/card_0"]
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "stories/slidey-edit/baked/deck.html"
+          semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#2", kind: "slideshow", mime: "text/html" }, path: "stories/slidey-edit/baked/deck.html", kind: "slideshow", mime: "text/html" }
+
+turns:
+  # refine carrying the LIVE pick. current_scene=1 keeps the scene resolution on
+  # the existing cassette; the live anchor's LABEL is the differentiator.
+  - intent:
+      name: refine
+      slots:
+        feedback: "Apply my pick — make this card pop."
+        current_scene: "1"
+        annotation_anchor:
+          kind: "semantic_element"
+          semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+          label: "LIVE · operator pick"
+    expect_state: reviewing
+    expect_world:
+      cycle: 1
+      deck_handle: "slidey-edit#2"
+      # The addressed record names the LIVE pick's label — proof the live anchor
+      # overwrote the seed in world.annotation and flowed through the refine.
+      addressed:
+        items:
+          - deck_handle: "slidey-edit#1"
+            anchor_label: "LIVE · operator pick"
+            instruction: "Apply my pick — make this card pop."
+            edited: ["1/card_0"]
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "refine_deck" }
+
+expect_no_errors: true

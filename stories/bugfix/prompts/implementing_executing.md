@@ -45,21 +45,46 @@ the worktree (`{{ args.workdir }}`), so file paths in the proposal's
 the `Read` and `Edit` (or `Write`) tools.
 
 You MUST actually modify the files. The downstream `testing` room will
-re-run the repro tests against this worktree's HEAD — if you don't make
-the edits, those tests will still fail and the pipeline will reject the
-work.
+re-run the full suite against this worktree's HEAD — if your edits don't
+compile or they break other tests, the pipeline rejects the work and bounces
+it back to you. Catch that **now**, before you submit.
+
+## Verify your own work before submitting (REQUIRED)
+
+Do not submit a fix you have not verified. You have a shell — use it. Work
+this loop until it is green, then submit:
+
+1. **Build.** Run the project's build (e.g. `go build ./...`). If it does not
+   compile, fix it and rebuild. Never submit a fix that does not build.
+2. **Targeted test.** Run the test(s) that exercise this bug — the
+   reproduction test and the package(s) you changed
+   (e.g. `go test ./path/to/changed/pkg/...` or `-run <TestName>`). The
+   reproduction must now PASS where it failed before.
+3. **Don't break the neighbours.** Run the broader suite for the area you
+   touched (the changed packages and any package that imports them). If your
+   change made a previously-passing test fail, that is a regression — fix it
+   or choose a narrower edit. A fix that solves the bug but breaks other tests
+   is NOT done.
+4. **Iterate.** If any step fails, edit and repeat from step 1. Stay in this
+   loop until build + targeted tests + neighbours are all green.
+
+Prefer the **smallest, most local** change that fixes the root cause. A broad
+edit to shared/engine internals is far more likely to break unrelated tests —
+if a narrow, local fix works, take it.
 
 ## Constraints
 
 - Stay inside the worktree. Do not edit `.git` metadata or any path
   outside `{{ args.workdir }}`.
-- Touch only the files in `affected_files`. If you genuinely need to
-  edit something outside that list, add it to `files_changed` in the
-  artifact so the reviewer sees the scope.
+- Keep the change minimal and in-scope. Touch the files in `affected_files`;
+  if you genuinely need to edit something else (including to keep other tests
+  green), add it to `files_changed` so the reviewer sees the scope.
 - Don't run `git commit` yourself — the pipeline does that after you
-  return. Just leave the worktree dirty with your edits staged or
-  unstaged; the commit step picks up everything.
-- Don't run `go test` either — the next room runs CI.
+  return. Leave the worktree dirty with your edits; the commit step picks up
+  everything (including any test you added or repaired while verifying).
+- Set `applied: false` with `blockers` ONLY if you genuinely could not reach a
+  green build+test state — never submit `applied: true` for a fix you could
+  not get to compile and pass.
 
 ## Output
 

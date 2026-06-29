@@ -1,10 +1,37 @@
 package ulid_test
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"kitsoki/internal/ulid"
 )
+
+func TestNew_PanicsOnRandFailure(t *testing.T) {
+	// readRandom is a package global; do not run in parallel with other
+	// ulid.New callers. Restore it no matter how the test exits.
+	restore := ulid.SetReadRandom(func([]byte) (int, error) {
+		return 0, errors.New("boom")
+	})
+	t.Cleanup(restore)
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatalf("expected ulid.New to panic when rand.Read fails")
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("expected panic value to be a string, got %T: %v", r, r)
+		}
+		if !strings.HasPrefix(msg, "ulid: rand.Read:") {
+			t.Fatalf("unexpected panic message: %q", msg)
+		}
+	}()
+
+	ulid.New()
+}
 
 func TestNew_Length(t *testing.T) {
 	id := ulid.New()

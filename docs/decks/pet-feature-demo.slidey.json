@@ -1,0 +1,109 @@
+{
+  "_comment": "Feature demo deck for the trace-column pet ('Kit') shipped in the kitsoki web UI: a small decorative animated inline-SVG pet docked at the bottom of .iv__trace that wanders, blinks, leaves the occasional poop, and walks over to eat a snack. Opt-in via a 🐾 toggle in the State Diagram header; pure inline SVG + CSS, zero deps. Component tools/runstatus/src/components/TracePet.vue, docked in InteractiveView.vue. meta.mode:pitch required. Scene shapes copied from pet-prd.slidey.json and slidey-128-bugfix.slidey.json.",
+  "meta": {
+    "title": "Meet Kit — the trace-column pet",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": "rose-pine-moon",
+    "narration": {
+      "voice": "en-AU-NatashaNeural",
+      "rate": "+0%"
+    }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Feature · kitsoki / runstatus",
+      "title": "Meet Kit — the trace-column pet",
+      "subtitle": "A little life at the bottom of the trace, opt-in and never in the way",
+      "narration": "Meet Kit: a small animated companion that lives at the bottom of the trace column — opt-in, and never in your way."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "What shipped",
+      "lede": "A tiny companion for the long wait.",
+      "body": "Watching a long agent loop is a lonely wait — rows tick by while the agent thinks, tests run, and a fix lands. Kit is a small decorative SVG pet anchored at the bottom of the trace column that idles and plays through that wait. It's a single inline-SVG component, absolutely positioned, so it adds warmth without ever displacing a trace row.",
+      "narration": "Watching a long run is a lonely wait. Kit fills it with a little life — a small SVG pet at the bottom of the trace column that idles and plays while the agent works, without ever pushing a row out of the way."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "What Kit does",
+      "narration": "Kit wanders along the floor of the column, blinks, leaves the occasional poop, and now and then a snack appears and it strolls over to eat it. It lives at the bottom of the trace, you opt in with a single paw-print toggle, and it costs nothing — pure inline S-V-G and C-S-S.",
+      "cards": [
+        {
+          "label": "Wanders & blinks",
+          "sub": "bobs along the column floor, blinks now and then",
+          "style": "primary"
+        },
+        {
+          "label": "Poops & snacks",
+          "sub": "leaves the occasional poop; walks over to eat a snack",
+          "style": "secondary"
+        },
+        {
+          "label": "Lives at the trace bottom",
+          "sub": "docked in .iv__trace, absolutely positioned, never displaces a row",
+          "style": "secondary"
+        },
+        {
+          "label": "Opt-in 🐾 toggle",
+          "sub": "off by default; one paw-print toggle in the State Diagram header",
+          "style": "secondary"
+        },
+        {
+          "label": "Zero weight",
+          "sub": "pure inline SVG + CSS keyframes — no images, no deps, no network",
+          "style": "default"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Delivered in three slices",
+      "columns": [
+        "Slice",
+        "What landed"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "1 · The pet component",
+            "TracePet.vue — inline SVG + CSS keyframes for idle, wander, blink, poop, and snack"
+          ]
+        },
+        {
+          "cells": [
+            "2 · The dock",
+            "Docked at the bottom of .iv__trace in InteractiveView.vue, absolutely positioned over the column floor"
+          ]
+        },
+        {
+          "cells": [
+            "3 · The opt-in toggle",
+            "A 🐾 toggle in the State Diagram header — off by default, persists the choice"
+          ]
+        }
+      ],
+      "hold": 340,
+      "caption": "Three small slices: the component, where it lives, and how you turn it on."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The shape of it",
+      "lede": "Charming, but disciplined.",
+      "body": "Kit is deliberately weightless: no images, no dependencies, no network — just inline SVG and CSS keyframes. It's absolutely positioned so it can never block or shift a trace row, it's off by default, and it respects reduced-motion. A little personality, held to strict guardrails.",
+      "narration": "Kit is charming but disciplined — no images, no dependencies, no network, just inline S-V-G and C-S-S. It can't block a trace row, it's off by default, and it respects reduced-motion."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Try it",
+      "lede": "A little life in the trace column.",
+      "body": "Flip the 🐾 toggle in the State Diagram header and Kit wakes up at the bottom of your trace — wandering, blinking, and snacking through the wait. Opt-in, weightless, and never in the way.",
+      "narration": "Flip the paw-print toggle and Kit wakes up at the bottom of your trace. A little life in the trace column — opt-in, weightless, and never in the way."
+    }
+  ]
+}

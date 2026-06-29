@@ -59,24 +59,9 @@ states:
       # passes through (and shown above the verdict when staged stops here).
       # See docs/proposals/execution-modes-and-gate-deciders.md.
       - say: 'Review complete — verdict: {{ world.verdict.decision }}{% if world.verdict.decision == "needs_update" %} ({{ world.verdict.stale_docs|length }} stale doc(s) cited){% endif %}.'
-      # The conditional default for this gate: auto-advance to `fixing` when
-      # the verdict flagged stale docs. `verdict_decision` is the scalar
-      # shadow bound by reviewing.on_enter (alongside `verdict`); the schema
-      # requires it on every successful submit, so this guard fires iff the
-      # previous room landed a needs_update verdict.
-      #
-      # In ONE-SHOT mode this emit fires post-bind and reviewed is passed
-      # straight through to fixing (the historical behaviour). In STAGED mode
-      # the engine treats reviewed as a decision gate (review_again is an
-      # operator-only forward intent) and STOPS here, suppressing this emit so
-      # the operator reviews the verdict and explicitly picks fix_docs /
-      # review_again / quit. See
-      # docs/proposals/execution-modes-and-gate-deciders.md.
-      #
-      # For up_to_date verdicts no emit fires — reviewed is the terminal
-      # display in either mode.
-      - emit_intent: fix_docs
-        when: 'world.verdict_decision == "needs_update"'
+      # This is an operator gate. A needs_update verdict exposes the
+      # `fix_docs` action but does not auto-edit the working tree; the
+      # write-capable docs_writer runs only after an explicit operator pick.
     on:
       fix_docs:
         - target: fixing

@@ -12,6 +12,7 @@ import { installConsoleCapture } from "./data/console-capture.js";
 import { installErrorCapture, vueErrorHandler } from "./data/error-capture.js";
 import { startSessionCapture } from "./data/session-capture.js";
 import { isEmbedded } from "./lib/embed.js";
+import { installKitsokiVisualHelper } from "./lib/visualHelper.js";
 
 // Compact scaling: inside the VS Code webview the SPA reads one step larger than
 // the rest of the UI. Mark the root element so theme.css can zoom the embed down
@@ -44,6 +45,7 @@ if (snapshotEl) {
 installConsoleCapture();
 installErrorCapture();
 startSessionCapture();
+installKitsokiVisualHelper();
 
 // Surface decomposition (VS Code): each surface (chat / trace / graph) can mount
 // standalone, selected by an injected global `window.__KITSOKI_SURFACE` (a plain

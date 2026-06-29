@@ -1,0 +1,73 @@
+states:
+  running:
+    description: "Running deterministic parity checks."
+    relevant_world: [question, surfaces, output_root, markdown_path, visual_policy, parity_result, status]
+    view:
+      - banner:
+          text: "RUNNING"
+          subtitle: "The story is executing the deterministic no-LLM parity gate."
+          color: "#2563EB"
+      - kv:
+          pairs:
+            Question: "{{ world.question }}"
+            Surfaces: "{{ world.surfaces }}"
+            Output root: "{{ world.output_root }}"
+            Markdown: "{{ world.markdown_path }}"
+            Visual policy: "{{ world.visual_policy }}"
+            Status: '{{ world.parity_result.status|default:world.status }}'
+            Passed: '{{ world.parity_result.passed|default:false }}'
+      - heading: "Summary"
+      - code: '{{ world.parity_result.summary_markdown|default:"(pending - parity runner has not returned yet)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "accept"
+              intent: accept
+            - label: "rerun"
+              intent: rerun
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.run
+        id: run_parity
+        once: true
+        with:
+          cmd: python3
+          args:
+            - stories/harness-parity-qa/scripts/harness_parity_report.py
+            - "--surfaces"
+            - "{{ world.surfaces }}"
+            - "--output-root"
+            - "{{ world.output_root }}"
+            - "--markdown"
+            - "{{ world.markdown_path }}"
+            - "--visual-policy"
+            - "{{ world.visual_policy }}"
+          cwd: "{{ world.workdir }}"
+          timeout: "60s"
+          fail_on_error: true
+        bind:
+          parity_result: stdout_json
+        on_error: idle
+      - set: { status: "ready" }
+    on:
+      accept:
+        - target: done
+          effects:
+            - set: { status: "done" }
+            - say: "Harness parity QA report accepted."
+      rerun:
+        - target: running
+          effects:
+            - set:
+                parity_result: {}
+                status: "running"
+      quit:
+        - target: done
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .

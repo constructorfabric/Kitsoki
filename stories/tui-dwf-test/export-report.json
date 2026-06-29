@@ -1,0 +1,19 @@
+{
+  "workflow_id": "dwf_20260625T170429Z_tui-dwf-test",
+  "export_path": "/Users/brad/code/Kitsoki/stories/tui-dwf-test",
+  "status": "copied-with-todos",
+  "artifacts": [
+    "/Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml",
+    "/Users/brad/code/Kitsoki/stories/tui-dwf-test/manifest.yaml",
+    "/Users/brad/code/Kitsoki/stories/tui-dwf-test/launch.yaml",
+    "/Users/brad/code/Kitsoki/stories/tui-dwf-test/README.md",
+    "/Users/brad/code/Kitsoki/stories/tui-dwf-test/flows/generated.yaml"
+  ],
+  "starter_flow_path": "/Users/brad/code/Kitsoki/stories/tui-dwf-test/flows/generated.yaml",
+  "warnings": [
+    "fromtrace: read \"/Users/brad/code/Kitsoki/.artifacts/dynamic-workflows/dwf_20260625T170429Z_tui-dwf-test/trace.jsonl\": open /Users/brad/code/Kitsoki/.artifacts/dynamic-workflows/dwf_20260625T170429Z_tui-dwf-test/trace.jsonl: no such file or directory"
+  ],
+  "todos": [
+    "review the trace and produce a starter flow by hand"
+  ]
+}

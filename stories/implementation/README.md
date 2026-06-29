@@ -24,7 +24,7 @@ kitsoki run stories/implementation/app.yaml
 
 ## Imported
 
-Parent stories (`stories/dev-story/`, `stories/kitsoki-dev/`) import
+Parent stories (`stories/dev-story/`, `.kitsoki/stories/kitsoki-dev/`) import
 implementation as one import edge. The `done` exit projects through to
 `pr-refinement`'s `merged` and back to the parent's main; `abandoned`
 short-circuits to the parent's main with `status: abandoned`.

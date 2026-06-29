@@ -49,6 +49,9 @@ agents:
 world:
   # ── session / config ───────────────────────────────────────────────────────
   workspace:        { type: string, default: "stories/slidey-edit/baked" }
+  # The project keeps all deck specs in one folder. A bare deck name on
+  # edit_existing (e.g. "kitsoki-pitch") resolves to <decks_dir>/<name>.json.
+  decks_dir:        { type: string, default: "docs/decks" }
 
   # ── deck source ─────────────────────────────────────────────────────────────
   # spec_path is baked at the pre-rendered deck so `kitsoki tour`/web can drive
@@ -59,7 +62,7 @@ world:
 
   # ── render outputs ──────────────────────────────────────────────────────────
   deck_handle:      { type: string, default: "" }   # rendered HTML deck artifact handle
-  semantic_handle:  { type: string, default: "" }   # .semantic.json sidecar handle
+  semantic_handle:  { type: string, default: "" }   # legacy; semantic sidecar now resolves beside deck_handle
   deck_path:        { type: string, default: "" }
   semantic_path:    { type: string, default: "" }
 
@@ -78,6 +81,15 @@ world:
   annotation:       { type: object, default: {} }   # {anchor:{...}, instruction, frame_handle}
   refine_feedback:  { type: string, default: "" }   # inline instruction override (no anchor change)
   refine_result:    { type: object, default: {} }   # {edited:[...], summary}
+  last_refine_summary: { type: string, default: "" } # reviser's one-line summary of the last edit (shown in reviewing)
+  # ── slide targeting + gate (which slide the operator is looking at) ──────────
+  current_scene:    { type: string, default: "" }   # the viewed scene the embed plugin reports (authoritative slide)
+  scene_index:      { type: int,    default: -1 }    # resolved target scene (resolve_scene.star); -1 = none identified
+  scene_label:      { type: string, default: "" }    # human label for the targeted slide
+  scene:            { type: object, default: {} }    # the targeted scene's current JSON (fed to the reviser)
+  scene_json:       { type: string, default: "" }    # same scene serialized for prompt rendering
+  refine_gate:      { type: bool,   default: false } # gate verdict: edit stayed on the targeted slide
+  refine_message:   { type: string, default: "" }    # gate-composed summary (reviser's on success; honest note otherwise)
   addressed:        { type: object, default: { items: [] } }  # {items:[{anchor_label, instruction, deck_handle}]}
   cycle:            { type: int,    default: 0 }
   refine_budget:    { type: int,    default: 6 }
@@ -95,14 +107,14 @@ intents:
     slots:
       feedback: { type: string, required: false }
   edit_existing:
-    description: "Edit an existing slidey deck JSON spec and advance to render."
-    examples: ["edit_existing spec_path=docs/decks/overview.slidey.json", "edit existing deck", "revise docs/decks/overview.json"]
+    description: "Edit an existing slidey deck — by bare deck name (resolved under decks_dir) or by full spec path — and advance to render."
+    examples: ["edit kitsoki-pitch", "edit_existing spec_path=kitsoki-pitch", "edit the onboarding deck", "revise docs/decks/overview.json"]
     priority: 82
     slots:
       spec_path:
         type: string
         required: true
-        description: "Path to the existing slidey JSON spec."
+        description: "Deck name (e.g. 'kitsoki-pitch', resolved to <decks_dir>/<name>.json) or a full path to a slidey JSON spec."
       summary:
         type: string
         required: false
@@ -119,12 +131,28 @@ intents:
     priority: 85
 
   # ── reviewing checkpoint ────────────────────────────────────────────────────
+  revise:
+    description: "Reopen the whole deck for structural edits (add/move slides, template/layout swaps, theme/format changes)."
+    examples:
+      - "revise add a closing summary scene"
+      - "revise move scene 3 after scene 1"
+      - "revise switch this deck to a table-heavy layout"
+    priority: 65
+    slots:
+      feedback:
+        type: string
+        required: false
+        description: "Broad deck rewrite direction. Leave blank to open draft mode with no extra direction."
   refine:
     description: "Refine the deck from a location-tied annotation on the rendered frame."
     examples: ["refine", "refine feedback=tighten the callout", "fix what I pointed at"]
     priority: 70
     slots:
       feedback: { type: string, required: false }
+      current_scene:
+        type: string
+        required: false
+        description: "The scene index the operator is viewing (reported by the embed plugin), so the edit lands on that slide."
   rerender:
     description: "Re-render the current deck without editing it."
     examples: ["rerender", "render again"]

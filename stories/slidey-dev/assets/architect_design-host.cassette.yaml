@@ -1,0 +1,173 @@
+# Generated from stories/slidey-dev/flows/architect_design.yaml host_handlers (no LLM): backs host.* under --harness replay.
+kind: host_cassette
+app_id: slidey-dev
+app_version: 0.1.0
+match_on:
+- handler
+- call
+episodes:
+- id: open_file
+  match:
+    handler: host.ide.open_file
+  replay: any
+  response:
+    data:
+      ok: true
+      connected: false
+- id: search
+  match:
+    handler: host.agent.search
+  replay: any
+  response:
+    data:
+      hits: []
+      top: null
+- id: decide_existing_scan
+  match:
+    handler: host.agent.decide
+    call: existing_scan
+  replay: any
+  response:
+    data:
+      ok: true
+      submitted:
+        overlaps: []
+        roadmap_fit: A net-new spec-derived output alongside video/PDF/web; no overlap.
+- id: decide_references_research
+  match:
+    handler: host.agent.decide
+    call: references_research
+  replay: any
+  response:
+    data:
+      ok: true
+      submitted:
+        items:
+        - path: docs/prd/speaker-notes-export.md
+          sections: "\xA75"
+          rationale: the PRD this design realizes
+- id: decide_brief_check
+  match:
+    handler: host.agent.decide
+    call: brief_check
+  replay: any
+  response:
+    data:
+      ok: true
+      submitted:
+        verdict: continue
+        reason: Crisp why, clear metric, components named.
+        questions: []
+- id: decide_default
+  match:
+    handler: host.agent.decide
+  replay: any
+  response:
+    data:
+      ok: true
+      submitted:
+        questions: []
+- id: artifacts_dir
+  match:
+    handler: host.artifacts_dir
+  replay: any
+  response:
+    data:
+      ok: true
+      path: docs/proposals/.workspace/speaker-notes-export/001-brief.md
+      message_id: out#1
+- id: task_design_author
+  match:
+    handler: host.agent.task
+    call: design_author
+  replay: any
+  response:
+    data:
+      ok: true
+      submitted:
+        title: 'Runtime: slidey --notes speaker-notes export'
+        kind: runtime
+        summary_markdown: "## Runtime: slidey `--notes` speaker-notes export\n\nRealizes the speaker-notes-export\
+          \ PRD as a deterministic,\nspec-derived output alongside video/PDF/web.\n\n### Epic\nEmit a\
+          \ per-scene Markdown handout from a deck spec, reusing the\nsame scene model the renderers share\
+          \ so it can never drift.\n\n### Slices\n1. `collectNotes(spec)` \u2014 a pure spec\u2192notes\
+          \ collector in\n   `src/notes.js` that walks `spec.scenes` and pulls eyebrow/title,\n   body,\
+          \ and narration per scene.\n2. CLI seam \u2014 `slidey deck.json --notes out.md` in `src/index.js`,\n\
+          \   routed like the existing `--pdf` / video output branches.\n3. Markdown emitter \u2014 `renderNotesMarkdown(notes)`\
+          \ writing one\n   `## NN \u2014 <title>` section per scene, narration as a blockquote.\n\n###\
+          \ Data flow\n\n```mermaid\nflowchart LR\n  spec[deck.json spec] --> collect[collectNotes]\n\
+          \  collect --> notes[scene notes]\n  notes --> md[renderNotesMarkdown]\n  md --> out[out.md\
+          \ handout]\n```\n\n### ADRs\n- ADR-1: Derive notes from the SAME `spec.scenes` model the Vue\n\
+          \  scene components consume \u2014 no parallel notes schema.\n- ADR-2: Notes export is a pure,\
+          \ LLM-free transform, matching\n  slidey's deterministic same-input-same-output contract.\n"
+        file_path: docs/proposals/.workspace/speaker-notes-export/004-proposal.md
+        confidence: 0.82
+        needs_clarification: false
+        follow_up_questions: []
+- id: task_refine_brief
+  match:
+    handler: host.agent.task
+    call: refine_brief
+  replay: any
+  response:
+    data:
+      ok: true
+      submitted:
+        summary: Idea is clear; the design sections need the component model and the CLI seam.
+        gaps:
+        - Name the notes collector and its seam in src/index.js
+        - Specify the per-scene Markdown shape
+- id: task_refine_brief_update
+  match:
+    handler: host.agent.task
+    call: refine_brief_update
+  replay: any
+  response:
+    data:
+      ok: true
+      submitted:
+        summary: "Folded in the operator's note \u2014 the collector/CLI seam and Markdown shape are now\
+          \ scoped."
+        gaps:
+        - Specify the per-scene Markdown shape
+# Fallback for any host.agent.task NOT matched above (notably the dev-story
+# landing room's on_enter landing_agent, which has no `call:` id). Keeps the
+# replay walk no-LLM if the operator's text ever transits the landing surface.
+- id: task_landing_fallback
+  match:
+    handler: host.agent.task
+  replay: any
+  response:
+    data:
+      ok: true
+      submitted:
+        summary: "Noted; the design pipeline is the right home for this work."
+        confidence: 0.8
+        needs_clarification: false
+        follow_up_questions: []
+- id: run_uniquify
+  match:
+    handler: host.run
+    call: uniquify
+  replay: any
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        slug: speaker-notes-export
+        workspace: docs/proposals/.workspace/speaker-notes-export
+- id: run_publish
+  match:
+    handler: host.run
+    call: publish
+  replay: any
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        design_file: docs/proposals/speaker-notes-export.md
+        ticket_id: F-2026-06-23T120000Z-speaker-notes-export
+        ticket_path: issues/features/F-2026-06-23T120000Z-speaker-notes-export.md
+        ticket_title: slidey speaker-notes export

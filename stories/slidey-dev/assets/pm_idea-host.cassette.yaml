@@ -32,6 +32,20 @@ episodes:
       answer: A printable per-scene handout exported straight from the deck spec.
       chat_id: chat-1
       claude_session_id: sess-1
+# Second converse: prd/rooms/idle.yaml's `start` arc distils the conversation
+# into the crisp idea statement (binds world.idea). Without this episode the
+# call is unstubbed and, under `kitsoki web`, the UI-default backend handles it
+# LIVE (gpt-5.5) — the one real-LLM leak in the otherwise no-LLM replay capture.
+# Episodes are consumed in order, so this matches the post-discuss distillation.
+- id: converse_idea_distill
+  match:
+    handler: host.agent.converse
+  response:
+    data:
+      ok: true
+      answer: "A spec-derived speaker-notes export for slidey: a `--notes out.md` flag that emits a printable, per-scene handout (eyebrow, body, narration) straight from the deck spec, so a presenter can rehearse a talk without rendering the full video."
+      chat_id: chat-1
+      claude_session_id: sess-1
 - id: search_4
   match:
     handler: host.agent.search

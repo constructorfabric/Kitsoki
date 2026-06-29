@@ -249,6 +249,7 @@ Examples:
 				orchestrator.WithHostRegistry(hostReg),
 				orchestrator.WithChatStore(chatAdapter),
 				orchestrator.WithAgentRegistry(agentReg),
+				semanticRoutingOption(),
 			)
 
 			result, err := orch.OneShot(cmd.Context(), orchestrator.OneShotInput{

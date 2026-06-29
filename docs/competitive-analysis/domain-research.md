@@ -110,7 +110,7 @@ From the same sources, surfaced as recurring complaints:
 
 ### 3.1 The canonical bug-fix workflow kitsoki encodes
 
-Kitsoki's `stories/kitsoki-dev/` dogfood instance encodes this exact workflow as an 8-room pipeline: **reproduce → propose → implement → test → review → validate → done → PR refinement → merge** ([`README.md`][readme]). Each checkpoint appends a `## Comment <iso> by <author>` block to the bug file. The bug file is the conversation log is the audit trail.
+Kitsoki's `.kitsoki/stories/kitsoki-dev/` dogfood instance encodes this exact workflow as an 8-room pipeline: **reproduce → propose → implement → test → review → validate → done → PR refinement → merge** ([`README.md`][readme]). Each checkpoint appends a `## Comment <iso> by <author>` block to the bug file. The bug file is the conversation log is the audit trail.
 
 This is not idiosyncratic — it mirrors the published 2026 consensus for AI-assisted engineering workflows. [Sobonix's 2026 "rise of human-guided coding agents" thesis][sobonix-2026] describes essentially the same pipeline, and [Addy Osmani's workflow post][addy-osmani-2026] reports its production use at scale. The novelty in kitsoki is not the pipeline shape; it is that the pipeline is *declared in YAML, replayable in CI, and runs across three surfaces without code duplication*.
 

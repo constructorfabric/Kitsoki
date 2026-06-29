@@ -1410,6 +1410,16 @@ func publishAppDir(appPath string) {
 // Errors are formatted identically to the previous inline "load app
 // %q: %w" wrapper so call-site diagnostics stay stable.
 func loadAppWithEnv(appPath string) (*app.AppDef, error) {
+	// A top-level `@kitsoki/<name>` arg resolves from the embedded story library
+	// (or the --kitsoki-repo / $KITSOKI_REPO override) — so a binary-only user
+	// with no kitsoki checkout can launch a shipped story directly, e.g.
+	// `kitsoki run @kitsoki/dev-story` to start project onboarding. The same
+	// resolver the loader uses for `@kitsoki/<name>` *imports* finds the file.
+	if resolved, rerr := resolveKitsokiAppArg(appPath); rerr != nil {
+		return nil, rerr
+	} else if resolved != "" {
+		appPath = resolved
+	}
 	publishAppDir(appPath)
 	// Inject the @kitsoki/<name> import resolver (--kitsoki-repo override ›
 	// on-disk kitsoki root › embedded library). A foreign repo carrying only a
@@ -1420,6 +1430,26 @@ func loadAppWithEnv(appPath string) (*app.AppDef, error) {
 		return nil, fmt.Errorf("load app %q: %w", appPath, err)
 	}
 	return def, nil
+}
+
+// resolveKitsokiAppArg maps a top-level `@kitsoki/<name>` app argument to a
+// concrete app.yaml path via the same precedence the import resolver uses
+// (--kitsoki-repo / $KITSOKI_REPO override, then the embedded story library).
+// Returns ("", nil) for an ordinary file path so callers leave it untouched.
+func resolveKitsokiAppArg(appPath string) (string, error) {
+	const prefix = "@kitsoki/"
+	if !strings.HasPrefix(appPath, prefix) {
+		return "", nil
+	}
+	name := strings.TrimPrefix(appPath, prefix)
+	resolver := buildImportResolver()
+	// override=true first (explicit checkout wins); then the embedded fallback.
+	if path, err := resolver(name, "", true); err != nil {
+		return "", err
+	} else if path != "" {
+		return path, nil
+	}
+	return resolver(name, "", false)
 }
 
 // openSessionStore opens the session DB at the given path or the default.

@@ -1,0 +1,61 @@
+{
+  "_comment": "Phase-3 artifact deck — the developer's validated decomposition output: the design turned into a sequenced work plan, shown full-screen in kitsoki via deck-review.",
+  "meta": {
+    "title": "Decomposition — Trace-Column Pet",
+    "resolution": { "width": 1920, "height": 1080 },
+    "theme": "rose-pine-moon",
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Engineering · validated output",
+      "title": "Decomposing the pet into a work plan",
+      "subtitle": "Three design slices, sequenced into concrete, shippable tasks",
+      "narration": "The developer's validated output: the trace-column pet design turned into a sequenced work plan — three slices broken into concrete, shippable tasks."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Plan",
+      "lede": "Turn the design into a sequence.",
+      "body": "Each design slice becomes one or two concrete tasks, ordered so every step is independently verifiable. Build the sprite first, dock it second, gate it behind the opt-in third — then typecheck, document, and changelog. Purely additive, no migration.",
+      "narration": "Each design slice becomes one or two concrete tasks, ordered so every step is independently verifiable. Build the sprite first, dock it second, gate it behind the opt-in third — then typecheck, document, and changelog. Purely additive, no migration."
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Tasks",
+      "narration": "Slice one: author TracePet dot vue with the idle, wander, poop, and eat behaviour loop, plus a reduced-motion gate. Slice two: dock it in InteractiveView dot vue's trace column, made position-relative, never displacing rows. Slice three: a localStorage opt-in pref and the paw toggle in the panel header. Then typecheck and build, document the setting, and add a changelog entry.",
+      "columns": ["Task", "Slice", "Est"],
+      "rows": [
+        { "cells": ["Author TracePet.vue sprite + idle/wander/poop/eat loop", "Slice 1", "M"] },
+        { "cells": ["Add prefers-reduced-motion gate to the sprite", "Slice 1", "S"] },
+        { "cells": ["Dock in InteractiveView.vue .iv__trace (position:relative, never displace rows)", "Slice 2", "S"] },
+        { "cells": ["Opt-in localStorage pref, default off", "Slice 3", "S"] },
+        { "cells": ["🐾 toggle in the State Diagram panel header", "Slice 3", "S"] },
+        { "cells": ["Typecheck + build (vue-tsc, vite)", "Verify", "S"] },
+        { "cells": ["Document the setting in the web UI reference", "Docs", "S"] },
+        { "cells": ["Changelog entry (additive, opt-in)", "Docs", "XS"] }
+      ]
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Sequencing & dependencies",
+      "narration": "The order is gated by dependencies. The sprite must exist before it can be docked; the dock must exist before the toggle can mount it. Verification, docs, and changelog ride on top once the three slices land.",
+      "cards": [
+        { "label": "1 · Sprite (standalone)", "sub": "no dependencies — author & unit-render first", "style": "primary" },
+        { "label": "2 · Dock (needs Sprite)", "sub": "mount point depends on TracePet existing", "style": "secondary" },
+        { "label": "3 · Opt-in (needs Dock)", "sub": "toggle gates the mounted dock", "style": "secondary" },
+        { "label": "4 · Verify · Docs · Changelog", "sub": "typecheck/build, reference, changelog after slices land", "style": "secondary" }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Validated output",
+      "lede": "Work plan validated — ready to implement.",
+      "body": "A sequenced, dependency-ordered plan where every task is small, additive, and independently verifiable. The validated output, ready to implement in the background.",
+      "narration": "The validated output: a sequenced, dependency-ordered plan where every task is small, additive, and independently verifiable — ready to implement in the background."
+    }
+  ]
+}

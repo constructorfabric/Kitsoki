@@ -1,0 +1,18 @@
+# quit_at_configure — idle → configure → quit → @exit:abandoned. No host calls.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  tasks: [bug9]
+  candidates: [opus-4.8]
+  contenders: [kitsoki]
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: configure
+  - intent: { name: quit, slots: {} }
+    expect_state: "__exit__abandoned"
+
+expect_terminal: true
+expect_no_errors: true

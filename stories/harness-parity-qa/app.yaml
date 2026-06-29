@@ -1,0 +1,58 @@
+app:
+  id: harness-parity-qa
+  version: 0.1.0
+  title: "Harness parity visual QA"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+
+world:
+  question:       { type: string, default: "" }
+  workdir:        { type: string, default: "." }
+  surfaces:       { type: string, default: "tui,web,vscode" }
+  output_root:    { type: string, default: ".artifacts/harness-parity-qa" }
+  markdown_path:  { type: string, default: ".context/harness-parity-qa.md" }
+  visual_policy:  { type: string, default: "deterministic" }
+  parity_result:  { type: object, default: {} }
+  status:         { type: string, default: "idle" }
+
+intents:
+  start:
+    description: "Run the deterministic Claude/Codex harness parity QA gate."
+    examples:
+      - "run harness parity qa"
+      - "compare claude and codex surfaces"
+      - "check visual parity"
+    priority: 90
+    slots:
+      question: { type: string, required: false }
+      surfaces: { type: string, required: false }
+      output_root: { type: string, required: false }
+      markdown_path: { type: string, required: false }
+      visual_policy: { type: string, required: false }
+  accept:
+    description: "Accept the parity report and finish."
+    examples: ["accept", "done", "looks good"]
+    priority: 80
+  rerun:
+    description: "Run the parity gate again."
+    examples: ["rerun", "run again", "retry"]
+    priority: 70
+  quit:
+    description: "Abandon the parity QA run."
+    examples: ["quit", "abort", "stop"]
+    priority: 40
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "status", "show me"]
+    priority: 10
+
+exports:
+  intents: [start, accept, rerun, quit, look]
+
+root: idle
+
+include:
+  - rooms/*.yaml

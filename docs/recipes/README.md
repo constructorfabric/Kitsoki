@@ -22,6 +22,9 @@ and [`../tracing/`](../tracing/README.md).
 | [Background job](background-job.md) | Run long work off the turn and notify on completion |
 | [Studio MCP async smoke](studio-mcp-async-smoke.md) | Prove background completion, inbox teleport, and chat-work reacquisition over studio MCP |
 | [Studio MCP GitHub inbox smoke](studio-mcp-github-inbox-smoke.md) | Prove GitHub issue/PR intake and reacquisition over studio MCP |
+| [Studio MCP dogfood](studio-mcp-dogfood.md) | Drive Kitsoki through its own MCP surface from Claude, Codex, or another agent |
+| [Repo history training for a new repo](repo-history-training-new-repo.md) | Turn historical bug fixes into deterministic oracles, readiness reports, and live-cell commands |
+| [Repo history training with gears-rust](repo-history-training-gears-rust.md) | Use the private/heavy Rust reference path for the external bake-off harness |
 | [Project prompt overlay](prompt-overlay-example/README.md) | Specialize a generic story's prompts for a project without forking it |
 
 ## Larger worked examples

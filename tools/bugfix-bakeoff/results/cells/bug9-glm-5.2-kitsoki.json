@@ -1,0 +1,40 @@
+{
+  "bug": "bug9",
+  "candidate": "glm-5.2",
+  "treatment": "kitsoki",
+  "profile": "synthetic-claude",
+  "model": "hf:zai-org/GLM-5.2",
+  "effort": "medium",
+  "provider": "synthetic.new",
+  "outcome": {
+    "oracle_pass": false,
+    "oracle_status": "fail",
+    "build_pass": true,
+    "suite_pass": false,
+    "quality": "partial",
+    "adjudicated": true,
+    "adjudication_note": "Oracle is impl-coupled to the host-layer .kitsoki-owner sentinel. GLM closes the destructive-data-loss bug via the alternate path-keying approach (world.session_id -> .worktrees/bf-<ticket>-<uuid>), the per-session keying the real fix's own comment deferred as a future enhancement. GLM's own orchestrator repro test passes; go build ./... green; judge accepted 0.87. Partial (not solved): lacks the host-layer defense-in-depth the oracle asserts, so a non-idle-room caller racing the same path is unguarded."
+  },
+  "compliance": {
+    "reproduced_red": false,
+    "added_regression_test": true,
+    "suite_green": false,
+    "in_scope": false,
+    "stage_order": false,
+    "rate": 0.2
+  },
+  "metrics": {
+    "input_tokens": 2836070,
+    "output_tokens": 54910,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "total_tokens": 2890980,
+    "cost_usd": 15.57545,
+    "cost_exact": true,
+    "wall_time_s": 0.0,
+    "guidance_turns": 0
+  },
+  "transcript_path": ".artifacts/bugfix-bakeoff/traces/bug9-glm-run2.jsonl",
+  "trace_found": true,
+  "notes": "oracle TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP: rc=1; cost from native meta.cost_usd"
+}

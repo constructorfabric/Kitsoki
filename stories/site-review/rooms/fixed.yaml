@@ -1,0 +1,67 @@
+# fixed — terminal display after site_writer applied the edits.
+#
+# Shows what was changed (uncommitted, sitting in the working tree)
+# and any gaps the agent could not address. The operator owns the
+# follow-up: `make features` to regenerate, `git diff` to review,
+# `git add` / `git commit` to land.
+
+states:
+
+  fixed:
+    description: "Site fix run complete — edits are uncommitted in the working tree."
+    view:
+      - banner:
+          text:     "SITE PATCHED"
+          subtitle: "edits are uncommitted; run `make features` + `git diff` before staging"
+          color:    "#22C55E"
+      - kv:
+          pairs:
+            "Commit":      "{{ world.commit_sha }}"
+            "Mode":        '{{ world.review_mode|default:"recent" }}'
+            "Decision":    "{{ world.verdict.decision }}"
+            "Applied":     '{% if world.fix_artifact.applied == true %}yes{% else %}no{% endif %}'
+            "Files":       '{{ world.fix_artifact.files_changed|length|default:"0" }}'
+            "Unresolved":  '{{ world.fix_artifact.unresolved|length|default:"0" }}'
+            "Verdict":     '{{ world.artifact_path|default:"(not written)" }}'
+      - heading: "Summary"
+      - prose: '{{ world.fix_artifact.summary|default:"(no summary)" }}'
+      - heading: "Files changed"
+      - code: |
+          {% for f in world.fix_artifact.files_changed %}{{ f.path }} — {{ f.change }}
+          {% empty %}(none){% endfor %}
+      - heading: "Unresolved (no edit applied)"
+        when:  "world.fix_artifact.unresolved"
+      - code: |
+          {% for u in world.fix_artifact.unresolved %}{{ u.target }} — {{ u.reason }}
+          {% endfor %}
+        when: "world.fix_artifact.unresolved"
+      - heading: "Blockers"
+        when:  "world.fix_artifact.blockers"
+      - code: |
+          {% for b in world.fix_artifact.blockers %}- {{ b }}
+          {% endfor %}
+        when: "world.fix_artifact.blockers"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "review_again"
+              hint:   "re-run the audit (e.g. after running make features)"
+              intent: review_again
+            - label:  "quit"
+              hint:   "exit"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [commit_sha, verdict, fix_artifact, artifact_path]
+    on_enter:
+      # Live progress breadcrumb closing out the one-shot chain.
+      - say: 'Site patched — {{ world.fix_artifact.files_changed|length|default:"0" }} file(s) changed (uncommitted; run `make features`, then review with `git diff`).'
+    on:
+      review_again:
+        - target: reviewing
+      quit:
+        - target: "@exit:done"
+      look:
+        - target: .

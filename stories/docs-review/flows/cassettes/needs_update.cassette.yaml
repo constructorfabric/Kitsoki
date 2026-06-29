@@ -4,7 +4,7 @@
 kind: host_cassette
 app_id: docs-review
 generated_at: 2026-05-28T00:00:00Z
-match_on: [handler]
+match_on: [handler, call]
 
 episodes:
   # 1. host.run preflight — synthesises the {sha, recent_log,
@@ -12,6 +12,7 @@ episodes:
   - id: preflight_run
     match:
       handler: host.run
+      call: docs-preflight
     response:
       data:
         ok: true
@@ -30,6 +31,7 @@ episodes:
   - id: agent_decide
     match:
       handler: host.agent.decide
+      call: docs-reviewer
     response:
       data:
         ok: true
@@ -62,6 +64,7 @@ episodes:
   - id: artifacts_dir_write
     match:
       handler: host.artifacts_dir
+      call: docs-verdict-artifact
     response:
       data:
         ok: true
@@ -74,6 +77,7 @@ episodes:
   - id: docs_writer_task
     match:
       handler: host.agent.task
+      call: docs-writer
     response:
       data:
         ok: true
@@ -86,4 +90,15 @@ episodes:
               change: "added host.bar entry mirroring host.run shape"
           unresolved: []
           blockers: []
+    replay: any
+
+  - id: fix_artifacts_dir_write
+    match:
+      handler: host.artifacts_dir
+      call: docs-fix-artifact
+    response:
+      data:
+        ok: true
+        path: "/tmp/.artifacts/docs-review-fix-deadbeefcafefeed.json"
+        message_id: "docs-review-fix-deadbeefcafefeed#0"
     replay: any

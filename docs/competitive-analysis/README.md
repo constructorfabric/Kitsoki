@@ -78,18 +78,19 @@ See [`market-research.md` §3`][market-3] and [`domain-research.md` §2][domain-
 
 ### 2.1 The four-quadrant map
 
-```
-                          Author-declared intent alphabet
-                          ────────────────────────────────
-                                    YES               NO
-                                ┌──────────┐    ┌──────────┐
-   Deterministic        YES     │  kitsoki │    │  Akka,   │
-   replay built-in              │ ◀── HERE │    │ Temporal │
-                                └──────────┘    └──────────┘
-                                ┌──────────┐    ┌──────────┐
-                        NO      │  Rasa,   │    │ LangGraph│
-                                │Dialogflow│    │ CrewAI   │
-                                └──────────┘    └──────────┘
+```mermaid
+quadrantChart
+    title Competitive map
+    x-axis No author-declared intent alphabet --> Author-declared intent alphabet
+    y-axis No deterministic replay built in --> Deterministic replay built in
+    quadrant-1 Kitsoki target
+    quadrant-2 Durable workflow engines
+    quadrant-3 Agent frameworks
+    quadrant-4 Dialog platforms
+    "kitsoki": [0.82, 0.86]
+    "Akka / Temporal": [0.25, 0.82]
+    "Rasa / Dialogflow": [0.78, 0.25]
+    "LangGraph / CrewAI": [0.24, 0.25]
 ```
 
 Kitsoki is alone in the upper-left for *a running PoC with a complete authoring DSL, CI-grade flow-test runner, and multi-surface transport in one binary, validated against real internal bugs*. Academic and OSS systems (StateFlow, CompileAgent, R-LAM) validate the quadrant; none ship the same surface area.

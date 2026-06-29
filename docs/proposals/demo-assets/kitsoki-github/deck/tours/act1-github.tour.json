@@ -1,0 +1,18 @@
+{
+  "_comment": "Act 1 (the GitHub side) rrweb tour. Captures the static gh-thread.html fixture over file:// with slidey's rrweb tour engine. Each step mirrors github-demo-manifest.ts (GITHUB_DEMO_STEPS) ids/labels/dwellMs and spotlights the matching data-testid. Pure DOM — no clicks, no navigation: each beat just scrolls its target into view and dwells, so the engine's default advance:'next' is exactly right. Emits in-log slidey.chapter custom events → chapters:'auto' lower-thirds with no sidecar. Regenerate: node /Users/brad/code/slidey/src/index.js capture <this> <out>.rrweb.json --format rrweb (target.url is absolute to this worktree's fixture).",
+  "target": { "url": "file:///Users/brad/code/Kitsoki/.worktrees/kitsoki-github-agent/tools/runstatus/tests/playwright/fixtures/gh-thread.html" },
+  "startPath": "#",
+  "viewport": { "width": 1600, "height": 900 },
+  "specPath": "tools/runstatus/src/tour/github-demo-manifest.ts",
+  "pace": 1,
+  "steps": [
+    { "id": "gh1-bug-mention", "label": "A bug-labelled issue mentions @kitsoki", "target": "[data-testid=\"gh-issue-bug\"]", "dwellMs": 5500 },
+    { "id": "gh2-ack-link", "label": "kitsoki acks with one run link", "target": "[data-testid=\"gh-ack-comment\"]", "dwellMs": 6000 },
+    { "id": "gh3-feature", "label": "A feature issue routes to the design track", "target": "[data-testid=\"gh-issue-feature\"]", "dwellMs": 5500 },
+    { "id": "gh4-ci-fix", "label": "It watches CI and pushes a fix", "target": "[data-testid=\"gh-pr-ci-fix\"]", "dwellMs": 6000 },
+    { "id": "gh5-rebase", "label": "A merge conflict, rebased away", "target": "[data-testid=\"gh-pr-rebase\"]", "dwellMs": 5500 },
+    { "id": "gh6-resolve", "label": "Reviewer asks; kitsoki implements and resolves", "target": "[data-testid=\"gh-review-resolve\"]", "dwellMs": 6000 },
+    { "id": "gh7-guidance", "label": "Low confidence — it asks first", "target": "[data-testid=\"gh-guidance-request\"]", "dwellMs": 6000 },
+    { "id": "gh8-done", "label": "One rolling status, edited to done", "target": "[data-testid=\"gh-status-done\"]", "dwellMs": 6000 }
+  ]
+}

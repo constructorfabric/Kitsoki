@@ -37,6 +37,7 @@ func (HelpCommand) Run(m RootModel, _ []string) (string, RootModel, tea.Cmd) {
 			{"/inbox [<n>]", "list recent notifications; <n> opens one"},
 			{"/inbox sync-github [repo]", "refresh assigned GitHub issues and requested PR reviews"},
 			{"/work [--all]", "list active async work; --all includes every session on this host"},
+			{"/workflow <cmd>", "create, validate, run, status, or export a workflow draft"},
 			{"/sessions attach <n> --dry-run", "show the cached chat target without attaching"},
 			{"/trace", "print the last turn's routing trace"},
 			{"/viz", "export the state diagram to a DOT file"},
@@ -58,7 +59,7 @@ func (HelpCommand) Run(m RootModel, _ []string) (string, RootModel, tea.Cmd) {
 			{"/ide status", "show connection: editor, workspace, port"},
 			{"/open <path>", "open an artifact in $EDITOR or the OS default handler"},
 			{"/warp <state>", "developer teleport to a state"},
-			{"/reload", "reload app.yaml from disk and re-fire on_enter"},
+			{"/reload [--force]", "reload app.yaml; --force bypasses once: cache for this rerun"},
 			{"/quit, /q", "exit kitsoki"},
 		}},
 	}

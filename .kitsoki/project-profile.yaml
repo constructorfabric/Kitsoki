@@ -1,0 +1,35 @@
+schema: project-profile/v1
+id: kitsoki
+title: Kitsoki
+summary: Kitsoki's own dogfood project profile. This is the checked-in source of truth for repo-local automation defaults; personal overrides belong in .kitsoki.local.yaml.
+repo:
+  root: "."
+  vcs: git
+  default_branch: main
+  remote: constructorfabric/Kitsoki
+  monorepo: false
+stack:
+  kind: go
+  languages: [go, typescript, yaml]
+  package_managers: [go, pnpm]
+commands:
+  build: "go build ./..."
+  test: "go test ./..."
+kitsoki:
+  story: dev-story
+  instance:
+    id: kitsoki-dev
+    path: .kitsoki/stories/kitsoki-dev/app.yaml
+    bindings:
+      ticket: host.gh.ticket
+      vcs: host.git
+      ci: host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+  judge_mode: human
+dev_story_profile:
+  docs:
+    ticket_repo: constructorfabric/Kitsoki
+  bugfix:
+    build_cmd: "go build ./..."
+    test_cmd: "go test ./..."

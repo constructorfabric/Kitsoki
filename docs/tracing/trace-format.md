@@ -277,6 +277,20 @@ The chain a reviewer reconstructs: `recipe → mining.proposal_raised →
 mining.proposal_decided →` (on a kept accept) `the captured intent's own gate →
 machine.gate_decided → ladder move`.
 
+### Dynamic workflow events
+
+Dynamic workflow runs add a small lifecycle vocabulary. These events are
+replay no-ops; they index the receipt and promotion artifacts.
+
+| Kind | When written |
+|---|---|
+| `dynamic.workflow.generated` | A draft package is created. |
+| `dynamic.workflow.validated` | The draft passes or fails deterministic validation. |
+| `dynamic.workflow.launch_blocked` | Launch is refused because a required capability was not allowed. |
+| `dynamic.workflow.launched` | The draft launches a session. |
+| `dynamic.workflow.url_assigned` | A browser URL is available for the run. |
+| `dynamic.workflow.exported` | The run is promoted/exported into a reusable story package. |
+
 ### Agent event kinds
 
 Every agent call produces exactly two events: `agent.call.start` and

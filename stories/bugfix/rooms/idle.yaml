@@ -114,9 +114,14 @@ states:
       # future enhancement, not needed to close the destructive bug.)
       - when: "world.ticket_id != '' && world.workspace_id == '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage'"
         set:
-          workspace_id:   "bf-{{ world.ticket_id }}"
-          feature_branch: "fix/{{ world.ticket_id }}"
-          workdir:        ".worktrees/bf-{{ world.ticket_id }}"
+          # Append world.session_id so two concurrent sessions on the SAME
+          # ticket resolve to DISTINCT workdir/branch/workspace ids — otherwise
+          # they share one checkout and a destructive git op in one clobbers
+          # the other's WIP (bug9glm2). session_id is engine-seeded (see
+          # ReservedWorldKeys / loadJourney) and bare at every import depth.
+          workspace_id:   "bf-{{ world.ticket_id }}-{{ world.session_id }}"
+          feature_branch: "fix/{{ world.ticket_id }}-{{ world.session_id }}"
+          workdir:        ".worktrees/bf-{{ world.ticket_id }}-{{ world.session_id }}"
 
       # Step 2: create the worktree on disk. `id:` pins the on-disk
       # dir basename to `world.workspace_id` so the later
@@ -126,12 +131,18 @@ states:
       # (`fix/<ticket>` → `fix-<ticket>`) while world.workspace_id is
       # `bf-<ticket>`, so sync would silently fail and bounce the
       # operator back to idle.
+      # `base:` is the committish the worktree is CUT FROM (passed straight to
+      # `git worktree add <dir> <base>`, which accepts a branch, tag, OR commit
+      # SHA). Prefer an explicit `base_commit` (pin the tree to a specific commit
+      # — e.g. a bug's pre-fix baseline in a bake-off) and fall back to
+      # `base_branch` (which doubles as the PR target and defaults to "main").
+      # Keep these distinct: the cut-point and the PR base are not the same thing.
       - when: "world.ticket_id != '' && world.feature_branch != '' && world.workdir != '' && !world.bf_autostart_attempted && world.bugfix_mode != 'triage'"
         invoke: iface.workspace.create
         with:
           id:         "{{ world.workspace_id }}"
           name:       "{{ world.feature_branch }}"
-          base:       "{{ world.base_branch }}"
+          base:       "{{ world.base_commit != '' ? world.base_commit : world.base_branch }}"
           session_id: "{{ world.session_id }}"
         on_error: idle
 

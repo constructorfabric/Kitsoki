@@ -267,7 +267,7 @@ HAR is captured server-side (authoritative, sees bodies, no client work) with
 - The agentic `story.bug` / `kitsoki.bug` conversation modes — unchanged; this
   sits beside them.
 - Bug triage, dedup, or resolution workflow (the dogfood pipeline already owns
-  that via `stories/kitsoki-dev/`).
+  that via `.kitsoki/stories/kitsoki-dev/`).
 - Capturing artifacts from the Go TUI or from `kitsoki run` — web-surface only.
 - A general client-side network-capture/devtools panel — we only assemble a HAR
   for the report.

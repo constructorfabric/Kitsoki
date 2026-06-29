@@ -1,0 +1,35 @@
+# bugfix_done_router - deterministic post-bugfix destination switch.
+#
+# The imported bugfix story exposes a single open-PR-style `done` exit. The
+# parent chooses whether that completed fix should open a PR or simply leave the
+# local worktree ready for manual review.
+
+states:
+  bugfix_done_router:
+    description: "Route a completed bugfix to the selected destination."
+    relevant_world: [bugfix_destination, ticket_id, ticket_title, workdir, pr_title, pr_body, status]
+    view:
+      - banner:
+          text: "BUGFIX COMPLETE"
+          subtitle: "routing to {{ world.bugfix_destination }}"
+          color: "#10B981"
+      - kv:
+          pairs:
+            Ticket: "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Destination: "{{ world.bugfix_destination }}"
+            Worktree: "{{ world.workdir }}"
+    on_enter:
+      - when: "world.bugfix_destination == 'open-pr'"
+        emit_intent: bugfix_done_open_pr
+      - when: "world.bugfix_destination != 'open-pr'"
+        emit_intent: bugfix_done_leave_worktree
+    on:
+      bugfix_done_open_pr:
+        - target: pr
+      bugfix_done_leave_worktree:
+        - target: landing
+          effects:
+            - set:
+                status: "worktree-ready"
+      look:
+        - target: .

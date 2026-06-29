@@ -1,0 +1,187 @@
+# prepare — DETERMINISTIC, FREE, and REAL. First call `bench.py preflight` to
+# catch setup blockers (local checkout, candidate profile, commits, oracles), then
+# call `bench.py verify`: clone the project at each bug's baseline, overlay the
+# regression test the real PR shipped, and prove it is RED at baseline / GREEN at
+# the real fix. Finally call `prepare_handoffs.sh`, which runs `drive_cell.sh
+# --no-drive` for the selected matrix and audits the prepared MCP prompts for
+# missing files and hidden-oracle leaks. This proves the bake-off is honest and
+# reviewable BEFORE a single LLM token is spent. (Onboarding the repo itself is
+# the embedded dev-story, the human pre-step.)
+#
+# `once: true` keyed on its own bind → reload-safe.
+states:
+  prepare:
+    description: "Preflighting setup, arming hidden oracles, and preparing audited handoffs (free, no LLM)."
+    relevant_world: [project, repo_dir, candidates, preflight_ready, oracles_armed, handoffs_ready, harness_dir, handoff_audit_markdown]
+    view:
+      - heading: "Bake-off · prepare (arm oracles)"
+      - kv:
+          pairs:
+            Project: '{{ world.project }}'
+            Local repo: '{{ world.repo_dir|default:"(none)" }}'
+            Candidates: "{{ world.candidates|join:', ' }}"
+            Preflight: '{% if world.preflight_log != "" %}yes{% else %}no{% endif %}'
+            Armed:   '{% if world.verify_log != "" %}yes{% else %}no{% endif %}'
+            Handoffs: '{% if world.handoffs_ready %}ready{% else %}pending{% endif %}'
+            Handoff audit: "{{ world.handoff_audit_markdown }}"
+      - prose: "bench.py preflight checks repo/candidate readiness before bench.py verify clones each baseline, overlays the PR's regression test, and confirms RED@baseline / GREEN@real-fix. Then prepare_handoffs.sh writes no-drive worktrees/prompts and audits them for missing files and hidden-oracle leaks. Deterministic and free — it proves the bake-off is valid before any cost is incurred."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "advance to running (drive the cost-bearing cells)"
+              intent: accept
+            - label:  "quit"
+              hint:   "abandon"
+              intent: quit
+    on_enter:
+      - when: "world.repo_dir == ''"
+        invoke: host.run
+        id: preflight
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "preflight"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: true
+        bind:
+          preflight_log: stdout
+        on_error: configure
+      - when: "world.repo_dir != ''"
+        invoke: host.run
+        id: preflight_local
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "preflight"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--repo-dir"
+            - "{{ world.repo_dir }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: true
+        bind:
+          preflight_log: stdout
+        on_error: configure
+      - when: "world.repo_dir == ''"
+        invoke: host.run
+        id: verify_oracles
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "verify"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: true
+        bind:
+          verify_log: stdout
+        on_error: configure
+      - when: "world.repo_dir != ''"
+        invoke: host.run
+        id: verify_oracles_local
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "verify"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--repo-dir"
+            - "{{ world.repo_dir }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: true
+        bind:
+          verify_log: stdout
+        on_error: configure
+      - when: "world.repo_dir == ''"
+        invoke: host.run
+        id: prepare_handoffs
+        once: true
+        with:
+          cmd: "./prepare_handoffs.sh"
+          args:
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+            - "--results"
+            - "{{ world.results_dir }}"
+            - "--markdown"
+            - "{{ world.handoff_audit_markdown }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: true
+        bind:
+          handoff_audit: stdout_json
+          handoffs_ready: stdout_json.ok
+        on_error: configure
+      - when: "world.repo_dir != ''"
+        invoke: host.run
+        id: prepare_handoffs_local
+        once: true
+        with:
+          cmd: "./prepare_handoffs.sh"
+          args:
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+            - "--repo-dir"
+            - "{{ world.repo_dir }}"
+            - "--results"
+            - "{{ world.results_dir }}"
+            - "--markdown"
+            - "{{ world.handoff_audit_markdown }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: true
+        bind:
+          handoff_audit: stdout_json
+          handoffs_ready: stdout_json.ok
+        on_error: configure
+    on:
+      accept:
+        - when: "world.preflight_log != '' && world.verify_log != '' && world.handoffs_ready"
+          target: prepared
+        - target: .
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .
+
+  prepared:
+    description: "Mark verified oracles as armed before entering the live-cell roster."
+    on_enter:
+      - set:
+          preflight_ready: true
+          oracles_armed: true
+          handoffs_ready: true
+      - emit_intent: accept
+    on:
+      accept:
+        - target: running

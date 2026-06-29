@@ -496,12 +496,18 @@ export class LiveSource implements DataSource {
   submit(
     sessionId: string,
     intent: string,
-    slots: Record<string, unknown> = {}
+    slots: Record<string, unknown> = {},
+    anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor
   ): Promise<TurnResult> {
     return this.client.post<TurnResult>("runstatus.session.submit", {
       session_id: sessionId,
       intent,
       slots,
+      // The media-annotation composer dispatches an intent (e.g. a deck's
+      // `refine`) and rides the picked anchor as a top-level param; the server
+      // lifts it into host.WithVisualAmbient so the agent edits the pointed-at
+      // element. Dropped when no anchor (plain intent submits stay identical).
+      ...(serializeAnchorParam(anchor) ? { anchor: serializeAnchorParam(anchor) } : {}),
     });
   }
 
@@ -543,6 +549,60 @@ export class LiveSource implements DataSource {
       // positional arrays) — UI-only fields are dropped here.
       ...(serializeAnchorParam(anchor) ? { anchor: serializeAnchorParam(anchor) } : {}),
     });
+  }
+
+  workflowCreate(
+    goal: string,
+    slug = ""
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.create",
+      {
+        goal,
+        ...(slug ? { slug } : {}),
+      }
+    );
+  }
+
+  workflowValidate(
+    workflowId: string
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.validate",
+      { workflow_id: workflowId }
+    );
+  }
+
+  workflowLaunch(
+    workflowId: string
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.launch",
+      { workflow_id: workflowId }
+    );
+  }
+
+  workflowStatus(
+    workflowId: string
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.status",
+      { workflow_id: workflowId }
+    );
+  }
+
+  workflowExport(
+    workflowId: string,
+    opts: import("./source.js").WorkflowExportOptions = {}
+  ): Promise<import("./source.js").WorkflowReceipt> {
+    return this.client.post<import("./source.js").WorkflowReceipt>(
+      "runstatus.workflow.export",
+      {
+        workflow_id: workflowId,
+        ...(opts.target ? { target: opts.target } : {}),
+        ...(opts.allow_base_story ? { allow_base_story: true } : {}),
+      }
+    );
   }
 
   /**
@@ -625,12 +685,28 @@ export class LiveSource implements DataSource {
   turnStream(
     sessionId: string,
     method: "turn" | "submit" | "continue" | "offpath",
-    params: { input?: string; intent?: string; slots?: Record<string, unknown> },
+    params: {
+      input?: string;
+      intent?: string;
+      slots?: Record<string, unknown>;
+      anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor;
+    },
     onEvent: (ev: TurnStreamEvent) => void
   ): Promise<TurnResult> {
+    // The media-annotation composer rides a picked anchor over the streaming
+    // submit; project it to the on-wire shape (the server lifts it into
+    // host.WithVisualAmbient). A no-op when no anchor — plain turns are
+    // byte-identical.
+    const { anchor, ...rest } = params;
+    const wireAnchor = serializeAnchorParam(anchor);
     return this.transport.postEventStream<TurnResult>(
       "rpc/turn-stream",
-      { session_id: sessionId, method, ...params },
+      {
+        session_id: sessionId,
+        method,
+        ...rest,
+        ...(wireAnchor ? { anchor: wireAnchor } : {}),
+      },
       {
         onFrame: (frame) => onEvent(frame as unknown as TurnStreamEvent),
         reduce: (frame) => {

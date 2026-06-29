@@ -1,6 +1,14 @@
 # Story: Work decomposition — turn a proposal into a coordinated build
 
-**Status:** Draft v2 (revised after adversarial review). Nothing implemented yet.
+**Status:** Partially superseded. The proposed `stories/decompose/` import has
+not shipped as written. The current tree instead has two adjacent shipped
+surfaces: `.agents/skills/work-decomposition/`, a manual validated-manifest
+workflow with schema + deterministic linter, and `stories/deliver/`, a simpler
+story that decomposes an epic/proposal into briefs, lints the manifest, and
+hands it to `stories/fleet/`. `stories/deliver` validates and its no-LLM flows
+pass. Remaining design work is to decide whether the richer interactive
+`stories/decompose/` board is still needed or whether this proposal should be
+rewritten around the shipped `deliver` path.
 **Kind:**   story
 **Epic:**   — standalone
 
@@ -365,24 +373,24 @@ every dep is in the done set).
 
 ```
 ## 1. Scaffold
-- [ ] 1.1 stories/decompose/app.yaml + 7 room files, typed `extends: "base"` views, world schema, exits
-- [ ] 1.2 schemas/{decomposition,review-decision,scope-distill}.json
-- [ ] 1.3 scripts: decompose_load.py (proposal/epic reader), decompose_validate.py (YAML render + DAG/coverage lint + path-bounds check), decompose_board.py (deterministic status recompute), decompose_brief_ticket.py (mint ticket + worktree) — with unit tests on crafted manifests (cycle, dup id, missing acceptance, dangling dep) and a board-recompute test (dep gating)
-- [ ] 1.4 stub prompts (discovery_interview, scope_distill, decompose, review_adversary) + agents table (read-only inspectors; decomposer + adversary have NO Write — feedback_task_agents_must_not_implement)
+- [ ] Partial: `stories/decompose/` not shipped; `stories/deliver/` shipped a simpler configure → decompose → lint → fleet graph
+- [ ] Partial: decomposition schema exists in the work-decomposition skill and `stories/deliver/`; review/scope schemas from this richer design are not present
+- [ ] Partial: deterministic decomposition lint exists in the skill and `stories/deliver`; proposal/epic reader, board recompute, and per-brief ticket/worktree mint are either absent or handled by `fleet`/`deliver`
+- [ ] 1.4 richer discovery/adversary prompts and read-only decomposer/adversary split are not shipped as `stories/decompose/`
 
 ## 2. Lock the graph
-- [ ] 2.1 Probe each room: `kitsoki turn stories/decompose/app.yaml --state <room> --intent <x> --world @w.json`
-- [ ] 2.2 Flow fixtures pass (happy_path, validate_fail_loop, review_revise_loop, budget_exhausted)
+- [ ] Partial: `stories/deliver/` validates; no `stories/decompose/` room probes exist
+- [x] 2.2 `stories/deliver` no-LLM flows pass for happy path, decompose error, lint cycle, lint missing dep, and Slidey decomposition
 
 ## 3. Wire into the hub
-- [ ] 3.1 dev-story: `imports.decomp` block + `decompose` launch arc in main.yaml (guarded on a selected proposal); world_in projects decomp_source_path
-- [ ] 3.2 decomp `@exit:done`/`abandoned` projections back into main; flow fixture for the hub→decomp→impl chain
-- [ ] 3.3 Per-brief impl dispatch: verify the `impl__*` reset clears all carry keys (brief N+1 regenerates, not reuses), the minted ticket reaches impl via `iface.ticket.get`, a fresh worktree/branch per brief, and the `all_done` arc re-pins `decomposition` (loader requires-check passes)
+- [ ] 3.1 dev-story `decomp` import/launch arc from this proposal is not shipped
+- [ ] 3.2 decomp exit projections back into dev-story are not shipped
+- [ ] Partial: per-brief dispatch is now handled through `stories/fleet`; the richer impl reset/ticket-materialization path from this proposal remains unverified
 
 ## 4. Live + document
-- [ ] 4.1 `kitsoki run stories/decompose/app.yaml` end-to-end against a small real proposal (e.g. a 2-3 brief slice)
-- [ ] 4.2 README (entry state, exits, world contract, host requirements, the impl import edge)
-- [ ] 4.3 Migrate to docs/stories/decompose.md; add README.md queue entry; trim/delete this proposal
+- [ ] 4.1 Decide whether to continue with `stories/decompose/` or retire this in favor of `stories/deliver/`
+- [ ] Partial: `stories/deliver/README.md` documents the shipped simpler path; no `docs/stories/decompose.md`
+- [ ] 4.3 Rewrite/trim/delete this proposal after that product decision
 ```
 
 ## Open questions

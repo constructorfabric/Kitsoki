@@ -1,0 +1,43 @@
+{
+  "_comment": "Baked dogfood-marathon REPORT deck — a deterministic slidey scene spec so the slideshow room (host.slidey.render format:html) renders a real static-HTML report without a live author. A live drive overwrites this from the journaled run data via the kitsoki-mcp-driver; the structure here mirrors what build_deck.star encodes: title -> rollup -> per-case outcomes -> what-worked/what-didn't -> findings.",
+  "meta": {
+    "title": "Dogfood marathon report",
+    "resolution": { "width": 1920, "height": 1080 },
+    "theme": "rose-pine-moon",
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Dogfood marathon",
+      "title": "Backlog → pipeline → report",
+      "subtitle": "Outcomes · cost · what worked · what didn't",
+      "narration": "A backlog of cases driven through the inner pipeline, each deliverable independently verified, then decked."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Run rollup",
+      "narration": "Counts and totals rolled up across every processed case.",
+      "cards": [
+        { "label": "solved", "sub": "independently verified", "style": "primary" },
+        { "label": "needs-human", "sub": "RED→GREEN gate-parked", "style": "secondary" },
+        { "label": "cost / tokens / time", "sub": "tokens primary, USD second", "style": "default" }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "What worked",
+      "lede": "Structure is more thorough.",
+      "body": "Regression test, safe gate-parking, and the refine loop caught bad fixes a naive single prompt would have shipped.",
+      "narration": "Structure isn't automatically cheaper, but it's more thorough — and it catches bad fixes a naive prompt would ship."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "What didn't",
+      "lede": "Friction becomes findings.",
+      "body": "Every point of friction is captured as a finding and hardened generically — improve the pipeline for the general class, never overfit to one case.",
+      "narration": "Each friction point becomes a finding that hardens the pipeline for the general class, never for one case."
+    }
+  ]
+}

@@ -63,7 +63,7 @@ Three coupled moves, separable but better together:
    too.** Not a separate `workbench` story. It starts as an *implicit* import
    of dev-story declared in `.kitsoki.yaml` (zero files), grows by accreting
    small inline overrides there, and *graduates* to a full story under
-   `stories/<project>/` (the convention) only when its specialization outgrows
+   `.kitsoki/stories/<project>/` (the convention) only when its specialization outgrows
    inline config. `kitsoki-dev` is the fully-graduated example (and the dogfood
    proof).
 3. **Ambient mining is the engine** — starts on first launch for **any**
@@ -78,7 +78,7 @@ Three coupled moves, separable but better together:
 |---|---|---|
 | 0 — implicit | no file; `.kitsoki.yaml` defaults to `import: dev-story` | brand-new repo; just run `kitsoki` |
 | 1 — inline | `.kitsoki.yaml` `root:` import + a few `overrides:` (bindings, world, synonyms) | small project-specific config |
-| 2 — full story | `stories/<project>/app.yaml` imports dev-story (like `kitsoki-dev`) | real rooms/intents; the conventional home |
+| 2 — full story | `.kitsoki/stories/<project>/app.yaml` imports dev-story (like `kitsoki-dev`) | real rooms/intents; the conventional home |
 
 Mined proposals (Slice 3) climb the same ladder: a small delta lands as a
 rung-1 override; a structural one (or enough accreted overrides) triggers
@@ -93,7 +93,7 @@ assume happens by hand. It reuses, rather than re-invents:
 |---|---|---|
 | [`agent-off-ramp.md`](agent-off-ramp.md) | free-text floor: no-match → `converse`, no advance | **worktree** `review/agent-off-ramp` (shipped, read-only v1); already declared on `dev-story/main` |
 | [`story-conformance-mining.md`](story-conformance-mining.md) | outcome + satisfaction capture (did the user undo it?) | **worktree** `feat/story-conformance-mining` (Phase 1) |
-| dev-story **imports/instance** model (`stories/dev-story/app.yaml` `imports:`, `stories/kitsoki-dev/`) | the project root story that extends dev-story and binds providers | landed; ideas.md "extensible stories" |
+| dev-story **imports/instance** model (`stories/dev-story/app.yaml` `imports:`, `.kitsoki/stories/kitsoki-dev/`) | the project root story that extends dev-story and binds providers | landed; ideas.md "extensible stories" |
 | `tools/session-mining/` + [`session-pattern-mining/`](session-pattern-mining/) | the stateless analyzer (distill → ground → score → emit) | landed (CLI, batch) |
 | [`dev-story-mining`](../../stories/dev-story-mining/) | the mine→map→decide→author→record gate pipeline | landed (manual, in-story) |
 | meta-mode ([`controller.go`](../../internal/metamode/controller.go)) | live YAML edit → tree-snapshot → **auto-reload, world preserved** | landed |
@@ -123,7 +123,7 @@ surfaced inline, applied via reload, validated by the flow suite.
                            ▼  recipes above determinism_priority threshold,
                               deduped vs the instance's current inventory
                  proposer  (Slice 3 — dev-story-mining map→author personas)
-                 drafts a delta to THE PROJECT ROOT (.kitsoki.yaml override → stories/ file):
+                 drafts a delta to THE PROJECT ROOT (.kitsoki.yaml override → .kitsoki/stories/ file):
                    host-binding | world override | new intent/room |
                    wire a dev-story stub room | gate  (occasionally: enrich dev-story)
                            │
@@ -193,7 +193,7 @@ synthesizes the root instance from it (rung 1). With no `.kitsoki.yaml` at all,
 the default is `import: dev-story` with default bindings (rung 0): run
 `kitsoki` in any repo and you get free-form dev-story out of the box.
 `kitsoki materialize` graduates the implicit root to a full story under
-`stories/<project>/` (rung 2) — the conventional home for real stories —
+`.kitsoki/stories/<project>/` (rung 2) — the conventional home for real stories —
 folding the accumulated overrides into a normal dev-story instance like
 `kitsoki-dev`.
 
@@ -274,7 +274,7 @@ the **active root instance** instead of being a story you launch.
 - **Lightest rung:** the proposer expresses each delta at the lowest rung that
   fits — a binding/world/synonym becomes a `.kitsoki.yaml` `overrides:` entry
   (rung 1); a new room or gate, or a root whose overrides have grown past a
-  threshold, triggers materialization to `stories/<project>/` (rung 2). Most
+  threshold, triggers materialization to `.kitsoki/stories/<project>/` (rung 2). Most
   early proposals are one-line config edits; real structure arrives only when
   earned.
 - **Surface:** the draft becomes a **proposal card** (reuse the proposal-review
@@ -317,7 +317,7 @@ the **active root instance** instead of being a story you launch.
 | Kind | Name | Shape | Notes |
 |---|---|---|---|
 | config block | `root:` (in `.kitsoki.yaml`) | `{ import: dev-story, overrides: {bindings, world, synonyms} }` | implicit project root (rung 1); absent ⇒ default `import: dev-story` (rung 0) |
-| CLI | `kitsoki materialize` | `[--name <slug>]` | graduate the implicit root to a full story under `stories/<project>/` (rung 2) |
+| CLI | `kitsoki materialize` | `[--name <slug>]` | graduate the implicit root to a full story under `.kitsoki/stories/<project>/` (rung 2) |
 | story room | dev-story free-form landing | `root:` room, full-tool agent + `agent_off_ramp` | the "workbench"; menu hub one intent away |
 | operator cmd | `/mine` | `status\|pause\|resume\|now\|scope\|queue\|accept\|dismiss` | controls the ambient miner |
 | config block | `mining:` (in `.kitsoki.yaml`) | `{ enabled, cadence, first_pass_sample, priority_threshold, transcript_dirs }` | machine-global, like `harness_profiles:` |
@@ -348,7 +348,7 @@ reconstructable datapoint.
 
 - **Code seams:**
   - Free-form landing: a new room + `root:` in `stories/dev-story/`; inherited
-    by `stories/kitsoki-dev/`.
+    by `.kitsoki/stories/kitsoki-dev/`.
   - Implicit root: the `.kitsoki.yaml` loader synthesizes a dev-story instance
     from the `root:` import + `overrides:` (the same loader that reads
     `story_dirs`); `kitsoki materialize` (new `cmd/kitsoki/materialize.go`)
@@ -425,7 +425,7 @@ drafted YAML correct" — is exercised by hand in a real dogfood run (run
 ## 1. Free-form landing + blank root
 - [ ] 1.1 dev-story free-form landing room (full-tool agent + agent_off_ramp); root: → it; main one intent away
 - [ ] 1.2 Adapt kitsoki-dev to the free-form landing (inherits via core import); prefix affected dev-story/kitsoki-dev flows with the landing hop
-- [ ] 1.3 Implicit root: .kitsoki.yaml root: (import dev-story + overrides) synthesized by the loader; default-to-dev-story when absent; kitsoki materialize graduates to stories/<project>/
+- [ ] 1.3 Implicit root: .kitsoki.yaml root: (import dev-story + overrides) synthesized by the loader; default-to-dev-story when absent; kitsoki materialize graduates to .kitsoki/stories/<project>/
 - [ ] 1.4 First-start banner via on_enter once:
 - [ ] 1.5 Flow fixture: boot → free-form landing; off-ramp; go_main; seeded proposal adds a live intent
 

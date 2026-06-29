@@ -1,0 +1,162 @@
+{
+ "_comment": "Bug report deck (filed → triaged → reproduced → root-caused → fixed → verified) for a real CSS regression in the Agent Actions drawer (AgentActionRow.vue .aar__title): a flex child without min-width:0 can't ellipsis-truncate, so long agent-action titles overflow their card. before/after rrweb clips are captured deterministically by tools/runstatus/tests/playwright/slidey-128-clipbug-rrweb-capture.spec.ts (real .aar* CSS + the real slidey-128 run's agent-action titles, bug on / off). The fix (min-width:0) is committed in AgentActionRow.vue. meta.mode:pitch is required or scenes render blank.",
+ "meta": {
+  "mode": "pitch",
+  "title": "Bug: Agent Actions title overflow",
+  "resolution": {
+   "width": 1920,
+   "height": 1080
+  },
+  "theme": "rose-pine-moon",
+  "narration": {
+   "voice": "en-AU-NatashaNeural",
+   "rate": "+0%"
+  }
+ },
+ "scenes": [
+  {
+   "type": "title",
+   "eyebrow": "Bug report · kitsoki / runstatus · #412",
+   "title": "Agent Action titles overflow their card",
+   "subtitle": "Long titles spill past the drawer and collide with the token counts",
+   "narration": "Filed, triaged, fixed."
+  },
+  {
+   "type": "thread",
+   "title": "The filed issue",
+   "panels": [
+    {
+     "system": "github",
+     "ref": "#412",
+     "stage": "triaged",
+     "messages": [
+      {
+       "author": "devon",
+       "role": "dev",
+       "body": "The Agent Actions drawer looks broken when an agent emits a long reasoning or result title — the title runs straight off the right of its card and sits on top of the token and cost numbers. Reproduces every time on verbose THINK / RESULT rows."
+      },
+      {
+       "author": "maintainer",
+       "role": "dev",
+       "body": "Confirmed. `.aar__title` is a flex child with no `min-width: 0`, so `text-overflow: ellipsis` never fires and the title overflows.\n\nSeverity: P2 — cosmetic, but the row is unreadable.\nArea: runstatus · Agent Actions drawer."
+      }
+     ]
+    }
+   ],
+   "caption": "Filed by a developer, triaged to a missing CSS rule — area and severity assigned.",
+   "hold": 360,
+   "narration": "Filed by a developer — the drawer is unreadable on long titles. Triage confirms a missing CSS rule, with severity and area."
+  },
+  {
+   "type": "cards",
+   "variant": "numbered",
+   "title": "Steps to reproduce",
+   "cards": [
+    {
+     "label": "Open a session with agent actions",
+     "sub": "any kitsoki web run that emits a transcript"
+    },
+    {
+     "label": "Open the Agent Actions drawer",
+     "sub": "the per-turn tool / reasoning timeline"
+    },
+    {
+     "label": "Find a long THINK or RESULT row",
+     "sub": "a title past about sixty characters"
+    }
+   ],
+   "caption": "Deterministic — every long-titled row exhibits it.",
+   "narration": "To reproduce: open the Agent Actions drawer on any session, and find a reasoning or result row with a long title."
+  },
+  {
+   "type": "cards",
+   "variant": "versus",
+   "title": "Expected vs actual",
+   "left": {
+    "label": "Expected",
+    "lines": [
+     "Title truncates with an ellipsis",
+     "inside its own card",
+     "tokens and cost stay aligned"
+    ]
+   },
+   "right": {
+    "label": "Actual",
+    "lines": [
+     "Title runs off the right edge",
+     "overlapping the token / cost figures",
+     "the row is unreadable"
+    ]
+   },
+   "caption": "The title should clip; instead it overflows.",
+   "narration": "Expected: the title truncates inside its card. Actual: it runs off the edge and overlaps the cost figures."
+  },
+  {
+   "type": "video",
+   "mode": "embedded",
+   "eyebrow": "Reproduction",
+   "title": "The bug in the real drawer",
+   "rrweb": "assets/slidey-128-bugfix/before.rrweb.json",
+   "chapters": "auto",
+   "caption": "Each long reasoning / result title runs straight off the right edge, over the in/out token counts and cost.",
+   "narration": "Here it is in the real UI — long titles spill straight past their card.",
+   "hold": 210
+  },
+  {
+   "type": "code",
+   "variant": "source",
+   "title": "AgentActionRow.vue · .aar__title (pre-fix)",
+   "lang": "css",
+   "code": ".aar__title {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}",
+   "highlight": [
+    3
+   ],
+   "annotations": [
+    {
+     "line": 1,
+     "text": "A flex child — its implicit minimum is its content width"
+    },
+    {
+     "line": 3,
+     "text": "So a long title can't shrink and this never engages → it overflows"
+    }
+   ],
+   "caption": "The classic flexbox trap: text-overflow on a flex child does nothing without min-width: 0.",
+   "narration": "The root cause: the title is a flex child with no minimum width, so the ellipsis never engages.",
+   "hold": 360
+  },
+  {
+   "type": "evidence",
+   "title": "Resolution",
+   "items": [
+    {
+     "label": "Fix",
+     "status": "validated",
+     "detail": "Add min-width: 0 to .aar__title so the flex child can shrink and the ellipsis engages. One line, no markup change.",
+     "refType": "path",
+     "ref": "tools/runstatus/src/components/agent/AgentActionRow.vue"
+    },
+    {
+     "label": "Regression",
+     "status": "validated",
+     "detail": "A capture test asserts the long titles overflow before and fit after.",
+     "refType": "test",
+     "ref": "slidey-128-clipbug-rrweb-capture.spec.ts"
+    }
+   ],
+   "caption": "A one-line fix, locked in by a deterministic geometry test.",
+   "narration": "The fix is one line — min-width zero on the title — committed and covered by a deterministic geometry test."
+  },
+  {
+   "type": "video",
+   "mode": "embedded",
+   "eyebrow": "Verified",
+   "title": "After the fix",
+   "rrweb": "assets/slidey-128-bugfix/after.rrweb.json",
+   "chapters": "auto",
+   "caption": "Every title truncates inside its card and the token / cost cluster sits where it belongs.",
+   "narration": "After the fix, every title truncates inside its card and the columns line up again.",
+   "hold": 210
+  }
+ ]
+}

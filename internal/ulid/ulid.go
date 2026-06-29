@@ -58,6 +58,12 @@ const (
 	randLo16Chars = 3
 )
 
+// readRandom is the randomness source [New] draws from. It is a package
+// variable (defaulting to [crypto/rand.Read]) purely so tests can substitute a
+// failing reader to exercise the panic path; production code never reassigns
+// it.
+var readRandom = rand.Read
+
 // mu serialises [New] so that two goroutines never race on the encode buffer
 // reasoning below; randomness alone already makes collisions improbable, so
 // the lock exists purely to keep New a clean, allocation-light hot path that
@@ -83,7 +89,7 @@ func New() string {
 
 	// Random half: RandomnessBytes of cryptographic randomness.
 	var random [RandomnessBytes]byte
-	if _, err := rand.Read(random[:]); err != nil {
+	if _, err := readRandom(random[:]); err != nil {
 		panic(fmt.Sprintf("ulid: rand.Read: %v", err))
 	}
 

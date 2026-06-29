@@ -1,0 +1,138 @@
+# init_llm_profile_draft -- LLM profile drafting is explicit and gated:
+# deterministic discovery runs first, the LLM emits a project-profile/v1
+# candidate, host.run validates schema + semantics, and only the validated
+# profile JSON is passed to apply. No real LLM runs in this fixture.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/tmp/kitsoki-init-fixtures/acme-rust"
+  repo_root: "/tmp/kitsoki-init-fixtures/acme-rust"
+
+host_handlers:
+  host.run:
+    by_call:
+      discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target_path":"/tmp/kitsoki-init-fixtures/acme-rust","project_id":"acme-rust","project_title":"Acme Rust","stack":"rust project","dev_command":"make dev","test_command":"make test","build_command":"make build","conventions":"hybrid","tracker":"none"}'
+          stdout_json:
+            target_path: "/tmp/kitsoki-init-fixtures/acme-rust"
+            project_id: "acme-rust"
+            project_title: "Acme Rust"
+            stack: "rust project"
+            dev_command: "make dev"
+            test_command: "make test"
+            build_command: "make build"
+            conventions: "hybrid"
+            tracker: "none"
+      validate_profile:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"ok":true,"profile_json":"{\"commands\":{\"build\":\"make build\",\"dev\":\"make dev\",\"test\":\"make test\"},\"id\":\"acme-rust\",\"kitsoki\":{\"instance\":{\"bindings\":{\"ci\":\"host.local\",\"ticket\":\"host.local_files.ticket\",\"transport\":\"host.append_to_file\",\"vcs\":\"host.git\",\"workspace\":\"host.git_worktree\"},\"id\":\"acme-rust-dev\",\"path\":\".kitsoki/stories/acme-rust-dev/app.yaml\"},\"story\":\"dev-story\"},\"repo\":{\"root\":\".\",\"vcs\":\"git\"},\"schema\":\"project-profile/v1\",\"stack\":{\"kind\":\"rust\",\"languages\":[\"rust\"]},\"title\":\"Acme Rust\"}","schema":[],"semantic":[],"warnings":[]}'
+          stdout_json:
+            ok: true
+            profile_json: '{"commands":{"build":"make build","dev":"make dev","test":"make test"},"id":"acme-rust","kitsoki":{"instance":{"bindings":{"ci":"host.local","ticket":"host.local_files.ticket","transport":"host.append_to_file","vcs":"host.git","workspace":"host.git_worktree"},"id":"acme-rust-dev","path":".kitsoki/stories/acme-rust-dev/app.yaml"},"story":"dev-story"},"repo":{"root":".","vcs":"git"},"schema":"project-profile/v1","stack":{"kind":"rust","languages":["rust"]},"title":"Acme Rust"}'
+            schema: []
+            semantic: []
+            warnings: []
+      apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"status":"applied","config_path":"/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml","profile_path":"/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml","instance_path":"/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml","gitignore_path":"/tmp/kitsoki-init-fixtures/acme-rust/.gitignore","writes":["/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml","/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml","/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml","/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/README.md"]}'
+          stdout_json:
+            status: "applied"
+            config_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+            profile_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+            instance_path: "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml"
+            gitignore_path: "/tmp/kitsoki-init-fixtures/acme-rust/.gitignore"
+            writes:
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/project-profile.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/app.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-rust/.kitsoki/stories/acme-rust-dev/README.md"
+      install_tools:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target":"/tmp/kitsoki-init-fixtures/acme-rust","skills":["kitsoki-story-authoring"],"agents":["kitsoki-mcp-driver.md"],"mcp_path":"/tmp/kitsoki-init-fixtures/acme-rust/.mcp.json","mcp_written":true}'
+          stdout_json:
+            target: "/tmp/kitsoki-init-fixtures/acme-rust"
+            skills: ["kitsoki-story-authoring"]
+            agents: ["kitsoki-mcp-driver.md"]
+            mcp_path: "/tmp/kitsoki-init-fixtures/acme-rust/.mcp.json"
+            mcp_written: true
+  host.agent.decide:
+    by_call:
+      draft_profile:
+        data:
+          ok: true
+          submitted:
+            schema: project-profile/v1
+            id: acme-rust
+            title: Acme Rust
+            repo: { root: ".", vcs: git }
+            stack: { kind: rust, languages: [rust] }
+            commands: { dev: "make dev", test: "make test", build: "make build" }
+            kitsoki:
+              story: dev-story
+              instance:
+                id: acme-rust-dev
+                path: .kitsoki/stories/acme-rust-dev/app.yaml
+                bindings:
+                  ticket: host.local_files.ticket
+                  vcs: host.git
+                  ci: host.local
+                  workspace: host.git_worktree
+                  transport: host.append_to_file
+
+turns:
+  - intent: { name: work, slots: { request: "onboard ~/code/acme-rust" } }
+    expect_state: init_discover
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+
+  - intent: { name: draft_profile, slots: {} }
+    expect_state: init_profile_draft
+    expect_host_calls:
+      - handler: host.agent.decide
+        args: { call: draft_profile }
+        times: 1
+    expect_world:
+      init_profile_mode: "llm-draft"
+    expect_view_matches: "validate"
+
+  - intent: { name: profile_drafted, slots: {} }
+    expect_state: init_profile_validate
+    expect_host_calls:
+      - handler: host.run
+        args: { call: validate_profile }
+        times: 1
+    expect_world:
+      init_profile_json: '{"commands":{"build":"make build","dev":"make dev","test":"make test"},"id":"acme-rust","kitsoki":{"instance":{"bindings":{"ci":"host.local","ticket":"host.local_files.ticket","transport":"host.append_to_file","vcs":"host.git","workspace":"host.git_worktree"},"id":"acme-rust-dev","path":".kitsoki/stories/acme-rust-dev/app.yaml"},"story":"dev-story"},"repo":{"root":".","vcs":"git"},"schema":"project-profile/v1","stack":{"kind":"rust","languages":["rust"]},"title":"Acme Rust"}'
+
+  - intent: { name: profile_validated, slots: {} }
+    expect_state: init
+    expect_world:
+      init_profile_mode: "llm-validated"
+      init_profile_status: "draft"
+    expect_view_matches: "Profile Validation"
+
+  - intent: { name: confirm_init, slots: {} }
+    expect_state: init_apply
+    expect_host_calls:
+      - handler: host.run
+        args: { call: apply }
+        times: 1
+      - handler: host.run
+        args: { call: install_tools }
+        times: 1
+    expect_world:
+      init_tools_ok: true
+
+expect_no_errors: true

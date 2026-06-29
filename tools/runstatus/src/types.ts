@@ -200,6 +200,12 @@ export interface ViewElement {
   MediaCaption?: string;
   /** Engine wire field for the artifact kind (video/image/pdf/html/slideshow). */
   MediaKind?: string;
+  /** When set, the Annotate affordance dispatches THIS intent (composed
+   *  instruction + picked anchor) instead of a generic off-path note. */
+  AnnotateIntent?: string;
+  /** Slot the composed instruction is written to on AnnotateIntent (default
+   *  "feedback"). */
+  AnnotateFeedbackSlot?: string;
   Items?: ListItem[] | null;
   Pairs?: KVPair[] | null;
   Marker?: string;

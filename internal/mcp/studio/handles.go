@@ -317,6 +317,8 @@ type OpenDrivingSessionParams struct {
 	Mode HarnessMode
 	// RecordingPath is the replay recording for a replay-mode handle.
 	RecordingPath string
+	// HostCassette stubs host.* calls for this driving runtime.
+	HostCassette string
 	// StoryPath is the story directory / app.yaml the session drives. Required.
 	StoryPath string
 	// TracePath is the JSONL trace the runtime writes through. Required.
@@ -401,7 +403,7 @@ func (ss *StudioSession) OpenDrivingSession(ctx context.Context, p OpenDrivingSe
 
 	// newSessionRuntime takes ownership of h: on a returned error h is already
 	// closed; on success rt.Close tears it down.
-	rt, err := newSessionRuntime(ctx, p.StoryPath, p.TracePath, h, ss.harnessProfiles, selectedProfile, p.InitialWorld, p.ImportResolver, ss.chatStore, ss.configureHosts)
+	rt, err := newSessionRuntime(ctx, p.StoryPath, p.TracePath, h, ss.harnessProfiles, selectedProfile, p.InitialWorld, p.HostCassette, p.ImportResolver, ss.chatStore, ss.configureHosts)
 	if err != nil {
 		// h was already closed inside newSessionRuntime on error.
 		return nil, err
@@ -450,6 +452,7 @@ func (ss *StudioSession) CloseSession(key string) error {
 	// orchestrator, trace sink, and harness together. Only close the harness
 	// directly for a metadata-only handle (no runtime), to avoid a double-close.
 	if sh.Runtime != nil {
+		sh.Runtime.releaseWorktreeOwners()
 		sh.Runtime.Close()
 	} else if sh.Harness != nil {
 		_ = sh.Harness.Close()

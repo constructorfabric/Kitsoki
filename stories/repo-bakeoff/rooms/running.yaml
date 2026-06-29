@@ -1,0 +1,90 @@
+# running — ORCHESTRATION STUB (thin; delegates to the harness). The cost-bearing
+# per-cell drive is the ONLY piece that spends money and is run MANUALLY, never in
+# CI/auto (AGENTS.md no-LLM rule). Each cell is:
+#
+#   tools/bugfix-bakeoff/external/drive_cell.sh \
+#       --project <project> --bug <bug> --candidate <candidate> --score
+#
+# which prepares the baseline worktree, drives the kitsoki bugfix pipeline LIVE
+# under the candidate's harness profile (the worker model), grades the fix against
+# the hidden oracle, and writes .artifacts/external-bakeoff/results/cells/
+# <project>-<bug>-<candidate>-kitsoki.json by default.
+#
+# This room TRACKS the roster + progress; on accept it advances to scoring, where
+# the harness's FREE bench.py summarize rolls up whatever cells the manual run
+# produced. It does NOT fabricate cell results.
+states:
+  running:
+    description: "Tracking the cell roster (cost-bearing cells run manually via drive_cell.sh)."
+    relevant_world: [project, repo_dir, bugs, candidates, cells, cells_total, cells_ran, harness_dir, results_dir, handoffs_ready, handoff_audit_markdown, cell_commands_markdown]
+    view:
+      - heading: "Bake-off · running (cell roster)"
+      - kv:
+          pairs:
+            Total:   "{{ world.cells_total }}"
+            Ran:     "{{ world.cells_ran }}"
+            Harness: "{{ world.harness_dir }}"
+            Results: "{{ world.results_dir }}"
+            Handoffs: '{% if world.handoffs_ready %}audited{% else %}not ready{% endif %}'
+            Handoff audit: "{{ world.handoff_audit_markdown }}"
+      - prose: "Each cell is run manually after the no-drive handoff audit passes; these are the exact cost-bearing commands for the selected matrix:\n{{ world.cell_commands_markdown|default:\"(commands pending)\" }}\nAccept once the cell verdicts are written to the results directory."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "advance to scoring (summarize the cell verdicts)"
+              intent: accept
+            - label:  "quit"
+              hint:   "abandon"
+              intent: quit
+    on_enter:
+      - when: "world.repo_dir == ''"
+        invoke: host.run
+        id: drive_plan
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "drive-plan"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+          cwd: "{{ world.harness_dir }}"
+        bind:
+          cell_commands_markdown: stdout_json.markdown
+        on_error: .
+      - when: "world.repo_dir != ''"
+        invoke: host.run
+        id: drive_plan_local
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "drive-plan"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+            - "--repo-dir"
+            - "{{ world.repo_dir }}"
+          cwd: "{{ world.harness_dir }}"
+        bind:
+          cell_commands_markdown: stdout_json.markdown
+        on_error: .
+      - set:
+          cells_ran: "{{ len(world.cells.items) }}"
+    on:
+      accept:
+        - target: scoring
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

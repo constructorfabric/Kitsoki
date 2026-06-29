@@ -1,0 +1,68 @@
+states:
+
+  human_review_report:
+    description: "Report an autonomous handoff to human review, then return to the workbench."
+    relevant_world: [ticket_id, ticket_title, status, human_review_reason, pr_id, last_pr_url, judge_mode, human_review_issue_comment_id, human_review_pr_comment_ok]
+    view:
+      - banner:
+          text:     "HUMAN REVIEW"
+          subtitle: "autonomous run stopped and reported"
+          color:    "#F59E0B"
+      - kv:
+          pairs:
+            Ticket: "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Status: "{{ world.status }}"
+            PR: '{% if world.pr_id %}{{ world.pr_id }}{% elif world.last_pr_url %}{{ world.last_pr_url }}{% else %}(none yet){% endif %}'
+            "Issue comment": '{{ world.human_review_issue_comment_id|default:"(not posted)" }}'
+            "PR comment": '{% if world.human_review_pr_comment_ok %}posted{% else %}(not posted){% endif %}'
+      - heading: "Reason"
+      - code: '{{ world.human_review_reason|default:world.last_error|default:"Autonomous run stopped before PR-ready completion." }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "continue"
+              hint:   "return to the workbench"
+              intent: continue
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    on_enter:
+      # Only autonomous modes post externally. A human-mode quit already IS the
+      # operator's decision and should not create surprise issue noise.
+      - when: "world.judge_mode != 'human' && world.ticket_id != ''"
+        invoke: iface.ticket.comment
+        once: true
+        with:
+          id: "{{ world.ticket_id }}"
+          thread: "{{ world.thread }}"
+          body: |
+            Kitsoki autonomous bugfix stopped for human review.
+
+            Status: {{ world.status }}
+            {{ world.last_pr_url != '' ? 'PR: ' + world.last_pr_url : '' }}
+
+            {{ world.human_review_reason != '' ? world.human_review_reason : (world.last_error != '' ? world.last_error : 'No additional reason was recorded.') }}
+        bind:
+          human_review_issue_comment_id: comment_id
+        on_error: landing
+
+      - when: "world.judge_mode != 'human' && world.pr_id != '' && world.human_review_pr_comment_ok == false"
+        invoke: iface.vcs.pr_comment
+        with:
+          pr_id: "{{ world.pr_id }}"
+          body: |
+            Kitsoki autonomous PR refinement stopped for human review.
+
+            Ticket: {{ world.ticket_id }} — {{ world.ticket_title }}
+            Status: {{ world.status }}
+
+            {{ world.human_review_reason != '' ? world.human_review_reason : (world.last_error != '' ? world.last_error : 'No additional reason was recorded.') }}
+        bind:
+          human_review_pr_comment_ok: ok
+        on_error: landing
+    on:
+      continue:
+        - target: landing
+      look:
+        - target: .

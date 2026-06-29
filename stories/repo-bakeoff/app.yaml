@@ -1,0 +1,146 @@
+# repo-bakeoff — generate AND execute an EXTERNAL-repo bug-fix bake-off as a
+# drivable kitsoki workflow, ending in a baked static-HTML slidey report.
+#
+# Sibling of stories/task-bakeoff (which wraps the INTERNAL matrix harness
+# tools/bugfix-bakeoff). This one wraps the REPO-AGNOSTIC harness
+# tools/bugfix-bakeoff/external (bench.py + drive_cell.sh) + the
+# `external-repo-bakeoff` skill — the "should I use kitsoki for my project?"
+# study: onboard a real third-party repo, fix real filed-issue bugs through the
+# bugfix pipeline, grade each fix against the PR's own hidden oracle, deck it.
+#
+# Workflow:
+#   idle → configure → prepare → running → scoring → reporting → slideshow → done
+#
+#   configure  deterministic: pick the project (projects/<name>/manifest.yaml) +
+#              the candidate models; compute the cell roster (bug × candidate).
+#   prepare    DETERMINISTIC + FREE + REAL: host.run → `bench.py preflight` checks
+#              repo/candidate readiness, then `bench.py verify` arms every hidden
+#              oracle (RED@baseline / GREEN@real-fix), then prepare and audit
+#              no-drive cell handoffs — proves the bake-off is valid BEFORE any
+#              LLM is spent. (Onboarding the repo is the embedded dev-story;
+#              surfaced here as the human pre-step.)
+#   running    ORCHESTRATION STUB. The cost-bearing per-cell drive
+#              (external/drive_cell.sh --candidate <m> --score) is run MANUALLY,
+#              never in CI/auto (AGENTS.md no-LLM rule). Tracks the roster.
+#   scoring    deterministic: run `bench.py completion` for an explicit evidence
+#              verdict, then read the per-cell verdicts the harness wrote
+#              (results/cells/*.json) into a summary. host.run, free.
+#   reporting  deterministic: present the generated markdown report + slidey
+#              deck spec from the summary.
+#   slideshow  deterministic: host.slidey.render → static-HTML deck + sidecar to
+#              host.artifacts_dir (EXACTLY slidey-edit's rendering room).
+#   done       gallery: the rendered report deck + the headline rollup.
+#
+# Honesty note (stories/AGENTS.md): `running` is a thin stub — the cost-bearing
+# cell execution lives in the harness scripts, run by hand; this story does NOT
+# fake cell results. `prepare`/`scoring`/`reporting`/`slideshow` are the FREE
+# deterministic pieces, run end-to-end.
+
+app:
+  id: repo-bakeoff
+  version: 0.1.0
+  title: "External-repo bug-fix bake-off — onboard, fix, grade, deck"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run                # bench.py verify / scoring; (manual) drive_cell.sh
+  - host.slidey.render      # baked static-HTML report
+  - host.artifacts_dir
+
+world:
+  # ── Harness wiring (the repo-agnostic external harness) ──────────────────────
+  harness_dir:   { type: string, default: "tools/bugfix-bakeoff/external" }
+  project:       { type: string, default: "query-string" }   # projects/<name>/manifest.yaml
+  repo:          { type: string, default: "" }               # echoed from the manifest
+  repo_dir:      { type: string, default: "" }               # local checkout for private/local_only projects
+  results_dir:   { type: string, default: "../../../.artifacts/external-bakeoff/results" } # relative to harness_dir
+  report_dir:    { type: string, default: "../../../.artifacts/external-bakeoff/report" }  # relative to harness_dir
+  generated_at:  { type: string, default: "1970-01-01T00:00:00Z" }
+
+  # ── The matrix (two axes) ────────────────────────────────────────────────────
+  # bugs × candidates. bugs come from the project manifest; candidates from
+  # external/candidates.yaml (the model/profile axis). A cell = (bug × candidate).
+  bugs:        { type: list, default: [] }   # e.g. [qs1, qs2, qs3]
+  candidates:  { type: list, default: [] }   # e.g. [gpt-5.5, glm-5.2]
+  cells:       { type: object, default: { items: [] } }   # {key, bug, candidate, status, quality}
+  cells_total: { type: int,    default: 0 }
+  cells_ran:   { type: int,    default: 0 }
+  cell_commands_markdown: { type: string, default: "" } # exact drive_cell.sh commands for selected matrix
+
+  # ── Prepare (arm oracles — the free deterministic proof) ─────────────────────
+  preflight_ready: { type: bool,   default: false } # bench.py preflight exit 0
+  preflight_log:   { type: string, default: "" }
+  oracles_armed: { type: bool,   default: false }   # bench.py verify exit 0
+  verify_log:    { type: string, default: "" }
+  handoffs_ready: { type: bool,   default: false }   # prepare_handoffs.sh/audit-handoffs exit 0
+  handoff_audit:  { type: object, default: {} }
+  handoff_audit_markdown: { type: string, default: "../../../.artifacts/external-bakeoff/readiness/repo-bakeoff-handoffs.md" }
+
+  # ── Scoring outputs ──────────────────────────────────────────────────────────
+  summary:      { type: object, default: {} }
+  summary_path: { type: string, default: "" }
+  completion:   { type: object, default: {} }
+  completion_done: { type: bool,   default: false }
+  completion_repairable: { type: bool, default: false }
+  completion_requires_drive: { type: bool, default: false }
+  completion_diagnostics: { type: string, default: "" }
+  completion_status: { type: string, default: "" }
+  completion_markdown: { type: string, default: "" }
+  completion_repair_log: { type: string, default: "" }
+  completion_state_thread: { type: string, default: "repo-bakeoff-completion.json" }
+  completion_state_path: { type: string, default: "" }
+
+  # ── Report / deck ────────────────────────────────────────────────────────────
+  deck:           { type: object, default: { spec_path: "stories/repo-bakeoff/baked/deck.json", summary: "External-repo bake-off report." } }
+  report_markdown: { type: string, default: "" }
+  deck_handle:     { type: string, default: "" }
+  semantic_handle: { type: string, default: "" }
+  deck_path:       { type: string, default: "" }
+  semantic_path:   { type: string, default: "" }
+
+  abandon_reason: { type: string, default: "" }
+  last_error:     { type: string, default: "" }
+
+intents:
+  start:
+    description: "Boot the bake-off from idle: echo the project + matrix and advance to configure."
+    examples: ["start", "begin", "run the bake-off", "kick off"]
+    priority: 90
+  accept:
+    description: "Accept the current room's output and advance to the next phase."
+    examples: ["accept", "continue", "proceed", "next", "lgtm", "ok"]
+    priority: 85
+  quit:
+    description: "Abandon the bake-off."
+    examples: ["quit", "abort", "bail"]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "refresh", "?"]
+    priority: 10
+  # ── deterministic, emit-only transitions (scoring ⇄ repair) ────────────────
+  # These are emitted by effects (emit_intent), never typed by an operator, so
+  # they carry no examples and the lowest priority — same shape as the internal
+  # drivers in stories/dogfood-marathon.
+  repair:
+    description: "(internal) completion is repairable without paid drives — run the free deterministic repair loop."
+    priority: 1
+  run_more:
+    description: "(internal) completion still needs manual cell drives — route back to running before rechecking."
+    priority: 1
+  repaired:
+    description: "(internal) the deterministic repair loop finished — recheck completion."
+    priority: 1
+
+exits:
+  done:
+    description: "The bake-off produced a rendered slidey report deck."
+    requires: [deck_handle]
+  abandoned:
+    description: "Operator bailed before a report was produced."
+
+root: idle
+
+include:
+  - rooms/*.yaml

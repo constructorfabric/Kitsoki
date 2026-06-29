@@ -85,6 +85,116 @@ func TestLoadRoot_Rung1_Overrides(t *testing.T) {
 	}
 }
 
+func TestLoadRoot_ProjectProfile(t *testing.T) {
+	root := repoRootFromCWD(t)
+	dir, err := os.MkdirTemp(root, "wc-profile-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".kitsoki"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, ".kitsoki.yaml")
+	if err := os.WriteFile(path, []byte("story_dirs: [./stories]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	profile := `schema: project-profile/v1
+repo:
+  root: "."
+commands:
+  build: "make build"
+  test: "make test"
+kitsoki:
+  instance:
+    bindings:
+      ticket: host.local_files.ticket
+      vcs: host.git
+      ci: host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+  judge_mode: human
+dev_story_profile:
+  docs:
+    publish_durable_path: docs/prd
+    prd_doc_filename: PRD
+    design_template_dir: docs/spec-templates
+    design_durable_path: docs/designs
+    design_doc_filename: DESIGN
+    design_ticket_dir: ""
+    ticket_repo: constructorfabric/Kitsoki
+  bugfix:
+    build_cmd: "make ci-build"
+`
+	if err := os.WriteFile(filepath.Join(dir, ".kitsoki", "project-profile.yaml"), []byte(profile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load profile root: %v", err)
+	}
+	spec := cfg.Root.RootSpec()
+	if spec.Bindings["workspace"] != "host.git_worktree" {
+		t.Fatalf("profile bindings not carried into RootSpec: %+v", spec.Bindings)
+	}
+	if spec.World["build_cmd"] != "make ci-build" {
+		t.Fatalf("profile bugfix build_cmd should win over commands.build: %+v", spec.World)
+	}
+	if spec.World["test_cmd"] != "make test" {
+		t.Fatalf("commands.test should seed test_cmd: %+v", spec.World)
+	}
+	if spec.World["design_doc_filename"] != "DESIGN" {
+		t.Fatalf("docs profile not carried into RootSpec: %+v", spec.World)
+	}
+	if spec.World["ticket_repo"] != "constructorfabric/Kitsoki" {
+		t.Fatalf("profile ticket_repo not carried into RootSpec: %+v", spec.World)
+	}
+}
+
+func TestLoadRoot_ProjectProfileExplicitRootWins(t *testing.T) {
+	root := repoRootFromCWD(t)
+	dir, err := os.MkdirTemp(root, "wc-profile-override-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".kitsoki"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, ".kitsoki.yaml")
+	cfgYAML := `story_dirs: [./stories]
+root:
+  overrides:
+    world:
+      test_cmd: "custom test"
+      design_ticket_dir: "issues/features"
+`
+	if err := os.WriteFile(path, []byte(cfgYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	profile := `schema: project-profile/v1
+commands:
+  test: "make test"
+dev_story_profile:
+  docs:
+    design_ticket_dir: ""
+`
+	if err := os.WriteFile(filepath.Join(dir, ".kitsoki", "project-profile.yaml"), []byte(profile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load profile root override: %v", err)
+	}
+	spec := cfg.Root.RootSpec()
+	if spec.World["test_cmd"] != "custom test" {
+		t.Fatalf("explicit root override should win over profile test_cmd: %+v", spec.World)
+	}
+	if spec.World["design_ticket_dir"] != "issues/features" {
+		t.Fatalf("explicit root override should win over profile docs: %+v", spec.World)
+	}
+}
+
 func TestLoadRoot_FailFast(t *testing.T) {
 	root := repoRootFromCWD(t)
 
@@ -95,7 +205,7 @@ func TestLoadRoot_FailFast(t *testing.T) {
 	}{
 		{
 			name:   "unknown import",
-			yaml:   "root:\n  import: gears-rust\n",
+			yaml:   "root:\n  import: example-app\n",
 			errSub: "not a known base story",
 		},
 		{

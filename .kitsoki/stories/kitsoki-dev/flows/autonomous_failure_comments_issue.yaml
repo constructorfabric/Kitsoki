@@ -1,0 +1,63 @@
+# autonomous_failure_comments_issue — when an autonomous bugfix run exhausts a
+# checkpoint budget, dev-story reports the handoff on the GitHub issue before
+# returning to the workbench. No real GitHub or LLM calls are made.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.bf.testing
+initial_world:
+  core__ticket_id:      "123"
+  core__ticket_title:   "High quality GitHub issue"
+  core__thread:         "123"
+  core__workdir:        ".worktrees/issue-123"
+  core__workspace_id:   "ws-123"
+  core__base_branch:    "main"
+  core__feature_branch: "fix/issue-123"
+  core__bugfix_mode:    "full"
+  core__judge_mode:     "llm_then_human"
+  core__judge_confidence_threshold: 0.8
+  core__bf__ticket_id:      "123"
+  core__bf__ticket_title:   "High quality GitHub issue"
+  core__bf__thread:         "123"
+  core__bf__workdir:        ".worktrees/issue-123"
+  core__bf__workspace_id:   "ws-123"
+  core__bf__base_branch:    "main"
+  core__bf__feature_branch: "fix/issue-123"
+  core__bf__bugfix_mode:    "full"
+  core__bf__judge_mode:     "llm_then_human"
+  core__bf__judge_confidence_threshold: 0.8
+  core__bf__testing_cycle:  5
+  core__bf__testing_budget: 5
+  core__bf__implement_review_artifact:
+    summary_title: "Tests need another pass"
+    summary_markdown: "The generated regression test is still incomplete."
+    status: "blocked"
+
+host_handlers:
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        verdict: "refine"
+        intent: "refine"
+        reason: "The test artifact is incomplete; a human should inspect the issue."
+        confidence: 0.95
+  host.gh.ticket:
+    data: { ok: true, comment_id: "issue-comment-123" }
+
+turns:
+  - intent: { name: core__bf__refine, slots: { feedback: "needs a human read" } }
+    expect_state: core.human_review_report
+    expect_world:
+      core__status: "abandoned"
+      core__human_review_reason: "testing_cycle_budget_exhausted"
+      core__human_review_issue_comment_id: "issue-comment-123"
+    expect_host_calls:
+      - handler: host.gh.ticket.comment
+        args: { id: "123" }
+        times: 1
+
+  - intent: { name: core__continue, slots: {} }
+    expect_state: core.landing
+
+expect_no_errors: true

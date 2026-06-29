@@ -17,32 +17,25 @@ turns that round-trip into a machine-executable contract with a falsifiable gate
 
 ## The model
 
-```
-  Operator utterance ("migrate the repo issues to github")
-        │  default_intent: work  (deterministic free-text sink — no LLM routing)
-        ▼
-  landing_agent  (host.agent.task, read-only by default)
-        │  submits landing-note { summary, details, plan? }
-        ▼
-  plan card (schema-validated)                ── prose summary shown beside it
-    goal:   "migrate issues/ to GitHub issues"
-    step:   { kind: run, description, mutating: true }
-    verify: { mode: script, script: verify/issues_migrated.star, inputs }
-        │
-        ├── refine ─(free text → work sink re-dispatches planner w/ prior plan)─┐
-        │                                                                        │
-        │   ◀──────────────────── revised plan ──────────────────────────────────┘
-        │
-        └── accept_plan / apply   (freeze accepted_plan)
-                 ▼
-            applying        run the step  (write-mode grant gates the mutation)
-                 │  run_verify
-                 ▼
-            verifying       run the verify gate → bind real verify_ok
-                 │
-                 ├ verify_ok==true  → plan_done   (captured++)
-                 └ verify_ok==false → landing, last_error = reason
-                                      (refine & re-apply, or bail to cherny-loop)
+```mermaid
+flowchart TD
+    utterance["Operator utterance<br/>migrate repo issues to GitHub"]
+    sink["default_intent: work<br/>deterministic free-text sink, no LLM routing"]
+    agent["landing_agent<br/>host.agent.task, read-only by default"]
+    card["Plan card<br/>schema-validated goal, step, verify"]
+    decision{"Operator decision"}
+    refine["refine<br/>free text redispatches planner<br/>with prior plan"]
+    apply["accept_plan / apply<br/>freeze accepted_plan"]
+    applying["applying<br/>run step with write-mode grant"]
+    verifying["verifying<br/>run verify gate, bind verify_ok"]
+    done["plan_done<br/>captured++"]
+    landing["landing<br/>last_error = reason"]
+
+    utterance --> sink --> agent --> card --> decision
+    decision -->|"refine"| refine --> agent
+    decision -->|"accept_plan / apply"| apply --> applying --> verifying
+    verifying -->|"verify_ok == true"| done
+    verifying -->|"verify_ok == false"| landing
 ```
 
 The plan validation, accept/apply routing, the verify-script run (sandboxed, no

@@ -1,0 +1,41 @@
+# configure — DETERMINISTIC (no LLM). Declare the matrix: bugs × candidates.
+# bugs come from the project manifest (projects/<project>/manifest.yaml);
+# candidates from external/candidates.yaml. A cell = (bug × candidate). The axes
+# + explicit cell roster are seeded into world (flow/initial_world or a live
+# roster step); cells_total is the authoritative count.
+states:
+  configure:
+    description: "Declare the bake-off matrix (bugs × candidates) for the project."
+    relevant_world: [project, repo, repo_dir, bugs, candidates, cells_total, completion_state_thread]
+    view:
+      - heading: "Bake-off · configure"
+      - kv:
+          pairs:
+            Project:    '{{ world.project }}'
+            Repo:       '{{ world.repo }}'
+            Local repo: '{{ world.repo_dir|default:"(none)" }}'
+            Bugs:       "{{ world.bugs|join:', ' }}"
+            Candidates: "{{ world.candidates|join:', ' }}"
+            Cells:      "{{ world.cells_total }}"
+      - prose: "A cell = (bug × candidate), one hermetic baseline worktree each. Accept to arm the oracles (free, deterministic) before any LLM is spent."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "advance to prepare (arm the hidden oracles)"
+              intent: accept
+            - label:  "quit"
+              hint:   "abandon"
+              intent: quit
+    on_enter:
+      - set:
+          cells_total: "{{ len(world.bugs) * len(world.candidates) }}"
+          completion_state_thread: "status/repo-bakeoff-completion-{{ world.project }}.json"
+    on:
+      accept:
+        - target: prepare
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

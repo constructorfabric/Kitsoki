@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kitsoki Media"
+  short_description: "Organize and validate Kitsoki demo media"
+  default_prompt: "Use $kitsoki-media to review Kitsoki demo videos, site media, or Slidey deck clips."

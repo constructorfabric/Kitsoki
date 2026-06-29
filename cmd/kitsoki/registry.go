@@ -727,6 +727,13 @@ func (r *SessionRegistry) storyHeadersLocked() []server.StoryHeader {
 	// Index live session ids by the story they run.
 	byStory := map[string][]string{}
 	for id, e := range r.sessions {
+		snap, err := e.source.Snapshot()
+		if err != nil {
+			continue
+		}
+		if snap.Session.Terminal {
+			continue
+		}
 		byStory[e.StoryPath] = append(byStory[e.StoryPath], id)
 	}
 	out := make([]server.StoryHeader, 0, len(r.stories))

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "drive_result",
+  "description": "The inner-pipeline drive output for one case — REPORTED, not self-graded. The verifying room's independent oracle decides the outcome.",
+  "type": "object",
+  "required": ["exit", "deliverable_present"],
+  "properties": {
+    "exit":                { "type": "string", "description": "The inner pipeline's terminal exit (shipped | needs-human | not-reproducible | abandoned)." },
+    "worktree":            { "type": "string", "description": "The fresh per-case worktree path." },
+    "branch":              { "type": "string", "description": "The feature branch." },
+    "deliverable_present": { "type": "boolean", "description": "Are the fix files + key edit actually on the worktree? (false is honest when the maker produced nothing.)" },
+    "oracle_pass":         { "type": "boolean", "description": "Optional: did the operator's oracle pass? The verify room re-checks regardless." },
+    "trace":               { "type": "string", "description": "Path to the drive's trace (cost/token evidence)." },
+    "cost_usd":            { "type": "number", "description": "Summed trace cost (USD)." },
+    "tokens":              { "type": "number", "description": "Total tokens (primary axis)." },
+    "wall_s":              { "type": "number", "description": "Wall-clock seconds." },
+    "findings":            { "type": "array", "items": { "type": "object" }, "description": "Friction captured during the drive." }
+  },
+  "additionalProperties": true
+}

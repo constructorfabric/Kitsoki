@@ -1,0 +1,180 @@
+# gears_full_matrix_commands — the gears-rust full armable corpus reaches running.
+#
+# The real cargo RED/GREEN proof for bug1/bug4/bug5/bug9 is covered by
+# `GEARS_RUST_REPO=... make gears-history-full-smoke`. This fixture locks the
+# repo-bakeoff story wrapper: selected bugs are passed through preflight/verify,
+# no-drive handoffs are audited, all four live drive commands are rendered, and
+# the operator lands in `running` with the full matrix visible.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  project: gears-rust
+  repo_dir: /Users/brad/code/gears-rust
+  results_dir: ../../../.artifacts/external-bakeoff/results
+  bugs: [bug1, bug4, bug5, bug9]
+  candidates: [opus-4.8]
+
+host_handlers:
+  host.run:
+    by_call:
+      preflight_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: |
+            {
+              "ok": true,
+              "project": "gears-rust",
+              "local_only": true,
+              "repo_dir": "/Users/brad/code/gears-rust",
+              "bugs": ["bug1", "bug4", "bug5", "bug9"],
+              "reference_only": [],
+              "errors": [],
+              "warnings": []
+            }
+      verify_oracles_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: |
+            OK  bug1: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+            OK  bug4: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+            OK  bug5: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+            OK  bug9: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+      prepare_handoffs_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ok: true
+            project: gears-rust
+            selected_cells: 4
+            prepared_cells: 4
+            stale_prepared_cells: 0
+            missing_prepared_cells: 0
+            markdown: ../../../.artifacts/external-bakeoff/readiness/repo-bakeoff-handoffs.md
+            audits:
+              - project: gears-rust
+                bug: bug1
+                candidate: opus-4.8
+                ok: true
+                errors: []
+                warnings: []
+              - project: gears-rust
+                bug: bug4
+                candidate: opus-4.8
+                ok: true
+                errors: []
+                warnings: []
+              - project: gears-rust
+                bug: bug5
+                candidate: opus-4.8
+                ok: true
+                errors: []
+                warnings: []
+              - project: gears-rust
+                bug: bug9
+                candidate: opus-4.8
+                ok: true
+                errors: []
+                warnings: []
+      drive_plan_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ok: true
+            project: gears-rust
+            repo_dir: /Users/brad/code/gears-rust
+            bugs: [bug1, bug4, bug5, bug9]
+            candidates: [opus-4.8]
+            markdown: |
+              - `bug1` x `opus-4.8`: `tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug1 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score`
+              - `bug4` x `opus-4.8`: `tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug4 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score`
+              - `bug5` x `opus-4.8`: `tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug5 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score`
+              - `bug9` x `opus-4.8`: `tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug9 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score`
+            commands:
+              - bug: bug1
+                candidate: opus-4.8
+                command: "tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug1 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score"
+              - bug: bug4
+                candidate: opus-4.8
+                command: "tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug4 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score"
+              - bug: bug5
+                candidate: opus-4.8
+                command: "tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug5 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score"
+              - bug: bug9
+                candidate: opus-4.8
+                command: "tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug9 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score"
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: configure
+    expect_world:
+      cells_total: 4
+
+  - intent: { name: accept, slots: {} }
+    expect_state: prepare
+    expect_world:
+      preflight_log: |
+        {
+          "ok": true,
+          "project": "gears-rust",
+          "local_only": true,
+          "repo_dir": "/Users/brad/code/gears-rust",
+          "bugs": ["bug1", "bug4", "bug5", "bug9"],
+          "reference_only": [],
+          "errors": [],
+          "warnings": []
+        }
+      verify_log: |
+        OK  bug1: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+        OK  bug4: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+        OK  bug5: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+        OK  bug9: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+      handoffs_ready: true
+      handoff_audit:
+        ok: true
+        project: gears-rust
+        selected_cells: 4
+        prepared_cells: 4
+        stale_prepared_cells: 0
+        missing_prepared_cells: 0
+        markdown: ../../../.artifacts/external-bakeoff/readiness/repo-bakeoff-handoffs.md
+        audits:
+          - project: gears-rust
+            bug: bug1
+            candidate: opus-4.8
+            ok: true
+            errors: []
+            warnings: []
+          - project: gears-rust
+            bug: bug4
+            candidate: opus-4.8
+            ok: true
+            errors: []
+            warnings: []
+          - project: gears-rust
+            bug: bug5
+            candidate: opus-4.8
+            ok: true
+            errors: []
+            warnings: []
+          - project: gears-rust
+            bug: bug9
+            candidate: opus-4.8
+            ok: true
+            errors: []
+            warnings: []
+
+  - intent: { name: accept, slots: {} }
+    expect_state: running
+    expect_world:
+      preflight_ready: true
+      oracles_armed: true
+      handoffs_ready: true
+    expect_view_matches: "Handoffs:       audited"
+
+expect_no_errors: true

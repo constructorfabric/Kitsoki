@@ -1,0 +1,108 @@
+# External-project bake-off manifest — "should I use kitsoki for MY project?"
+#
+# Same shape as tools/bugfix-bakeoff/bakeoff.yaml, but the target is a real,
+# mature, third-party OSS repo (not kitsoki itself): sindresorhus/query-string.
+# It is small/simple (a single ~558-LOC parser, base.js) yet mature — 274
+# commits, 90 releases, since 2013 — with a deep filed-issue -> fixing-PR ->
+# regression-test history. That makes it an honest stand-in for "a customer
+# repo": onboard it with the embedded dev-story, then fix 3 real bugs and score
+# each fix DETERMINISTICALLY against the regression test the real PR shipped.
+#
+# Consumed by: score_qs.sh (deterministic grader) and the gated
+# external/query_string_bakeoff_test.go (clone -> onboard -> arm-oracle RED ->
+# real-fix GREEN). The cost-bearing LLM cells reuse the parent harness model
+# (kitsoki bugfix pipeline vs single-prompt) — operator-run, never in CI.
+kind: bugfix_bakeoff_external
+version: 1
+
+project:
+  id: query-string
+  repo: https://github.com/sindresorhus/query-string.git
+  title: "query-string — parse and stringify URL query strings"
+  language: javascript
+  runner: ava                 # full `npm test` is `xo && ava && tsd`; oracle uses ava directly
+  node_min: 18
+  install: npm install        # no lockfile committed
+  maturity: { commits: 274, releases: 90, since: 2013 }
+  # one shared onboarding: dev-story discovers stack=node, test=`npm test`.
+  onboard_app: "@kitsoki/dev-story"
+  # Full test suite — the SECONDARY (informational) regression signal.
+  test_cmd: "npx ava"
+  # Generic oracle-injection contract (consumed by bench.py). The deterministic
+  # grader appends the bug's isolated oracle test into `target`, then runs `run`
+  # ({target}/{match} substituted) — exit 0 ⇒ GREEN (good fix). This is the one
+  # knob a NEW project overrides for its runner (jest/pytest/cargo/go test/…).
+  oracle:
+    target: test/parse.js
+    run: 'npx ava {target} --match "{match}"'
+
+# Each bug runs from a hermetic baseline = the fixing commit's first parent
+# (`fix_sha^`), so the bug is present. oracle_test = the regression test the real
+# PR ADDED, isolated under oracles/<id>.test.js and kept OUT of the candidate's
+# tree until scoring. oracle_match = the `ava --match` glob that runs only it.
+bugs:
+  - id: qs1
+    issue: 336
+    issue_url: https://github.com/sindresorhus/query-string/issues/336
+    pr: null                  # fixed directly by maintainer; "Fixes #336" in the commit
+    title: "Encoded separator (%7C) splits a single value into an array"
+    fix_sha: ec67feafcef38759e5ec76f7bc69aa835bc05b9c
+    baseline_sha: 2e1f45aafb71ef247572b10d9d37dce67cd825ac
+    fix_source: base.js
+    oracle_test: oracles/qs1.test.js
+    oracle_match: "single value with encoded separator should not be split into array"
+    # the bug as the pipeline sees it — NO leak of the fix or the oracle.
+    ticket: |
+      With `{arrayFormat: 'separator', arrayFormatSeparator: '|'}`, a single
+      value that merely CONTAINS a percent-encoded separator (e.g. `foo=a%7Cb`,
+      where `%7C` is an encoded `|`) is wrongly split into `['a','b']`. The
+      encoded separator is part of the value and must NOT cause array splitting;
+      `foo=a%7Cb` should parse to `{foo: 'a|b'}`. Only an UNencoded literal
+      separator between values should split.
+
+  - id: qs2
+    issue: 404
+    issue_url: https://github.com/sindresorhus/query-string/issues/404
+    pr: 406
+    title: "`types` schema ignored with `arrayFormat: comma` + single-item array"
+    fix_sha: 3e6188231268dca3bb514451839b263a70538e7b
+    baseline_sha: 88e1e36dd3bccf178dfaf54f44293e790d8bbd9d
+    fix_source: base.js
+    oracle_test: oracles/qs2.test.js
+    oracle_match: "*and type: number*"
+    ticket: |
+      With `{arrayFormat: 'comma'}` and a `types` schema, a single-element value
+      is not coerced to the declared array type. `parse('a=1', {arrayFormat:
+      'comma', types: {a: 'number[]'}})` returns `{a: '1'}` (or `{a: 1}`) instead
+      of `{a: [1]}`. A `type: 'number[]'` (or `'string[]'`) must always yield an
+      array even when the comma-format value has exactly one element.
+
+  - id: qs3
+    issue: null               # bug described in the PR itself, no separate issue
+    pr: 392
+    pr_url: https://github.com/sindresorhus/query-string/pull/392
+    title: "`bracket-separator` array mis-parses a single URL-encoded value"
+    fix_sha: 19c43d4e19ed5f362ee22644b0cced6cabb4dda8
+    baseline_sha: 4287e770ed3e6133217a86ac4ed3cee24cde0622
+    fix_source: base.js
+    oracle_test: oracles/qs3.test.js
+    oracle_match: "*bracket-separator* with a URL encoded value*"
+    ticket: |
+      With `{arrayFormat: 'bracket-separator'}`, a single bracket key whose value
+      is URL-encoded and contains the separator is not split. For
+      `foo%5B%5D=a%2Cb%2Cc%2Cd%2Ce%2Cf` (i.e. key `foo[]`, value `a,b,c,d,e,f`),
+      parse returns `{foo: ['a,b,c,d,e,f']}` (a one-element array) instead of
+      `{foo: ['a','b','c','d','e','f']}`. The value must be decoded and split on
+      the separator into the full array.
+
+# The candidate matrix + treatments are inherited from the parent bake-off
+# (tools/bugfix-bakeoff/bakeoff.yaml): kitsoki pipeline vs single-prompt, across
+# the model axis. The deterministic grader (score_qs.sh) is project-specific; the
+# cost/compliance accounting and result schema (results/SCHEMA.md) are shared.
+treatments: [kitsoki, single]
+
+run:
+  story: stories/bugfix/app.yaml
+  worktree_root: .worktrees
+  # the deterministic good/bad detector — see score_qs.sh.
+  scorer: tools/bugfix-bakeoff/external/score_qs.sh

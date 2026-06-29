@@ -22,6 +22,7 @@ import {
 import {
   startSessionCapture,
   snapshotSessionEvents,
+  buildSessionEnvelope,
   __resetSessionCapture,
   type RrwebRecord,
   type RrwebEvent,
@@ -216,5 +217,28 @@ describe("session-capture", () => {
     expect(opts.maskAllText).toBe(true);
     expect(opts.blockSelector).toContain("password");
     expect(typeof opts.emit).toBe("function");
+  });
+
+  it("builds a Slidey-compatible rrweb envelope from the rolling buffer", () => {
+    let emit!: (e: RrwebEvent) => void;
+    startSessionCapture((opts) => {
+      emit = opts.emit;
+      return undefined;
+    });
+
+    emit({ type: 4, timestamp: 100, data: { href: "http://127.0.0.1/#/", width: 1280, height: 720 } });
+    emit({ type: 2, timestamp: 125, data: "snap" });
+    emit({ type: 3, timestamp: 250, data: "mutation" });
+
+    const envelope = buildSessionEnvelope();
+    expect(envelope).toMatchObject({
+      schemaVersion: 1,
+      source: "kitsoki-visual-record",
+      viewport: { width: 1280, height: 720 },
+      startTime: 100,
+      endTime: 250,
+      durationMs: 150,
+    });
+    expect(envelope.events.map((event) => event.type)).toEqual([4, 2, 3]);
   });
 });

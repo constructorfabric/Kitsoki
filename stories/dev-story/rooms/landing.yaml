@@ -184,6 +184,18 @@ states:
             - label:  "bugfix"
               hint:   "drive the picked ticket through the bugfix pipeline"
               intent: go_bugfix
+            - label:  "bugfix → PR"
+              hint:   "fix the picked bug, then open a pull request"
+              intent: bugfix_open_pr
+              when:   "world.ticket_id != ''"
+            - label:  "bugfix → worktree"
+              hint:   "fix the picked bug and leave the worktree for review"
+              intent: bugfix_leave_worktree
+              when:   "world.ticket_id != ''"
+            - label:  "bugfix → local merge"
+              hint:   "fix the picked bug and merge into the local base branch"
+              intent: bugfix_merge_local
+              when:   "world.ticket_id != ''"
             - label:  "implement"
               hint:   "drive the picked task through the implementation pipeline"
               intent: go_implementation
@@ -515,6 +527,57 @@ states:
                   Suggestions:
                   - `tickets` — search and pick a ticket
                   - `workspaces` — resume an in-progress workspace
+      bugfix_open_pr:
+        - when: "world.ticket_id != ''"
+          target: bf
+          effects:
+            - set:
+                bugfix_destination: "open-pr"
+                last_error: ""
+        - default: true
+          target: landing
+          guard_hint: "Pick a ticket first — type tickets."
+          effects:
+            - set:
+                last_error: |
+                  No ticket selected — pick one before entering the bugfix pipeline.
+
+                  Suggestions:
+                  - `tickets` — search and pick a ticket
+      bugfix_leave_worktree:
+        - when: "world.ticket_id != ''"
+          target: bf
+          effects:
+            - set:
+                bugfix_destination: "leave-worktree"
+                last_error: ""
+        - default: true
+          target: landing
+          guard_hint: "Pick a ticket first — type tickets."
+          effects:
+            - set:
+                last_error: |
+                  No ticket selected — pick one before entering the bugfix pipeline.
+
+                  Suggestions:
+                  - `tickets` — search and pick a ticket
+      bugfix_merge_local:
+        - when: "world.ticket_id != ''"
+          target: bf
+          effects:
+            - set:
+                bugfix_destination: "local-merge"
+                last_error: ""
+        - default: true
+          target: landing
+          guard_hint: "Pick a ticket first — type tickets."
+          effects:
+            - set:
+                last_error: |
+                  No ticket selected — pick one before entering the bugfix pipeline.
+
+                  Suggestions:
+                  - `tickets` — search and pick a ticket
       go_implementation:
         - when: "world.ticket_id != ''"
           target: impl

@@ -10,7 +10,7 @@ nondeterministic timestamps in some contexts): pass --generated-at or set
 BAKEOFF_GENERATED_AT.
 
   --emit-agenteval additionally writes results/agenteval/<bug>/latest.json in the
-  agenteval.Report shape so eval_pilot_report.py regenerates the deck offline.
+  agenteval.Report shape so deterministic_deck.py regenerates the deck offline.
   The candidate profile field there is "<candidate>|<treatment>".
 
 Usage:
@@ -26,6 +26,8 @@ import argparse
 import glob
 import json
 import os
+import subprocess
+import sys
 
 import yaml
 
@@ -48,19 +50,26 @@ def _avg(vals):
     return round(sum(vals) / len(vals), 6) if vals else 0.0
 
 
+def _m(c, key):
+    """metrics[key], tolerant of a cell that omits the block (None ⇒ _avg skips)."""
+    return (c.get("metrics") or {}).get(key)
+
+
 def _bucket(cells):
-    """The SCHEMA rollup bucket for a list of cells."""
+    """The SCHEMA rollup bucket for a list of cells. Tolerant of cells from the
+    external grader (bench.py), which may carry None metrics / unmeasured
+    compliance — _avg skips Nones rather than crashing."""
     n = len(cells)
-    solved = sum(1 for c in cells if c["outcome"]["quality"] == "solved")
+    solved = sum(1 for c in cells if (c.get("outcome") or {}).get("quality") == "solved")
     return {
         "n": n,
         "solved": solved,
         "solve_rate": round(solved / n, 6) if n else 0.0,
-        "avg_cost_usd": _avg([c["metrics"]["cost_usd"] for c in cells]),
-        "avg_total_tokens": _avg([c["metrics"]["total_tokens"] for c in cells]),
-        "avg_wall_time_s": _avg([c["metrics"]["wall_time_s"] for c in cells]),
-        "avg_guidance_turns": _avg([c["metrics"]["guidance_turns"] for c in cells]),
-        "avg_compliance": _avg([c["compliance"]["rate"] for c in cells]),
+        "avg_cost_usd": _avg([_m(c, "cost_usd") for c in cells]),
+        "avg_total_tokens": _avg([_m(c, "total_tokens") for c in cells]),
+        "avg_wall_time_s": _avg([_m(c, "wall_time_s") for c in cells]),
+        "avg_guidance_turns": _avg([_m(c, "guidance_turns") for c in cells]),
+        "avg_compliance": _avg([(c.get("compliance") or {}).get("rate") for c in cells]),
     }
 
 
@@ -74,7 +83,7 @@ def _group(cells, keyfn):
 def build_summary(manifest, cells, generated_at):
     return {
         "generated_at": generated_at,
-        "manifest": manifest.get("__path__", "tools/bugfix-bakeoff/bakeoff.yaml"),
+        "manifest": manifest.get("__path__", "tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml"),
         "bugs": [
             {k: b.get(k) for k in
              ("id", "title", "severity", "component", "fix_sha",
@@ -117,7 +126,10 @@ def build_agenteval_reports(manifest, cells, generated_at):
     for bug_id, bug_cells in sorted(by_bug.items()):
         candidates = []
         for c in sorted(bug_cells, key=lambda x: (x["candidate"], x["treatment"])):
-            passed = c["outcome"]["oracle_pass"]
+            # pass tracks the (possibly adjudicated) quality, not the raw oracle:
+            # a behaviorally-correct fix that an wording-coupled oracle false-fails
+            # but a judge adjudicated `solved` should count as a pass here.
+            passed = c["outcome"]["quality"] == "solved"
             candidates.append({
                 "profile": f"{c['candidate']}|{c['treatment']}",
                 "model": c.get("model", ""),
@@ -126,9 +138,9 @@ def build_agenteval_reports(manifest, cells, generated_at):
                 "pass": passed,
                 "schema_valid_rate": 1.0,
                 "comparator_pass_rate": 1.0 if passed else 0.0,
-                "contract_conformance_rate": c["compliance"]["rate"],
-                "avg_cost_usd": c["metrics"]["cost_usd"],
-                "p95_cost_usd": c["metrics"]["cost_usd"],
+                "contract_conformance_rate": (c.get("compliance") or {}).get("rate"),
+                "avg_cost_usd": (c.get("metrics") or {}).get("cost_usd"),
+                "p95_cost_usd": (c.get("metrics") or {}).get("cost_usd"),
                 "examples_run": 1,
             })
         reports[bug_id] = {
@@ -162,18 +174,31 @@ def main(argv=None):
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--manifest", default=os.path.join(here, "bakeoff.yaml"))
+    ap.add_argument("--manifest",
+                    default=os.path.join(here, "external", "projects", "kitsoki", "manifest.yaml"))
+    # The candidate (model/effort) axis lives in the shared external candidates.yaml,
+    # not in each project manifest. Merged into the manifest if it lacks `candidates`.
+    ap.add_argument("--candidates",
+                    default=os.path.join(here, "external", "candidates.yaml"))
     ap.add_argument("--cells-dir", default=os.path.join(here, "results", "cells"))
     ap.add_argument("--out", default=os.path.join(here, "results", "summary.json"))
     ap.add_argument("--generated-at", default="")
     ap.add_argument("--emit-agenteval", action="store_true")
     ap.add_argument("--agenteval-dir",
                     default=os.path.join(here, "results", "agenteval"))
+    ap.add_argument("--deck", default="",
+                    help="optional Slidey JSON report spec to generate offline")
+    ap.add_argument("--markdown", default="",
+                    help="optional Markdown review index to generate with --deck")
     args = ap.parse_args(argv)
 
     generated_at = resolve_generated_at(args.generated_at)
     manifest = load_manifest(args.manifest)
     manifest["__path__"] = os.path.relpath(args.manifest)
+    # External project manifests carry bugs+treatments; the candidate axis is the
+    # shared candidates.yaml. Merge it in so the deck headers resolve either way.
+    if not manifest.get("candidates") and os.path.exists(args.candidates):
+        manifest["candidates"] = load_manifest(args.candidates).get("candidates", [])
     cells = load_cells(args.cells_dir)
 
     summary = build_summary(manifest, cells, generated_at)
@@ -181,7 +206,21 @@ def main(argv=None):
     with open(args.out, "w") as fh:
         json.dump(summary, fh, indent=2)
         fh.write("\n")
-    print(f"wrote {args.out}  cells={len(cells)}")
+    print(f"wrote {args.out}  cells={len(cells)}", file=sys.stderr)
+
+    if args.deck:
+        root = os.path.abspath(os.path.join(here, "..", ".."))
+        builder = os.path.join(root, "tools", "report-deck", "deterministic_deck.py")
+        cmd = [
+            sys.executable,
+            builder,
+            "--kind", "bakeoff-summary",
+            "--input", args.out,
+            "--out", args.deck,
+        ]
+        if args.markdown:
+            cmd += ["--markdown", args.markdown]
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, text=True)
 
     if args.emit_agenteval:
         reports = build_agenteval_reports(manifest, cells, generated_at)
@@ -191,7 +230,16 @@ def main(argv=None):
             with open(dest, "w") as fh:
                 json.dump(report, fh, indent=2)
                 fh.write("\n")
-            print(f"wrote {dest}")
+            print(f"wrote {dest}", file=sys.stderr)
+
+    print(json.dumps({
+        "summary_path": args.out,
+        "generated_at": generated_at,
+        "cells": summary["cells"],
+        "rollup": summary["rollup"],
+        "deck": {"spec_path": args.deck, "summary": "Bugfix bake-off report deck."} if args.deck else {},
+        "markdown": args.markdown,
+    }))
 
 
 if __name__ == "__main__":

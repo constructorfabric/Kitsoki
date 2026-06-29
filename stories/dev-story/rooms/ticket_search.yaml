@@ -73,9 +73,9 @@ states:
       # `priority`, and no host emits it on this branch.
       - heading: 'Tickets{% if world.ticket_query %} (filter: {{ world.ticket_query }}){% endif %}'
       - code: |
-          {% if world.ticket_results|length == 0 %}(none — file one in issues/bugs/)
+          {% if world.ticket_results|default:""|length == 0 %}(none — file one in issues/bugs/)
           {% else %} #     St  Sev  Filed       Title
-          {% for t in world.ticket_results %}{% if t.status %}{{ forloop.Counter|stringformat:"%d"|rcol:2 }}  {% if t.id == world.ticket_id %}★{% else %} {% endif %}  {% if t.status == "resolved" or t.status == "closed" %}●{% elif t.status == "in-progress" or t.status == "in_progress" %}◐{% elif t.status == "open" %}○{% else %}·{% endif %}  {{ t.severity|default:""|col:3 }}  {{ t.id|slice:":10"|col:10 }}  {{ t.title|default:"(untitled)"|truncatechars:52 }}
+          {% for t in world.ticket_results|default:"" %}{% if t.status %}{{ forloop.Counter|stringformat:"%d"|rcol:2 }}  {% if t.id == world.ticket_id %}★{% else %} {% endif %}  {% if t.status == "resolved" or t.status == "closed" %}●{% elif t.status == "in-progress" or t.status == "in_progress" %}◐{% elif t.status == "open" %}○{% else %}·{% endif %}  {{ t.severity|default:""|col:3 }}  {{ t.id|slice:":10"|col:10 }}  {{ t.title|default:"(untitled)"|truncatechars:52 }}
           {% endif %}{% endfor %}{% endif %}
       # Readiness banner — two sibling elements with mutually-exclusive
       # `when:` guards. The ready case is a `heading:` (style-guide §1
@@ -142,6 +142,18 @@ states:
               intent: go_bugfix
               hint:   "force the bugfix pipeline regardless of ticket type"
               when:   "world.ticket_id != '' && world.ticket_type != 'bug'"
+            - label:  "bugfix_to_pr"
+              intent: bugfix_open_pr
+              hint:   "fix the picked bug, then open a pull request"
+              when:   "world.ticket_id != ''"
+            - label:  "bugfix_to_worktree"
+              intent: bugfix_leave_worktree
+              hint:   "fix the picked bug and leave the worktree for review"
+              when:   "world.ticket_id != ''"
+            - label:  "bugfix_to_local_merge"
+              intent: bugfix_merge_local
+              hint:   "fix the picked bug and merge into the local base branch"
+              when:   "world.ticket_id != ''"
             - { label: "go_back", intent: go_back, hint: "return to the previous room" }
             - { label: "go_main", intent: go_main, hint: "back to the engineer's day landing" }
             - { label: "look",    intent: look,    hint: "re-render" }
@@ -276,6 +288,30 @@ states:
         - default: true
           target: ticket_search
           guard_hint: "Pick a ticket first."
+      bugfix_open_pr:
+        - when: "world.ticket_id != ''"
+          target: bf
+          effects:
+            - set: { bugfix_destination: "open-pr" }
+        - default: true
+          target: ticket_search
+          guard_hint: "Pick a ticket first."
+      bugfix_leave_worktree:
+        - when: "world.ticket_id != ''"
+          target: bf
+          effects:
+            - set: { bugfix_destination: "leave-worktree" }
+        - default: true
+          target: ticket_search
+          guard_hint: "Pick a ticket first."
+      bugfix_merge_local:
+        - when: "world.ticket_id != ''"
+          target: bf
+          effects:
+            - set: { bugfix_destination: "local-merge" }
+        - default: true
+          target: ticket_search
+          guard_hint: "Pick a ticket first."
       go_back:
         - target: "{{ world.prev_state }}"
       go_main:
@@ -294,7 +330,11 @@ states:
           pairs:
             "Searching for": "{{ world.ticket_query }}"
       - heading: "Results"
-      - code: '{{ world.ticket_results|default:"(empty)" }}'
+      - code: |
+          {% if world.ticket_results|default:""|length == 0 %}(empty)
+          {% else %} #     St  Sev  Filed       Title
+          {% for t in world.ticket_results|default:"" %}{% if t.status %}{{ forloop.Counter|stringformat:"%d"|rcol:2 }}  {% if t.id == world.ticket_id %}★{% else %} {% endif %}  {% if t.status == "resolved" or t.status == "closed" %}●{% elif t.status == "in-progress" or t.status == "in_progress" %}◐{% elif t.status == "open" %}○{% else %}·{% endif %}  {{ t.severity|default:t.priority|default:""|col:3 }}  {{ t.id|slice:":10"|col:10 }}  {{ t.title|default:"(untitled)"|truncatechars:52 }}
+          {% endif %}{% endfor %}{% endif %}
       - choice:
           mode: single
           prompt: "Actions"

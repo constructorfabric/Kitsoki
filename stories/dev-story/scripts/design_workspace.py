@@ -3,15 +3,14 @@
 return the per-session workspace path.
 
 Usage:
-    python3 design_workspace.py <proposed-slug>
+    python3 design_workspace.py <proposed-slug-or-idea>
 
-The slug itself is named by an agent.decide call (the LLM turns the idea
-into a short kebab-case name — see prompts/design_slug.md); THIS script is
-the deterministic uniqueness check that completes the validation sandwich:
-it ensures the slug collides with neither an accepted proposal
+This script deterministically turns a proposed slug or raw idea into a bounded
+kebab-case slug, then ensures it collides with neither an accepted proposal
 (`docs/proposals/<slug>.md`) nor an in-progress draft
-(`docs/proposals/.workspace/<slug>/`), appending `-2`, `-3`, … until it is
-unique.
+(`docs/proposals/.workspace/<slug>/`), appending `-2`, `-3`, ... until it is
+unique. It does not create the workspace directory; the materialize room calls
+it again behind the overlap gate and performs the actual artifact writes.
 
 stdout: a JSON object {"slug": "...", "workspace": "docs/proposals/.workspace/<slug>"}.
 host.run parses it into `stdout_json` so the intake room binds both
@@ -26,12 +25,65 @@ import sys
 WORKSPACE_ROOT = os.path.join("docs", "proposals", ".workspace")
 PROPOSALS_DIR = os.path.join("docs", "proposals")
 MAX_SLUG_WORDS = 6
+STOPWORDS = {
+    "a",
+    "able",
+    "add",
+    "allow",
+    "an",
+    "and",
+    "be",
+    "called",
+    "claude",
+    "can",
+    "could",
+    "create",
+    "feature",
+    "for",
+    "from",
+    "i",
+    "in",
+    "introduced",
+    "is",
+    "it",
+    "kitsoki",
+    "let",
+    "make",
+    "of",
+    "on",
+    "or",
+    "recently",
+    "should",
+    "that",
+    "the",
+    "this",
+    "to",
+    "user",
+    "where",
+    "with",
+    "would",
+    "writes",
+}
 
 
 def sanitize(text: str) -> str:
     """Defensive: coerce whatever we got into a bounded kebab slug."""
-    slug = re.sub(r"[^a-z0-9]+", "-", text.strip().lower()).strip("-")
-    slug = "-".join(slug.split("-")[:MAX_SLUG_WORDS])
+    raw_words = re.findall(r"[a-z0-9]+", text.strip().lower())
+    words = [word for word in raw_words if word not in STOPWORDS]
+    words = words or raw_words
+
+    deduped = []
+    seen = set()
+    for word in words:
+        singular = word[:-1] if len(word) > 3 and word.endswith("s") else word
+        if singular in seen:
+            continue
+        seen.add(singular)
+        deduped.append(word)
+        if len(deduped) >= MAX_SLUG_WORDS:
+            break
+
+    slug = "-".join(deduped)
     return slug or "proposal"
 
 

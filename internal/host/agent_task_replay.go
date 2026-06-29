@@ -38,6 +38,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // scratchTarballCap is the maximum in-memory size of a Mode B scratch-dir
@@ -249,7 +251,14 @@ func captureFinalDiff(ctx context.Context, workingDir string) string {
 		// Not a git repo or no diff available.
 		return ""
 	}
-	return string(out)
+	// NFC-normalise: the diff is free CONTENT (journaled under final_diff, shown
+	// for review), and on macOS it can sweep in filesystem-derived text in NFD
+	// form (an unrelated untracked file with composed-vs-decomposed unicode).
+	// The journal store hard-REJECTS NFD payloads (store/jsonl: caller must
+	// normalise to NFC), so an un-normalised diff fails the whole turn's append
+	// ("payload string contains NFD-normalised unicode"). The diff is display
+	// text, not a path-match key, so normalising is lossless and safe.
+	return norm.NFC.String(string(out))
 }
 
 // captureFilesChanged returns a sorted list of paths modified or newly added in

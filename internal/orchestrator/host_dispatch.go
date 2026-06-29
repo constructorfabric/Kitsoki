@@ -147,6 +147,12 @@ func (o *Orchestrator) dispatchHostCalls(ctx context.Context, sid app.SessionID,
 	// world without it.
 	ctx = host.WithIDELink(ctx, o.currentIDELink())
 	o.seedIDEConnected(w)
+	// Re-seed world.session_id against this dispatch's world in case a
+	// redirect/post-bind recursion handed us a freshly-rebuilt world without
+	// it (mirrors seedIDEConnected just above). session_id drives a session-
+	// distinct workdir; without it a redirect could re-derive a ticket-only
+	// workdir and collide across concurrent sessions (bug9glm2).
+	o.seedSessionID(w, sid)
 
 	// Wave 3-agent: inject the EventSink so agent handlers can parallel-write
 	// AgentCalled / AgentReturned / AgentError events to the JSONL alongside

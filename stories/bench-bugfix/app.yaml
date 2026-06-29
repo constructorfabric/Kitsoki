@@ -1,0 +1,117 @@
+# bench-bugfix — the provider-neutral `bugfix` pipeline, pointed at ANY repo for
+# benchmarking. A thin, GENERIC instance: it bakes NOTHING — every field
+# (ticket, workdir, test
+# command, judge mode) is seeded per session via `session.new {initial_world}`.
+# That makes it the reusable harness for the external bug-fix bake-off: drive it
+# live under any harness profile (codex-native → GPT-5.5, synthetic-claude →
+# GLM-5.2) against a prepared worktree, and grade the resulting fix.
+#
+# Host bindings are the local file/git/CI seam. The full
+# bug description is carried in `ticket_title` (the reproducing room forwards
+# ticket_id + ticket_title to the reproducer; no ticket file is read), so a rich
+# initial_world.ticket_title is all the model needs. judge_mode defaults to `llm`
+# so the review/validate gates auto-advance headlessly.
+app:
+  id: bench-bugfix
+  version: 0.1.0
+  title: "Benchmark the bugfix pipeline against any repo"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.local_files.ticket
+  - host.git
+  - host.local
+  - host.git_worktree
+  - host.append_to_file
+  - host.inbox.add
+  - host.agent.ask
+  - host.agent.decide
+  - host.agent.task
+  - host.diff.open
+  - host.run
+  - host.artifacts_dir
+
+imports:
+  bf:
+    source: ../bugfix
+    entry: idle
+    hosts: declared
+    host_bindings:
+      ticket:    host.local_files.ticket
+      vcs:       host.git
+      ci:        host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+    world_in:
+      ticket_id:       "{{ world.ticket_id }}"
+      ticket_title:    "{{ world.ticket_title }}"
+      ticket_url:      "{{ world.ticket_url }}"
+      thread:          "{{ world.thread }}"
+      workspace_id:    "{{ world.workspace_id }}"
+      workdir:         "{{ world.workdir }}"
+      base_branch:     "{{ world.base_branch }}"
+      feature_branch:  "{{ world.feature_branch }}"
+      bugfix_mode:     "{{ world.bugfix_mode }}"
+      # End at the PR-ready close-out (reviewing → validating → done); no push.
+      bugfix_exit:     "open-PR"
+      judge_mode:      "{{ world.judge_mode }}"
+      test_cmd:        "{{ world.test_cmd }}"
+      build_cmd:       "{{ world.build_cmd }}"
+      gate_command:    "{{ world.gate_command }}"
+      bf_autostart_attempted: "{{ world.bf_autostart_attempted }}"
+      # Autonomous benchmark/dogfood runs want ACTIVE escalation: quit early to
+      # needs-human on a mis-scoped reproduction / low-confidence proposal / budget
+      # exhaustion rather than grinding a low-value fix (see #47). Overridable per
+      # session via initial_world.escalate_low_value.
+      escalate_low_value: "{{ world.escalate_low_value }}"
+    exits:
+      done:             { to: finished }
+      abandoned:        { to: finished }
+      pick_ticket:      { to: finished }
+      shipped:          { to: finished }
+      needs-human:      { to: finished }
+      not-reproducible: { to: finished }
+      triaged:          { to: finished }
+
+# Generic world — everything seeded per session via initial_world. The defaults
+# below are benchmark-neutral; a driver overrides ticket_id/ticket_title/workdir/
+# base_branch/feature_branch/test_cmd at session.new time.
+world:
+  ticket_id:       { type: string, default: "" }
+  ticket_title:    { type: string, default: "" }
+  ticket_url:      { type: string, default: "" }
+  thread:          { type: string, default: "" }
+  workspace_id:    { type: string, default: "" }
+  workdir:         { type: string, default: "" }
+  base_branch:     { type: string, default: "main" }
+  feature_branch:  { type: string, default: "" }
+  bugfix_mode:     { type: string, default: "full" }
+  judge_mode:      { type: string, default: "llm" }
+  test_cmd:        { type: string, default: "" }
+  build_cmd:       { type: string, default: "" }
+  # gate_command empty ⇒ skip the deterministic pre-fix RED-gate (LLM-only
+  # reproduction); the hidden oracle is NEVER exposed to the pipeline.
+  gate_command:    { type: string, default: "" }
+  # true ⇒ bf.idle does NOT auto-derive workspace_id/feature_branch/workdir or
+  # auto-create a worktree (which would clobber the pre-prepared workdir and try
+  # to create a worktree in the wrong repo). The driver seeds workdir +
+  # workspace_id + feature_branch and drives `start` explicitly.
+  bf_autostart_attempted: { type: bool, default: true }
+  # Active early-escalation: quit to needs-human on a mis-scoped reproduction /
+  # low-confidence proposal / budget exhaustion instead of grinding. Default true
+  # for autonomous runs; override per session via initial_world.
+  escalate_low_value: { type: bool, default: true }
+
+states:
+  finished:
+    description: "Pipeline terminal — fix is on the feature branch (or abandoned)."
+    view:
+      - banner:
+          text:     "BENCH DONE"
+          subtitle: "{{ world.ticket_id }} — pipeline reached a terminal state on {{ world.feature_branch }}"
+          color:    "#22C55E"
+      - prose: "The bugfix pipeline ran to a terminal state. Score the worktree at {{ world.workdir }} with the external bake-off grader."
+    relevant_world: [ticket_id, ticket_title, feature_branch, workdir]
+
+root: bf

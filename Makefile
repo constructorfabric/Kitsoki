@@ -1,9 +1,29 @@
 BINARY    := kitsoki
 PKG       := ./cmd/kitsoki
-# Default install dir: macOS doesn't put ~/bin on PATH (and doesn't create it),
-# so default to ~/.local/bin there — already on PATH for typical setups. Linux
-# keeps the classic ~/bin. Override with `make install INSTALLDIR=...`.
-INSTALLDIR ?= $(if $(filter Darwin,$(shell uname -s)),$(HOME)/.local/bin,$(HOME)/bin)
+# Default install dir: pick a location that's actually on PATH on both Linux and
+# macOS, instead of the per-OS ~/bin / ~/.local/bin guess (neither is reliably on
+# PATH, which left the binary unfindable). Resolution order:
+#   - $GOBIN, if the user already set one (respect their choice);
+#   - /usr/local/bin when writable — the standard local-binary dir, on PATH by
+#     default on virtually every Linux and macOS (homebrew-Intel, root VMs, …);
+#   - else ~/.local/bin — the XDG user-bin fallback when /usr/local/bin needs sudo
+#     (Apple-Silicon homebrew, non-root users). The post-install PATH check below
+#     warns if whatever we picked isn't on PATH.
+# Override with `make install INSTALLDIR=...`.
+INSTALLDIR ?= $(shell \
+	if [ -n "$$GOBIN" ]; then printf '%s' "$$GOBIN"; \
+	elif [ -w /usr/local/bin ]; then printf '%s' /usr/local/bin; \
+	else printf '%s' "$$HOME/.local/bin"; fi)
+
+# codesign_adhoc <binary>: on macOS, force a fresh ad-hoc code signature on a
+# just-built binary. Go's linker-internal ad-hoc signature is rejected as
+# invalid by recent macOS (≥26) on some lazily-faulted code pages, and copying a
+# binary invalidates it outright — either way the kernel SIGKILLs it (exit 137,
+# no output) when it executes the affected path. An explicit `codesign --force
+# --sign -` pass produces a CodeDirectory taskgated accepts. No-op off darwin.
+define codesign_adhoc
+	@if [ "$$(uname -s)" = "Darwin" ]; then codesign --force --sign - "$(1)" >/dev/null 2>&1 && echo "codesign: ad-hoc signed $(1)" || echo "codesign: WARN could not sign $(1)"; fi
+endef
 
 # Runstatus SPA: built by vite (pnpm) under tools/runstatus, then staged into
 # the Go embed dir so the binary can serve it (status serve) and inline it into
@@ -31,7 +51,14 @@ STORY_APPS := $(wildcard stories/*/app.yaml)
 BASESTORIES_DIR   := internal/basestories/stories
 BASESTORIES_STAMP := internal/basestories/.embed-stamp
 
-.PHONY: all setup build install uninstall test test-flows starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories e2e-docker \
+# baseskills mirrors basestories for the agent toolkit: .agents/{skills,agents}
+# is staged into the embed dir so //go:embed ships it and `kitsoki project-tools
+# install` can install skills/agents + the studio MCP into an onboarded project
+# with only the binary present.
+BASESKILLS_DIR    := internal/baseskills/assets
+BASESKILLS_STAMP  := internal/baseskills/.embed-stamp
+
+.PHONY: all setup build install uninstall test test-flows onboard-smoke onboard-sisters qs-bakeoff gears-bakeoff history-smoke history-pending-smoke gears-history-smoke gears-history-full-smoke starcheck-kitsoki vet fmt tidy clean web web-clean web-dev web-dev-logs embed-stories embed-skills e2e-docker \
 	fetch-models fetch-llama-server demo-tour demo-tour-fast demo-tour-qa cost-report cost-report-test mining-test \
 	vscode-e2e vscode-e2e-fast vscode-qa vscode-theming-sidebyside vscode-package vscode-install-local
 
@@ -60,12 +87,27 @@ check-deps:
 		exit 1; \
 	fi
 
-# build / install depend on web + embed-stories so the binary always embeds a
-# current SPA and the current story library.
-build: check-deps web embed-stories
+# build / install depend on web + embed-stories + embed-skills so the binary
+# always embeds a current SPA, the current story library, and the current agent
+# toolkit.
+build: check-deps web embed-stories embed-skills
 	go build -o $(BINARY) $(PKG)
+	$(call codesign_adhoc,$(BINARY))
 
-install: check-deps web embed-stories
+# build-bin produces the binary the Playwright/VS Code demo specs SPAWN
+# (bin/kitsoki), the canonical alternative to the footgun `cp ./kitsoki
+# bin/kitsoki`. NEVER `cp` the binary on macOS: copying a Go linker-signed
+# Mach-O invalidates its ad-hoc signature and macOS (Gatekeeper/taskgated)
+# SIGKILLs the spawned child the moment it faults in an unsigned code page —
+# e.g. the story-load path — so `kitsoki web --stories-dir …` dies with exit
+# 137 and ZERO output. Building straight to the target (then a defensive
+# ad-hoc re-sign) keeps the signature valid.
+build-bin: web embed-stories embed-skills
+	@mkdir -p bin
+	go build -o bin/kitsoki $(PKG)
+	$(call codesign_adhoc,bin/kitsoki)
+
+install: check-deps web embed-stories embed-skills
 	@mkdir -p $(INSTALLDIR)
 	GOBIN=$(INSTALLDIR) go install $(PKG)
 	@echo "installed $(BINARY) -> $(INSTALLDIR)/$(BINARY)"
@@ -101,6 +143,27 @@ embed-stories:
 		cp -R "$$tmp/stories"/. "$(BASESTORIES_DIR)"/; \
 		touch "$(BASESTORIES_STAMP)"; \
 		echo "staged stories/ -> $(BASESTORIES_DIR)"; \
+	fi
+
+# embed-skills stages .agents/skills + .agents/agents into the baseskills embed
+# dir (as assets/skills + assets/agents) so //go:embed ships the agent toolkit.
+# Same content-compare/one-directional-copy discipline as embed-stories.
+embed-skills:
+	@tmp=$$(mktemp -d "$${TMPDIR:-/tmp}/kitsoki-baseskills.XXXXXX"); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	mkdir -p "$$tmp/assets/skills" "$$tmp/assets/agents"; \
+	cp -R .agents/skills/. "$$tmp/assets/skills"/; \
+	cp -R .agents/agents/. "$$tmp/assets/agents"/; \
+	touch "$$tmp/assets/.gitkeep"; \
+	if [ -d "$(BASESKILLS_DIR)" ] && diff -qr "$$tmp/assets" "$(BASESKILLS_DIR)" >/dev/null; then \
+		touch "$(BASESKILLS_STAMP)"; \
+		echo "agent toolkit already staged in $(BASESKILLS_DIR)"; \
+	else \
+		rm -rf "$(BASESKILLS_DIR)"; \
+		mkdir -p "$(BASESKILLS_DIR)"; \
+		cp -R "$$tmp/assets"/. "$(BASESKILLS_DIR)"/; \
+		touch "$(BASESKILLS_STAMP)"; \
+		echo "staged .agents/{skills,agents} -> $(BASESKILLS_DIR)"; \
 	fi
 
 # web bundles the runstatus SPA and stages it into the embed dir. Incremental:
@@ -194,6 +257,153 @@ test-flows:
 		printf '\n-- flows: %s\n' "$$app"; \
 		./.kitsoki-flows test flows "$$app" || rc=1; \
 	done; rm -f ./.kitsoki-flows; exit $$rc
+
+# onboard-smoke is a gated, reproducible end-to-end test: clone a PINNED
+# open-source repo and onboard it to a fully working kitsoki environment via the
+# binary's EMBEDDED dev-story (no kitsoki checkout). NOT part of `make test` —
+# it needs network + git + an installed `kitsoki` binary. See
+# tools/onboard-smoke/README.md. Depends on a current install.
+onboard-smoke: install
+	go test -tags onboardsmoke -run TestOnboardPinnedRepo -count=1 -v ./tools/onboard-smoke/
+
+# onboard-sisters is the local, deterministic sister-project replay. It clones
+# ../gears-rust and ../slidey (or KITSOKI_GEARS_RUST_REPO / KITSOKI_SLIDEY_REPO)
+# into temp dirs at their saved pre-init commits, runs the real dev-story init
+# apply script, and proves the generated .kitsoki/stories instance loads. No
+# network, no install, no LLM.
+onboard-sisters:
+	go test -tags onboardsisters -run TestOnboardSisterProjects_FromBaseline -count=1 -v ./tools/onboard-smoke/
+
+# qs-bakeoff gears-bakeoff is the EXTERNAL-project bake-off scaffold check ("should I use
+# kitsoki for my project?"): clone a pinned mature third-party JS repo
+# (sindresorhus/query-string), onboard it via the embedded dev-story, and prove
+# the 3 hidden-oracle good/bad detectors are armed (RED at baseline, GREEN at the
+# real fix) — DETERMINISTIC, no LLM, no cost. NOT part of `make test`; needs
+# network + git + node/npm + an installed `kitsoki`. The cost-bearing LLM cells
+# stay operator-run. See tools/bugfix-bakeoff/external/ + the case study.
+qs-bakeoff: install
+	python3 tools/bugfix-bakeoff/external/bench_grade_test.py
+	go test -tags qsbakeoff -run TestExternalBakeoff -count=1 -v ./tools/bugfix-bakeoff/external/
+
+# gears-bakeoff arms the gears-rust corpus (projects/gears-rust): prove each
+# captured fixture's hidden oracle is RED at its baseline and GREEN after the real
+# fix's source, against a LOCAL checkout (gears-rust is heavy + private, never
+# network-cloned). DETERMINISTIC, no LLM. Point GEARS_RUST_REPO at a local
+# checkout; needs git + cargo + python3. Skips cleanly when GEARS_RUST_REPO unset.
+#   GEARS_RUST_REPO=~/code/gears-rust make gears-bakeoff
+gears-bakeoff:
+	go test -tags gearsbakeoff -run TestGearsBakeoff -count=1 -v ./tools/bugfix-bakeoff/external/
+
+# history-smoke is the free product-path smoke for any external repo-history
+# training manifest: harness unit checks, candidate/profile preflight, scoped
+# RED/GREEN arming, exact drive-command rendering, and repo-bakeoff story flow
+# validation. It never calls a real LLM.
+#   make history-smoke HISTORY_PROJECT=query-string HISTORY_BUGS=qs1 HISTORY_CANDIDATES=gpt-5.5
+#   make history-smoke HISTORY_PROJECT=gears-rust HISTORY_REPO_DIR=~/code/gears-rust HISTORY_BUGS=bug1 HISTORY_CANDIDATES=opus-4.8
+HISTORY_PROJECT ?=
+HISTORY_REPO_DIR ?=
+HISTORY_BUGS ?=
+HISTORY_CANDIDATES ?=
+HISTORY_PREPARE_FIRST_CELL ?= 1
+HISTORY_PREPARE_ALL_CELLS ?= 0
+HISTORY_PENDING_REASON ?= provider/profile blocked before model attempt
+history-smoke:
+	@test -n "$(HISTORY_PROJECT)" || (echo "HISTORY_PROJECT is required"; exit 1)
+	@test -n "$(HISTORY_BUGS)" || (echo "HISTORY_BUGS is required"; exit 1)
+	@test -n "$(HISTORY_CANDIDATES)" || (echo "HISTORY_CANDIDATES is required"; exit 1)
+	python3 tools/bugfix-bakeoff/external/bench_grade_test.py
+	@if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
+		python3 tools/bugfix-bakeoff/external/bench.py preflight --project "$(HISTORY_PROJECT)" --bug "$(HISTORY_BUGS)" $$repo_arg --candidate "$(HISTORY_CANDIDATES)"
+	@if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
+		python3 tools/bugfix-bakeoff/external/bench.py verify --project "$(HISTORY_PROJECT)" --bug "$(HISTORY_BUGS)" $$repo_arg
+	@if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
+		python3 tools/bugfix-bakeoff/external/bench.py drive-plan --project "$(HISTORY_PROJECT)" --bug "$(HISTORY_BUGS)" $$repo_arg --candidate "$(HISTORY_CANDIDATES)"
+	@if [ "$(HISTORY_PREPARE_FIRST_CELL)" = "1" ] || [ "$(HISTORY_PREPARE_ALL_CELLS)" = "1" ]; then \
+		bugs="$(HISTORY_BUGS)"; candidates="$(HISTORY_CANDIDATES)"; \
+		if [ "$(HISTORY_PREPARE_ALL_CELLS)" != "1" ]; then bugs="$${bugs%%,*}"; candidates="$${candidates%%,*}"; fi; \
+		if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
+		cache="$${EXTERNAL_BAKEOFF_CACHE:-.artifacts/external-bakeoff}"; \
+		mkdir -p .artifacts/external-bakeoff/readiness; \
+		handoff_json=".artifacts/external-bakeoff/readiness/$(HISTORY_PROJECT)-handoffs.json"; \
+		if ! tools/bugfix-bakeoff/external/prepare_handoffs.sh --project "$(HISTORY_PROJECT)" --bug "$$bugs" --candidate "$$candidates" $$repo_arg --markdown ".artifacts/external-bakeoff/readiness/$(HISTORY_PROJECT)-handoffs.md" > "$$handoff_json"; then \
+			cat "$$handoff_json"; \
+			exit 1; \
+		fi; \
+		cat "$$handoff_json"; \
+		for bug in $$(printf '%s' "$$bugs" | tr ',' ' '); do \
+			for candidate in $$(printf '%s' "$$candidates" | tr ',' ' '); do \
+				python3 -c 'import json, sys; path, bug = sys.argv[1:3]; data = json.load(open(path)); assert data.get("bugs") == [bug], "cell preflight should be scoped to %s, got %r" % (bug, data.get("bugs"))' "$$cache/preflight/$(HISTORY_PROJECT)-$$bug-$$candidate.json" "$$bug"; \
+				python3 -c 'import json, pathlib, sys; path, project, bug, candidate = sys.argv[1:5]; data = json.load(open(path)); assert data.get("project") == project and data.get("bug") == bug and data.get("candidate") == candidate, data; assert pathlib.Path(data["prompt"]).exists(), data["prompt"]; assert pathlib.Path(data["worktree"]).exists(), data["worktree"]; assert pathlib.Path(data["preflight"]).exists(), data["preflight"]' "$$cache/prepared/$(HISTORY_PROJECT)-$$bug-$$candidate.json" "$(HISTORY_PROJECT)" "$$bug" "$$candidate"; \
+			done; \
+		done; \
+	fi
+	@mkdir -p .artifacts/external-bakeoff/readiness
+	@if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
+		readiness_json=".artifacts/external-bakeoff/readiness/$(HISTORY_PROJECT).json"; \
+		if ! python3 tools/bugfix-bakeoff/external/bench.py readiness --project "$(HISTORY_PROJECT)" --bug "$(HISTORY_BUGS)" $$repo_arg --candidate "$(HISTORY_CANDIDATES)" --armed --markdown ".artifacts/external-bakeoff/readiness/$(HISTORY_PROJECT).md" > "$$readiness_json"; then \
+			cat "$$readiness_json"; \
+			exit 1; \
+		fi; \
+		cat "$$readiness_json"; \
+		if [ "$(HISTORY_PREPARE_ALL_CELLS)" = "1" ]; then \
+			python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); results = data["results"]; assert results["prepared_cells"] == results["selected_cells"], results; assert results["stale_prepared_cells"] == 0, results; assert results["unprepared_cells"] == 0, results' "$$readiness_json"; \
+		fi
+	@if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
+		completion_json=".artifacts/external-bakeoff/readiness/$(HISTORY_PROJECT)-completion.json"; \
+		if ! python3 tools/bugfix-bakeoff/external/bench.py completion --project "$(HISTORY_PROJECT)" --bug "$(HISTORY_BUGS)" $$repo_arg --candidate "$(HISTORY_CANDIDATES)" --armed --markdown ".artifacts/external-bakeoff/readiness/$(HISTORY_PROJECT)-completion.md" > "$$completion_json"; then \
+			cat "$$completion_json"; \
+			exit 1; \
+		fi; \
+		cat "$$completion_json"; \
+		python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); checks = data["checks"]; assert checks["no_cost_ready"], data; assert data["results"]["stale_result_cells"] == 0, data' "$$completion_json"; \
+		if [ "$(HISTORY_PREPARE_ALL_CELLS)" = "1" ]; then \
+			python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); checks = data["checks"]; assert checks["ready_to_drive"], data' "$$completion_json"; \
+		fi
+	GOCACHE=$$(pwd)/.cache/go-build go run ./cmd/kitsoki validate stories/repo-bakeoff/app.yaml
+	GOCACHE=$$(pwd)/.cache/go-build go run ./cmd/kitsoki test flows stories/repo-bakeoff/app.yaml
+
+# history-pending-smoke proves the no-cost blocked-provider path without
+# modifying the normal live results dir: write one pending cell in a temp result
+# root, summarize it, and render Markdown + Slidey JSON from that pending result.
+history-pending-smoke:
+	@test -n "$(HISTORY_PROJECT)" || (echo "HISTORY_PROJECT is required"; exit 1)
+	@test -n "$(HISTORY_BUGS)" || (echo "HISTORY_BUGS is required"; exit 1)
+	@test -n "$(HISTORY_CANDIDATES)" || (echo "HISTORY_CANDIDATES is required"; exit 1)
+	@tmp="$$(mktemp -d)"; \
+		first_bug="$(HISTORY_BUGS)"; first_bug="$${first_bug%%,*}"; \
+		first_candidate="$(HISTORY_CANDIDATES)"; first_candidate="$${first_candidate%%,*}"; \
+		cell="$$tmp/results/cells/$(HISTORY_PROJECT)-$$first_bug-$$first_candidate-kitsoki.json"; \
+		python3 tools/bugfix-bakeoff/external/bench.py pending --project "$(HISTORY_PROJECT)" --bug "$$first_bug" --candidate "$$first_candidate" --reason "$(HISTORY_PENDING_REASON)" --out "$$cell"; \
+		rel="$$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], os.path.join(os.getcwd(), "tools/bugfix-bakeoff/external")))' "$$tmp/results")"; \
+		python3 tools/bugfix-bakeoff/external/bench.py summarize --project "$(HISTORY_PROJECT)" --results "$$rel" --deck "$$tmp/deck.slidey.json" --markdown "$$tmp/report.md"; \
+		if [ -n "$(HISTORY_REPO_DIR)" ]; then repo_arg="--repo-dir $(HISTORY_REPO_DIR)"; else repo_arg=""; fi; \
+		python3 tools/bugfix-bakeoff/external/bench.py completion --project "$(HISTORY_PROJECT)" --bug "$$first_bug" $$repo_arg --candidate "$$first_candidate" --results "$$rel" --armed --markdown "$$tmp/completion.md" > "$$tmp/completion.json"; \
+		python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); checks = data["checks"]; results = data["results"]; assert data["status"] == "complete-with-pending", data; assert checks["result_evidence_complete"], data; assert not checks["live_scored"], data; assert results["pending_cells"] == 1, data; assert results["attempted_cells"] == 0, data' "$$tmp/completion.json"; \
+		python3 -m json.tool "$$tmp/deck.slidey.json" >/dev/null; \
+		echo "pending smoke report: $$tmp/report.md"; \
+		sed -n '1,120p' "$$tmp/report.md"; \
+		echo "pending completion: $$tmp/completion.md"; \
+		sed -n '1,80p' "$$tmp/completion.md"
+
+# gears-history-smoke is the reference private/heavy repo wrapper around the
+# generic history-smoke target. Override the bug/candidate matrix to match the
+# live cell you intend to run.
+#   GEARS_RUST_REPO=~/code/gears-rust make gears-history-smoke
+GEARS_HISTORY_BUGS ?= bug1
+GEARS_HISTORY_CANDIDATES ?= opus-4.8
+gears-history-smoke:
+	@test -n "$(GEARS_RUST_REPO)" || (echo "GEARS_RUST_REPO must point at a local gears-rust checkout"; exit 1)
+	$(MAKE) history-smoke HISTORY_PROJECT=gears-rust HISTORY_REPO_DIR="$(GEARS_RUST_REPO)" HISTORY_BUGS="$(GEARS_HISTORY_BUGS)" HISTORY_CANDIDATES="$(GEARS_HISTORY_CANDIDATES)"
+
+# gears-history-full-smoke is the no-cost full-corpus proof for the armable
+# gears-rust fixtures. It verifies all four RED/GREEN oracles, renders the full
+# live command matrix, prepares every selected prompt/worktree, validates
+# deterministic pending report/deck generation, and runs the repo-bakeoff flow
+# checks.
+gears-history-full-smoke:
+	@test -n "$(GEARS_RUST_REPO)" || (echo "GEARS_RUST_REPO must point at a local gears-rust checkout"; exit 1)
+	$(MAKE) history-smoke HISTORY_PROJECT=gears-rust HISTORY_REPO_DIR="$(GEARS_RUST_REPO)" HISTORY_BUGS="bug1,bug4,bug5,bug9" HISTORY_CANDIDATES="$(GEARS_HISTORY_CANDIDATES)" HISTORY_PREPARE_ALL_CELLS=1
+	$(MAKE) history-pending-smoke HISTORY_PROJECT=gears-rust HISTORY_REPO_DIR="$(GEARS_RUST_REPO)" HISTORY_BUGS="bug1,bug4,bug5,bug9" HISTORY_CANDIDATES="$(GEARS_HISTORY_CANDIDATES)" HISTORY_PENDING_REASON="provider/profile blocked before model attempt"
 
 # cost-report builds the per-story cost-savings report (the reusable form of
 # docs/case-studies/git-ops-cost.md): the deterministic story cost (agent spend
@@ -312,7 +522,7 @@ fetch-llama-server:
 #                   (runs inside `make build` and `make test` — a stale manifest
 #                   can never be embedded into the binary)
 #   features-index  emit the site/QA contract to .artifacts/features/
-.PHONY: features features-check features-index demo-feature feature-qa
+.PHONY: features features-check features-index media-check demo-feature feature-qa
 features:
 	cd $(RUNSTATUS_DIR) && pnpm install --frozen-lockfile --silent && pnpm features:gen
 
@@ -322,13 +532,15 @@ features-check:
 features-index:
 	cd $(RUNSTATUS_DIR) && pnpm install --frozen-lockfile --silent && pnpm features:index
 
+media-check: features-index
+	node $(SITE_DIR)/scripts/check-media.mjs --index .artifacts/features/features-index.json
+
 # demo-feature records ONE feature's demo video at watch-speed and renders the
 # GIF + contact sheet. Spec + artifact paths come from the feature catalog.
 # Usage: make demo-feature FEATURE=agent-actions
 FEATURE ?=
-demo-feature: build
+demo-feature: build-bin
 	@test -n "$(FEATURE)" || { echo "usage: make demo-feature FEATURE=<id>" >&2; exit 1; }
-	@mkdir -p bin && cp $(BINARY) bin/$(BINARY)
 	@cd $(RUNSTATUS_DIR) && pnpm install --frozen-lockfile --silent
 	@set -e; \
 	demo=$$(cd $(RUNSTATUS_DIR) && pnpm exec tsx scripts/features/generate.ts --print-demo $(FEATURE)); \
@@ -409,13 +621,11 @@ mcp-qa:
 # anything unchanged. demos-force re-records everything. See
 # scripts/record-demos.sh for the stamp design.
 .PHONY: demos demos-force site-full
-demos: build features-index
-	@mkdir -p bin && cp $(BINARY) bin/$(BINARY)
+demos: build-bin features-index
 	@cd $(RUNSTATUS_DIR) && pnpm install --frozen-lockfile --silent
 	./scripts/record-demos.sh
 
-demos-force: build features-index
-	@mkdir -p bin && cp $(BINARY) bin/$(BINARY)
+demos-force: build-bin features-index
 	@cd $(RUNSTATUS_DIR) && pnpm install --frozen-lockfile --silent
 	./scripts/record-demos.sh --force
 
@@ -498,7 +708,6 @@ site-data:
 
 site: site-data
 	cd $(SITE_DIR) && pnpm install --frozen-lockfile --silent
-	cd $(SITE_DIR) && pnpm stage:docs && pnpm stage:media
 	cd $(SITE_DIR) && SITE_BASE=$(SITE_BASE) pnpm build
 	node $(SITE_DIR)/scripts/check-leaks.mjs $(SITE_DIR)/.vitepress/dist
 	@echo "site built -> $(SITE_DIR)/.vitepress/dist"
@@ -506,7 +715,7 @@ site: site-data
 # site-dev runs the VitePress HMR dev server (docs iterate instantly; media —
 # videos/posters — reflect whatever `make demos` has recorded so far).
 site-dev: site-data
-	cd $(SITE_DIR) && pnpm install --frozen-lockfile --silent && pnpm stage:docs && pnpm stage:media && pnpm dev
+	cd $(SITE_DIR) && pnpm install --frozen-lockfile --silent && pnpm dev
 
 # site-embed builds the EMBEDDED variant (base /help/, posters only — no MP4s
 # in the binary) and stages it into internal/helpdocs/assets/ so the next
@@ -515,7 +724,6 @@ HELPDOCS_ASSETS := internal/helpdocs/assets
 .PHONY: site-embed
 site-embed: site-data
 	cd $(SITE_DIR) && pnpm install --frozen-lockfile --silent
-	cd $(SITE_DIR) && pnpm stage:docs && pnpm stage:media --variant embedded
 	cd $(SITE_DIR) && SITE_BASE=/help/ SITE_VARIANT=embedded pnpm build
 	node $(SITE_DIR)/scripts/check-leaks.mjs $(SITE_DIR)/.vitepress/dist-embedded --embedded
 	find $(HELPDOCS_ASSETS) -mindepth 1 ! -name .gitkeep -delete

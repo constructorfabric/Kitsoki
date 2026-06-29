@@ -20,7 +20,16 @@ type WorkArgs struct {
 	IncludeQuiet bool `json:"include_quiet,omitempty"`
 	// Limit caps returned items. Zero defaults to 50. Negative means no limit.
 	Limit int `json:"limit,omitempty"`
+	// BodyLimit caps each item's Body to this many characters (an ellipsis marker
+	// is appended when truncated). Zero defaults to defaultWorkBodyLimit; a
+	// negative value disables truncation (full bodies).
+	BodyLimit int `json:"body_limit,omitempty"`
 }
+
+// defaultWorkBodyLimit caps each WorkItem.Body so a queue full of long
+// notification/clarification bodies can't blow the payload. Callers raise it via
+// body_limit (or pass a negative value to opt out).
+const defaultWorkBodyLimit = 200
 
 // WorkResult is the global read-only async/reacquisition queue.
 type WorkResult struct {
@@ -46,6 +55,7 @@ type WorkSummary struct {
 	BackgroundedChats           int `json:"backgrounded_chats"`
 	OperatorQuestions           int `json:"operator_questions"`
 	MiningProposals             int `json:"mining_proposals"`
+	RunningDrive                int `json:"running_drive"`
 }
 
 // WorkSessionSummary is one open driving session's async headline.
@@ -136,8 +146,9 @@ func (srv *Server) work(ctx context.Context, args WorkArgs) (WorkResult, error) 
 			return WorkResult{}, err
 		}
 		operatorQuestions := rt.pendingOperatorQuestions()
+		running := rt.runningDrive(sh.Key)
 		miningProposals := pendingMiningProposals(sh.Key, rt.history())
-		async := summarizeAsync(jobRows, notifications, unread, pendingDrives, backgroundedChats, operatorQuestions, miningProposals)
+		async := summarizeAsync(jobRows, notifications, unread, pendingDrives, backgroundedChats, operatorQuestions, miningProposals, running)
 		out.Sessions = append(out.Sessions, WorkSessionSummary{
 			Handle:    sh.Key,
 			SessionID: string(sh.SID),
@@ -182,7 +193,27 @@ func (srv *Server) work(ctx context.Context, args WorkArgs) (WorkResult, error) 
 	if args.Limit > 0 && len(out.Items) > args.Limit {
 		out.Items = out.Items[:args.Limit]
 	}
+	bodyLimit := args.BodyLimit
+	if bodyLimit == 0 {
+		bodyLimit = defaultWorkBodyLimit
+	}
+	for i := range out.Items {
+		out.Items[i].Body = truncateBody(out.Items[i].Body, bodyLimit)
+	}
 	return out, nil
+}
+
+// truncateBody caps s to limit runes, appending an ellipsis marker when it had
+// to cut. A non-positive limit returns s unchanged (opt-out).
+func truncateBody(s string, limit int) string {
+	if limit <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= limit {
+		return s
+	}
+	return strings.TrimRight(string(r[:limit]), " \t\n") + " … (truncated)"
 }
 
 func addSummary(sum *WorkSummary, async AsyncInspectSummary) {
@@ -197,6 +228,7 @@ func addSummary(sum *WorkSummary, async AsyncInspectSummary) {
 	sum.BackgroundedChats += async.BackgroundedChats
 	sum.OperatorQuestions += async.OperatorQuestions
 	sum.MiningProposals += async.MiningProposals
+	sum.RunningDrive += async.RunningDrive
 }
 
 func workItemsForNotifications(sh *SessionHandle, state string, notifications []InboxInspectItem, includeQuiet bool) []WorkItem {
@@ -218,14 +250,16 @@ func workItemsForNotifications(sh *SessionHandle, state string, notifications []
 			NotificationID:     n.ID,
 			Severity:           n.Severity,
 			CreatedAtUnixMilli: n.CreatedAtUnixMilli,
-			UpdatedAtUnixMilli: n.CreatedAtUnixMilli,
-			ReadAtUnixMilli:    n.ReadAtUnixMilli,
-			TeleportState:      n.TeleportState,
-			TeleportSlots:      n.TeleportSlots,
-			TeleportJobID:      n.TeleportJobID,
-			OriginKind:         n.OriginKind,
-			OriginRef:          n.OriginRef,
-			OriginURL:          n.OriginURL,
+			// UpdatedAtUnixMilli intentionally omitted for notifications: it
+			// mirrors CreatedAtUnixMilli, and itemUpdatedAt falls back to Created
+			// when Updated is zero, so sort order is preserved without the dup.
+			ReadAtUnixMilli: n.ReadAtUnixMilli,
+			TeleportState:   n.TeleportState,
+			TeleportSlots:   n.TeleportSlots,
+			TeleportJobID:   n.TeleportJobID,
+			OriginKind:      n.OriginKind,
+			OriginRef:       n.OriginRef,
+			OriginURL:       n.OriginURL,
 			Reacquire: WorkReacquire{
 				Tool: "session.teleport",
 				Args: map[string]any{"handle": sh.Key, "notification_id": n.ID},

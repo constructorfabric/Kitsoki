@@ -107,6 +107,18 @@ type Provider struct {
 	Env    map[string]string
 }
 
+// QuotaControl describes a local, provider-neutral throttle for one resolved
+// profile. Zero values are ignored; callers may set only concurrency, only a
+// token bucket, or both.
+type QuotaControl struct {
+	Window          string
+	TokensPerWindow int64
+	MaxConcurrent   int
+	ReserveTokens   int64
+	StatePath       string
+	LeaseTimeout    string
+}
+
 // providersKey is the unexported context key for the injected providers map.
 type providersKey struct{}
 
@@ -223,13 +235,14 @@ type activeProfileKey struct{}
 type ActiveProfile struct {
 	Name     string
 	Provider Provider
+	Quota    QuotaControl
 }
 
 // WithActiveProfile installs the session's active harness profile onto ctx. A
 // zero-value profile (no name, empty provider) is a no-op so callers needn't
 // guard the no-profiles case.
 func WithActiveProfile(ctx context.Context, p ActiveProfile) context.Context {
-	if p.Name == "" && p.Provider.Model == "" && p.Provider.Effort == "" && len(p.Provider.Env) == 0 {
+	if p.Name == "" && p.Provider.Model == "" && p.Provider.Effort == "" && len(p.Provider.Env) == 0 && p.Quota == (QuotaControl{}) {
 		return ctx
 	}
 	return context.WithValue(ctx, activeProfileKey{}, p)
@@ -401,11 +414,18 @@ var readOnlyDeniedTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit",
 // on a guess — the silent wrong-output failure operators kept hitting. kitsoki's
 // supported channel for "ask the human" is the story's own ask/converse verbs
 // surfaced to the TUI/web operator, never the embedded AskUserQuestion tool, so
-// we hard-deny it everywhere. --disallowedTools is honoured even under
-// bypassPermissions (see appendDisallowedToolsFlag), so this is a reliable
-// backstop that forces the model to decide or to emit a plain-text question we
-// can surface, instead of silently consuming an empty answer.
-var alwaysDeniedTools = []string{"AskUserQuestion"}
+// we hard-deny it everywhere.
+//
+// Agent/Task are also denied everywhere. Kitsoki stories declare the exact tool
+// surface per agent; nested Claude Code subagents are outside that contract, can
+// inherit a provider-default model instead of the selected harness profile, and
+// multiply quota/concurrency behind Kitsoki's limiter. A story that wants fan-out
+// should use Kitsoki's own pipeline stories (fleet, punch-list, dogfood-marathon)
+// where traces, profiles, and quota are explicit.
+//
+// --disallowedTools is honoured even under bypassPermissions (see
+// appendDisallowedToolsFlag), so this is a reliable backstop.
+var alwaysDeniedTools = []string{"AskUserQuestion", "Agent", "Task"}
 
 // withAlwaysDenied merges alwaysDeniedTools into an agent/posture-specific deny
 // list, de-duplicating so a tool already present (e.g. via readOnlyDeniedTools)

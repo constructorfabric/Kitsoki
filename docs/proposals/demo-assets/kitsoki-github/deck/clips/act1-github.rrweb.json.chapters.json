@@ -1,0 +1,98 @@
+[
+  {
+    "index": 0,
+    "id": "gh1-bug-mention",
+    "label": "A bug-labelled issue mentions @kitsoki",
+    "start_ms": 65,
+    "end_ms": 5567,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "tools/runstatus/src/tour/github-demo-manifest.ts",
+      "step_id": "gh1-bug-mention"
+    }
+  },
+  {
+    "index": 1,
+    "id": "gh2-ack-link",
+    "label": "kitsoki acks with one run link",
+    "start_ms": 5567,
+    "end_ms": 11571,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "tools/runstatus/src/tour/github-demo-manifest.ts",
+      "step_id": "gh2-ack-link"
+    }
+  },
+  {
+    "index": 2,
+    "id": "gh3-feature",
+    "label": "A feature issue routes to the design track",
+    "start_ms": 11571,
+    "end_ms": 17073,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "tools/runstatus/src/tour/github-demo-manifest.ts",
+      "step_id": "gh3-feature"
+    }
+  },
+  {
+    "index": 3,
+    "id": "gh4-ci-fix",
+    "label": "It watches CI and pushes a fix",
+    "start_ms": 17073,
+    "end_ms": 23075,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "tools/runstatus/src/tour/github-demo-manifest.ts",
+      "step_id": "gh4-ci-fix"
+    }
+  },
+  {
+    "index": 4,
+    "id": "gh5-rebase",
+    "label": "A merge conflict, rebased away",
+    "start_ms": 23075,
+    "end_ms": 28577,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "tools/runstatus/src/tour/github-demo-manifest.ts",
+      "step_id": "gh5-rebase"
+    }
+  },
+  {
+    "index": 5,
+    "id": "gh6-resolve",
+    "label": "Reviewer asks; kitsoki implements and resolves",
+    "start_ms": 28577,
+    "end_ms": 34579,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "tools/runstatus/src/tour/github-demo-manifest.ts",
+      "step_id": "gh6-resolve"
+    }
+  },
+  {
+    "index": 6,
+    "id": "gh7-guidance",
+    "label": "Low confidence — it asks first",
+    "start_ms": 34579,
+    "end_ms": 40582,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "tools/runstatus/src/tour/github-demo-manifest.ts",
+      "step_id": "gh7-guidance"
+    }
+  },
+  {
+    "index": 7,
+    "id": "gh8-done",
+    "label": "One rolling status, edited to done",
+    "start_ms": 40582,
+    "end_ms": 46584,
+    "source_ref": {
+      "kind": "rrweb",
+      "spec_path": "tools/runstatus/src/tour/github-demo-manifest.ts",
+      "step_id": "gh8-done"
+    }
+  }
+]

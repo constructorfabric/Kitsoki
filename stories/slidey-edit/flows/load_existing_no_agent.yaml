@@ -1,0 +1,82 @@
+# load_existing_no_agent — REGRESSION: loading an existing deck must render it
+# IN PLACE and land in the spatial-oracle review with NO authoring agent and no
+# accept/go/continue step.
+#
+# The deck already exists and works in the web viewer, so loading it must not
+# re-author its scenes or strip its assets. This flow registers NO
+# host.agent.task handler at all: if the existing-deck path tried to invoke the
+# drafter/reviser, the missing handler would error and bounce off rendering —
+# so landing cleanly in `reviewing` is the proof that no agent ran.
+#
+# Because no agent is involved on this path, it works under EVERY harness/model
+# combo by construction (there is no model call to fail). This flow is the
+# no-LLM guard for that guarantee.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  decks_dir: "docs/decks"
+  addressed: { items: [] }
+  refine_budget: 6
+
+host_handlers:
+  # NOTE: host.agent.task is intentionally ABSENT. Any invocation would fail.
+
+  host.starlark.run:
+    by_call:
+      resolve_deck:
+        data:
+          source_deck:
+            spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+            summary: "Existing slidey deck"
+          deck:
+            spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+            summary: "Existing slidey deck"
+          workspace: "docs/decks"
+      seed_annotation:
+        data:
+          annotation:
+            anchor:
+              kind: "semantic_element"
+              semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+              label: "Scene 1 · card 0"
+            instruction: "Make the semantic_element card stand out and add a one-line example beneath it."
+            frame_handle: "slidey-edit#1"
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "docs/decks/kitsoki-pitch.slidey.html"
+          semantic_path: ""
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#1", kind: "slideshow", mime: "text/html" }, path: "docs/decks/kitsoki-pitch.slidey.html", kind: "slideshow", mime: "text/html" }
+
+turns:
+  # A person types "edit kitsoki-pitch" — the compose box dispatches it as
+  # `start` with the text in feedback. It must resolve the existing deck and go
+  # straight idle → rendering → reviewing in one turn, with no agent task.
+  - intent:
+      name: start
+      slots:
+        feedback: "edit kitsoki-pitch"
+    expect_state: reviewing
+    expect_world:
+      deck:
+        spec_path: "docs/decks/kitsoki-pitch.slidey.json"
+        summary: "Existing slidey deck"
+      workspace: "docs/decks"
+      deck_handle: "slidey-edit#1"
+    expect_host_calls:
+      - handler: host.slidey.render
+        args: { call: "render_deck" }
+      - handler: host.artifacts_dir
+        args: { call: "emit_deck" }
+
+expect_terminal: false
+expect_no_errors: true

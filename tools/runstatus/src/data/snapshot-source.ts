@@ -121,7 +121,8 @@ export class SnapshotSource implements DataSource {
   submit(
     _sessionId: string,
     _intent: string,
-    _slots?: Record<string, unknown>
+    _slots?: Record<string, unknown>,
+    _anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor
   ): Promise<TurnResult> {
     return this.readOnly("submit");
   }

@@ -1,0 +1,74 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      driver_replay_product_journey_smoke:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            smoke_id: replay-123
+            smoke_dir: .artifacts/product-journey/dogfood/replay-123
+            report_path: .artifacts/product-journey/dogfood/replay-123/driver-replay-smoke.json
+            summary_path: .artifacts/product-journey/dogfood/replay-123/driver-replay-smoke.md
+            deck_path: .artifacts/product-journey/dogfood/replay-123/driver-replay-smoke.slidey.json
+            run_dir: .artifacts/product-journey/run-123
+            run_deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario: project-onboarding
+            persona: hobbyist-contributor
+            persona_label: Hobbyist contributor
+            attached_evidence_count: 4
+            review_status: needs_evidence
+            review_summary: "needs_evidence: 16/19 checks passed, 0 warnings, 3 failures"
+            review_passed: 16
+            review_total: 19
+            review_warnings: 0
+            review_failed: 3
+            review_backlog_summary: "fail: scenario-attempts (product-discovery, project-onboarding); fail: driver-journal-coverage (product-discovery, project-onboarding); fail: quality-gates (product-discovery (0/4))"
+            validation_status: valid
+            validation_warnings: 0
+            validation_issue_summary: ""
+
+turns:
+  - intent:
+      name: driver_replay_smoke
+      slots:
+        scenario: project-onboarding
+        persona: hobbyist-contributor
+        seed: story-replay
+    expect_state: dogfood_created
+    expect_world:
+      status: driver_replay_smoke_created
+      seed: story-replay
+      dogfood_id: replay-123
+      dogfood_dir: .artifacts/product-journey/dogfood/replay-123
+      dogfood_report_path: .artifacts/product-journey/dogfood/replay-123/driver-replay-smoke.json
+      dogfood_deck_path: .artifacts/product-journey/dogfood/replay-123/driver-replay-smoke.slidey.json
+      dogfood_run_deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      run_dir: .artifacts/product-journey/run-123
+      driver_replay_scenario: project-onboarding
+      driver_replay_persona: hobbyist-contributor
+      driver_replay_attached_evidence_count: 4
+      driver_replay_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      driver_replay_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      driver_replay_media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      review_status: needs_evidence
+      dogfood_review_passed: 16
+      dogfood_review_total: 19
+      dogfood_review_warnings: 0
+      dogfood_review_failed: 3
+      validation_status: valid
+      dogfood_run_validation_warnings: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: driver_replay_product_journey_smoke }
+    expect_view_matches: "DOGFOOD SMOKE CREATED[\\s\\S]*Driver replay scenario[\\s\\S]*project-onboarding[\\s\\S]*Driver replay persona[\\s\\S]*hobbyist-contributor[\\s\\S]*Driver replay evidence[\\s\\S]*4[\\s\\S]*driver-journal.md[\\s\\S]*media-manifest.json[\\s\\S]*16 / 19 passed; 3 failed; 0 warnings[\\s\\S]*fail: scenario-attempts"
+
+expect_no_errors: true

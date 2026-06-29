@@ -147,6 +147,17 @@ func (sc *Sidecar) validateOutputs(outputs map[string]any) error {
 	return nil
 }
 
+// ValueMatchesType is the exported predicate behind validateInputs, for
+// static (load-time) callers — the loader checks a non-templated literal input
+// value against its declared sidecar type so a mismatch that would only surface
+// at runtime (e.g. a bare string wired to a declared `int`) is rejected up
+// front. A string is valid only for `string`/`any`: there is NO coercion, so a
+// non-template string against a non-string type can never satisfy it.
+func ValueMatchesType(v any, t string) bool { return valueMatchesType(v, t) }
+
+// NormType renders a sidecar field type for diagnostics, mapping "" to "any".
+func NormType(t string) string { return normType(t) }
+
 // valueMatchesType reports whether the Go value (already converted from
 // Starlark) conforms to the declared type. The empty/any type always matches.
 func valueMatchesType(v any, t string) bool {

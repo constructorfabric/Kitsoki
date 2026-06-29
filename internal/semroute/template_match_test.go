@@ -87,6 +87,57 @@ func TestTemplateMatch_WorkedExample(t *testing.T) {
 	}
 }
 
+func TestTemplateMatch_DevStoryTicketPickRow(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		path   string
+		intent string
+	}{
+		{name: "standalone", path: "../../stories/dev-story/app.yaml", intent: "pick_ticket"},
+		{name: "imported", path: "../../.kitsoki/stories/kitsoki-dev/app.yaml", intent: "core__pick_ticket"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			def, err := app.Load(tc.path)
+			if err != nil {
+				t.Fatalf("load %s: %v", tc.path, err)
+			}
+			m := mustCompile(t, def)
+			v := mustMatch(t, m, "ticket_search", []string{tc.intent}, "pick 1")
+			if v.Intent != tc.intent {
+				t.Fatalf("Intent: got %q, want %q", v.Intent, tc.intent)
+			}
+			if v.Confidence != ConfidenceTemplateAllSlots {
+				t.Fatalf("Confidence: got %v, want %v", v.Confidence, ConfidenceTemplateAllSlots)
+			}
+			got, ok := v.Slots["n"].(int)
+			if !ok || got != 1 {
+				t.Fatalf("Slots[n]: got %v (%T), want int(1)", v.Slots["n"], v.Slots["n"])
+			}
+		})
+	}
+}
+
+func TestTemplateMatch_PunchListTop10ManifestPhrase(t *testing.T) {
+	t.Parallel()
+	def, err := app.Load("../../stories/punch-list/app.yaml")
+	if err != nil {
+		t.Fatalf("load punch-list: %v", err)
+	}
+	m := mustCompile(t, def)
+	v := mustMatch(t, m, "idle", []string{"start"}, "Let's run the top 10 GPT-5.5 punch list manifest now.")
+	if v.Intent != "start" {
+		t.Fatalf("Intent: got %q, want start", v.Intent)
+	}
+	got, ok := v.Slots["manifest_path"].(string)
+	if !ok || got == "" {
+		t.Fatalf("Slots[manifest_path]: got %v (%T), want non-empty string", v.Slots["manifest_path"], v.Slots["manifest_path"])
+	}
+}
+
 // normalizeSpaces collapses runs of whitespace to one space. The
 // matcher's joinSurfaces puts a single space between tokens; this
 // helper just shields the assertion from any extra trimming.

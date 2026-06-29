@@ -395,10 +395,11 @@ type RoutingConfig struct {
 	ExtractLLMAgent string `yaml:"extract_llm_agent,omitempty"`
 	// FreeFormFallback, when set, names a canonical work-intake state+intent
 	// that should receive otherwise-unmatched prose from strict/menu rooms.
-	// The loader copies that intent's transition onto states that do not
-	// already declare a free-text sink or off-ramp, and the orchestrator routes
-	// such unmatched prose there before the main-turn LLM can guess a generic
-	// navigation intent.
+	// The loader copies that intent's transition across the state graph onto
+	// non-terminal states that do not already declare a free-text sink or
+	// off-ramp, including imported child rooms. The orchestrator routes such
+	// unmatched prose there before the main-turn LLM can guess a generic
+	// navigation intent like quit.
 	FreeFormFallback *FreeFormFallbackConfig `yaml:"free_form_fallback,omitempty"`
 	// Embedding configures the shared embedding sidecar used by both
 	// host.agent.search and the embedding routing tier. When nil or when

@@ -1,0 +1,33 @@
+# Warp basis: lands at `core.landing` with a self-bug already on the
+# operator's radar. Pre-runs the ticket search by seeding ticket_id /
+# ticket_title in world so the next `bugfix` intent picks up the
+# right bug. The local-files provider scans `issues/bugs/` under
+# `repo_root` (defaults to cwd when empty); for this scenario the
+# operator is expected to be running from the kitsoki repo root, so
+# the seed bug at `issues/bugs/2026-05-14T103205Z-tui-view-render-
+# before-bind.md` is the one we're priming for.
+#
+# Usage (from kitsoki repo root):
+#
+#   kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml \
+#       --warp scenarios/pickup_self_bug.yaml
+#
+# Then type `bugfix` (or `core__go_bugfix`) to dispatch the picked
+# ticket into the bf import.
+
+name:        "kitsoki self-bug — TUI view render before bind"
+description: "Primed to pick up issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md and walk the supervised bugfix."
+
+state: core.landing
+
+world:
+  core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
+  core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
+  core__ticket_url:     "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
+  core__thread:         "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
+  core__base_branch:    "main"
+  core__feature_branch: "fix/tui-view-render-before-bind"
+  core__workdir:        ".worktrees/tui-view-render-before-bind"
+  core__workspace_id:   "ws-tui-view-render"
+  judge_mode:           "human"
+  judge_confidence_threshold: 0.8

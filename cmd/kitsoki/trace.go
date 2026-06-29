@@ -259,6 +259,21 @@ func prettyPrint(r io.Reader, w io.Writer) error {
 	return scanner.Err()
 }
 
+// hostCallDetail is one host invocation distilled for the digest: the resolved
+// args it was CALLED with (where host.starlark.run's `inputs:` live — the source
+// of truth for what the script actually received) and the data it RETURNED (the
+// bound outputs, plus the reserved __inspections fs/probe summary) or its error.
+// Surfacing both is what makes a "turn ran but did the wrong thing" failure
+// (e.g. an unevaluated `world.foo` input reaching a script verbatim) visible in
+// the digest instead of only in raw jq.
+type hostCallDetail struct {
+	namespace string
+	call      string
+	args      map[string]any
+	data      map[string]any
+	err       string
+}
+
 // digestTurn is one turn's story, distilled from its events for the --turns view.
 type digestTurn struct {
 	num       int64
@@ -268,12 +283,19 @@ type digestTurn struct {
 	routedBy  string
 	matchType string
 	hostCalls []string
-	prompts   []string // "verb: <truncated prompt>"
-	ide       string   // ide.context_captured summary
-	redirects []string // host.on_error.redirect targets
-	errors    []string // any payload.error
+	hosts     []*hostCallDetail // per-call args + returned data/error (ordered)
+	prompts   []string          // "verb: <truncated prompt>"
+	ide       string            // ide.context_captured summary
+	redirects []string          // host.on_error.redirect targets
+	errors    []string          // any payload.error
 	outcome   string
 	newState  string
+
+	// pairing state (not rendered): de-dups the dispatched+called pair into one
+	// detail by call key, and pairs each returned to the oldest open call of that
+	// namespace (FIFO — correct for synchronous on_enter chains).
+	detailByCall map[string]*hostCallDetail
+	openByNs     map[string][]*hostCallDetail
 }
 
 // digestTurns groups a trace by turn and prints a compact per-turn narrative:
@@ -291,7 +313,7 @@ func digestTurns(r io.Reader, w io.Writer, focusTurn int) error {
 	get := func(turn int64) *digestTurn {
 		d, ok := byTurn[turn]
 		if !ok {
-			d = &digestTurn{num: turn}
+			d = &digestTurn{num: turn, detailByCall: map[string]*hostCallDetail{}, openByNs: map[string][]*hostCallDetail{}}
 			byTurn[turn] = d
 			order = append(order, turn)
 		}
@@ -332,6 +354,40 @@ func digestTurns(r io.Reader, w io.Writer, focusTurn int) error {
 		case rec.Kind == "harness.called", rec.Kind == "harness.dispatched":
 			if ns := str(p["namespace"]); ns != "" {
 				d.hostCalls = appendUniq(d.hostCalls, ns)
+				// Upsert the per-call detail. dispatched + called are two events for
+				// the SAME call (both carry the resolved args incl. the reserved
+				// `call` id); key on (namespace, call) so they collapse into one.
+				args, _ := p["args"].(map[string]any)
+				call := ""
+				if args != nil {
+					call = str(args["call"])
+				}
+				key := ns + "\x00" + call
+				hd, ok := d.detailByCall[key]
+				if !ok {
+					hd = &hostCallDetail{namespace: ns, call: call}
+					d.detailByCall[key] = hd
+					d.hosts = append(d.hosts, hd)
+					d.openByNs[ns] = append(d.openByNs[ns], hd)
+				}
+				if args != nil {
+					hd.args = args
+				}
+			}
+		case rec.Kind == "harness.returned":
+			// Pair the return to the oldest still-open call of this namespace, so
+			// the bound outputs / error land on the right invocation.
+			if ns := str(p["namespace"]); ns != "" {
+				if q := d.openByNs[ns]; len(q) > 0 {
+					hd := q[0]
+					d.openByNs[ns] = q[1:]
+					if e := str(p["error"]); e != "" {
+						hd.err = e
+					}
+					if dat, ok := p["data"].(map[string]any); ok {
+						hd.data = dat
+					}
+				}
 			}
 		case rec.Kind == "agent.call.start":
 			// Store the full prompt; truncation is a render-time concern so
@@ -399,8 +455,14 @@ func renderDigestTurn(w io.Writer, d *digestTurn, full bool) {
 	if d.ide != "" {
 		fmt.Fprintf(w, "  ide    %s\n", d.ide)
 	}
-	for _, hc := range d.hostCalls {
-		fmt.Fprintf(w, "  host   %s\n", hc)
+	if len(d.hosts) > 0 {
+		for _, hd := range d.hosts {
+			renderHostDetail(w, hd, full)
+		}
+	} else {
+		for _, hc := range d.hostCalls {
+			fmt.Fprintf(w, "  host   %s\n", hc)
+		}
 	}
 	for _, pr := range d.prompts {
 		if full {
@@ -429,6 +491,152 @@ func renderDigestTurn(w io.Writer, d *digestTurn, full bool) {
 		fmt.Fprintf(w, "  out    %s\n", out)
 	}
 	fmt.Fprintln(w)
+}
+
+// renderHostDetail prints one host call's namespace [call], the resolved inputs
+// it received, and the outputs it returned (or its error) — plus any fs/probe
+// inspections. In full mode (--turn <n>) inputs/outputs print one line per key
+// (100% detail); in the compact --turns view each is a single truncated summary.
+// This is the host-call analogue of the dispatched-prompt view for agent verbs:
+// the source of truth for what a script/handler actually saw and produced.
+func renderHostDetail(w io.Writer, hd *hostCallDetail, full bool) {
+	label := hd.namespace
+	if hd.call != "" {
+		label += " [" + hd.call + "]"
+	}
+	in := hostInputs(hd.args)
+	out, insp := hostOutputs(hd.data)
+
+	if full {
+		fmt.Fprintf(w, "  host   %s\n", label)
+		for _, kv := range sortedKVLines(in) {
+			fmt.Fprintf(w, "    in   %s\n", kv)
+		}
+		if hd.err != "" {
+			fmt.Fprintf(w, "    %s\n", styleFor("err  "+hd.err, colorErr))
+		} else {
+			for _, kv := range sortedKVLines(out) {
+				fmt.Fprintf(w, "    out  %s\n", kv)
+			}
+		}
+		for _, ix := range insp {
+			fmt.Fprintf(w, "    fs   %s\n", ix)
+		}
+		return
+	}
+
+	var parts []string
+	if s := compactKV(in); s != "" {
+		parts = append(parts, "in="+truncate1(s, 60))
+	}
+	if hd.err != "" {
+		parts = append(parts, styleFor("err="+truncate1(hd.err, 90), colorErr))
+	} else if s := compactKV(out); s != "" {
+		parts = append(parts, "out="+truncate1(s, 70))
+	}
+	if len(insp) > 0 {
+		parts = append(parts, styleFor("fs="+truncate1(strings.Join(insp, ", "), 50), colorDim))
+	}
+	if len(parts) == 0 {
+		fmt.Fprintf(w, "  host   %s\n", label)
+		return
+	}
+	fmt.Fprintf(w, "  host   %-30s %s\n", label, strings.Join(parts, "  "))
+}
+
+// hostInputs returns what the handler/script actually received: the `inputs:`
+// sub-map when present (host.starlark.run), else the args with reserved + bulky
+// keys (call, script, prompt, context, acceptance, source) elided so an agent's
+// large context doesn't drown the line.
+func hostInputs(args map[string]any) map[string]any {
+	if args == nil {
+		return nil
+	}
+	if in, ok := args["inputs"].(map[string]any); ok {
+		return in
+	}
+	skip := map[string]bool{"call": true, "script": true, "prompt": true, "context": true, "acceptance": true, "source": true}
+	out := map[string]any{}
+	for k, v := range args {
+		if !skip[k] {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// hostOutputs splits returned data into the handler/script outputs and a compact
+// rendering of the reserved __inspections fs/probe summary (the "exists <path> →
+// missing" that explains a deck-not-found / wrong-path resolution).
+func hostOutputs(data map[string]any) (map[string]any, []string) {
+	if data == nil {
+		return nil, nil
+	}
+	out := map[string]any{}
+	var insp []string
+	for k, v := range data {
+		if k == "__inspections" {
+			if list, ok := v.([]any); ok {
+				for _, it := range list {
+					if m, ok := it.(map[string]any); ok {
+						insp = append(insp, fmt.Sprintf("%s %s→%s", str(m["op"]), str(m["target"]), str(m["status"])))
+					}
+				}
+			}
+			continue
+		}
+		out[k] = v
+	}
+	return out, insp
+}
+
+// sortedKVLines renders a map as sorted "k: <value>" lines, values JSON-compacted
+// and length-capped so a big object stays one readable line.
+func sortedKVLines(m map[string]any) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	lines := make([]string, 0, len(keys))
+	for _, k := range keys {
+		lines = append(lines, fmt.Sprintf("%s: %s", k, truncate1(valStr(m[k]), 200)))
+	}
+	return lines
+}
+
+// compactKV renders a map as a single sorted "k=v k=v" line, values capped.
+func compactKV(m map[string]any) string {
+	if len(m) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, truncate1(valStr(m[k]), 28)))
+	}
+	return strings.Join(parts, " ")
+}
+
+// valStr renders a value compactly: a string verbatim (so an UNEVALUATED input
+// like "world.deck.spec_path" shows as-is — the tell for the bare-expr bug),
+// everything else as compact JSON.
+func valStr(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return string(b)
 }
 
 // fmtIDECapture renders an ide.context_captured payload as a one-liner.
@@ -489,13 +697,16 @@ SOURCE RESOLUTION — you rarely need a full path. The argument is resolved as:
 VIEWS:
   (default)   the raw event stream, one line per store.Event, colour-coded.
   --turns     a compact per-TURN digest: operator input, which routing tier
-              resolved it (and WHY — routed_by/match_type), the host calls
-              fired, the PROMPT each agent verb dispatched (the source of
-              truth for what the model actually saw), editor context
+              resolved it (and WHY — routed_by/match_type), each host call
+              fired WITH its resolved inputs and returned outputs / error / fs
+              inspections (so an unevaluated input or a deck-not-found is visible
+              here, not only in jq), the PROMPT each agent verb dispatched (the
+              source of truth for what the model actually saw), editor context
               (ide.context_captured), on_error redirects, errors, and the
               outcome. Use this first when a turn RAN but did the wrong thing
               (context didn't reach the prompt, input mis-routed, silent no-op).
-  --turn <n>  focus a single turn and print its prompts in FULL (implies --turns).
+  --turn <n>  focus a single turn and print its prompts AND each host call's
+              inputs/outputs in FULL, one line per key (implies --turns).
 
 EXAMPLES:
   kitsoki trace --turns --app kitsoki-dev      # newest kitsoki-dev session, digested
@@ -548,7 +759,185 @@ EXAMPLES:
 	cmd.Flags().String("app", "", "restrict session resolution to this app's subdirectory (e.g. kitsoki-dev)")
 
 	cmd.AddCommand(traceToFlowCmd())
+	cmd.AddCommand(traceStatusCmd())
 	return cmd
+}
+
+// traceStatus is the one-shot snapshot scanTraceStatus distils from a trace.
+type traceStatus struct {
+	State       string    `json:"state"`
+	Turn        int64     `json:"turn"`
+	Events      int       `json:"events"`
+	Status      string    `json:"status,omitempty"`
+	Exit        string    `json:"exit,omitempty"`
+	LastError   string    `json:"last_error,omitempty"`
+	SessionCost float64   `json:"session_cost_usd"`
+	LastTs      time.Time `json:"last_event_ts"`
+}
+
+// scanTraceStatus streams a JSONL trace and distils the CURRENT status: the last
+// event's state/turn/timestamp, and the latest world values (last_error,
+// session_cost_usd, status) folded from `world.update` events. Robust to a
+// partially-written trailing line (a LIVE trace another process is appending to)
+// — an unparseable line is skipped, so this works on an in-flight session.
+func scanTraceStatus(r io.Reader) traceStatus {
+	var st traceStatus
+	worldVals := map[string]any{}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 1<<20), 64<<20) // prompts/diffs make for big lines
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var e store.Event
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			continue // partial last line of a live trace, or a non-event line
+		}
+		st.Events++
+		if int64(e.Turn) > st.Turn {
+			st.Turn = int64(e.Turn)
+		}
+		if e.StatePath != "" {
+			st.State = string(e.StatePath)
+		}
+		if !e.Ts.IsZero() {
+			st.LastTs = e.Ts
+		}
+		// Fold world.update (store.EffectApplied) `set` maps into the running world.
+		if e.Kind == store.EffectApplied && len(e.Payload) > 0 {
+			var p struct {
+				Set map[string]any `json:"set"`
+			}
+			if json.Unmarshal(e.Payload, &p) == nil {
+				for k, v := range p.Set {
+					worldVals[k] = v
+				}
+			}
+		}
+	}
+	if v, ok := worldVals["last_error"].(string); ok {
+		st.LastError = v
+	}
+	if v, ok := worldVals["status"].(string); ok {
+		st.Status = v
+	}
+	if v, ok := worldVals["session_cost_usd"].(float64); ok {
+		st.SessionCost = v
+	}
+	if strings.Contains(st.State, "__exit__") {
+		st.Exit = st.State
+	}
+	return st
+}
+
+// traceStatusCmd implements `kitsoki trace status`: a one-shot, cross-process,
+// no-MCP status read of a (possibly in-flight) session from its trace file. This
+// is the supported way to check on a RUNNING job: the studio MCP serialises tool
+// calls per connection and sessions are per-process, so a second `session.status`
+// call cannot observe a job another connection/process is driving — but its trace
+// is on disk and this reads it directly.
+func traceStatusCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "status [path | session-id-substring]",
+		Short: "One-shot status of a (possibly in-flight) session — state, turn, error, cost, idle time",
+		Long: `Print the current status of a session from its JSONL trace: state, turn,
+exit/status, last_error, cumulative cost, and how long since the last event
+(the idle time — a large idle on a non-terminal state means the run is STUCK).
+
+It reads the trace FILE directly, so unlike a second 'session.status' MCP call it
+works on a LIVE session another connection/process is driving (the MCP server
+serialises calls per connection and sessions are per-process). A partially-written
+trailing line is skipped safely.
+
+Source resolution matches 'kitsoki trace' (newest session / --app / id-substring /
+exact path / -).`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			arg := ""
+			if len(args) == 1 {
+				arg = args[0]
+			}
+			appFilter, _ := cmd.Flags().GetString("app")
+			path, err := resolveTraceArg(store.SessionsDir(), arg, appFilter)
+			if err != nil {
+				return err
+			}
+			var r io.Reader
+			var modTime time.Time
+			if path == "-" {
+				r = os.Stdin
+			} else {
+				f, err := os.Open(path)
+				if err != nil {
+					return fmt.Errorf("open trace file: %w", err)
+				}
+				defer func() { _ = f.Close() }()
+				if fi, statErr := f.Stat(); statErr == nil {
+					modTime = fi.ModTime()
+				}
+				r = f
+			}
+			st := scanTraceStatus(r)
+			asJSON, _ := cmd.Flags().GetBool("json")
+			return printTraceStatus(cmd.OutOrStdout(), path, st, modTime, asJSON, time.Now())
+		},
+	}
+	cmd.Flags().Bool("json", false, "emit machine-readable JSON instead of the human summary")
+	cmd.Flags().String("app", "", "restrict session resolution to this app's subdirectory (e.g. kitsoki-dev)")
+	return cmd
+}
+
+// printTraceStatus renders a traceStatus. `now` is injected for testability. The
+// idle age uses the last event's Ts, falling back to the file mtime.
+func printTraceStatus(w io.Writer, path string, st traceStatus, modTime time.Time, asJSON bool, now time.Time) error {
+	ref := st.LastTs
+	if ref.IsZero() {
+		ref = modTime
+	}
+	idle := time.Duration(0)
+	if !ref.IsZero() {
+		idle = now.Sub(ref)
+		if idle < 0 {
+			idle = 0
+		}
+	}
+	terminal := st.Exit != "" || st.Status == "shipped" || st.Status == "done" ||
+		st.Status == "needs-human" || st.Status == "abandoned" || st.Status == "not-reproducible"
+	if asJSON {
+		out := struct {
+			traceStatus
+			Path        string `json:"path"`
+			IdleSeconds int    `json:"idle_seconds"`
+			Terminal    bool   `json:"terminal"`
+		}{traceStatus: st, Path: path, IdleSeconds: int(idle.Seconds()), Terminal: terminal}
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+	state := st.State
+	if state == "" {
+		state = "(unknown — no state-bearing event yet)"
+	}
+	fmt.Fprintf(w, "session  %s\n", filepath.Base(path))
+	fmt.Fprintf(w, "state    %s  (turn %d)\n", state, st.Turn)
+	if st.Status != "" {
+		fmt.Fprintf(w, "status   %s\n", st.Status)
+	}
+	if st.LastError != "" {
+		fmt.Fprintf(w, "error    %s\n", st.LastError)
+	}
+	if st.SessionCost > 0 {
+		fmt.Fprintf(w, "cost     $%.4f\n", st.SessionCost)
+	}
+	hint := ""
+	if !terminal && idle >= 5*time.Minute {
+		hint = "  ⚠ STALLED — no new events; the run may be stuck"
+	} else if terminal {
+		hint = "  ✓ terminal"
+	}
+	fmt.Fprintf(w, "events   %d  ·  last event %s ago%s\n", st.Events, idle.Round(time.Second), hint)
+	return nil
 }
 
 // traceToFlowCmd implements `kitsoki trace to-flow`: convert a recorded JSONL

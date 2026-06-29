@@ -41,11 +41,11 @@ than the story that **defines** the room:
 
 ```
 host.agent.task: build validator MCP config:
-  schema ".../stories/kitsoki-dev/schemas/brief-distill.json" not found:
-  stat .../stories/kitsoki-dev/schemas/brief-distill.json: no such file or directory
+  schema ".../.kitsoki/stories/kitsoki-dev/schemas/brief-distill.json" not found:
+  stat .../.kitsoki/stories/kitsoki-dev/schemas/brief-distill.json: no such file or directory
 ```
 
-`stories/kitsoki-dev/schemas/` does not exist — the schemas live under
+`.kitsoki/stories/kitsoki-dev/schemas/` does not exist — the schemas live under
 `stories/dev-story/schemas/`. So `brief_distill` throws every turn,
 `on_error: proposal` swallows it back into the same room, and the brief is
 never written. The interviewer (`host.agent.converse`) keeps working because
@@ -58,7 +58,7 @@ several such task/ask sites.
 
 ### Steps to reproduce
 
-1. `kitsoki run stories/kitsoki-dev/app.yaml`.
+1. `kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml`.
 2. Enter the proposal pipeline and reach `core.proposal` (discovery + brief).
 3. Talk for a few turns. Watch "Brief checks" — it stays at 0/5.
 4. Inspect `world.last_error` / the session trace: every turn shows
@@ -104,9 +104,9 @@ To keep a live dogfood session moving (`web-story-hub` brief), the two assets
 `brief_distill` needs were copied into the **importing** story so the broken
 importer-relative resolution finds them:
 
-- `stories/kitsoki-dev/schemas/brief-distill.json` (copy of
+- `.kitsoki/stories/kitsoki-dev/schemas/brief-distill.json` (copy of
   `stories/dev-story/schemas/brief-distill.json`)
-- `stories/kitsoki-dev/prompts/proposal_brief_distill.md` (copy of
+- `.kitsoki/stories/kitsoki-dev/prompts/proposal_brief_distill.md` (copy of
   `stories/dev-story/prompts/proposal_brief_distill.md`)
 
 This is a paper-over of the symptom for ONE task site only — every other

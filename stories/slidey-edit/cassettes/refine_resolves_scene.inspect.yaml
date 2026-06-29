@@ -1,0 +1,26 @@
+# refine_resolves_scene.inspect.yaml — the recorded fs interactions for the REAL
+# resolve_scene.star run on the refine path (flows/refine_resolves_viewed_scene.yaml).
+#
+# Wired via `starlark_inspect_cassette:`, this makes the testrunner WRAP the real
+# host.starlark.run handler with a ReplayInspector — so resolve_scene actually
+# runs (json.decode the deck, pick the viewed scene) and the gate runs against the
+# REAL machine-resolved inputs. That is the whole point: it exercises the
+# `{{ }}`-templated `inputs:` resolution that the by_call stubs in the other flows
+# mask. resolve_scene reads the spec via ctx.fs.exists then ctx.fs.read; the
+# targets MUST equal the machine-resolved spec_path. If `inputs:` ever regresses to
+# a bare `world.deck.spec_path` (passed verbatim), the target becomes the literal
+# string "world.deck.spec_path", this cassette MISSES, and the flow fails loudly —
+# which is exactly the regression guard.
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: stories/slidey-edit/baked/deck.json
+    out: "true"
+  - op: read
+    target: stories/slidey-edit/baked/deck.json
+    out: |
+      {"scenes":[
+        {"type":"title","eyebrow":"kitsoki","title":"Spatial Annotation","subtitle":"point + refine"},
+        {"type":"cards","variant":"trio","title":"One anchor union","cards":["a","b","c"]},
+        {"type":"narrative","eyebrow":"why","lede":"location-tied feedback","body":"…"}
+      ]}

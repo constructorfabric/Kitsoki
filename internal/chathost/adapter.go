@@ -29,6 +29,14 @@ func (a *adapter) Get(ctx context.Context, chatID string) (*host.ChatRecord, err
 	return toRecord(c), nil
 }
 
+func (a *adapter) GetOrEnsure(ctx context.Context, chatID string) (*host.ChatRecord, error) {
+	c, err := a.s.GetOrEnsure(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	return toRecord(c), nil
+}
+
 func (a *adapter) Resolve(ctx context.Context, appID, room, scopeKey, title string) (*host.ChatRecord, bool, error) {
 	c, created, err := a.s.Resolve(ctx, appID, room, scopeKey, title)
 	if err != nil {

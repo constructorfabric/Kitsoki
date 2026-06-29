@@ -1,0 +1,46 @@
+# preflight_blocks_missing_profile — setup blockers must stop before arming or live spend.
+#
+# A missing candidate profile is a repo-owner setup issue. The prepare room must
+# surface it via the preflight host call and route back to configure, not continue
+# into oracle verification or live-cell instructions.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  project: gears-rust
+  repo_dir: /Users/brad/code/gears-rust
+  bugs: [bug1]
+  candidates: [gpt-5.3-spark]
+
+host_handlers:
+  host.run:
+    by_call:
+      preflight_local:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: |
+            {
+              "ok": false,
+              "project": "gears-rust",
+              "errors": [
+                "profile 'codex-spark' for candidate 'gpt-5.3-spark' is not configured in .kitsoki.yaml/.kitsoki.local.yaml"
+              ]
+            }
+        error: "host.run: command exited 1"
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: configure
+    expect_world:
+      cells_total: 1
+
+  - intent: { name: accept, slots: {} }
+    expect_state: configure
+    expect_host_calls:
+      - handler: host.run
+        id: preflight_local
+    expect_view_matches: "Bake-off · configure"
+
+expect_no_errors: false

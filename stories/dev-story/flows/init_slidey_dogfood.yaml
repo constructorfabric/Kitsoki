@@ -30,17 +30,30 @@ host_handlers:
         data:
           ok: true
           exit_code: 0
-          stdout: '{"status":"applied","config_path":"/Users/brad/code/slidey/.kitsoki.yaml","profile_path":"/Users/brad/code/slidey/.kitsoki/project-profile.yaml","instance_path":"/Users/brad/code/slidey/stories/slidey-dev/app.yaml","gitignore_path":"/Users/brad/code/slidey/.gitignore","writes":["/Users/brad/code/slidey/.kitsoki.yaml","/Users/brad/code/slidey/.kitsoki/project-profile.yaml","/Users/brad/code/slidey/stories/slidey-dev/app.yaml"]}'
+          stdout: '{"status":"applied","config_path":"/Users/brad/code/slidey/.kitsoki.yaml","profile_path":"/Users/brad/code/slidey/.kitsoki/project-profile.yaml","instance_path":"/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml","gitignore_path":"/Users/brad/code/slidey/.gitignore","writes":["/Users/brad/code/slidey/.kitsoki.yaml","/Users/brad/code/slidey/.kitsoki/project-profile.yaml","/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"]}'
           stdout_json:
             status: "applied"
             config_path: "/Users/brad/code/slidey/.kitsoki.yaml"
             profile_path: "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
-            instance_path: "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+            instance_path: "/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"
             gitignore_path: "/Users/brad/code/slidey/.gitignore"
             writes:
               - "/Users/brad/code/slidey/.kitsoki.yaml"
               - "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
-              - "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+              - "/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"
+      install_tools:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target":"/Users/brad/code/slidey","skills":["kitsoki-story-authoring"],"agents":["kitsoki-mcp-driver.md"],"mcp_path":"/Users/brad/code/slidey/.mcp.json","mcp_written":true}'
+          stdout_json:
+            target: "/Users/brad/code/slidey"
+            skills:
+              - "kitsoki-story-authoring"
+            agents:
+              - "kitsoki-mcp-driver.md"
+            mcp_path: "/Users/brad/code/slidey/.mcp.json"
+            mcp_written: true
 
 turns:
   - intent: { name: go_init, slots: {} }
@@ -102,13 +115,22 @@ turns:
         status: "applied"
         config_path: "/Users/brad/code/slidey/.kitsoki.yaml"
         profile_path: "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
-        instance_path: "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+        instance_path: "/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"
         gitignore_path: "/Users/brad/code/slidey/.gitignore"
         writes:
           - "/Users/brad/code/slidey/.kitsoki.yaml"
           - "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
-          - "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
-    expect_view_matches: "continue"
+          - "/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"
+      init_tools_ok: true
+      init_tools_result:
+        target: "/Users/brad/code/slidey"
+        skills:
+          - "kitsoki-story-authoring"
+        agents:
+          - "kitsoki-mcp-driver.md"
+        mcp_path: "/Users/brad/code/slidey/.mcp.json"
+        mcp_written: true
+    expect_view_matches: "studio MCP"
 
   - intent: { name: init_applied, slots: {} }
     expect_state: init_done
@@ -118,12 +140,12 @@ turns:
         status: "applied"
         config_path: "/Users/brad/code/slidey/.kitsoki.yaml"
         profile_path: "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
-        instance_path: "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+        instance_path: "/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"
         gitignore_path: "/Users/brad/code/slidey/.gitignore"
         writes:
           - "/Users/brad/code/slidey/.kitsoki.yaml"
           - "/Users/brad/code/slidey/.kitsoki/project-profile.yaml"
-          - "/Users/brad/code/slidey/stories/slidey-dev/app.yaml"
+          - "/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"
     expect_view_matches: "project-profile.yaml"
 
   - intent: { name: go_main, slots: {} }

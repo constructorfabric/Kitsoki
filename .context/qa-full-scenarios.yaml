@@ -1,0 +1,47 @@
+scenarios:
+  - id: pm-idea
+    title: "Phase 1 — conversation-driven PRD intake plays real content"
+    required: true
+    steps:
+      - "A scene 'Idea → PRD + mockups' (eyebrow 'PRODUCT MANAGER') shows an embedded kitsoki tour."
+      - "The tour shows the real conversational PRD intake: a typed slidey idea, clarifying Q&A and/or a prior-art scan, and a drafted/published PRD — not a blank/loading screen."
+
+  - id: architect-design
+    title: "Phase 2 — PRD → design epic/slices/ADRs"
+    required: true
+    steps:
+      - "A scene 'Requirements → design' (eyebrow 'ARCHITECT') shows an embedded tour."
+      - "The tour shows the design phase: design intake/refine and a published design (epic/slices/ADRs)."
+
+  - id: decomposition
+    title: "Phase 3 — design decomposed into a work plan"
+    required: true
+    steps:
+      - "A scene 'Design → work plan' (eyebrow 'DECOMPOSITION') shows an embedded tour."
+      - "The tour shows the decomposition: configure/decompose into agent-sized briefs."
+
+  - id: bugfix
+    title: "Phase 4 — bug-fix pipeline reproduce→fix→validate"
+    required: true
+    steps:
+      - "A scene 'Bug → reproduce → fix → validate' shows an embedded tour of the bug-fix pipeline on a real slidey bug (implement/test/validate visible)."
+
+  - id: refine
+    title: "Phase 5 — spatial anchored refine"
+    required: true
+    steps:
+      - "A scene about spatial refine shows the rendered deck poster with an annotation overlay (boxed elements), demonstrating location-tied review."
+
+  - id: ship-pr
+    title: "Phase 6 — open PR, CI, merge"
+    required: true
+    steps:
+      - "A scene about shipping shows a pull request being opened on the slidey repo (PR id/url, open_pr state), CI, and a merge."
+
+  - id: arc-coherent
+    title: "The deck is a coherent six-phase dev story"
+    required: true
+    steps:
+      - "A title slide opens the deck (idea → merged PR on the slidey repo)."
+      - "Six narrated phase slides each precede their tour video (PM, architect, decomposition, bug, refine, ship)."
+      - "A closing cta slide states every frame is a deterministic, no-LLM replay."

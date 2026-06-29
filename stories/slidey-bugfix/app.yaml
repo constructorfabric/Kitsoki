@@ -72,6 +72,11 @@ imports:
       # loader requires every child exit be mapped).
       triaged:          { to: shipped }
 
+    # Surface a bare `start` intent for MCP and web composer users while
+    # preserving namespaced bugfix intents for advanced flows.
+    intents:
+      import: [start]
+
 # Instance world — the slidey cards-timing-drift profile (the demo's pre-set context).
 world:
   ticket_id:       { type: string, default: "slidey-128" }

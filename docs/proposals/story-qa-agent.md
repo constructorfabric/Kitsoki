@@ -5,8 +5,9 @@
 author/drive/see as an MCP server) and have since **shipped** — see
 [`docs/architecture/mcp-studio.md`](../architecture/mcp-studio.md). This epic now
 owns only its one remaining slice — the **QA agent skill**, a *consumer* of that
-shipped server. **Slices:** 1 owned (0/1 shipped); its substrate shipped under
-mcp-studio.
+shipped server. A local skill scaffold and runner now exist, but the full live
+persona/scenario loop still needs completion. **Slices:** 1 owned (0.5/1
+shipped); its substrate shipped under mcp-studio.
 
 ## Why
 

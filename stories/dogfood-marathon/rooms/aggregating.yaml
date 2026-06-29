@@ -1,0 +1,41 @@
+# aggregating — roll up every per-case result into world.rollup. Deterministic.
+#
+# host.starlark.run (aggregate_run.star) folds results.items into:
+#   counts   — {processed, solved, partial, failed, skipped, shipped, needs_human}
+#   totals   — {cost_usd, tokens, wall_s}
+#   worked   — what worked (e.g. regression test caught a bad fix; safe gate-parking)
+#   didnt    — what didn't (e.g. needs-human under-reports severity; quota walls)
+#   headline — the honest one-liner (structure isn't automatically cheaper but more thorough)
+# The script computes only from the recorded data — never invents an outcome.
+
+states:
+
+  aggregating:
+    description: "Rolling up all case results (deterministic)."
+    relevant_world: [results, rollup, findings]
+    view:
+      - heading: "Dogfood marathon · aggregating"
+      - kv:
+          pairs:
+            Cases:    '{{ world.results.items|length }}'
+            Solved:   '{{ world.rollup.counts.solved|default:"…" }}'
+            Findings: '{{ world.findings.items|length }}'
+      - prose: "Folding every case's outcome / cost / tokens / time into the run rollup: counts, totals, what worked, what didn't, and the honest headline."
+    on_enter:
+      - invoke: host.starlark.run
+        id: aggregate_run
+        once: true
+        with:
+          script: scripts/aggregate_run.star
+          inputs:
+            results:  "{{ world.results }}"
+            findings: "{{ world.findings }}"
+        bind:
+          rollup: rollup
+        on_error: reporting   # a roll-up error still proceeds — the deck shows what it has
+      - emit_intent: aggregated
+    on:
+      aggregated:
+        - target: reporting
+      look:
+        - target: .

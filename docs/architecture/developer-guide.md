@@ -179,8 +179,10 @@ just structured `intent:` blocks, also add a Mode 1 fixture under
 
 Code changes; live in `internal/host/`.
 
-1. Implement a `host.Handler` (`func(ctx, args, store) (Result, error)`)
-   in a new or existing file under `internal/host/`.
+1. Implement a `host.Handler`
+   (`func(ctx context.Context, args map[string]any) (Result, error)`)
+   in a new or existing file under `internal/host/`. Dependencies such
+   as secrets are supplied through context, not a store parameter.
 2. Register it inside `Registry.RegisterBuiltins` in
    `internal/host/handlers.go`. The name **must** start with `host.`
    and be dot-separated (`host.git.commit`, `host.k8s.apply`, …).
@@ -405,25 +407,21 @@ composition is documented in [`docs/tui/frame-composition.md`](../tui/frame-comp
 
 ---
 
-## 8. Hot-reload (edit-mode)
+## 8. Authoring while running
 
-While running `kitsoki run`, press `Esc` to open the action menu, then
-pick **Edit mode**. The TUI:
+The old TUI **Edit mode** shadow-copy overlay is gone. The TUI now uses
+declared meta modes: `/meta` opens a meta chat against the running app,
+and any applied edits reload the orchestrator in place when the current
+state still exists in the new graph.
 
-1. Snapshots the app directory into a shadow copy.
-2. Spawns `claude -p` inside the shadow copy with full Read/Edit/Write
-   tool access and the user's free-text proposal as the prompt.
-3. Diffs the result against the original to build a unified diff.
-4. Displays the diff for review.
-
-Hitting `[a]pply` copies the changed files back into place; the
-orchestrator hot-reloads the `AppDef`, rebuilds the harness's cached
-system prompt, and rebinds the current state if it still exists in the
-new graph.
-
-This is the easiest way to evolve an app — and a good debugging tool
-when you can't tell whether a behaviour change is a YAML or a code
-problem.
+For deterministic story authoring, attach an external agent to `kitsoki
+mcp`. The Studio MCP server owns an authoring workspace handle plus
+driving-session handles, defaults driving to the no-LLM replay harness,
+and exposes `story.read`, `story.write`, `story.validate`, `story.graph`,
+and `story.test` for read/write/validate/test cycles. Pass
+`--workspace <story-dir-or-app.yaml>` to bind an initial authoring
+workspace, and use `--read-only` when the client should inspect but not
+mutate the story tree.
 
 ---
 

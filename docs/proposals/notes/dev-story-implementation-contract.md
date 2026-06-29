@@ -413,7 +413,7 @@ That's 8 flows minimum; aim for 10–12 to cover edge cases.
 
 These are explicit non-goals for Wave 1 (they land in Wave 2):
 
-- `stories/pr-refinement/`, `stories/dev-story/`, `stories/kitsoki-dev/`
+- `stories/pr-refinement/`, `stories/dev-story/`, `.kitsoki/stories/kitsoki-dev/`
 - `stories/implementation/`, `stories/code-review/`, `stories/cypilot/`
 - `internal/host/` handlers for github / cypilot_artifacts / jira
 - The `kitsoki bug create` CLI surface (lives in
@@ -710,7 +710,7 @@ reference:
 
 Explicit non-goals for Wave 2 (deferred to Wave 3+):
 
-- `stories/kitsoki-dev/` instance with `host.local_files.*` bindings
+- `.kitsoki/stories/kitsoki-dev/` instance with `host.local_files.*` bindings
   (Wave 3 — Phase 3 of the proposal). The dogfood loop closes there.
 - `stories/implementation/`, `stories/code-review/`, `stories/cypilot/`
   sub-stories (Wave 3 — Phases 5–6). dev-story's rooms for these are
@@ -730,14 +730,14 @@ Explicit non-goals for Wave 2 (deferred to Wave 3+):
 | `stories/pr-refinement/` | 4 | yes |
 | `stories/dev-story/` | 4 | yes (includes bf → pr full-chain) |
 | `stories/oregon-trail/` | 28 | yes (no regression) |
-| `stories/kitsoki-dev/` (Phase 3) | 4 | yes (Wave 2 / Phase 3 — see below) |
+| `.kitsoki/stories/kitsoki-dev/` (Phase 3) | 4 | yes (Wave 2 / Phase 3 — see below) |
 
 Plus `go test ./...` is fully green.
 
 ## W2.11 — Wave 2 / Phase 3 — kitsoki-dev dogfood appendix
 
 Phase 3 of the proposal (the PoC milestone ★) lands
-`stories/kitsoki-dev/` — a ~50-line instance that imports
+`.kitsoki/stories/kitsoki-dev/` — a ~50-line instance that imports
 `stories/dev-story/` under the alias `core` with concrete bindings
 to the local-files providers (`host.local_files.ticket`, `host.git`,
 `host.local`, `host.git_worktree`, `host.append_to_file`,
@@ -747,7 +747,7 @@ ticket and conversation log".
 
 ### W2.11.1 — Instance-level world keys (forward-looking)
 
-`stories/kitsoki-dev/app.yaml`'s `world:` block adds three keys for
+`.kitsoki/stories/kitsoki-dev/app.yaml`'s `world:` block adds three keys for
 the dogfood seam that aren't consumed by any current room:
 
 ```yaml
@@ -844,7 +844,7 @@ assertion today. Phase 3 ships:
   state-machine walk and projected-world shape end-to-end with
   stubbed handlers — proves the import composition + judge
   polymorphism + emit_intent path through the multi-layer fold.
-- A manual-walkthrough doc in `stories/kitsoki-dev/README.md`
+- A manual-walkthrough doc in `.kitsoki/stories/kitsoki-dev/README.md`
   ("Manual walkthrough — the on-disk smoke") that exercises the
   real handlers against the on-disk seed bugs. The on-disk
   byte-exact assertion is run by hand; CI would need an explicit
@@ -862,7 +862,7 @@ covering it.
 ### W2.11.5 — Phase 3 test surface
 
 ```
-$ kitsoki test flows stories/kitsoki-dev/app.yaml
+$ kitsoki test flows .kitsoki/stories/kitsoki-dev/app.yaml
 PASS      dogfood_smoke.yaml             (4 turns)
 PASS      pickup_self_bug_supervised.yaml (18 turns)
 PASS      pickup_story_bug_supervised.yaml (18 turns)
@@ -1179,7 +1179,7 @@ Explicit non-goals for Phase 5 (deferred to later phases):
 | `stories/pr-refinement/` | 4 flows (Wave 2 preserved) | yes |
 | `stories/dev-story/` | 4 flows (Wave 2 preserved) | yes |
 | `stories/oregon-trail/` | 28 flows (no regression) | yes |
-| `stories/kitsoki-dev/` (Phase 3) | 4 flows (Phase 3 preserved) | yes |
+| `.kitsoki/stories/kitsoki-dev/` (Phase 3) | 4 flows (Phase 3 preserved) | yes |
 | `go test ./internal/host/...` (GitHub + cypilot_artifacts) | all happy + error paths | yes |
 
 The cypilot host tests (`github_test.go`, `cypilot_artifacts_test.go`)
@@ -1408,7 +1408,7 @@ Explicit non-goals (deferred to later phases or out of scope):
 | `stories/bugfix/` | 42 flows (10 Wave 1 → 42 Wave 3 / Phase 4) | yes |
 | `stories/pr-refinement/` | 4 flows (Wave 2 preserved) | yes |
 | `stories/dev-story/` | 4 flows (Wave 2 preserved) | yes |
-| `stories/kitsoki-dev/` | 4 flows (Phase 3 preserved) | yes |
+| `.kitsoki/stories/kitsoki-dev/` | 4 flows (Phase 3 preserved) | yes |
 | `stories/cypilot/` | 4 flows (Phase 5 preserved) | yes |
 | `stories/oregon-trail/` | 28 flows (no regression) | yes |
 | `go test ./...` | all packages | yes |
@@ -1706,7 +1706,7 @@ types `impl__start` / `rev__start` to boot each story.
        TestEmitIntent_NonexistentNameInsideAliasMapIsNoArm.
      - `stories/dev-story/flows/bf_llm_auto_advance.yaml` —
        single-layer fold (dev-story → bf).
-     - `stories/kitsoki-dev/flows/dogfood_autonomous_smoke.yaml` —
+     - `.kitsoki/stories/kitsoki-dev/flows/dogfood_autonomous_smoke.yaml` —
        two-layer fold (kitsoki-dev → core → bf), bare `accept` in the
        verdict stub.
      - `stories/implementation/flows/happy_llm_then_human.yaml` was
@@ -1753,7 +1753,7 @@ types `impl__start` / `rev__start` to boot each story.
 | `stories/bugfix/flows/*.yaml` | 42 / 42 | Phase 4 expanded set; regression |
 | `stories/pr-refinement/flows/*.yaml` | 4 / 4 | regression |
 | `stories/cypilot/flows/*.yaml` | 4 / 4 | regression |
-| `stories/kitsoki-dev/flows/*.yaml` | 4 / 4 | regression |
+| `.kitsoki/stories/kitsoki-dev/flows/*.yaml` | 4 / 4 | regression |
 | `stories/oregon-trail/flows/*.yaml` | 28 / 28 | regression (imports demo) |
 
 Full `go test ./...` clean. No runtime patches required.

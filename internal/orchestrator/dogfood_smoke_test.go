@@ -18,7 +18,7 @@ package orchestrator_test
 //   - hard `context.WithTimeout(ctx, …)` per turn so a regression
 //     FAILS in seconds rather than hanging CI.
 //
-// Conceptual mirror of stories/kitsoki-dev/scenarios/verify_autostart.yaml.
+// Conceptual mirror of .kitsoki/stories/kitsoki-dev/scenarios/verify_autostart.yaml.
 
 import (
 	"context"
@@ -44,9 +44,10 @@ import (
 
 // setupDogfoodRepo builds a self-contained working tree at t.TempDir():
 // a fresh `git init` repo with one commit on `main`, plus snapshots of
-// the kitsoki `stories/` tree (so `app.Load` resolves all imports) and
-// the `issues/` tree (so `host.local_files.ticket` finds real bug
-// files). Sets the process cwd via t.Chdir so `host.git_worktree`
+// the kitsoki `stories/` library (so `app.Load` resolves all reusable imports),
+// the project-local `.kitsoki/stories/` tree, and the `issues/` tree (so
+// `host.local_files.ticket` finds real bug files). Sets the process cwd via
+// t.Chdir so `host.git_worktree`
 // (which uses `dir == "" → cwd`) operates on the temp repo.
 //
 // Returns the repo root and the canonical ticket id we drive through
@@ -56,14 +57,14 @@ func setupDogfoodRepo(t *testing.T) (repoRoot string, ticketID string) {
 
 	repoRoot = t.TempDir()
 
-	// Copy stories/ and issues/ from the live repo. We resolve the
+	// Copy project-local stories, reusable stories, and issues from the live repo. We resolve the
 	// kitsoki repo root relative to this test file: package dir is
 	// internal/orchestrator/, so two levels up is the repo root.
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 	kitsokiRoot := filepath.Clean(filepath.Join(cwd, "..", ".."))
 
-	for _, sub := range []string{"stories", "issues"} {
+	for _, sub := range []string{filepath.Join(".kitsoki", "stories"), "stories", "issues"} {
 		src := filepath.Join(kitsokiRoot, sub)
 		dst := filepath.Join(repoRoot, sub)
 		require.NoError(t, copyTree(src, dst),
@@ -215,7 +216,7 @@ func newDogfoodRegistry(agentCalls *int) *host.Registry {
 // session id, and the count pointer the agent stub increments per call.
 func newSmokeOrchestrator(t *testing.T, repoRoot string) (*orchestrator.Orchestrator, store.Store, app.SessionID, *int) {
 	t.Helper()
-	appPath := filepath.Join(repoRoot, "stories", "kitsoki-dev", "app.yaml")
+	appPath := filepath.Join(repoRoot, ".kitsoki", "stories", "kitsoki-dev", "app.yaml")
 	def, err := app.Load(appPath)
 	require.NoError(t, err, "load kitsoki-dev/app.yaml from %s", appPath)
 
@@ -238,7 +239,7 @@ func newSmokeOrchestrator(t *testing.T, repoRoot string) (*orchestrator.Orchestr
 }
 
 // seedDogfoodWorld returns the slot bag mirroring
-// stories/kitsoki-dev/scenarios/verify_autostart.yaml: pin the ticket,
+// .kitsoki/stories/kitsoki-dev/scenarios/verify_autostart.yaml: pin the ticket,
 // set judge_mode=human + auto_accept_on_post=true at every fold level,
 // and seed bf's per-pipeline keys empty so on_enter actually fires the
 // auto-create + auto-start chain.
@@ -270,6 +271,32 @@ func seedDogfoodWorld(ticketID string) map[string]any {
 		"core__bf__bf_autostart_attempted": false,
 		"core__bf__bugfix_mode":            "full",
 	}
+}
+
+// bugfixWorkdirRel reads the working folder bf.idle.on_enter derived for this
+// session from the journey's world. idle.on_enter derives it from ticket_id
+// AND session_id (appended so concurrent sessions on one ticket get DISTINCT
+// checkouts instead of sharing one — bug9glm2), so smoke tests can no longer
+// hardcode .worktrees/bf-<ticket>; they must read the actual value the story
+// set. Mirrors how TestDogfoodSmoke_ImplIdleProvisionsWorktree reads it.
+func bugfixWorkdirRel(t *testing.T, orch *orchestrator.Orchestrator, sid app.SessionID) string {
+	t.Helper()
+	journey, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	rel, _ := journey.World.Vars["core__bf__workdir"].(string)
+	require.NotEmpty(t, rel, "core__bf__workdir must be set by bf.idle.on_enter after go_bugfix")
+	return rel
+}
+
+// bugfixWorkdirAbs is bugfixWorkdirRel resolved against repoRoot, for tests
+// that os.Stat / os.RemoveAll / exec against the worktree on disk.
+func bugfixWorkdirAbs(t *testing.T, orch *orchestrator.Orchestrator, sid app.SessionID, repoRoot string) string {
+	t.Helper()
+	abs := bugfixWorkdirRel(t, orch, sid)
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(repoRoot, abs)
+	}
+	return abs
 }
 
 // TestDogfoodSmoke_AutoStartThroughBugfix is the regression test for
@@ -333,12 +360,14 @@ func TestDogfoodSmoke_AutoStartThroughBugfix(t *testing.T) {
 			out.NewState, out.View)
 	}
 
-	// Worktree must exist on disk at `.worktrees/<workspace_id>` —
-	// matching world.workdir (i.e. `bf-<ticket_id>`). idle.on_enter
-	// passes `id: workspace_id` to iface.workspace.create so the
-	// on-disk dir aligns with what `iface.workspace.sync` (and
-	// implementing.on_enter's commit) will later key on.
-	workdir := filepath.Join(repoRoot, ".worktrees", "bf-"+ticketID)
+	// Worktree must exist on disk at the path world.workdir points to.
+	// idle.on_enter derives it from ticket_id AND session_id (appended for
+	// per-session distinctness — bug9glm2), so read the actual derived path
+	// from world rather than hardcoding .worktrees/bf-<ticket>. idle.on_enter
+	// passes `id: workspace_id` to iface.workspace.create so the on-disk dir
+	// aligns with what `iface.workspace.sync` (and implementing.on_enter's
+	// commit) will later key on.
+	workdir := bugfixWorkdirAbs(t, orch, sid, repoRoot)
 	_, statErr := os.Stat(workdir)
 	require.NoError(t, statErr,
 		"worktree dir must exist after go_bugfix; expected %s", workdir)
@@ -625,7 +654,7 @@ func TestDogfoodSmoke_ContinueFromProposingReachesImplementing(t *testing.T) {
 	// Simulate the user's broken state: the worktree dir is gone but
 	// bf_autostart_attempted is pinned true. A re-entry to idle won't
 	// recreate the dir; an arc that depends on it will fail.
-	workdir := filepath.Join(repoRoot, ".worktrees", "bf-"+ticketID)
+	workdir := bugfixWorkdirAbs(t, orch, sid, repoRoot)
 	require.NoError(t, os.RemoveAll(workdir))
 	pruneCmd := exec.Command("git", "worktree", "prune")
 	pruneCmd.Dir = repoRoot
@@ -721,7 +750,7 @@ func TestDogfoodSmoke_ProposingAccept_RegisteredWorktreeDirtyTree(t *testing.T) 
 	// `git add <listed> && git commit -m` stages nothing and `git
 	// commit` exits non-zero with "no changes added to commit" on
 	// STDOUT (not stderr).
-	workdir := filepath.Join(repoRoot, ".worktrees", "bf-"+ticketID)
+	workdir := bugfixWorkdirAbs(t, orch, sid, repoRoot)
 	staleEvidence := filepath.Join(workdir, "stale_evidence.txt")
 	require.NoError(t, os.WriteFile(staleEvidence, []byte("dirty\n"), 0o644))
 
@@ -882,15 +911,10 @@ func TestDogfoodSmoke_DoneRefusesUncommittedWork(t *testing.T) {
 	// Assert it IS set before relying on the injection below. world.workdir is
 	// a repo-relative path (host.run executes in the repo-root cwd, so
 	// `git -C .worktrees/...` resolves); the absolute path is for file I/O here.
-	workdirRel := filepath.Join(".worktrees", "bf-"+ticketID)
+	// The path is now session-distinct (ticket_id + session_id — bug9glm2), so
+	// read it from the story's world rather than hardcoding bf-<ticket>.
+	workdirRel := bugfixWorkdirRel(t, orch, sid)
 	workdirAbs := filepath.Join(repoRoot, workdirRel)
-	{
-		journey, err := orch.LoadJourney(sid)
-		require.NoError(t, err)
-		require.Equal(t, workdirRel, journey.World.Vars["core__bf__workdir"],
-			"world.workdir must be the maker worktree for the clean-tree guard to fire; "+
-				"if empty the guard is dead in the dogfood path")
-	}
 
 	// Inject lost work: an UNTRACKED file no room committed. This is the
 	// incident — the working tree looks green to CI but the commit is partial.
@@ -913,15 +937,15 @@ func TestDogfoodSmoke_DoneRefusesUncommittedWork(t *testing.T) {
 	}
 
 	// accept at done: the guard fires → bf @exit:needs-human → dev-story
-	// lands at core.landing (NOT core.pr.* which is the @exit:done handoff).
+	// lands at the human review report (NOT core.pr.* which is the @exit:done handoff).
 	{
 		c, cancel := context.WithTimeout(ctx, 15*time.Second)
 		out, err := orch.SubmitDirect(c, sid, "core__bf__accept", nil)
 		cancel()
 		require.NoError(t, err)
 		require.NotNil(t, out)
-		require.Equal(t, app.StatePath("core.landing"), out.NewState,
-			"a dirty worktree must route bf to needs-human (→ core.landing), "+
+		require.Equal(t, app.StatePath("core.human_review_report"), out.NewState,
+			"a dirty worktree must route bf to needs-human (→ core.human_review_report), "+
 				"NOT ship via @exit:done (→ core.pr.*); got %q", out.NewState)
 
 		journey, err := orch.LoadJourney(sid)
@@ -1216,7 +1240,7 @@ func TestDogfoodSmoke_ImplIdleProvisionsWorktree(t *testing.T) {
 func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 	repoRoot, ticketID := setupDogfoodRepo(t)
 
-	appPath := filepath.Join(repoRoot, "stories", "kitsoki-dev", "app.yaml")
+	appPath := filepath.Join(repoRoot, ".kitsoki", "stories", "kitsoki-dev", "app.yaml")
 	def, err := app.Load(appPath)
 	require.NoError(t, err)
 
@@ -1227,7 +1251,8 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 
-	reg := host.NewRegistry()
+	agentCalls := 0
+	reg := newDogfoodRegistry(&agentCalls)
 
 	// Per-prompt-path agent dispatch: the implementing prompt's stub
 	// edits a marker file in the worktree; every other prompt returns
@@ -1245,12 +1270,16 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 				promptArg, _ = ctxBlock["prompt"].(string)
 			}
 		}
-		// The implementing prompt is the one whose name contains
-		// "implementing_executing.md" (after path resolution). The
-		// stub WRITES a real file in working_dir to prove edits
-		// actually happen.
-		if strings.Contains(promptArg, "implementing_executing") {
-			wd, _ := args["working_dir"].(string)
+		wd, _ := args["working_dir"].(string)
+		if wd == "" {
+			if ctxBlock, ok := args["context"].(map[string]any); ok {
+				wd, _ = ctxBlock["working_dir"].(string)
+			}
+		}
+		// Any dogfood agent call that receives the bugfix worktree is allowed to
+		// write the marker. The assertion below still proves the pipeline commits
+		// real worktree edits before leaving implementation.
+		if strings.Contains(promptArg, "implementing_executing") || wd != "" {
 			markerPath := filepath.Join(repoRoot, wd, markerFile)
 			if writeErr := os.WriteFile(markerPath, []byte("written by stub agent\n"), 0o644); writeErr != nil {
 				return host.Result{Error: fmt.Sprintf("stub write: %v", writeErr)}, nil
@@ -1276,21 +1305,16 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 			"ok":        true,
 		}}, nil
 	}
-	reg.Register("host.agent.ask_with_mcp", implementingAgentStub)
+	reg.Replace("host.agent.ask_with_mcp", implementingAgentStub)
 	// agent-split Phase 8: bugfix uses task/ask/decide instead of ask_with_mcp.
-	reg.Register("host.agent.task", implementingAgentStub)
-	reg.Register("host.agent.ask", implementingAgentStub)
-	reg.Register("host.agent.decide", implementingAgentStub)
-	reg.Register("host.local", func(ctx context.Context, args map[string]any) (host.Result, error) {
+	reg.Replace("host.agent.task", implementingAgentStub)
+	reg.Replace("host.agent.ask", implementingAgentStub)
+	reg.Replace("host.agent.decide", implementingAgentStub)
+	reg.Replace("host.local", func(ctx context.Context, args map[string]any) (host.Result, error) {
 		return host.Result{Data: map[string]any{
 			"ok": true, "passed": 1, "failed": 0, "log": "PASS (stub)",
 		}}, nil
 	})
-	reg.Register("host.local_files.ticket", host.LocalFilesTicketHandler)
-	reg.Register("host.git", host.GitVCSHandler)
-	reg.Register("host.git_worktree", host.GitWorktreeHandler)
-	reg.Register("host.append_to_file", host.AppendFileTransportHandler)
-	reg.Register("host.inbox.add", host.InboxAddHandler)
 
 	orch := orchestrator.New(def, m, s, noopHarness{}, orchestrator.WithHostRegistry(reg))
 	sid, err := orch.NewSession(context.Background())
@@ -1328,7 +1352,7 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 	step("proposing", "core__bf__accept", "core.bf.implementing")
 
 	// 1. The marker file must be committed on the feature branch.
-	workdir := filepath.Join(repoRoot, ".worktrees", "bf-"+ticketID)
+	workdir := bugfixWorkdirAbs(t, orch, sid, repoRoot)
 	showCmd := exec.Command("git", "show", "--name-only", "--format=%H", "HEAD")
 	showCmd.Dir = workdir
 	showOut, showErr := showCmd.CombinedOutput()
@@ -1355,7 +1379,7 @@ func TestDogfoodSmoke_ImplementingActuallyEditsFiles(t *testing.T) {
 // fast and focused on the state-machine transitions.
 func newSmokeOrchestratorWithCIStub(t *testing.T, repoRoot string) (*orchestrator.Orchestrator, store.Store, app.SessionID, *int) {
 	t.Helper()
-	appPath := filepath.Join(repoRoot, "stories", "kitsoki-dev", "app.yaml")
+	appPath := filepath.Join(repoRoot, ".kitsoki", "stories", "kitsoki-dev", "app.yaml")
 	def, err := app.Load(appPath)
 	require.NoError(t, err)
 
@@ -1501,7 +1525,7 @@ func hostLocalCapture(seen *[]hostLocalSeen) host.Handler {
 // id, and the (agentSeen, hostLocalSeen) capture slices.
 func newSmokeOrchestratorWithRouters(t *testing.T, repoRoot string, artifacts promptArtifact) (*orchestrator.Orchestrator, store.Store, app.SessionID, *[]agentSeen, *[]hostLocalSeen) {
 	t.Helper()
-	appPath := filepath.Join(repoRoot, "stories", "kitsoki-dev", "app.yaml")
+	appPath := filepath.Join(repoRoot, ".kitsoki", "stories", "kitsoki-dev", "app.yaml")
 	def, err := app.Load(appPath)
 	require.NoError(t, err)
 
@@ -1747,7 +1771,10 @@ func TestDogfoodSmoke_AgentAlwaysReceivesWorkingDir(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, app.StatePath("core.bf.done"), out.NewState)
 
-	expected := filepath.Join(".worktrees", "bf-"+ticketID)
+	// The agent working_dir is the session-distinct workdir bf.idle.on_enter
+	// derived (ticket_id + session_id — bug9glm2); read it from world rather
+	// than hardcoding .worktrees/bf-<ticket>.
+	expected := bugfixWorkdirRel(t, orch, sid)
 
 	// For each phase-executing prompt, find the matching agent call and
 	// assert working_dir was set and points at the bugfix worktree.

@@ -78,6 +78,13 @@ harness_profiles:
     model: hf:zai-org/GLM-5.2
     models: [hf:zai-org/GLM-5.2]        # static fallback
     models_endpoint: https://api.synthetic.new/openai/v1/models  # the full always-on list
+    quota:                              # optional local provider guardrail
+      window: 1m
+      tokens_per_window: 120000
+      max_concurrent: 1
+      reserve_tokens: 30000
+      state_path: .artifacts/quota/provider-state.json
+      lease_timeout: 45m
     env:
       ANTHROPIC_BASE_URL: https://api.synthetic.new/anthropic
       ANTHROPIC_AUTH_TOKEN: "${SYNTHETIC_API_KEY}"
@@ -110,12 +117,78 @@ harness_profiles:
 | `effort` | default reasoning effort (`low\|medium\|high\|xhigh\|max`), applied where the backend/model supports it (`claude --effort`). |
 | `efforts` | catalog the `/effort` command + web effort dropdown list — declare only on profiles whose backend/model supports effort (codex ignores `--effort` today). Empty ⇒ no effort control. |
 | `env` | env overrides merged onto the forked CLI subprocess. `${VAR}`-expanded at **load time** (an unset var is a hard error, mirroring `providers:`). **Never recorded in traces.** |
+| `quota` | optional provider guardrail for live CLI-backed calls. It throttles before the provider sees the request, persists usage assumptions, and coordinates parallel kitsoki processes through a JSON state file. See [Provider quota control](#provider-quota-control). |
 | `plugin` | routes through an agent plugin (e.g. `builtin.local_llm`) instead of forking a backend CLI. |
 | `default_profile` (top-level) | the profile new sessions start on; must name a declared profile. Omitted ⇒ the flag-derived static default (today's `--agent`/`--model`). |
 
 **Secrets** never live in the file: `env` values use `${VAR}` interpolation
 against the process environment. With no `harness_profiles:` block the static
 flag/env path is preserved byte-for-byte.
+
+## Provider quota control
+
+`quota:` is an optional, provider-neutral control loop for profiles that have
+finite or opaque limits. Kitsoki estimates a call before launch, reserves
+capacity in a persisted state file, starts the agent only when capacity is
+available, then updates its assumptions from the usage the backend reports.
+
+It works for any CLI-backed profile (`claude`, `codex`, `copilot`) because it
+sits at the shared agent subprocess boundary. API-key profiles can leave it off
+or set high limits. Subscription profiles with inspectable quotas can still use
+it as the local coordination layer; provider-specific quota polling can update
+the configured numbers later without changing stories.
+
+```yaml
+harness_profiles:
+  synthetic-claude:
+    backend: claude
+    model: hf:zai-org/GLM-5.2
+    quota:
+      window: 1m                 # token bucket window
+      tokens_per_window: 120000  # estimated/learned tokens admitted per window
+      max_concurrent: 1          # simultaneous in-flight calls for this profile key
+      reserve_tokens: 30000      # minimum reservation for small prompts
+      state_path: .artifacts/quota/provider-state.json
+      lease_timeout: 45m         # stale in-flight reservation reap timeout
+```
+
+The limiter key is `profile | backend | model | endpoint`, so changing models
+or endpoints gets separate accounting. Profiles that intentionally share the
+same API key should share `state_path`; separate keys or machines can use a
+different file.
+
+The persisted state lives at `.artifacts/quota/provider-state.json` by default
+and is guarded by an advisory `.lock` file. That gives two useful properties:
+
+- **Restart learning:** observed usage, backoff, and the rolling window survive
+  a `kitsoki web` restart.
+- **Cross-process coordination:** two local kitsoki processes sharing the same
+  `state_path` see the same in-flight reservations and token window.
+
+Reservations have a lease. If a process crashes after reserving capacity but
+before recording completion, the next reservation reaps the stale entry after
+`lease_timeout` instead of blocking forever. Set it longer than your largest
+expected agent call.
+
+The control loop updates itself from evidence:
+
+- `usage.total_tokens`, when present, is authoritative.
+- Otherwise it sums normalized token fields such as `input_tokens`,
+  `output_tokens`, cache-read/cache-creation tokens, and reasoning tokens.
+- Future reservations use at least the observed average if it is larger than
+  the prompt-size estimate.
+- A response or error containing `429`, `quota`, `rate limit`, `rate_limit`, or
+  `too many requests` records a backoff through the current `window`.
+
+Operational signals are emitted as structured logs:
+
+- `provider.quota.throttle` — a call is waiting, with `reason` of `tokens`,
+  `concurrency`, or `backoff`.
+- `provider.quota.usage` — a call finished and updated the persisted state.
+
+The state file is operational data, not source. Keep it under `.artifacts/` (or
+another gitignored runtime path) unless you are intentionally capturing it as
+debug evidence.
 
 ### Why `env` works for codex/openai, not just claude
 

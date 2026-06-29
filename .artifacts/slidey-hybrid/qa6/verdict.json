@@ -1,0 +1,287 @@
+{
+  "overall": "pass",
+  "summary": {
+    "scenarios_total": 7,
+    "passed": 7,
+    "failed": 0,
+    "unsupported": 0
+  },
+  "frames_reviewed": [
+    "00-slide-s1.png",
+    "01-slide-s2.png",
+    "02-slide-s3.png",
+    "03-vid-conversation-d.png",
+    "04-slide-s5.png",
+    "05-vid-prd-design-e.png",
+    "06-slide-s7.png",
+    "07-vid-design-epic-de.png",
+    "08-slide-s9.png",
+    "09-vid-the-bug-fix-pi.png",
+    "10-slide-s11.png",
+    "11-vid-annotate-the-r.png",
+    "12-slide-s13.png",
+    "13-vid-reproduction-.png",
+    "14-slide-s15.png",
+    "20-pmidea-clarify.png",
+    "21-pmidea-published.png",
+    "22-design-intake.png",
+    "23-design-published.png",
+    "24-decompose.png",
+    "25-fleet-load.png",
+    "26-bugfix-implement.png",
+    "27-refine-overlay.png",
+    "28-pr-open.png"
+  ],
+  "visual_issues": [],
+  "annotation_issues": [],
+  "scenarios": [
+    {
+      "id": "pm-idea",
+      "title": "Phase 1 \u2014 conversation-driven PRD intake plays real content",
+      "required": true,
+      "status": "pass",
+      "steps": [
+        {
+          "text": "A scene 'Idea \u2192 PRD + mockups' (eyebrow 'PRODUCT MANAGER') shows an embedded kitsoki tour.",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "03-vid-conversation-d.png",
+              "observation": "Eyebrow '1 \u00b7 PRODUCT MANAGER', title 'Idea \u2192 PRD + mockups', embedded kitsoki web UI with a video scrubber (15.6s / 29.1s) and caption 'Conversation-driven PRD intake on the slidey repo'."
+            }
+          ],
+          "confidence": 0.97
+        },
+        {
+          "text": "The tour shows the real conversational PRD intake: a typed slidey idea, clarifying Q&A and/or a prior-art scan, and a drafted/published PRD \u2014 not a blank/loading screen.",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "03-vid-conversation-d.png",
+              "observation": "Chat bubble with a typed slidey idea about a 'printable per-scene notes handout', a tour card 'Scan for prior art first', state-diagram rows core.prd.search / core.prd.clarifying."
+            },
+            {
+              "frame": "20-pmidea-clarify.png",
+              "observation": "'Clarifications \u2014 Round 1' with numbered questions about the primary actor and success metric."
+            },
+            {
+              "frame": "21-pmidea-published.png",
+              "observation": "PRD panel '# PRD \u2014 Speaker-Notes Export' with 'PUBLISHED' badge and 'Published to slidey's docs/prd' tour card; 'Your PRD is published \u2026 docs/prd/speaker-notes-export.md'."
+            }
+          ],
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "id": "architect-design",
+      "title": "Phase 2 \u2014 PRD \u2192 design epic/slices/ADRs",
+      "required": true,
+      "status": "pass",
+      "steps": [
+        {
+          "text": "A scene 'Requirements \u2192 design' (eyebrow 'ARCHITECT') shows an embedded tour.",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "05-vid-prd-design-e.png",
+              "observation": "Eyebrow '2 \u00b7 ARCHITECT', title 'Requirements \u2192 design', embedded UI with scrubber 14.1s/14.1s and caption 'PRD \u2192 design epic, slices, and ADRs'."
+            }
+          ],
+          "confidence": 0.96
+        },
+        {
+          "text": "The tour shows the design phase: design intake/refine and a published design (epic/slices/ADRs).",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "05-vid-prd-design-e.png",
+              "observation": "State diagram rows core.design_search SEARCHING, core.design_materialize PREPARING, core.design_refine BRIEF, core.design_draft DRAFTING, core.design_done PUBLISHED."
+            },
+            {
+              "frame": "22-design-intake.png",
+              "observation": "Chat 'Author a design for the PRD at \u2014 describe or expand it to start the search', tour card 'Carry the PRD into design', 'Overlap scan' / 'No new spec derived output'."
+            },
+            {
+              "frame": "23-design-published.png",
+              "observation": "'Design published + feature ticket' tour card; chat shows 'PUBLISHED' and a created feature ticket with Title/Kind/Ticket fields."
+            }
+          ],
+          "confidence": 0.93
+        }
+      ]
+    },
+    {
+      "id": "decomposition",
+      "title": "Phase 3 \u2014 design decomposed into a work plan",
+      "required": true,
+      "status": "pass",
+      "steps": [
+        {
+          "text": "A scene 'Design \u2192 work plan' (eyebrow 'DECOMPOSITION') shows an embedded tour.",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "07-vid-design-epic-de.png",
+              "observation": "Eyebrow '3 \u00b7 DEVELOPER \u00b7 DECOMPOSITION', title 'Design \u2192 work plan', embedded UI with scrubber 3.3s/3.3s and caption 'Design epic decomposed into agent-sized briefs'."
+            }
+          ],
+          "confidence": 0.96
+        },
+        {
+          "text": "The tour shows the decomposition: configure/decompose into agent-sized briefs.",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "07-vid-design-epic-de.png",
+              "observation": "State diagram lint \u2192 fleet.load with 'fleet__start \u2192 fleet.board', chat 'Deliver an epic end-to-end: decompose it into briefs' and 'artifacts/deliver/decomposition.yaml'."
+            },
+            {
+              "frame": "24-decompose.png",
+              "observation": "Tour card 'Decompose \u2192 lint \u2192 load: Start fans the epic into three dependency-ordered briefs \u2014 a SceneNotes model, a handout renderer, and a --notes CLI flag'."
+            },
+            {
+              "frame": "25-fleet-load.png",
+              "observation": "Tour card 'A validated work plan: three briefs loaded from .artifacts/deliver/decomposition.yaml, dependency-ordered and gate-bearing'."
+            }
+          ],
+          "confidence": 0.94
+        }
+      ]
+    },
+    {
+      "id": "bugfix",
+      "title": "Phase 4 \u2014 bug-fix pipeline reproduce\u2192fix\u2192validate",
+      "required": true,
+      "status": "pass",
+      "steps": [
+        {
+          "text": "A scene 'Bug \u2192 reproduce \u2192 fix \u2192 validate' shows an embedded tour of the bug-fix pipeline on a real slidey bug (implement/test/validate visible).",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "09-vid-the-bug-fix-pi.png",
+              "observation": "Eyebrow '4 \u00b7 DEVELOPER \u00b7 BUG FIX', title 'Bug \u2192 reproduce \u2192 fix \u2192 validate', state diagram bf.proposing/implementing/testing/reviewing/validating/shipped PR-READY; chat text 'grid-cards fallback from `?? 30` to `?? 20`' and 'regression test'; caption 'The bug-fix pipeline on a real slidey bug'."
+            },
+            {
+              "frame": "26-bugfix-implement.png",
+              "observation": "Tour card 'Implement the file: the agent edits etc/timing.js \u2026', diff/changes with 'test/timing.test.js \u2014 regression test'."
+            }
+          ],
+          "confidence": 0.94
+        }
+      ]
+    },
+    {
+      "id": "refine",
+      "title": "Phase 5 \u2014 spatial anchored refine",
+      "required": true,
+      "status": "pass",
+      "steps": [
+        {
+          "text": "A scene about spatial refine shows the rendered deck poster with an annotation overlay (boxed elements), demonstrating location-tied review.",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "27-refine-overlay.png",
+              "observation": "Rendered poster ('ZEN GARDEN UNION') with a SemanticOverlay of boxed elements labeled 'semantic_element', 'region', and 'point'; tour card 'Poster-backed semantic overlay \u2026 each box comes straight from the deck's .semantic.json sidecar'."
+            },
+            {
+              "frame": "11-vid-annotate-the-r.png",
+              "observation": "Eyebrow '5 \u00b7 DEVELOPER \u00b7 REFINE', title 'Demo videos \u2192 spatial refine', caption 'Annotate the rendered frame \u2192 an anchored refine pass'; poster with annotation boxes visible."
+            }
+          ],
+          "confidence": 0.93
+        }
+      ]
+    },
+    {
+      "id": "ship-pr",
+      "title": "Phase 6 \u2014 open PR, CI, merge",
+      "required": true,
+      "status": "pass",
+      "steps": [
+        {
+          "text": "A scene about shipping shows a pull request being opened on the slidey repo (PR id/url, open_pr state), CI, and a merge.",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "28-pr-open.png",
+              "observation": "Tour card 'Open the pull request \u2026 the room calls iface.vcs.open_pr', state open_pr; agent fields 'PR id 128', 'PR url https://github.com/kitsoki/slidey/pull/128'; trace host.git.open_pr."
+            },
+            {
+              "frame": "13-vid-reproduction-.png",
+              "observation": "Eyebrow '6 \u00b7 DEVELOPER \u00b7 SHIP', title 'Summary \u2192 open PR', state diagram ci_monitoring / merge_executing / __exit_merged, trace host.git.open_pr and world.update; caption 'Reproduction + validation summary \u2192 pull request'."
+            }
+          ],
+          "confidence": 0.92
+        }
+      ]
+    },
+    {
+      "id": "arc-coherent",
+      "title": "The deck is a coherent six-phase dev story",
+      "required": true,
+      "status": "pass",
+      "steps": [
+        {
+          "text": "A title slide opens the deck (idea \u2192 merged PR on the slidey repo).",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "00-slide-s1.png",
+              "observation": "'KITSOKI \u00b7 DEV STORY', 'From an idea to a merged PR', 'one feature and one bug, end to end, on the slidey repo', scene 1/15."
+            }
+          ],
+          "confidence": 0.98
+        },
+        {
+          "text": "Six narrated phase slides each precede their tour video (PM, architect, decomposition, bug, refine, ship).",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "02-slide-s3.png",
+              "observation": "'1 \u00b7 PRODUCT MANAGER' precedes tour 03."
+            },
+            {
+              "frame": "04-slide-s5.png",
+              "observation": "'2 \u00b7 ARCHITECT' precedes tour 05."
+            },
+            {
+              "frame": "06-slide-s7.png",
+              "observation": "'3 \u00b7 DEVELOPER \u00b7 DECOMPOSITION' precedes tour 07."
+            },
+            {
+              "frame": "08-slide-s9.png",
+              "observation": "'4 \u00b7 DEVELOPER \u00b7 THE INTERRUPT' precedes tour 09."
+            },
+            {
+              "frame": "10-slide-s11.png",
+              "observation": "'5 \u00b7 DEVELOPER \u00b7 FEATURE DELIVERY' precedes refine tour 11."
+            },
+            {
+              "frame": "12-slide-s13.png",
+              "observation": "'6 \u00b7 DEVELOPER \u00b7 SHIP' precedes ship tour 13."
+            }
+          ],
+          "confidence": 0.95
+        },
+        {
+          "text": "A closing cta slide states every frame is a deterministic, no-LLM replay.",
+          "status": "pass",
+          "evidence": [
+            {
+              "frame": "14-slide-s15.png",
+              "observation": "'Kitsoki' title, 'Every frame is a deterministic, no-LLM replay', 'the runtime is a state machine; the model is a traceable callee', scene 15/15."
+            }
+          ],
+          "confidence": 0.97
+        }
+      ]
+    }
+  ],
+  "adversary": {
+    "status": "ok",
+    "downgrades_applied": []
+  }
+}

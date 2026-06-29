@@ -57,7 +57,7 @@ func (ts *traceSession) Close() {
 //
 // Errors are wrapped with infraError so a driver sees exit code 3 for any
 // setup failure (distinct from a semantic turn rejection).
-func setupTraceSession(ctx context.Context, appPath, tracePath string, h harness.Harness) (*traceSession, error) {
+func setupTraceSession(ctx context.Context, appPath, tracePath string, h harness.Harness, opts ...orchestrator.Option) (*traceSession, error) {
 	if tracePath == "" {
 		return nil, infraError("--trace is required")
 	}
@@ -153,12 +153,14 @@ func setupTraceSession(ctx context.Context, appPath, tracePath string, h harness
 	}
 	ts.closers = append(ts.closers, func() { _ = agentReg.Close() })
 
-	orch := orchestrator.New(def, m, s, h,
+	orchOpts := []orchestrator.Option{
 		orchestrator.WithHostRegistry(hostReg),
 		orchestrator.WithEventSink(sink),
 		orchestrator.WithEventSinkAuthority(true),
 		orchestrator.WithAgentRegistry(agentReg),
-	)
+	}
+	orchOpts = append(orchOpts, opts...)
+	orch := orchestrator.New(def, m, s, h, orchOpts...)
 	ts.Orch = orch
 
 	// Create a session in the in-memory store (needed for orchestrator plumbing).

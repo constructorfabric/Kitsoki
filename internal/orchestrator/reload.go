@@ -154,6 +154,16 @@ func hasNestedState(s *app.State, prefix, target string) bool {
 // other RerunOnEnter for the same session — uses the per-session
 // mutex.
 func (o *Orchestrator) RerunOnEnter(ctx context.Context, sid app.SessionID) (*TurnOutcome, error) {
+	return o.RerunOnEnterWithOptions(ctx, sid, RerunOnEnterOptions{})
+}
+
+// RerunOnEnterOptions tunes the `/reload` on_enter replay. The zero value is
+// the normal safe reload path.
+type RerunOnEnterOptions struct {
+	ForceOnce bool
+}
+
+func (o *Orchestrator) RerunOnEnterWithOptions(ctx context.Context, sid app.SessionID, opts RerunOnEnterOptions) (*TurnOutcome, error) {
 	sessMu := o.sessionLock(sid)
 	sessMu.Lock()
 	defer sessMu.Unlock()
@@ -168,6 +178,7 @@ func (o *Orchestrator) RerunOnEnter(ctx context.Context, sid app.SessionID) (*Tu
 	tl.Debug(ctx, trace.EvTurnStart,
 		slog.String("intent", ""),
 		slog.String("mode", "reload"),
+		slog.Bool("force_once", opts.ForceOnce),
 	)
 
 	currentState := journey.State
@@ -177,7 +188,9 @@ func (o *Orchestrator) RerunOnEnter(ctx context.Context, sid app.SessionID) (*Tu
 
 	var events []store.Event
 	if state != nil && len(state.OnEnter) > 0 {
-		resolved, newWorld, hostCalls, _, effEvents, runErr := o.machine.RunEffectsAndState(ctx, currentState, currentWorld, state.OnEnter)
+		resolved, newWorld, hostCalls, _, effEvents, runErr := o.machine.RunEffectsAndStateWithOptions(ctx, currentState, currentWorld, state.OnEnter, machine.RunEffectsOptions{
+			ForceOnce: opts.ForceOnce,
+		})
 		if runErr != nil {
 			return nil, fmt.Errorf("orchestrator.RerunOnEnter: run on_enter for %q: %w", currentState, runErr)
 		}
@@ -206,13 +219,15 @@ func (o *Orchestrator) RerunOnEnter(ctx context.Context, sid app.SessionID) (*Tu
 	}
 
 	startEvent := newOrchestratorEvent(store.TurnStarted, map[string]any{
-		"turn":  int64(turnNum),
-		"kind":  "reload",
-		"state": string(currentState),
+		"turn":       int64(turnNum),
+		"kind":       "reload",
+		"state":      string(currentState),
+		"force_once": opts.ForceOnce,
 	}, turnNum)
 	endEvent := newOrchestratorEvent(store.TurnEnded, map[string]any{
-		"outcome": "reloaded",
-		"to":      string(currentState),
+		"outcome":    "reloaded",
+		"to":         string(currentState),
+		"force_once": opts.ForceOnce,
 	}, turnNum)
 
 	successEvents := append([]store.Event{startEvent}, events...)

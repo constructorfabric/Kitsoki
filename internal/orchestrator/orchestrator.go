@@ -126,6 +126,17 @@ type Orchestrator struct {
 	// Set via WithAgentRegistry.
 	agentRegistry *agent.Registry
 
+	// semanticOverride is the process-level kill switch for the deterministic
+	// semantic-routing stack (semroute + turn-cache + default_intent sink +
+	// free-form fallback). nil means "no override — defer to the per-app
+	// routing.enabled config"; a non-nil value overrides it. Set via
+	// WithSemanticRouting from the CLI (--semantic-routing / KITSOKI_SEMANTIC_ROUTING),
+	// which defaults it to false so production routing is an isolated main-model
+	// decision (harness.RunTurn). The zero-cost exact display/example match
+	// (TryDeterministic) runs regardless of this gate. See
+	// semanticStackEnabled and docs/architecture/semantic-routing.md.
+	semanticOverride *bool
+
 	// journalWriter is the durable journal writer (continue-mode dual-write).
 	// When nil, callers fall through to the legacy AppendEvents path.
 	// Set via WithJournalWriter; individual turn-write call sites are migrated
@@ -607,6 +618,19 @@ func WithAgentRegistry(reg *agent.Registry) Option {
 	}
 }
 
+// WithSemanticRouting sets the process-level override for the deterministic
+// semantic-routing stack. Passing false makes every free-text turn route via
+// the main model as an isolated decision (harness.RunTurn), skipping semroute,
+// the turn-cache, the default_intent sink, and the app free-form fallback; the
+// zero-cost exact display/example match still runs. Passing true forces the
+// full stack on regardless of per-app config. Not calling this option at all
+// leaves routing deferred to the per-app routing.enabled config (the posture
+// used by tests and the flow runner). The CLI wires this from
+// --semantic-routing / KITSOKI_SEMANTIC_ROUTING, defaulting to false.
+func WithSemanticRouting(enabled bool) Option {
+	return func(o *Orchestrator) { o.semanticOverride = &enabled }
+}
+
 // WithEmbedTier injects a pre-constructed EmbedTier for the embedding routing
 // tier. If nil or tier.cfg.Enabled is false, TrySemantic skips the embed hop.
 func WithEmbedTier(t *EmbedTier) Option {
@@ -1001,7 +1025,34 @@ func (o *Orchestrator) Turn(ctx context.Context, sid app.SessionID, input string
 	// utterance so the supplements can be merged into a properly
 	// typed call. Routing-disabled apps short-circuit inside
 	// TrySemantic.
-	if len(cfg.supplementSlots) == 0 {
+	// Routing tiers run BEFORE acquiring the session lock so their own
+	// SubmitDirect calls can take the lock without deadlocking. We skip them
+	// when the caller passed supplemental slots — that path explicitly wants the
+	// LLM to classify the utterance so the supplements merge into a typed call.
+	//
+	// When the deterministic semantic-routing stack is disabled (the LLM-only
+	// default; see semanticStackEnabled) only the zero-cost exact match (display
+	// strings / unique examples) survives so typed menu labels and canonical
+	// command text still resolve without an LLM hop; everything else falls
+	// straight through to the main-model interpreter (harness.RunTurn) as an
+	// isolated routing decision. The TUI already runs MatchDeterministic before
+	// Turn, so for it this is a cheap no-op; other surfaces (kitsoki turn, MCP
+	// drive/submit) gain the same fast path here. Set --semantic-routing /
+	// KITSOKI_SEMANTIC_ROUTING (or per-app routing.enabled when no override is
+	// wired) to develop/test the full stack. See
+	// docs/architecture/semantic-routing.md.
+	if len(cfg.supplementSlots) == 0 && !o.semanticStackEnabled() {
+		if outcome, hit, detErr := o.TryDeterministic(ctx, sid, input); detErr != nil {
+			return nil, detErr
+		} else if hit {
+			return outcome, nil
+		}
+	}
+
+	// Full deterministic semantic-routing stack: exact match (via the semroute
+	// synonym index), semroute semantic, turn-cache, default_intent sink, and
+	// the app free-form fallback. Only runs when the stack is enabled.
+	if len(cfg.supplementSlots) == 0 && o.semanticStackEnabled() {
 		if outcome, hit, semErr := o.TrySemantic(ctx, sid, input); semErr != nil {
 			return nil, semErr
 		} else if hit {
@@ -2668,10 +2719,7 @@ func (o *Orchestrator) StateDefaultIntent(state app.StatePath) string {
 	if di == "" {
 		return ""
 	}
-	if mapped, ok := st.IntentAliases[di]; ok && strings.TrimSpace(mapped) != "" {
-		return mapped
-	}
-	return di
+	return resolveIntentAlias(o.def, state, st, di)
 }
 
 // CurrentView reconstructs the current state/world for a session and returns a

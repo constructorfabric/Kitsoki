@@ -19,8 +19,8 @@ permissions:
   contents: write # create the GitHub Release and upload assets
 
 jobs:
-  release:
-    name: Build & publish binaries
+  build:
+    name: Build binaries
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -55,7 +55,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          mkdir -p dist
+          mkdir -p build dist
           targets="darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64"
           for t in $targets; do
             os="${t%/*}"; arch="${t#*/}"
@@ -68,13 +68,48 @@ jobs:
                 -o "build/kitsoki${ext}" ./cmd/kitsoki
             if [ "$os" = "windows" ]; then
               (cd build && zip -q "../dist/${name}.zip" "kitsoki${ext}")
+              cp "dist/${name}.zip" "dist/kitsoki_${os}_${arch}.zip"
             else
               tar -C build -czf "dist/${name}.tar.gz" "kitsoki${ext}"
+              cp "dist/${name}.tar.gz" "dist/kitsoki_${os}_${arch}.tar.gz"
             fi
             rm -f "build/kitsoki${ext}"
           done
           (cd dist && sha256sum * > checksums.txt)
           ls -la dist
+
+      - uses: docker/setup-qemu-action@v3
+
+      - name: Smoke release artifacts
+        run: |
+          set -euo pipefail
+          sha256sum -c dist/checksums.txt
+
+          rm -rf smoke
+          mkdir -p smoke
+
+          for archive in dist/*.tar.gz; do
+            name="$(basename "$archive" .tar.gz)"
+            mkdir -p "smoke/$name"
+            tar -C "smoke/$name" -xzf "$archive"
+            test -x "smoke/$name/kitsoki"
+          done
+
+          for archive in dist/*.zip; do
+            name="$(basename "$archive" .zip)"
+            mkdir -p "smoke/$name"
+            unzip -q "$archive" -d "smoke/$name"
+            test -f "smoke/$name/kitsoki.exe"
+          done
+
+          for arch in amd64 arm64; do
+            name="kitsoki_linux_${arch}"
+            docker run --rm --platform "linux/${arch}" \
+              -v "$PWD/smoke/$name:/work:ro" \
+              -w /work \
+              ubuntu:24.04 \
+              ./kitsoki version
+          done
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -82,6 +117,86 @@ jobs:
           name: kitsoki-binaries
           path: dist/*
           retention-days: 7
+
+  native-smoke:
+    name: Native smoke (${{ matrix.target }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            runs-on: ubuntu-latest
+            archive: kitsoki_linux_amd64.tar.gz
+            command: |
+              set -euo pipefail
+              mkdir -p smoke
+              tar -C smoke -xzf "dist/${ARCHIVE}"
+              ./smoke/kitsoki version
+              ./smoke/kitsoki --help >/dev/null
+          - target: linux-arm64
+            runs-on: ubuntu-24.04-arm
+            archive: kitsoki_linux_arm64.tar.gz
+            command: |
+              set -euo pipefail
+              mkdir -p smoke
+              tar -C smoke -xzf "dist/${ARCHIVE}"
+              ./smoke/kitsoki version
+              ./smoke/kitsoki --help >/dev/null
+          - target: darwin-arm64
+            runs-on: macos-14
+            archive: kitsoki_darwin_arm64.tar.gz
+            command: |
+              set -euo pipefail
+              mkdir -p smoke
+              tar -C smoke -xzf "dist/${ARCHIVE}"
+              ./smoke/kitsoki version
+              ./smoke/kitsoki --help >/dev/null
+          - target: darwin-amd64
+            runs-on: macos-13
+            archive: kitsoki_darwin_amd64.tar.gz
+            command: |
+              set -euo pipefail
+              mkdir -p smoke
+              tar -C smoke -xzf "dist/${ARCHIVE}"
+              ./smoke/kitsoki version
+              ./smoke/kitsoki --help >/dev/null
+          - target: windows-amd64
+            runs-on: windows-latest
+            archive: kitsoki_windows_amd64.zip
+            command: |
+              New-Item -ItemType Directory -Force smoke | Out-Null
+              Expand-Archive -Path "dist/$env:ARCHIVE" -DestinationPath smoke -Force
+              & .\smoke\kitsoki.exe version
+              & .\smoke\kitsoki.exe --help | Out-Null
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 10
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: kitsoki-binaries
+          path: dist
+
+      - name: Smoke packaged binary
+        env:
+          ARCHIVE: ${{ matrix.archive }}
+        shell: ${{ startsWith(matrix.target, 'windows') && 'pwsh' || 'bash' }}
+        run: ${{ matrix.command }}
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - build
+      - native-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: kitsoki-binaries
+          path: dist
 
       # Only publish a Release on an actual tag push, never on the dispatch
       # dry-run.

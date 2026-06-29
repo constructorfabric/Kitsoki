@@ -1,0 +1,5 @@
+{% block status %}Kitsoki · product tour · {{ world.section }}{% endblock %}
+{% block heading %}{{ state.description }}{% endblock %}
+{% block body %}{% endblock %}
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

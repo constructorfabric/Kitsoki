@@ -5,6 +5,9 @@ hero:
   name: kitsoki
   text: 決定的な LLM ワークフロー
   tagline: 会話型ワークフローエンジン。ワークフローは監査可能な YAML state machine で、LLM は狭く名前付きで追跡可能な判断点だけで動きます。
+  image:
+    src: /branding/mesa-sun.svg
+    alt: kitsoki mesa sun
   actions:
     - theme: brand
       text: はじめる

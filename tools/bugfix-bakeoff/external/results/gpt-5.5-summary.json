@@ -1,0 +1,44 @@
+{
+  "project": "query-string",
+  "cells": [
+    {
+      "bug": "qs1",
+      "model": "gpt-5.5",
+      "quality": "solved",
+      "oracle": "pass",
+      "suite_pass": true,
+      "fix_sha": "717c863",
+      "fix_msg": "Fix separator parsing to ignore encoded separators",
+      "base_js_stat": "1 file changed, 1 insertion(+), 3 deletions(-)",
+      "in_tok": 1268159,
+      "out_tok": 11124,
+      "agent_calls": 11
+    },
+    {
+      "bug": "qs2",
+      "model": "gpt-5.5",
+      "quality": "solved",
+      "oracle": "pass",
+      "suite_pass": true,
+      "fix_sha": "1452aa7",
+      "fix_msg": "Fix qs2 comma array type coercion for single values",
+      "base_js_stat": "1 file changed, 12 insertions(+), 1 deletion(-)",
+      "in_tok": 1340818,
+      "out_tok": 12047,
+      "agent_calls": 11
+    },
+    {
+      "bug": "qs3",
+      "model": "gpt-5.5",
+      "quality": "solved",
+      "oracle": "pass",
+      "suite_pass": true,
+      "fix_sha": "c29258a",
+      "fix_msg": "Fix bracket-separator parsing for encoded separators",
+      "base_js_stat": "1 file changed, 11 insertions(+), 3 deletions(-)",
+      "in_tok": 1135566,
+      "out_tok": 10983,
+      "agent_calls": 11
+    }
+  ]
+}

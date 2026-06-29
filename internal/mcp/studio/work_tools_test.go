@@ -3,6 +3,7 @@ package studio_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -138,7 +139,7 @@ func TestGitHubInboxSyncFeedsStudioWork(t *testing.T) {
 		"gh issue list --repo acme/repo --state open --assignee @me --limit 10 --json number,title,assignees,url": {
 			stdout: `[{"number":7,"title":"Assigned issue","url":"https://github.com/acme/repo/issues/7","assignees":[{"login":"brad"}]}]`,
 		},
-		"gh pr list --repo acme/repo --state open --review-requested @me --limit 10 --json number,title,author,url": {
+		"gh pr list --repo acme/repo --state open --search review-requested:@me --limit 10 --json number,title,author,url": {
 			stdout: `[{"number":42,"title":"Review this","url":"https://github.com/acme/repo/pull/42","author":{"login":"alice"}}]`,
 		},
 	}}
@@ -201,6 +202,78 @@ func TestGitHubInboxSyncFeedsStudioWork(t *testing.T) {
 	assert.Equal(t, 2, second.Fetched)
 	assert.Equal(t, 0, second.Inserted)
 	assert.Equal(t, 2, second.Skipped)
+	assert.Empty(t, second.Items, "skipped rows are not echoed by default (token diet)")
+
+	// include_skipped opts back into the full echo.
+	res, err = callTool(ctx, cs, "inbox.sync_github", map[string]any{
+		"handle":          "github-sync",
+		"repo":            "acme/repo",
+		"limit":           10,
+		"include_skipped": true,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, contentText(res))
+	var withSkipped studio.GitHubInboxSyncResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &withSkipped))
+	assert.Equal(t, 2, withSkipped.Skipped)
+	assert.Len(t, withSkipped.Items, 2, "include_skipped echoes already-present rows")
+	for _, it := range withSkipped.Items {
+		assert.False(t, it.Inserted)
+	}
+}
+
+// TestChatShowLastNPaginatesTranscript verifies chat.show returns only the last
+// N transcript rows by default (token diet) and that last_n/offset page through
+// the history, with last_n<=0 returning everything.
+func TestChatShowLastNPaginatesTranscript(t *testing.T) {
+	ctx := context.Background()
+	backing, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = backing.Close() })
+	chatStore, err := chats.NewStore(backing.DB())
+	require.NoError(t, err)
+	srv, _ := newReplayServerWithChatStore(t, chatStore)
+	cs := connectInProcess(ctx, t, srv)
+
+	chat, err := chatStore.Create(ctx, "cloak", "agent-room", "scope-msgs", "with messages")
+	require.NoError(t, err)
+	for i := 0; i < 12; i++ {
+		_, err := chatStore.AppendMessage(ctx, chat.ID, "user", fmt.Sprintf("msg-%02d", i), nil)
+		require.NoError(t, err)
+	}
+
+	// Default: only the last defaultChatShowLastN (5) rows.
+	res, err := callTool(ctx, cs, "chat.show", map[string]any{"chat_id": chat.ID})
+	require.NoError(t, err)
+	require.False(t, res.IsError, contentText(res))
+	var def studio.ChatShowResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &def))
+	require.Len(t, def.Messages, 5, "default last_n window")
+	assert.Equal(t, "msg-07", def.Messages[0].Content)
+	assert.Equal(t, "msg-11", def.Messages[4].Content)
+
+	// last_n=3.
+	res, err = callTool(ctx, cs, "chat.show", map[string]any{"chat_id": chat.ID, "last_n": 3})
+	require.NoError(t, err)
+	var three studio.ChatShowResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &three))
+	require.Len(t, three.Messages, 3)
+	assert.Equal(t, "msg-11", three.Messages[2].Content)
+
+	// offset=2 with last_n=3 pages backwards from the tail.
+	res, err = callTool(ctx, cs, "chat.show", map[string]any{"chat_id": chat.ID, "last_n": 3, "offset": 2})
+	require.NoError(t, err)
+	var paged studio.ChatShowResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &paged))
+	require.Len(t, paged.Messages, 3)
+	assert.Equal(t, "msg-09", paged.Messages[2].Content, "offset skips the 2 newest rows")
+
+	// last_n=0 returns the full transcript.
+	res, err = callTool(ctx, cs, "chat.show", map[string]any{"chat_id": chat.ID, "last_n": 0})
+	require.NoError(t, err)
+	var all studio.ChatShowResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &all))
+	require.Len(t, all.Messages, 12, "last_n<=0 returns everything")
 }
 
 func TestStudioWorkShowsRunningJobs(t *testing.T) {

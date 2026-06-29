@@ -80,7 +80,7 @@ func (e *executor) dwell(ms int) error {
 	}
 }
 
-// typeAndSend fills the composer with text and clicks send (gears spec
+// typeAndSend fills the composer with text and clicks send (the tour spec
 // typeAndSend). The fill dispatches an input event so the Vue v-model updates
 // and the send button enables, then a short settle, then the send click.
 //
@@ -128,7 +128,7 @@ func (e *executor) typeAndSend(text string) error {
 	return nil
 }
 
-// clickIntent clicks the intent-btn-<intent> control (gears spec clickIntent).
+// clickIntent clicks the intent-btn-<intent> control (the tour spec clickIntent).
 // It scrolls the button into view first, then DOM-dispatches the click.
 func (e *executor) clickIntent(intent string) error {
 	js := fmt.Sprintf(`(() => {
@@ -173,7 +173,7 @@ func (e *executor) waitForState(state string, timeout time.Duration) error {
 }
 
 // revealTurn eases the last operator input to the top of the chat, holds, then
-// eases down through the reply — the per-turn reading rhythm (gears spec
+// eases down through the reply — the per-turn reading rhythm (the tour spec
 // revealTurn). It installs a scroll-control shim on first use (neutering the
 // chat's instant auto-scroll-to-bottom) exactly as the spec does, then drives
 // the tween in-page. Durations are pace-scaled.

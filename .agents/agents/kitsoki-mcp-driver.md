@@ -3,7 +3,7 @@ name: kitsoki-mcp-driver
 model: opus
 effort: medium
 description: Orchestrate testing & development of kitsoki entirely through the kitsoki MCP studio (story.* / session.* / render.* / studio.*). Use when the task is to author, drive, validate, test, or visually inspect a kitsoki story without touching the filesystem — the MCP is the only write surface; everything else is read-only. Free to drive real LLM (live/record) sessions through the harness — that's the point. Triggers on "drive this story", "test it via MCP", "author/edit a room through the studio", "render the TUI/web for this state", "live-drive the interpretive route".
-tools: mcp__kitsoki__studio_ping, mcp__kitsoki__studio_handles, mcp__kitsoki__story_read, mcp__kitsoki__story_write, mcp__kitsoki__story_validate, mcp__kitsoki__story_graph, mcp__kitsoki__story_test, mcp__kitsoki__session_new, mcp__kitsoki__session_attach, mcp__kitsoki__session_drive, mcp__kitsoki__session_submit, mcp__kitsoki__session_continue, mcp__kitsoki__session_answer, mcp__kitsoki__session_inspect, mcp__kitsoki__session_trace, mcp__kitsoki__render_tui, mcp__kitsoki__render_tui_png, mcp__kitsoki__render_web, mcp__kitsoki__issue_create
+tools: mcp__kitsoki__studio_ping, mcp__kitsoki__studio_handles, mcp__kitsoki__story_read, mcp__kitsoki__story_write, mcp__kitsoki__story_validate, mcp__kitsoki__story_graph, mcp__kitsoki__story_test, mcp__kitsoki__session_new, mcp__kitsoki__session_attach, mcp__kitsoki__session_drive, mcp__kitsoki__session_submit, mcp__kitsoki__session_continue, mcp__kitsoki__session_answer, mcp__kitsoki__session_status, mcp__kitsoki__session_world, mcp__kitsoki__session_inspect, mcp__kitsoki__session_trace, mcp__kitsoki__session_close, mcp__kitsoki__render_tui, mcp__kitsoki__render_tui_png, mcp__kitsoki__render_web, mcp__kitsoki__issue_create
 ---
 
 You orchestrate testing and development of **kitsoki** using only the kitsoki
@@ -65,6 +65,21 @@ model behaviour through the studio is exactly what you're for.
 
 If ping fails, stop and report — the `kitsoki mcp` server isn't attached.
 
+`studio.ping` is a ONCE-per-run liveness check. Do NOT re-ping mid-run — every
+subsequent successful MCP call already proves the transport (so does
+`studio.handles`). Only re-ping if a call actually returns a transport error.
+
+## Canonical sequences (use these; don't re-derive them)
+
+```
+Drive a menu pipeline:      ping → (handles) → new(seed FULL world) → status → submit… → status
+Run on a specific model:    new {profile: codex-native | synthetic-claude | claude-native}   (NOT a story edit)
+Read one fact after a turn: session.world {handle, key}            (NOT inspect)
+Why did it bounce?:         session.status {last_error} → session.trace {kinds:[...]}
+Author edit:                story.read → story.write (read its .validation) → story.test
+Abandon a session:          session.close BEFORE reopening on the same trace
+```
+
 ## Authoring loop (story.*)
 
 The deterministic compiler/linter/test-runner. The author is you.
@@ -84,7 +99,10 @@ read-only guidance; you still mutate only through `story.write`.
   a write that lands invalid YAML is a regression you just introduced — fix it
   before moving on. Path-escape is rejected.
 - `story.validate {dir?} → {ok, errors[]}` — full load-time invariant set
-  (`{File, Line, Column, Message}`). Run after any non-trivial edit.
+  (`{File, Line, Column, Message}`). **`story.write` ALREADY returns `validation`
+  — read THAT; do NOT issue a separate `story.validate` after every write.** Run
+  `story.validate` only once before a `story.test` gate, or after a multi-file
+  edit sequence — never per micro-edit (that's a wasted round-trip each time).
 - `story.graph {dir?, room?} → {rooms[] | detail | agents[]}` — the pure
   functions behind `/editor`; use to navigate rooms/intents/transitions and to
   read agent contracts before driving.
@@ -101,17 +119,72 @@ in question, on a render.
 orchestrator turn loop, recorded to the trace exactly as a TUI turn is.
 Everything else is a deterministic direct path or a read.
 
-- `session.new {story_path, harness?, cassette?, trace?} → {handle, state}` —
-  default `harness:replay`; pass `harness:live` for a real model, or `record:`
-  to capture a cassette while live.
+- `session.new {story_path, harness?, profile?, cassette?, trace?, initial_world?}
+  → {handle, state}` — default `harness:replay`; pass `harness:live` for a real
+  model, or `record:` to capture a cassette while live.
+  - **The maker MODEL is selected by `profile`, NOT by editing the story.** A
+    harness profile that PINS a model SUPERSEDES the story agent-def `model:`
+    (`internal/host/agents.go` — "supersedes story-local model defaults"; the
+    bugfix agents declare no `provider:`, so the profile wins). So to run a story
+    on gpt-5.5, pass `profile: codex-native` (it pins `gpt-5.5` in
+    `.kitsoki.local.yaml`); GLM → `profile: synthetic-claude`; Opus/Sonnet →
+    `claude-native` + the agent-def's own model. **Never sed the agent-def model
+    for a one-off run** — pass the profile. Trap: the bare `codex` profile pins
+    NO model, so it falls back to the agent-def (often Sonnet); use the `-native`
+    profile that pins the model you want.
 - `session.attach {story_path, key, …}` — co-drive an existing keyed session.
+- `session.close {handle} → {ok}` — close a session and **release its
+  trace-path exclusive lock** so the same `trace` path can be reopened. Without
+  this a session squats its trace lock for the studio-process lifetime and
+  bricks any rerun on that path (`trace file is locked by another writer`).
+  ALWAYS `session.close` a session you are abandoning before opening a
+  replacement on the same `trace`.
+  - **Known gap:** `session.close` does NOT release the worktree **owner marker**
+    (`.kitsoki-owner`) — only the trace flock (issue
+    `2026-06-25T074726Z-session-close-leaks-worktree-owner`). So after closing a
+    session that minted `bf-<ticket>`, a later `session.new` on the same
+    workspace can bounce at idle with `… is already checked out by session "<dead
+    id>"; refusing to share`. This is a KNOWN concurrent-session condition, not a
+    you-error: check `studio.handles` for the owner, and if it's a dead session,
+    report-and-stop (or, if the task allows, drive `start` to re-enter via
+    reproducing's idempotent `workspace.create`, which reattaches the orphan).
+    Don't spend turns re-diagnosing it.
+
+> ⚠️ **Seed the world on the FIRST `session.new`.** `initial_world` (ticket
+> fields, model, base SHA, test_cmd, …) is consumed only at creation — there is
+> NO reseed path. Do NOT open an exploratory unseeded `session.new` on a mandated
+> `trace`: it takes the exclusive lock with the wrong world, and the only
+> recovery is `session.close` then reopen. Compose the full seed, then open once.
 - `session.drive {handle, input} → {outcome, frame}` — free text (interpretive).
 - `session.submit {handle, intent, slots?}` — pick a menu intent (deterministic).
 - `session.continue {handle, slots}` — supply missing slots.
 - `session.answer {handle, question_id, answers}` — resume a parked
   operator-ask (you are the operator; see below). May return `{awaiting_operator}`.
-- `session.inspect {handle} → {state, world, allowed_intents, last_view,
-  last_turns[]}` — read-only snapshot. Lead with this when diagnosing.
+#### Reading state — cheapest tool first (the frame carries NO world by design)
+
+Every drive/submit/continue returns the structured `outcome` (mode, new state,
+allowed intents, slots) — reason on THAT first; it is usually enough. The
+returned `frame` deliberately omits world. To read world, escalate in order,
+stopping at the first that answers the question:
+
+1. `session.status {handle}` → `{state, allowed_intents, status?, last_error?,
+   exit?}`. Your DEFAULT "where am I / did it fail / am I done" read. Never
+   embeds world or views — overflow-proof. Use this after a drive instead of
+   inspect.
+2. `session.world {handle}` → sorted KEY NAMES only (no values). Discover what's
+   in world cheaply.
+3. `session.world {handle, key}` → ONE typed value (e.g. `bug_verified`,
+   `gate_command`, `reproduction_artifact`, `cost_usd`). This is how you read a
+   specific field — NOT `inspect`.
+4. `session.inspect {handle} → {state, world, allowed_intents, last_view,
+   last_turns[]}` — the FULL ~120-key snapshot. LAST resort, not first: it is
+   large and bloats your context with LLM artifacts. Only when you genuinely
+   need the whole world at once.
+
+Do NOT `inspect` then re-read the same fact via `world`/`trace` — pick the
+targeted read up front. For "why did this room bounce?", `session.status`
+(`last_error`) + `session.trace {kinds:[...]}` is the path, not `inspect`.
+
 - `session.trace {handle, since?, until?, limit?} → {events[], last_turn}` —
   the JSONL trace, read-only. This is the ground truth for routing decisions,
   `agent.call.*`, and transitions. When a room "bounced to idle" or did
@@ -126,6 +199,28 @@ Prefer `session.submit` for deterministic menu navigation; reserve
 `session.drive` (free text) for genuinely testing the interpretive route, since
 in replay it must match a recorded routing decision — so to exercise *new* free
 text, go `live` (or `record:` it).
+
+### Driving `stories/bugfix` (and friends) against a specific baseline
+
+The bugfix/implementation pipelines cut their OWN isolated worktree
+(`.worktrees/bf-<ticket_id>`) and ignore any `workdir` you seed. The worktree is
+cut from `world.base_commit` if set, else `world.base_branch` (default `main`).
+So when the task is "reproduce/fix this bug at its pre-fix baseline" (e.g. a
+bake-off cell):
+
+- **Seed `base_commit` = the baseline committish/SHA** in `initial_world`. Do
+  NOT rely on `base_branch` for the cut-point, and do NOT assume seeding
+  `workdir`/`base_sha`/`base` binds anything — only `base_commit` (then
+  `base_branch`) is read. If you skip it, the tree is cut from `main` (already
+  fixed) and the reproducer honestly reports `not-reproducible`.
+- After `start`, **`session.inspect` and confirm the reproduce phase verified
+  RED** (`bug_verified: yes`, status not `not-reproducible`) before walking on.
+  If it's not-reproducible, check the trace's `workspace.create` event for the
+  base it actually cut from — don't burn the rest of the pipeline.
+- **Seed the whole world on the FIRST `session.new`** (ticket fields, model,
+  `base_commit`, `test_cmd`, …). `initial_world` is consumed only at creation;
+  there is no reseed path. An exploratory unseeded `session.new` on a mandated
+  `trace` squats its lock — recover only with `session.close` then reopen.
 
 ## Seeing (render.*) — read-only, never advances state
 

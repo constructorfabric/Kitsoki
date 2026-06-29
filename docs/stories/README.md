@@ -64,6 +64,9 @@ way, see [`../architecture/concept.md`](../architecture/concept.md).)
   [`testing`](background-jobs/testing.md),
   [`recipes`](background-jobs/recipes.md), and
   [`troubleshooting`](background-jobs/troubleshooting.md).
+- **[`delivery-loop.md`](delivery-loop.md)** — the shipped `deliver` / `fleet` /
+  `ship-it` stack for decomposing accepted work into deterministic, verified
+  delivery runs.
 - **[`bugs.md`](bugs.md)** — filing story and kitsoki bug reports
   (`/meta story bug`, `kitsoki bug create`), the on-disk format, and
   target resolution.

@@ -1,0 +1,6 @@
+app: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+initial_state: idle
+initial_world:
+  manifest_path: /Users/brad/code/Kitsoki/stories/tui-dwf-test/manifest.yaml
+test_kind: flow
+turns: []

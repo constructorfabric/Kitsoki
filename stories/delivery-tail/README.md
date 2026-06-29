@@ -106,4 +106,4 @@ imports:
 
 - [`stories/ship-it/`](../ship-it/) — the single-brief delivery loop (configure + maker + tail).
 - [`stories/bugfix/`](../bugfix/) — imports delivery-tail for direct-ship.
-- [`docs/proposals/delivery-loop.md`](../../docs/proposals/delivery-loop.md) — the delivery-loop epic.
+- [`docs/stories/delivery-loop.md`](../../docs/stories/delivery-loop.md) — the shipped delivery-loop story stack.

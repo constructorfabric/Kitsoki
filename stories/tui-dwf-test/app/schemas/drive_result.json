@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["status"],
+  "additionalProperties": true,
+  "properties": {
+    "status": { "type": "string", "enum": ["passed", "partial", "failed", "skipped"] },
+    "story": { "type": "string" },
+    "trace_path": { "type": "string" },
+    "state": { "type": "string" },
+    "model": { "type": "string" },
+    "profile": { "type": "string" },
+    "worktree": { "type": "string" },
+    "branch": { "type": "string" },
+    "findings": { "type": "array", "items": { "type": "string" } },
+    "summary": { "type": "string" }
+  }
+}

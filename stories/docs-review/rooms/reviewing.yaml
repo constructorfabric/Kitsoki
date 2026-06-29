@@ -23,7 +23,7 @@ states:
   reviewing:
     description: "Capturing the diff and asking the docs reviewer."
     view:
-      - prose: "Running the audit. The opus agent is reading docs/ against the recent diff."
+      - prose: "Running the audit. The reviewer is reading docs/ against the selected scope."
       - kv:
           pairs:
             "Commit":   '{{ world.commit_sha|default:"(probing…)" }}'
@@ -48,6 +48,7 @@ states:
       # 1. Capture HEAD + recent activity in a single JSON envelope so
       # stdout_json binds them in one shot.
       - invoke: host.run
+        id: docs-preflight
         with:
           cmd: bash
           args:
@@ -117,6 +118,7 @@ states:
 
       # 2. Ask Opus.
       - invoke: host.agent.decide
+        id: docs-reviewer
         with:
           prompt: prompts/decide.md
           schema: schemas/docs_review_verdict.json
@@ -158,6 +160,7 @@ states:
       # The thread name carries the mode so baseline and recent runs at
       # the same SHA don't clobber each other.
       - invoke: host.artifacts_dir
+        id: docs-verdict-artifact
         with:
           thread:    "docs-review-{{ world.review_mode }}-{{ world.commit_sha }}.json"
           mode:      "replace"

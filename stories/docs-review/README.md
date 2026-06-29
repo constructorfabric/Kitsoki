@@ -1,6 +1,6 @@
 # docs-review
 
-A single-shot story that asks an Opus read-only agent whether the
+A single-shot story that asks a read-only review agent whether the
 repository's documentation is in sync with the code. Two modes:
 
 - **`start`** (recent): focuses on the last ~20 commits + working-tree
@@ -23,8 +23,8 @@ idle ── start ──▶ reviewing ── done ──────▶ reviewed
                      │                          │   │
                      │                          │   └── review_again ──▶ reviewing
                      │                          │
-                     │                          └── (auto) fix_docs
-                     │                              [decision == needs_update]
+                     │                          └── fix_docs
+                     │                              [operator picks after needs_update]
                      │                              ▼
                      │                            fixing ── fix_done ──▶ fixed ── quit ──▶ @exit:done
                      │                              │                      │
@@ -44,9 +44,9 @@ idle ── start ──▶ reviewing ── done ──────▶ reviewed
 agent audits docs against code and emits a verdict with decision ∈
 {`needs_update`, `up_to_date`}, stale doc listings, and rationale.
 
-**Fix phase** (conditionally `reviewed` → `fixing` → `fixed`): If
-decision is `needs_update`, the `reviewed.on_enter` handler auto-emits
-`fix_docs`, routing to `fixing`. The `docs_writer` agent takes the
+**Fix phase** (explicit `reviewed` → `fixing` → `fixed`): If
+decision is `needs_update`, the `reviewed` room exposes `fix_docs`.
+Picking it routes to `fixing`. The `docs_writer` agent takes the
 `stale_docs[]` listing as its worklist and applies targeted edits to
 bring cited doc sections back in sync. **Changes are left uncommitted**
 in the working tree — the operator reviews with `git diff`, then stages
@@ -171,7 +171,7 @@ kitsoki test flows stories/docs-review/app.yaml
 
 | Fixture | What it pins |
 |---|---|
-| `flows/happy_needs_update.yaml` | Agent returns `needs_update`; story walks to `reviewed`; `verdict_decision` lands. |
+| `flows/happy_needs_update.yaml` | Agent returns `needs_update`; story stops at `reviewed` with `verdict_decision`, then an explicit `fix_docs` operator pick runs `fixing` to `fixed`. |
 | `flows/happy_up_to_date.yaml` | Agent returns `up_to_date`; operator re-runs via `review_again`. |
 | `flows/agent_abandoned.yaml` | `host.agent.decide` returns `Result.Error` (validator exhaustion); `on_error: review_failed` fires. |
 | `flows/empty_submitted.yaml` | Agent returns `ok=true` with `submitted: {}` (silent-failure mode that bit us live). Asserts the conditional `no_submit` emit catches it and routes to `review_failed`. |

@@ -141,7 +141,7 @@ async function waitForHealthy(timeoutMs: number): Promise<void> {
 test.beforeAll(async () => {
   for (const p of [STORIES_DIR, FLOW, BIN]) {
     if (!fs.existsSync(p)) {
-      throw new Error(`missing required path: ${p} (run 'make build && cp ./kitsoki bin/kitsoki' first)`);
+      throw new Error(`missing required path: ${p} (run 'make build-bin' first)`);
     }
   }
   prepareVideoDir(VIDEO_DIR); // clears stale .webm; must run before context creation

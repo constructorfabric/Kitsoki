@@ -43,9 +43,13 @@ states:
       # parent hasn't already projected a workdir in via world_in:).
       - when: "world.ticket_id != '' && world.workdir == '' && !world.impl_provision_attempted"
         set:
-          workspace_id:   "impl-{{ world.ticket_id }}"
-          feature_branch: "feature/{{ world.ticket_id }}"
-          workdir:        ".worktrees/impl-{{ world.ticket_id }}"
+          # Append world.session_id so two concurrent sessions on the SAME
+          # ticket resolve to DISTINCT workdir/branch/workspace ids — otherwise
+          # they share one checkout and a destructive git op in one clobbers
+          # the other's WIP (bug9glm2). Mirrors stories/bugfix/rooms/idle.yaml.
+          workspace_id:   "impl-{{ world.ticket_id }}-{{ world.session_id }}"
+          feature_branch: "feature/{{ world.ticket_id }}-{{ world.session_id }}"
+          workdir:        ".worktrees/impl-{{ world.ticket_id }}-{{ world.session_id }}"
       # Step 2: create the worktree on disk. `id:` pins the dir basename
       # to world.workspace_id so a later workspace.sync (keyed on the id)
       # finds the dir worktreeCreate made. The handler ignores the

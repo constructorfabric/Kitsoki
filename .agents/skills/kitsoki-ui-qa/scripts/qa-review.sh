@@ -40,9 +40,16 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-command -v claude >/dev/null 2>&1 || { echo "claude CLI not on PATH" >&2; exit 1; }
 command -v jq     >/dev/null 2>&1 || { echo "jq not on PATH" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 not on PATH" >&2; exit 1; }
+case "$model" in
+  gpt*|o*)
+    command -v codex >/dev/null 2>&1 || { echo "codex CLI not on PATH for GPT QA model: $model" >&2; exit 1; }
+    ;;
+  *)
+    command -v claude >/dev/null 2>&1 || { echo "claude CLI not on PATH" >&2; exit 1; }
+    ;;
+esac
 [ -d "$frames" ]      || { echo "no such frames dir: $frames" >&2; exit 1; }
 [ -f "$feature" ]     || { echo "no such feature file: $feature" >&2; exit 1; }
 [ -f "$scenarios" ]   || { echo "no such scenarios file: $scenarios" >&2; exit 1; }
@@ -103,15 +110,37 @@ extract_json() { python3 "$tmp/extract_json.py"; }
 call_claude_json() { # <promptfile> <label>
   local pf="$1" label="$2" attempt raw result json
   for attempt in 1 2; do
-    raw="$(claude -p \
-            --output-format json \
-            --model "$model" \
-            --permission-mode bypassPermissions \
-            --allowedTools "Read" \
-            --add-dir "$frames" \
-            < "$pf" 2>/dev/null)" || { echo "  ($label) claude invocation failed (attempt $attempt)" >&2; continue; }
-    result="$(printf '%s' "$raw" | jq -r '.result // .text // empty')"
-    [ -n "$result" ] || result="$raw"          # tolerate a bare-JSON CLI build
+    case "$model" in
+      gpt*|o*)
+        local codex_out="$tmp/codex-${label}-${attempt}.txt"
+        local image_args=()
+        while IFS= read -r frame; do
+          [ -n "$frame" ] && image_args+=( --image "$frames/$frame" )
+        done <<< "$frame_list"
+        if ! codex exec \
+              --model "$model" \
+              --cd "$(pwd)" \
+              --sandbox read-only \
+              --output-last-message "$codex_out" \
+              "${image_args[@]}" \
+              - < "$pf" >/dev/null 2>"${out%.json}.${label}.codex.stderr.txt"; then
+          echo "  ($label) codex invocation failed (attempt $attempt)" >&2
+          continue
+        fi
+        result="$(cat "$codex_out" 2>/dev/null || true)"
+        ;;
+      *)
+        raw="$(claude -p \
+                --output-format json \
+                --model "$model" \
+                --permission-mode bypassPermissions \
+                --allowedTools "Read" \
+                --add-dir "$frames" \
+                < "$pf" 2>/dev/null)" || { echo "  ($label) claude invocation failed (attempt $attempt)" >&2; continue; }
+        result="$(printf '%s' "$raw" | jq -r '.result // .text // empty')"
+        [ -n "$result" ] || result="$raw"          # tolerate a bare-JSON CLI build
+        ;;
+    esac
     if json="$(printf '%s' "$result" | extract_json)"; then
       printf '%s' "$json"
       return 0
@@ -251,6 +280,21 @@ EVIDENCE RULES (these make the review trustworthy — follow them exactly):
    trace/observer/state-diagram (e.g. the run viewer, the timeline, the diagram is
    literally what the bug/plan is about); there the trace IS the correct, expected
    surface. Decide which case you are in from the feature file, not from a default.
+10. INTERACTION AFFORDANCE COMPLETENESS — for multi-step UI interactions, the
+   final result does NOT prove the interaction if an expected user-visible
+   affordance is missing. If the feature/scenarios say the user opens or uses an
+   intermediate surface — a context menu, dropdown, popover, toolbar menu, command
+   palette, confirmation sheet, chooser, inline editor, placement marker, or
+   similar UI — at least one frame must show that surface BEFORE the final result.
+   A direct jump from the trigger to the final modal/page/state is incomplete
+   evidence. Mark the step that claims the intermediate surface `unsupported` if
+   no frame shows it, or `fail` if a frame shows the flow skipped it or shows the
+   wrong surface. When the feature file requires such an affordance but the YAML
+   only has broad workflow/result steps, judge those workflow/result steps
+   against the feature too: they cannot pass unless the required intermediate
+   affordance is visible in the frame sequence. Cite the missing affordance in
+   the step observation and, when it affects the whole demo, add a top-level
+   `visual_issues` entry naming the omitted surface.
 
 Compute each scenario's status as the worst of its steps (fail < unsupported <
 pass). Copy each scenario's `id`, `title`, and `required` exactly from the YAML
@@ -319,6 +363,14 @@ frame's supposed-content region is actually a large blank/uniform box (all-white
 or all-black), a placeholder, or a broken-image glyph, the visual is NOT rendered
 — downgrade that step to `fail` and describe the empty region. A passed visual
 step backed by a blank frame is the exact over-claim you exist to catch.
+
+Also pay special attention to multi-step interaction claims. If the feature or a
+passed workflow step requires an intermediate user-visible affordance — for
+example a context menu, dropdown, popover, command palette, chooser, confirmation
+sheet, inline editor, or placement marker — the cited frames must show that
+affordance before the final result. A final modal/page/state alone is not enough
+and must be downgraded to `unsupported` or `fail` depending on whether the frames
+omit or contradict the required intermediate surface.
 
 Do NOT re-emit the whole verdict. Output ONLY the downgrades you are confident
 about. You may ONLY downgrade a `pass`; never touch `fail`/`unsupported` steps

@@ -21,13 +21,13 @@ func writeFeature(t *testing.T, dir, featureID string) {
 }
 
 func TestDiscoverFeatureRoot(t *testing.T) {
-	const featureID = "gears-prd-design"
+	const featureID = "example-prd-design"
 
 	t.Run("cwd walk finds nearest ancestor and ignores $KITSOKI_REPO", func(t *testing.T) {
 		// The feature root is an ancestor of the start dir.
 		featureRoot := t.TempDir()
 		writeFeature(t, featureRoot, featureID)
-		startDir := filepath.Join(featureRoot, "stories", "gears-rust")
+		startDir := filepath.Join(featureRoot, "stories", "example-app")
 		if err := os.MkdirAll(startDir, 0o755); err != nil {
 			t.Fatal(err)
 		}

@@ -343,6 +343,60 @@ func TestSessionTrace_TruncatePayload(t *testing.T) {
 	}
 }
 
+// TestSessionTrace_TruncatePayloadDefault confirms that omitting truncate_payload
+// applies the 500-byte default, while an explicit 0 opts out of truncation.
+func TestSessionTrace_TruncatePayloadDefault(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+	cs := connectInProcess(ctx, t, srv)
+	handle := openCloak(ctx, t, cs)
+
+	res, err := callTool(ctx, cs, "session.drive", map[string]any{
+		"handle": handle, "input": "go west",
+	})
+	require.NoError(t, err)
+	driveResult(t, res)
+
+	// Default (unset) → 500-byte cap: every payload must be ≤ 500 bytes (before
+	// the ellipsis rune).
+	res, err = callTool(ctx, cs, "session.trace", map[string]any{"handle": handle})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "trace default: %s", contentText(res))
+	var def studio.TraceResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &def))
+	require.NotEmpty(t, def.Events)
+	sawTruncated := false
+	for _, ev := range def.Events {
+		// The marshalled payload is a JSON string; decode it to get the raw text
+		// the truncator capped at 500 bytes (pre-ellipsis).
+		var raw string
+		if json.Unmarshal(ev.Payload, &raw) != nil {
+			continue
+		}
+		if strings.HasSuffix(raw, "…") {
+			sawTruncated = true
+			prefix := strings.TrimSuffix(raw, "…")
+			assert.LessOrEqual(t, len([]byte(prefix)), 500,
+				"default-truncated payload prefix must be ≤ 500 bytes; got %q", raw)
+		}
+	}
+	assert.True(t, sawTruncated, "default 500-byte cap should truncate at least one large payload")
+
+	// Explicit 0 → no truncation: no payload should carry the ellipsis suffix.
+	res, err = callTool(ctx, cs, "session.trace", map[string]any{
+		"handle": handle, "truncate_payload": 0,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "trace opt-out: %s", contentText(res))
+	var full studio.TraceResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &full))
+	require.NotEmpty(t, full.Events)
+	for _, ev := range full.Events {
+		assert.False(t, strings.HasSuffix(string(ev.Payload), "…"),
+			"truncate_payload:0 must not truncate; got %q", string(ev.Payload))
+	}
+}
+
 // TestSessionTrace_Kinds confirms kinds:[] filters trace events to only those
 // with a matching kind.
 func TestSessionTrace_Kinds(t *testing.T) {

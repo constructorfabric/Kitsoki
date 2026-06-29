@@ -3,14 +3,14 @@
 `kitsoki mcp` is a stdio [MCP](https://modelcontextprotocol.io) server an
 **external** LLM client (Claude Code, Claude Desktop, an IDE agent) attaches
 to. It gives that agent the three things it needs to build a kitsoki story:
-**author** it, **drive** a live session of it, and **see** the rendered
-result — terminal *and* browser — over one connection.
+**author** it, **drive** a live session of it, and **see / interact with** the
+rendered result — terminal *and* browser — over one connection.
 
 It is distinct from the narrow per-app server: [`kitsoki serve`](../../internal/mcp/server.go)
 exposes a single `transition` tool that drives one app's state machine.
 `kitsoki mcp` is the authoring/introspection *control plane* — its state is an
 authoring **workspace** plus zero-or-more live **driving sessions**, exposed as
-the `studio.*`, `story.*`, `session.*`, `chat.*`, `render.*`, and `issue.*`
+the `studio.*`, `story.*`, `session.*`, `chat.*`, `render.*`, `visual.*`, and `issue.*`
 tool families. It is a sibling of
 `kitsoki serve` and the [operator-ask bridge](operator-ask.md): same
 `github.com/modelcontextprotocol/go-sdk`, same `StdioTransport`, same
@@ -35,17 +35,24 @@ handles:
   handle; `render.*` tools take a session handle **or** an explicit
   `{story_path, state, world?}` spec.
 
-```
-StudioSession (one MCP connection)
-├── workspace: WorkspaceHandle?          // a story dir under authoring (≤1)
-│     └── dir, cached app.Load result (AppDef + ValidationError[])
-└── sessions: map[handle]SessionHandle    // keyed driving sessions (0..n)
-      └── kitsoki SessionID, orchestrator, harness mode (replay|live), trace path
+```mermaid
+flowchart LR
+    client["client"]
+    mcp["kitsoki mcp<br/>stdio MCP"]
+    dispatch{"tool dispatch"}
+    story["story.*<br/>app.Load / graph.* / testrunner.RunFlows<br/>no LLM"]
+    session["session.*<br/>orch.Turn / SubmitDirect / ContinueTurn<br/>replay default"]
+    render["render.*<br/>ComposeFrame / shot raster / webshot.Shot<br/>read-only"]
+    workspace["WorkspaceHandle?<br/>dir + cached app.Load result"]
+    handles["SessionHandle map<br/>session id + orchestrator + harness + trace"]
 
-   client ──(stdio MCP)──▶ kitsoki mcp ──▶ tool dispatch ──▶ handle
-        story.*   → app.Load / graph.* / testrunner.RunFlows   (no LLM)
-        session.* → orch.Turn / SubmitDirect / ContinueTurn    (replay default)
-        render.*  → ComposeFrame / shot raster / webshot.Shot  (read-only)
+    client --> mcp --> dispatch
+    dispatch --> story
+    dispatch --> session
+    dispatch --> render
+    story --> workspace
+    session --> handles
+    render --> handles
 ```
 
 The server core records **nothing new**: each driving handle writes through the
@@ -147,6 +154,28 @@ uses, so the MCP surface can never disagree with them.
 | `story.graph` | `{dir?, room?} → {rooms[] \| detail \| agents[]}` | `graph.RoomList` / `Detail` / `AgentContracts` (the pure functions behind `/editor`) |
 | `story.test` | `{dir?, flows?} → {report}` | `testrunner.RunFlows` (no LLM; honours `--recording`/`--host-cassette`) |
 
+### `workflow.*` — draft, validate, launch, export
+
+`workflow.*` wraps the shared dynamic-workflow service. It creates the draft
+package, validates it, and can open a tracked studio session over the generated
+`punch-list` story.
+
+| Tool | Shape | Wraps |
+|---|---|---|
+| `workflow.create` | `{goal, slug?} → {receipt}` | draft package + manifest + validation receipt |
+| `workflow.validate` | `{workflow_id} → {receipt}` | re-run the deterministic draft validator |
+| `workflow.launch` | `{workflow_id} → {receipt}` | persist launch metadata and open a studio session handle over the draft |
+| `workflow.status` | `{workflow_id} → {receipt}` | read the stored receipt |
+| `workflow.export` | `{workflow_id, target?, allow_base_story?} → {receipt}` | copy the draft to a reusable story package, starter flow/cassette artifacts, and an export report |
+
+The receipt carries the draft path, manifest path, launch basis, trace path,
+the lifecycle event log, and, after `workflow.launch`, the studio `session_id`
+/ handle plus the relative runstatus session route (`/s/<id>`). The trace path
+and launch command are the fallback anchors when no browser origin is
+available. `workflow.export` writes the promoted `README.md`, starter flow
+fixture, optional starter cassette, and `export-report.json` beside the
+promoted story package.
+
 ### `session.*` — drive & introspect
 
 `session.drive` is the **one interpretive seam**: it submits free text through
@@ -160,13 +189,13 @@ deterministic direct path or a read.
 |---|---|---|
 | `session.new` | `{story_path, harness?, cassette?, trace?} → {handle, state}` | open a driving handle (default `harness:replay`) |
 | `session.attach` | `{story_path, key, …} → {handle, state}` | co-drive an existing keyed session via the external-attach bridge |
-| `session.drive` | `{handle, input} → {outcome, frame}` | **free text** → `orch.Turn` (interpretive route) |
+| `session.drive` | `{handle, input, async_after_ms?} → {outcome, frame} \| {running} \| {awaiting_operator}` | **free text** → `orch.Turn` (interpretive route); returns `running` after a bounded wait instead of letting long live turns time out |
 | `session.submit` | `{handle, intent, slots?} → {outcome, frame}` | `SubmitDirect` — pick a menu intent |
 | `session.continue` | `{handle, slots} → {outcome, frame}` | `ContinueTurn` — supply missing slots |
 | `session.answer` | `{handle, question_id, answers} → {outcome, frame} \| {awaiting_operator}` | resume a parked operator-ask (see below) |
-| `session.status` | `{handle} → {state, allowed_intents, status?, last_error?, exit?}` | compact, overflow-proof snapshot — **never embeds world**; reads only the well-known keys `status`/`last_error`/`exit` from the world. Use instead of `session.inspect` when the world may hold multi-KB LLM artifacts. |
+| `session.status` | `{handle} → {state, allowed_intents, running?, status?, last_error?, exit?}` | compact, overflow-proof snapshot — **never embeds world**; reads only the well-known keys `status`/`last_error`/`exit` from the world. Use instead of `session.inspect` when the world may hold multi-KB LLM artifacts. |
 | `session.teleport` | `{handle, notification_id} → {outcome, frame}` | jump to an inbox notification's saved target and mark it read |
-| `session.inspect` | `{handle, omit_world?, max_value_len?} → {state, world, allowed_intents, last_view, async, jobs[], notifications[], pending_drives[], backgrounded_chats[], operator_questions[], mining_proposals[], last_turns[]}` | `buildInspectOutput` + session JobStore / ChatStore / trace side channel (read-only); `omit_world:true` drops world entirely; `max_value_len:N` truncates each value to N chars with `…` |
+| `session.inspect` | `{handle, omit_world?, max_value_len?} → {state, world, allowed_intents, last_view, async, running?, jobs[], notifications[], pending_drives[], backgrounded_chats[], operator_questions[], mining_proposals[], last_turns[]}` | `buildInspectOutput` + session JobStore / ChatStore / trace side channel (read-only); `omit_world:true` drops world entirely; `max_value_len:N` truncates each value to N chars with `…` |
 | `session.command` | `{handle, command, cols?, rows?} → {frame}` | run a deterministic TUI slash command such as `/work --all` against the handle |
 | `session.trace` | `{handle, since?, until?, limit?, truncate_payload?, kinds?} → {events[], last_turn}` | the session's JSONL trace (read-only); `truncate_payload:N` caps event payloads; `kinds` filters to specific event kinds |
 | `chat.show` | `{chat_id, handle?, session_id?, since_seq?} → {context?, chat, pty?, messages[]}` | read-only focused context for a selected async chat/subagent; `chat.display_scope_key` is the operator-facing scope label |
@@ -175,6 +204,17 @@ Every drive/submit/continue returns **both** the structured `TurnOutcome` (mode,
 new state, allowed intents, slots needed) **and** the rendered `Frame` — so the
 agent reasons on metadata and *sees* the screen in one call.
 
+Long live `session.drive` calls are bounded by default. If a turn is still
+executing after the wait window, the tool returns
+`{ok:true, running:{handle,input,started_at_unix_micro,poll:"session.status"}}`
+while the same turn continues in the session runtime. Clients should poll
+`session.status` first; it repeats the same compact `running` object until the
+turn settles, then exposes the folded state and allowed intents. Use
+`session.inspect` when the driver needs a reacquire snapshot: it also exposes
+`running` and increments `async.running_drive` while the turn is active. The
+default wait is 25 seconds; pass `async_after_ms` to lower or raise it for one
+call, or a negative value to disable early return and wait synchronously.
+
 `session.command` exists for TUI-only operator surfaces that are not
 orchestrator turns, especially smoke-testing `/work --all` and `/chat show
 <id>` through MCP. It uses the live TUI slash dispatcher and rejects commands
@@ -182,7 +222,8 @@ that return an asynchronous terminal side effect, such as attaching to tmux.
 
 `session.inspect` also carries compact per-handle background-job and inbox
 projections. `async` summarizes running, awaiting-input, terminal, unread,
-unread action-required, and operator-question counts; `jobs[]` shows the
+unread action-required, in-flight drive, and operator-question counts; `jobs[]`
+shows the
 session's job IDs, kinds, statuses, origin states, errors, clarification schema,
 and timestamps;
 `notifications[]` shows active inbox rows, including `action_required` items and
@@ -196,8 +237,8 @@ same `questions[]`, `question_id`, and `session.answer` reacquire hint as
 currently pending proposal-review rows. This is the structured MCP surface for
 an external agent to inspect the chosen handle after `studio.work` has ranked
 the global queue, notice required operator input, and reacquire or switch to the
-task through `session.teleport`, `chat.show`, or `session.answer` without
-scraping the TUI frame or decoding trace events.
+task through `session.teleport`, `chat.show`, `session.answer`, or
+`session.status` polling without scraping the TUI frame or decoding trace events.
 
 Story-authored `host.chat.drive` effects are stamped with the originating
 session and state before the host handler enqueues the drive, so ordinary
@@ -247,6 +288,119 @@ That path needs a staged runstatus SPA (`make web`) and local Playwright
 dependencies. Story/state spec screenshots still belong to `kitsoki web-shot`,
 where a no-LLM flow or host cassette can define the deterministic web session.
 
+### `visual.*` — interact visually without screenshot spam
+
+`visual.*` is the token-efficient interaction layer for vision-capable coding
+agents. It deliberately does **not** expose raw Playwright/Puppeteer control to
+the model. The default loop is compact structured JSON first, one targeted PNG
+only when needed, then deterministic actions through the same session/runtime
+seams as `session.*`.
+
+| Tool | Shape | Purpose |
+|---|---|---|
+| `visual.open` | `{kind:web\|tui\|vscode, handle, viewport?, mode?} → {visual_handle}` | bind a logical visual surface to an existing driving handle |
+| `visual.observe` | `{visual_handle, cols?, rows?} → {state, frame preview, actions[], regions[], metadata, image_available}` | cheap default context; no image bytes |
+| `visual.snapshot` | `{visual_handle, region?, overlay?, scale?, format?, max_pixels?, query?, assert_text?}` | return one targeted PNG plus JSON metadata including `image_id`/hash, original/display dimensions, crop bbox, scale factor, visible action handles, and, for web/vscode, the compact semantic observation; TUI uses the terminal rasterizer |
+| `visual.act` | `{visual_handle, action?, action_handle?, image_id?, point?, text?, key?, value?, region?, delta?, intent?, slots?, command?}` | perform deterministic `submit`, `continue`, `type`, `press`, `select`, `scroll`, `command`, or anchored `pixel_click` actions and return the post-action frame/outcome |
+| `visual.diff` | `{from_image_id, to_image_id}` | compare retained snapshot pixels/metadata and return changed-region hints plus a changed pixel bbox without another image |
+| `visual.git_diff` | `{dir, from, to, story_path, state, world?, query?, assert_text?, region?, overlay?, scale?, max_pixels?, include_images?:none\|from\|to\|both}` | materialize each git revision with `git archive`, render the same web scene from both trees, retain both screenshots, and return the same compact diff metadata plus image IDs |
+| `visual.record` | `{action:start\|stop, visual_handle?, recording_id?, mode?}` | capture a semantic evidence ledger and write `timeline.json` + `capture.semantic.json`; web recordings also write `session.rrweb.json` after a snapshot captures the rolling rrweb buffer |
+
+The implementation is intentionally handle-backed: `web` and `vscode` surfaces
+snapshot the real runstatus web view for the open session, while `tui` surfaces
+snapshot the composed terminal frame. Browser lifetime remains behind the
+existing `webShot` seam; tests inject stub PNG/semantic results, so the tool
+surface is covered without Chromium or a real LLM. Snapshot image bytes are sent
+only by the snapshot call; the server retains compact `image_id` metadata for
+diffing and recorded evidence.
+
+`visual.git_diff` is the git-aware visual regression path. The caller supplies a
+repository directory, two commit-ish values, a story path relative to that repo
+(or an absolute path inside it), and the state/world/query for the scene. The
+server resolves both commits, expands each tree into a temporary directory with
+`git archive` (no checkout and no source worktree mutation), renders the same
+web scene from each archive through the existing browser seam, stores both
+screenshots as retained images, and returns `{from_image_id,to_image_id,...}`
+plus the pixel/metadata diff. The default response is JSON-only; `include_images`
+can request `from`, `to`, or `both` PNG blocks for a vision-capable client when a
+human/model needs to inspect the actual frames.
+
+The runstatus SPA installs `window.__kitsokiVisual` at boot. It exposes a small
+semantic helper: `observe()` returns stable action handles from interactive
+elements (`data-testid` identity when present, ARIA role/label, disabled state,
+and bounding box), named regions (`chat`, `graph`, `trace`, `inbox`,
+`composer`, `modal`), viewport/route/focus, and dirty-region hints from
+`MutationObserver` + route changes. `tools/runstatus/web-shot.ts` can write this
+sidecar with `--semantic-out` during the same browser pass that captures the
+PNG, and the Go `internal/webshot` seam returns it as `ShotWithSemantic`.
+`visual.observe` uses the same compact sidecar, when the browser seam is wired,
+to return helper-derived action handles, region bboxes, focus, viewport, and
+dirty-region hints as JSON only. `visual.snapshot` filters that sidecar to the
+known compact keys before placing it in MCP metadata, so clients get
+action/region context without a DOM dump.
+When a web/vscode snapshot names a semantic `region` such as `chat` or `trace`,
+the returned PNG is cropped to that region's bbox. `overlay:"action_ids"` draws
+visible affordance boxes from the semantic action inventory; `overlay:"regions"`
+draws known region boxes. `max_pixels` enforces a hard image budget after crop
+while preserving aspect ratio; absent an explicit budget, `scale:"medium"` (the
+default) caps screenshots, `scale:"small"` caps more aggressively, and
+`scale:"native"` preserves pixels. All of this is done server-side against the
+already captured PNG, so the model sees only the targeted pixels it asked for.
+
+Pixel actions are intentionally anchored. `visual.act {action:"pixel_click"}`
+requires a recent `image_id` and a `point` in that returned image's coordinate
+space. The server hit-tests only the retained semantic action boxes and then
+submits the resolved deterministic handle (for runstatus, `intent-btn-*` testids
+map back to Kitsoki intents). A free-floating arbitrary click is not part of the
+normal action loop; the model must first ask for a frame that defines the
+coordinate system.
+
+Text entry is deterministic without owning a browser input element. `type`
+buffers text on the visual handle without advancing the story; `press` with
+`key:"Enter"` submits the buffered text through the same `session.drive` route
+as the web composer, while `Escape` clears and `Backspace` edits the buffer.
+`select` submits an explicit intent with slots (plus optional `value`) through
+the direct submit path. `scroll` is treated as a viewport hint: it records the
+region/delta, returns the current frame unchanged, and sets `needs_snapshot`
+because only a later observation/snapshot can prove what is visible after a
+client-side scroll.
+
+For `tui` handles, `visual.observe` includes an xterm-like terminal wrapper under
+`frame.terminal`: bounded `rows[]` are the cell grid in terminal coordinates,
+`dirty_rows[]` identifies rows worth re-reading, `actions[]` maps active intent
+handles to cell-coordinate bounding boxes, `focus` names the current input
+region, and `slash_commands[]` lists the safe command candidates surfaced by
+`visual.act {action:"command"}`. This is still JSON-only; `visual.snapshot`
+rasterizes the same composed frame to PNG only when pixels are needed.
+
+Longer-lived web recordings align with Slidey's canonical rrweb formats: rrweb
+is the durable motion/evidence substrate, `slidey.chapter` custom events mark
+reviewable spans, and PNGs remain targeted stills for vision-model ambiguity.
+The runstatus SPA already keeps a masked rolling rrweb buffer for bug reports;
+`window.__kitsokiVisual.recording()` wraps that buffer in the same envelope
+spine Slidey consumes (`schemaVersion`, `source`, `viewport`, timing fields,
+`events`). During an active `visual.record`, a web `visual.snapshot` captures
+that envelope through `web-shot.ts --rrweb-out`; `visual.record stop` writes the
+latest envelope as `session.rrweb.json` alongside the semantic ledger. Future
+chapter markers should reuse Slidey's `slidey.chapter` custom event convention
+rather than defining a second recording format.
+
+The contract for agent clients is:
+
+1. Call `visual.observe` first.
+2. Use `visual.act` for listed `intent:<name>` action handles whenever possible.
+3. Call `visual.snapshot` only for layout, visual ambiguity, or UI failures.
+4. Prefer `region`, `overlay`, and `max_pixels` over full-frame native
+   screenshots when the client knows what it needs to inspect.
+5. Use `pixel_click` only with an `image_id` from the latest relevant snapshot;
+   prefer listed action handles when available.
+6. Use `visual.record` around exploratory work that may need review; the sidecar
+   captures observations, actions, image ids, hashes, and, for web surfaces,
+   a masked rrweb replay when a snapshot occurred during the recording.
+
+This keeps PNGs useful for vision models without turning every step into a large
+image or accessibility-tree payload.
+
 ### `issue.*` — file a gap (with evidence bundled)
 
 The agent that drives kitsoki through this MCP has no shell and no write tools,
@@ -258,7 +412,7 @@ the evidence, it bundles it in.
 
 | Tool | Shape | Wraps |
 |---|---|---|
-| `issue.create` | `{title, body?, labels?, repo?, handle?, include_trace?, trace_limit?, include_inspect?, assets?} → {url, number, labels[], assets[]}` | render assets → `.artifacts`, bundle a handle's trace + inspect, then the injectable `IssueFiler` (prod: `gh`) |
+| `issue.create` | `{title, body?, labels?, repo?, handle?, include_trace?, trace_limit?, include_inspect?, include_visual_recordings?, assets?} → {url, number, labels[], assets[]}` | render assets → `.artifacts`, bundle a handle's trace/inspect and stopped visual recordings, then the injectable `IssueFiler` (prod: `gh`) |
 
 Three things happen server-side so the agent never handles bytes:
 
@@ -272,6 +426,12 @@ Three things happen server-side so the agent never handles bytes:
 - **context** — with a `handle` and `include_trace` / `include_inspect`, the
   session's trace tail (the same `session.trace` returns) and inspect snapshot
   are folded into the body, so a gap report is reproducible by construction.
+- **visual recordings** — `include_visual_recordings:["rec1", ...]` copies each
+  stopped `visual.record` bundle into the issue artifact directory and links its
+  `timeline.json`, `capture.semantic.json`, and optional `session.rrweb.json`.
+  This is the no-raw-browser-state path for filing a visual failure: semantic
+  state/action history plus the masked rrweb replay, without dumping DOMs into
+  the issue body.
 - **file** — the composed `{repo, title, body, labels}` goes to the injected
   [`IssueFiler`](../../internal/mcp/studio/issue_tools.go) seam. The
   `source-autonomous` label is always applied (first) so agent-filed issues are

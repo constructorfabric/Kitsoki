@@ -1,0 +1,92 @@
+{
+  "_comment": "Bug-fix report deck for the redundant 'Observe ↗' link removal in the kitsoki web UI. The fix deletes the router-link at tools/runstatus/src/views/InteractiveView.vue:85 plus its CSS (~937–946). Validation: typecheck + build green, rrweb repro shows the link gone, trace toggle stands alone. meta.mode:pitch required. Scene shapes copied from docs/decks/agent-actions-overflow-bugfix.slidey.json and slidey-128-bugfix.slidey.json.",
+  "meta": {
+    "title": "Fix: remove the redundant Observe link",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": "rose-pine-moon",
+    "narration": {
+      "voice": "en-AU-NatashaNeural",
+      "rate": "+0%"
+    }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Bugfix · kitsoki / runstatus",
+      "title": "Remove the redundant Observe link",
+      "subtitle": "One control, one job — just the trace toggle remains",
+      "narration": "The fix: remove the redundant Observe link so the topbar keeps a single, unambiguous control — the trace toggle."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The fix",
+      "lede": "A one-line deletion.",
+      "body": "The whole change is a removal: delete the 'Observe ↗' router-link at InteractiveView.vue:85, then delete its now-orphaned CSS rule (.iv__observe-link, lines ~937–946). Nothing else references the element, and the observer route stays reachable from elsewhere — so no markup or routing needs to move. The confusable second affordance simply disappears.",
+      "narration": "It's a deletion. Remove the Observe link at line 85, and its orphaned CSS just below. Nothing depends on the element and the observer route stays reachable, so nothing else has to change."
+    },
+    {
+      "type": "cards",
+      "variant": "versus",
+      "title": "Before vs after",
+      "left": {
+        "label": "Before",
+        "lines": [
+          "Two controls crowd the topbar",
+          "trace toggle + look-alike Observe link",
+          "misclicks leave the live session"
+        ]
+      },
+      "right": {
+        "label": "After",
+        "lines": [
+          "Just the trace toggle",
+          "one control, one clear job",
+          "no accidental trips to the observer"
+        ]
+      },
+      "caption": "From two confusable controls to one unambiguous toggle.",
+      "narration": "Before: two confusable controls sharing the topbar. After: just the trace toggle — one control with one clear job, and no accidental trips out of the live view."
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Validation — green after the fix",
+      "columns": [
+        "Check",
+        "Result"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "vue-tsc typecheck",
+            "clean — no dangling references to iv__observe-link"
+          ]
+        },
+        {
+          "cells": [
+            "vite build",
+            "green — bundle builds with the element and CSS removed"
+          ]
+        },
+        {
+          "cells": [
+            "rrweb repro replay",
+            "the Observe link is gone; the trace toggle stands alone"
+          ]
+        }
+      ],
+      "hold": 320,
+      "caption": "Typecheck and build pass, and the captured rrweb replay confirms the link no longer renders in the topbar."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Outcome",
+      "lede": "PR-ready.",
+      "body": "The redundant control is gone, the typechecker and build are green, and the rrweb replay shows the topbar with the trace toggle alone — no stray Observe link to misclick. A clean, minimal diff: ready to open the PR.",
+      "narration": "The clutter is gone, typecheck and build are green, and the replay shows a clean topbar. Minimal diff, ready to open the pull request."
+    }
+  ]
+}

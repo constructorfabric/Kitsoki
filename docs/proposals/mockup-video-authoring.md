@@ -15,7 +15,7 @@ way to act on "this moment is wrong."
 
 This story drives that loop end to end: a discovery conversation distils a
 **scenario brief**, an agent authors the source (HTML mockups + tour, *or* a
-slidey deck — `medium: tour | deck`), the shipped `visual-outputs` producers
+slidey deck — `medium: tour | deck`), the shipped media producers
 render a walkthrough MP4 (carrying the slice-1 **chapter sidecar**), the
 operator reviews it, and a **refine** checkpoint edits the *exact* source
 that produced each flagged moment — fed either by inline feedback or by the
@@ -65,12 +65,12 @@ pipeline with a checkpoint loop, structurally a cousin of `stories/bugfix/`
 - **Engine/host changes:** none — composes existing + epic hosts:
   `host.agent.converse`/`decide` (intake + brief gate), `host.agent.task`
   (author + refine, scoped writes), `host.slidey.render` + `host.run` (render;
-  `visual-outputs` #2 + `kitsoki-ui-demo` recorder), the slice-1 chapter
+  shipped media producer + `kitsoki-ui-demo` recorder), the slice-1 chapter
   sidecar, `host.artifacts_dir` media-emit
   (`internal/host/artifacts_dir_transport.go:238`), the `media` view element
   (`internal/app/view_element.go:477`).
-- **Dependencies:** `visual-outputs` #2 (`host.slidey.render`) + #3 (web
-  `media` rendering); epic slice 1 (chapter sidecar — so refine can target
+- **Dependencies:** shipped `host.slidey.render` + web `media` rendering; epic
+  slice 1 (chapter sidecar — so refine can target
   the flagged scene); soft-dep epic slice 2 (the web feedback panel — without
   it, `refine feedback="…"` inline still drives the loop). If the media
   substrate regressed, `review`/`done` degrade to a path pointer (TUI

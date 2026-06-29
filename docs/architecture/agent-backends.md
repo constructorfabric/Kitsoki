@@ -71,8 +71,16 @@ Claude-only flags (`--setting-sources`, `--effort`,
 > ephemeral (`-c`) and persisted (`codex mcp add`) registration. Because the
 > schema-validator `submit` tool is load-bearing for parity (validation + the
 > nudge/abandonment-recovery loop + `post_cmd` verifiers), the codex backend runs
-> with the bypass flag so the tool can execute. **Select `--agent codex` only in
-> a trusted / externally-sandboxed environment**, since it disables codex's own
+> with the bypass flag so the tool can execute.
+>
+> This does **not** make Codex's sandbox the write-mode boundary. For Kitsoki
+> hosted work, the boundary is the story/tooling layer: read-only agent rooms
+> deny mutating tools, Bash MCP applies its profile, validators run through the
+> validator sandbox, and read-only write attempts are mediated by the Kitsoki
+> write-mode gate / operator-ask bridge. In other words, the Codex CLI sandbox is
+> bypassed so MCP tools are callable; Kitsoki still owns whether a hosted agent
+> may mutate the target workspace. **Select `--agent codex` only in a trusted /
+> externally-sandboxed environment**, since the bypass flag disables Codex's own
 > sandbox and approval gate for the whole run.
 
 ### Session resume & usage

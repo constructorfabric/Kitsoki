@@ -47,6 +47,7 @@ import {
   cinematicGoto,
   ChapterRecorder,
   writeChapters,
+  showArtifact,
   type WebServer,
 } from "./_helpers/server.js";
 import { installCapture, dumpCapture, writeEvents } from "./_helpers/rrweb-replay.js";
@@ -335,6 +336,12 @@ test("slidey bug-fix rrweb capture (baseline + event stream)", async () => {
     }
 
     await expect(page.getByTestId("tour-overlay")).toHaveCount(0, { timeout: 5000 });
+
+    // ── Full-screen the bugfix summary and scroll through it ─────────────────
+    diag("opening bugfix summary artifact");
+    chapters.open("sbf-summary-artifact", "Bugfix summary — full document", CHAPTER_SOURCE);
+    await showArtifact(page, "stories/slidey-bugfix/assets/bugfix-summary.md");
+    diag("bugfix summary artifact shown + scrolled");
 
     // ── 3. rrweb: dump the FULL accumulated stream + capture viewport ─────────
     const { events, viewport } = await dumpCapture(page);

@@ -1,0 +1,74 @@
+# scoring_blocks_empty_results — do not generate a 0-cell report by accident.
+#
+# The running room is the human/operator handoff for cost-bearing cells. If the
+# operator accepts before any scored cell JSON exists, scoring must route back to
+# running instead of producing a misleading "0/0 solved" report.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: running
+initial_world:
+  project: gears-rust
+  repo_dir: /Users/brad/code/gears-rust
+  results_dir: ../../../.artifacts/external-bakeoff/empty-results
+  report_dir: ../../../.artifacts/external-bakeoff/report
+  bugs: [bug1]
+  candidates: [opus-4.8]
+  cells_total: 1
+  cell_commands_markdown: "- `bug1` x `opus-4.8`: `tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug1 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score`"
+  preflight_ready: true
+  oracles_armed: true
+
+host_handlers:
+  host.run:
+    by_call:
+      completion_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ok: false
+            project: gears-rust
+            status: ready-to-drive
+            checks:
+              preflight_ok: true
+              arming_verified: true
+              no_cost_ready: true
+              ready_to_drive: true
+              result_evidence_complete: false
+              live_scored: false
+            results:
+              selected_cells: 1
+              prepared_cells: 1
+              unprepared_cells: 0
+              stale_prepared_cells: 0
+              result_cells: 0
+              missing_cells: 1
+              stale_result_cells: 0
+              attempted_cells: 0
+              pending_cells: 0
+              solved_cells: 0
+              partial_cells: 0
+              failed_cells: 0
+            blockers:
+              - "1 selected cell(s) still need a scored or pending result"
+            markdown: .artifacts/external-bakeoff/report/completion.md
+      summarize:
+        data:
+          ok: false
+          exit_code: 1
+          stdout: |
+            {"ok": false, "project": "gears-rust", "error": "no scored cells", "hint": "run drive_cell.sh --score for at least one matrix cell before scoring"}
+        error: "host.run: command exited 1"
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: running
+    expect_host_calls:
+      - handler: host.run
+        id: completion_local
+      - handler: host.run
+        id: summarize
+    expect_view_matches: "Bake-off · running"
+
+expect_no_errors: false

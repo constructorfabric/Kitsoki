@@ -75,7 +75,7 @@ avoids it.
 
 - `internal/orchestrator/orchestrator.go` + `internal/store/sqlite.go` —
   session keying / single-writer lock; the per-session workdir lifecycle hook.
-- `stories/kitsoki-dev/` + `stories/bugfix/` — current `.worktrees/bf-<ticket>`
+- `.kitsoki/stories/kitsoki-dev/` + `stories/bugfix/` — current `.worktrees/bf-<ticket>`
   convention to be subsumed by the engine primitive.
 - `docs/proposals/process-design.md` §4.3 — the design home for the primitive.
 - CLAUDE.md / workflow guardrails — the mechanical fences for background agents.

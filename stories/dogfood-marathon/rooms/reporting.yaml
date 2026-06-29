@@ -1,0 +1,40 @@
+# reporting — build the slidey deck SPEC (deck.json) from results + rollup.
+# Deterministic. host.starlark.run (build_deck.star) emits a slidey scene spec:
+#   title scene · rollup scene · per-case outcomes · cost/time · what-worked /
+#   what-didn't · findings. It writes the deck JSON under baked/ and returns
+#   {spec_path, summary}. The slideshow room renders it. The spec is built ONLY
+#   from the journaled run data — the deck never shows a fabricated outcome.
+
+states:
+
+  reporting:
+    description: "Building the slidey report deck spec from the run data (deterministic)."
+    relevant_world: [results, rollup, deck_spec]
+    view:
+      - heading: "Dogfood marathon · reporting"
+      - kv:
+          pairs:
+            Cases: '{{ world.results.items|length }}'
+            Spec:  '{{ world.deck_spec.spec_path|default:"(building…)" }}'
+      - prose: "Composing the marathon-report deck: outcomes · effectiveness · time · cost · what-was-fixed · what-worked · what-didn't. The spec is rendered next."
+    on_enter:
+      - invoke: host.starlark.run
+        id: build_deck
+        once: true
+        with:
+          script: scripts/build_deck.star
+          inputs:
+            results:  "{{ world.results }}"
+            rollup:   "{{ world.rollup }}"
+            findings: "{{ world.findings }}"
+            out_path: "stories/dogfood-marathon/baked/report.deck.json"
+        bind:
+          deck_spec: deck_spec
+        on_error: reporting
+      - when: "world.deck_spec.spec_path != ''"
+        emit_intent: reported
+    on:
+      reported:
+        - target: slideshow
+      look:
+        - target: .

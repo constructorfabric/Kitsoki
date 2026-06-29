@@ -82,6 +82,24 @@ harness_profiles:
 harness_profiles:
   p: { backend: claude, effort: max, efforts: [low, medium] }
 `,
+		"invalid quota window rejected": `
+harness_profiles:
+  p:
+    backend: claude
+    quota: { window: nope }
+`,
+		"invalid quota lease timeout rejected": `
+harness_profiles:
+  p:
+    backend: claude
+    quota: { lease_timeout: forever }
+`,
+		"negative quota tokens rejected": `
+harness_profiles:
+  p:
+    backend: claude
+    quota: { tokens_per_window: -1 }
+`,
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -146,6 +164,70 @@ func TestLocalConfigPath(t *testing.T) {
 		if got := LocalConfigPath(in); got != want {
 			t.Errorf("LocalConfigPath(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestLoad_LocalOverrideFallsBackToPrimaryWorktree(t *testing.T) {
+	main := t.TempDir()
+	linked := filepath.Join(t.TempDir(), "linked")
+	writeLinkedWorktreeGitFiles(t, main, linked)
+	writeFile(t, filepath.Join(main, DefaultConfigFile), "default_profile: claude-native\nharness_profiles:\n  claude-native: { backend: claude }\n")
+	writeFile(t, filepath.Join(main, DefaultLocalConfigFile), "default_profile: codex-native\nharness_profiles:\n  codex-native: { backend: codex, model: gpt-5.5, models: [gpt-5.5] }\n")
+	writeFile(t, filepath.Join(linked, DefaultConfigFile), "default_profile: claude-native\nharness_profiles:\n  claude-native: { backend: claude }\n")
+
+	cfg, err := Load(filepath.Join(linked, DefaultConfigFile))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DefaultProfile != "codex-native" {
+		t.Fatalf("default_profile = %q, want primary worktree local override", cfg.DefaultProfile)
+	}
+	if _, ok := cfg.HarnessProfiles["codex-native"]; !ok {
+		t.Fatalf("codex-native profile from primary local config missing: %+v", cfg.HarnessProfiles)
+	}
+}
+
+func TestLoad_WorktreeLocalOverrideWinsOverPrimaryFallback(t *testing.T) {
+	main := t.TempDir()
+	linked := filepath.Join(t.TempDir(), "linked")
+	writeLinkedWorktreeGitFiles(t, main, linked)
+	writeFile(t, filepath.Join(main, DefaultConfigFile), "default_profile: claude-native\nharness_profiles:\n  claude-native: { backend: claude }\n")
+	writeFile(t, filepath.Join(main, DefaultLocalConfigFile), "default_profile: codex-native\nharness_profiles:\n  codex-native: { backend: codex }\n")
+	writeFile(t, filepath.Join(linked, DefaultConfigFile), "default_profile: claude-native\nharness_profiles:\n  claude-native: { backend: claude }\n")
+	writeFile(t, filepath.Join(linked, DefaultLocalConfigFile), "default_profile: linked-local\nharness_profiles:\n  linked-local: { backend: claude, model: opus, models: [opus] }\n")
+
+	cfg, err := Load(filepath.Join(linked, DefaultConfigFile))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DefaultProfile != "linked-local" {
+		t.Fatalf("default_profile = %q, want worktree-local override", cfg.DefaultProfile)
+	}
+	if _, ok := cfg.HarnessProfiles["codex-native"]; ok {
+		t.Fatalf("primary fallback should not merge when worktree-local exists: %+v", cfg.HarnessProfiles)
+	}
+}
+
+func writeLinkedWorktreeGitFiles(t *testing.T, main, linked string) {
+	t.Helper()
+	worktreeGitDir := filepath.Join(main, ".git", "worktrees", filepath.Base(linked))
+	if err := os.MkdirAll(worktreeGitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(linked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(linked, ".git"), "gitdir: "+worktreeGitDir+"\n")
+	writeFile(t, filepath.Join(worktreeGitDir, "commondir"), "../..\n")
+}
+
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

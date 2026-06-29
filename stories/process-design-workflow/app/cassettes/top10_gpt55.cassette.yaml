@@ -1,0 +1,936 @@
+kind: host_cassette
+app_id: punch-list
+generated_at: '2026-06-25T00:00:00Z'
+match_on:
+- handler
+- call
+episodes:
+- id: punch_load
+  match:
+    handler: host.run
+    call: punch_load
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        state_path: .artifacts/punch-list/top10_gpt55.state.json
+        item_count: '10'
+        error: ''
+        items: []
+- id: punch_board-0-
+  match:
+    handler: host.run
+    call: punch_board-0-
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items: []
+        next_item:
+          id: load-bug
+          title: Fix imported bf default expression load failure
+          story: .kitsoki/stories/kitsoki-dev/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: stories/cherny-loop/app.yaml
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/load-bug.jsonl
+        next_item_id: load-bug
+        route: dispatch
+        has_pending: true
+        processed_count: 0
+        passed_count: 0
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 10
+        count_summary: Processed 0 | Passed 0 | Partial 0 | Failed 0 | Skipped 0 | Pending 10
+- id: punch_policy-load-bug
+  match:
+    handler: host.run
+    call: punch_policy-load-bug
+  response:
+    data: &id001
+      ok: true
+      exit_code: 0
+      stdout_json:
+        policy_result:
+          status: ok
+          message: profile/model/verifier policy passed
+        error: ''
+- id: punch_verify-load-bug
+  match:
+    handler: host.run
+    call: punch_verify-load-bug
+  response:
+    data: &id002
+      ok: true
+      exit_code: 0
+      stdout_json:
+        verify_result:
+          status: passed
+          summary: 1/1 deterministic checks passed
+          checks:
+          - cmd: go run ./cmd/kitsoki render <story> -o -
+            exit_code: 0
+            ok: true
+- id: punch_board-0-passed
+  match:
+    handler: host.run
+    call: punch_board-0-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+            story: .kitsoki/stories/kitsoki-dev/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/load-bug.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item:
+          id: capability-taxonomy
+          title: Design the agent capability effect taxonomy
+          story: stories/dev-story/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: stories/cherny-loop/app.yaml
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/capability-taxonomy.jsonl
+        next_item_id: capability-taxonomy
+        route: dispatch
+        has_pending: true
+        processed_count: 1
+        passed_count: 1
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 9
+        count_summary: Processed 1 | Passed 1 | Partial 0 | Failed 0 | Skipped 0 | Pending 9
+- id: punch_policy-capability-taxonomy
+  match:
+    handler: host.run
+    call: punch_policy-capability-taxonomy
+  response:
+    data: *id001
+- id: punch_verify-capability-taxonomy
+  match:
+    handler: host.run
+    call: punch_verify-capability-taxonomy
+  response:
+    data: *id002
+- id: punch_board-1-passed
+  match:
+    handler: host.run
+    call: punch_board-1-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+          - id: capability-taxonomy
+            status: passed
+            story: stories/dev-story/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/capability-taxonomy.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item:
+          id: toolbox-enforcement
+          title: Wire toolbox and enforcement policy
+          story: stories/cherny-loop/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: stories/cherny-loop/app.yaml
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/toolbox-enforcement.jsonl
+        next_item_id: toolbox-enforcement
+        route: dispatch
+        has_pending: true
+        processed_count: 2
+        passed_count: 2
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 8
+        count_summary: Processed 2 | Passed 2 | Partial 0 | Failed 0 | Skipped 0 | Pending 8
+- id: punch_policy-toolbox-enforcement
+  match:
+    handler: host.run
+    call: punch_policy-toolbox-enforcement
+  response:
+    data: *id001
+- id: punch_verify-toolbox-enforcement
+  match:
+    handler: host.run
+    call: punch_verify-toolbox-enforcement
+  response:
+    data: *id002
+- id: punch_board-2-passed
+  match:
+    handler: host.run
+    call: punch_board-2-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+          - id: capability-taxonomy
+            status: passed
+          - id: toolbox-enforcement
+            status: passed
+            story: stories/cherny-loop/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/toolbox-enforcement.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item:
+          id: cassette-conformance
+          title: Add strict cassette and toolbox conformance linting
+          story: stories/cherny-loop/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: stories/cherny-loop/app.yaml
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/cassette-conformance.jsonl
+        next_item_id: cassette-conformance
+        route: dispatch
+        has_pending: true
+        processed_count: 3
+        passed_count: 3
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 7
+        count_summary: Processed 3 | Passed 3 | Partial 0 | Failed 0 | Skipped 0 | Pending 7
+- id: punch_policy-cassette-conformance
+  match:
+    handler: host.run
+    call: punch_policy-cassette-conformance
+  response:
+    data: *id001
+- id: punch_verify-cassette-conformance
+  match:
+    handler: host.run
+    call: punch_verify-cassette-conformance
+  response:
+    data: *id002
+- id: punch_board-3-passed
+  match:
+    handler: host.run
+    call: punch_board-3-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+          - id: capability-taxonomy
+            status: passed
+          - id: toolbox-enforcement
+            status: passed
+          - id: cassette-conformance
+            status: passed
+            story: stories/cherny-loop/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/cassette-conformance.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item:
+          id: project-init-hardening
+          title: Harden project-init onboarding
+          story: stories/dev-story/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: stories/cherny-loop/app.yaml
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/project-init-hardening.jsonl
+        next_item_id: project-init-hardening
+        route: dispatch
+        has_pending: true
+        processed_count: 4
+        passed_count: 4
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 6
+        count_summary: Processed 4 | Passed 4 | Partial 0 | Failed 0 | Skipped 0 | Pending 6
+- id: punch_policy-project-init-hardening
+  match:
+    handler: host.run
+    call: punch_policy-project-init-hardening
+  response:
+    data: *id001
+- id: punch_verify-project-init-hardening
+  match:
+    handler: host.run
+    call: punch_verify-project-init-hardening
+  response:
+    data: *id002
+- id: punch_board-4-passed
+  match:
+    handler: host.run
+    call: punch_board-4-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+          - id: capability-taxonomy
+            status: passed
+          - id: toolbox-enforcement
+            status: passed
+          - id: cassette-conformance
+            status: passed
+          - id: project-init-hardening
+            status: passed
+            story: stories/dev-story/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/project-init-hardening.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item:
+          id: session-mining-productization
+          title: Productize session-mining workflow
+          story: stories/dev-story-mining/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: stories/cherny-loop/app.yaml
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/session-mining-productization.jsonl
+        next_item_id: session-mining-productization
+        route: dispatch
+        has_pending: true
+        processed_count: 5
+        passed_count: 5
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 5
+        count_summary: Processed 5 | Passed 5 | Partial 0 | Failed 0 | Skipped 0 | Pending 5
+- id: punch_policy-session-mining-productization
+  match:
+    handler: host.run
+    call: punch_policy-session-mining-productization
+  response:
+    data: *id001
+- id: punch_verify-session-mining-productization
+  match:
+    handler: host.run
+    call: punch_verify-session-mining-productization
+  response:
+    data: *id002
+- id: punch_board-5-passed
+  match:
+    handler: host.run
+    call: punch_board-5-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+          - id: capability-taxonomy
+            status: passed
+          - id: toolbox-enforcement
+            status: passed
+          - id: cassette-conformance
+            status: passed
+          - id: project-init-hardening
+            status: passed
+          - id: session-mining-productization
+            status: passed
+            story: stories/dev-story-mining/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/session-mining-productization.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item:
+          id: deliver-decomposition-decision
+          title: Resolve deliver versus work-decomposition
+          story: stories/deliver/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: ''
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/deliver-decomposition-decision.jsonl
+        next_item_id: deliver-decomposition-decision
+        route: dispatch
+        has_pending: true
+        processed_count: 6
+        passed_count: 6
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 4
+        count_summary: Processed 6 | Passed 6 | Partial 0 | Failed 0 | Skipped 0 | Pending 4
+- id: punch_policy-deliver-decomposition-decision
+  match:
+    handler: host.run
+    call: punch_policy-deliver-decomposition-decision
+  response:
+    data: *id001
+- id: punch_verify-deliver-decomposition-decision
+  match:
+    handler: host.run
+    call: punch_verify-deliver-decomposition-decision
+  response:
+    data: *id002
+- id: punch_board-6-passed
+  match:
+    handler: host.run
+    call: punch_board-6-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+          - id: capability-taxonomy
+            status: passed
+          - id: toolbox-enforcement
+            status: passed
+          - id: cassette-conformance
+            status: passed
+          - id: project-init-hardening
+            status: passed
+          - id: session-mining-productization
+            status: passed
+          - id: deliver-decomposition-decision
+            status: passed
+            story: stories/deliver/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/deliver-decomposition-decision.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item:
+          id: contextual-routing-controls
+          title: Add contextual routing operator controls
+          story: stories/routing-demo/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: stories/cherny-loop/app.yaml
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/contextual-routing-controls.jsonl
+        next_item_id: contextual-routing-controls
+        route: dispatch
+        has_pending: true
+        processed_count: 7
+        passed_count: 7
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 3
+        count_summary: Processed 7 | Passed 7 | Partial 0 | Failed 0 | Skipped 0 | Pending 3
+- id: punch_policy-contextual-routing-controls
+  match:
+    handler: host.run
+    call: punch_policy-contextual-routing-controls
+  response:
+    data: *id001
+- id: punch_verify-contextual-routing-controls
+  match:
+    handler: host.run
+    call: punch_verify-contextual-routing-controls
+  response:
+    data: *id002
+- id: punch_board-7-passed
+  match:
+    handler: host.run
+    call: punch_board-7-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+          - id: capability-taxonomy
+            status: passed
+          - id: toolbox-enforcement
+            status: passed
+          - id: cassette-conformance
+            status: passed
+          - id: project-init-hardening
+            status: passed
+          - id: session-mining-productization
+            status: passed
+          - id: deliver-decomposition-decision
+            status: passed
+          - id: contextual-routing-controls
+            status: passed
+            story: stories/routing-demo/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/contextual-routing-controls.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item:
+          id: multi-hop-routing
+          title: Build multi-hop contextual routing
+          story: .kitsoki/stories/kitsoki-dev/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: stories/cherny-loop/app.yaml
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/multi-hop-routing.jsonl
+        next_item_id: multi-hop-routing
+        route: dispatch
+        has_pending: true
+        processed_count: 8
+        passed_count: 8
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 2
+        count_summary: Processed 8 | Passed 8 | Partial 0 | Failed 0 | Skipped 0 | Pending 2
+- id: punch_policy-multi-hop-routing
+  match:
+    handler: host.run
+    call: punch_policy-multi-hop-routing
+  response:
+    data: *id001
+- id: punch_verify-multi-hop-routing
+  match:
+    handler: host.run
+    call: punch_verify-multi-hop-routing
+  response:
+    data: *id002
+- id: punch_board-8-passed
+  match:
+    handler: host.run
+    call: punch_board-8-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+          - id: capability-taxonomy
+            status: passed
+          - id: toolbox-enforcement
+            status: passed
+          - id: cassette-conformance
+            status: passed
+          - id: project-init-hardening
+            status: passed
+          - id: session-mining-productization
+            status: passed
+          - id: deliver-decomposition-decision
+            status: passed
+          - id: contextual-routing-controls
+            status: passed
+          - id: multi-hop-routing
+            status: passed
+            story: .kitsoki/stories/kitsoki-dev/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/multi-hop-routing.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item:
+          id: story-qa-workflow
+          title: Productize story-qa skill workflow
+          story: stories/dogfood-marathon/app.yaml
+          mode: drive
+          profile: codex-native
+          model: gpt-5.5
+          implementation_story: stories/cherny-loop/app.yaml
+          require_trace_model: true
+          trace_path: .artifacts/top10-dogfood/traces/story-qa-workflow.jsonl
+        next_item_id: story-qa-workflow
+        route: dispatch
+        has_pending: true
+        processed_count: 9
+        passed_count: 9
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 1
+        count_summary: Processed 9 | Passed 9 | Partial 0 | Failed 0 | Skipped 0 | Pending 1
+- id: punch_policy-story-qa-workflow
+  match:
+    handler: host.run
+    call: punch_policy-story-qa-workflow
+  response:
+    data: *id001
+- id: punch_verify-story-qa-workflow
+  match:
+    handler: host.run
+    call: punch_verify-story-qa-workflow
+  response:
+    data: *id002
+- id: punch_board-9-passed
+  match:
+    handler: host.run
+    call: punch_board-9-passed
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        items: []
+        results:
+          items:
+          - id: load-bug
+            status: passed
+          - id: capability-taxonomy
+            status: passed
+          - id: toolbox-enforcement
+            status: passed
+          - id: cassette-conformance
+            status: passed
+          - id: project-init-hardening
+            status: passed
+          - id: session-mining-productization
+            status: passed
+          - id: deliver-decomposition-decision
+            status: passed
+          - id: contextual-routing-controls
+            status: passed
+          - id: multi-hop-routing
+            status: passed
+          - id: story-qa-workflow
+            status: passed
+            story: stories/dogfood-marathon/app.yaml
+            trace_path: .artifacts/top10-dogfood/traces/story-qa-workflow.jsonl
+            summary: 1/1 deterministic checks passed
+        next_item: {}
+        next_item_id: ''
+        route: done
+        has_pending: false
+        processed_count: 10
+        passed_count: 10
+        partial_count: 0
+        failed_count: 0
+        skipped_count: 0
+        pending_count: 0
+        count_summary: Processed 10 | Passed 10 | Partial 0 | Failed 0 | Skipped 0 | Pending 0
+- id: punch_report
+  match:
+    handler: host.run
+    call: punch_report
+  response:
+    data:
+      ok: true
+      exit_code: 0
+      stdout_json:
+        report_path: .artifacts/punch-list/report.md
+        summary: 10 passed, 0 partial, 0 failed, 0 skipped, 0 pending
+- id: punch_drive-load-bug
+  match:
+    handler: host.agent.task
+    call: punch_drive-load-bug
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: .kitsoki/stories/kitsoki-dev/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/load-bug.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_implementation-load-bug
+  match:
+    handler: host.agent.task
+    call: punch_implementation-load-bug
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/load-bug-impl.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: implementation story exercised
+- id: punch_drive-capability-taxonomy
+  match:
+    handler: host.agent.task
+    call: punch_drive-capability-taxonomy
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/dev-story/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/capability-taxonomy.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_implementation-capability-taxonomy
+  match:
+    handler: host.agent.task
+    call: punch_implementation-capability-taxonomy
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/capability-taxonomy-impl.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: implementation story exercised
+- id: punch_drive-toolbox-enforcement
+  match:
+    handler: host.agent.task
+    call: punch_drive-toolbox-enforcement
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/toolbox-enforcement.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_implementation-toolbox-enforcement
+  match:
+    handler: host.agent.task
+    call: punch_implementation-toolbox-enforcement
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/toolbox-enforcement-impl.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: implementation story exercised
+- id: punch_drive-cassette-conformance
+  match:
+    handler: host.agent.task
+    call: punch_drive-cassette-conformance
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/model-harness-eval/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/cassette-conformance.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_implementation-cassette-conformance
+  match:
+    handler: host.agent.task
+    call: punch_implementation-cassette-conformance
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/cassette-conformance-impl.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: implementation story exercised
+- id: punch_drive-project-init-hardening
+  match:
+    handler: host.agent.task
+    call: punch_drive-project-init-hardening
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/dev-story/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/project-init-hardening.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_implementation-project-init-hardening
+  match:
+    handler: host.agent.task
+    call: punch_implementation-project-init-hardening
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/project-init-hardening-impl.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: implementation story exercised
+- id: punch_drive-session-mining-productization
+  match:
+    handler: host.agent.task
+    call: punch_drive-session-mining-productization
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/dev-story-mining/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/session-mining-productization.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_implementation-session-mining-productization
+  match:
+    handler: host.agent.task
+    call: punch_implementation-session-mining-productization
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/session-mining-productization-impl.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: implementation story exercised
+- id: punch_drive-deliver-decomposition-decision
+  match:
+    handler: host.agent.task
+    call: punch_drive-deliver-decomposition-decision
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/deliver/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/deliver-decomposition-decision.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_drive-contextual-routing-controls
+  match:
+    handler: host.agent.task
+    call: punch_drive-contextual-routing-controls
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/routing-demo/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/contextual-routing-controls.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_implementation-contextual-routing-controls
+  match:
+    handler: host.agent.task
+    call: punch_implementation-contextual-routing-controls
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/contextual-routing-controls-impl.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: implementation story exercised
+- id: punch_drive-multi-hop-routing
+  match:
+    handler: host.agent.task
+    call: punch_drive-multi-hop-routing
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: .kitsoki/stories/kitsoki-dev/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/multi-hop-routing.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_implementation-multi-hop-routing
+  match:
+    handler: host.agent.task
+    call: punch_implementation-multi-hop-routing
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/multi-hop-routing-impl.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: implementation story exercised
+- id: punch_drive-story-qa-workflow
+  match:
+    handler: host.agent.task
+    call: punch_drive-story-qa-workflow
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/dogfood-marathon/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/story-qa-workflow.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: story driven through Studio MCP
+- id: punch_implementation-story-qa-workflow
+  match:
+    handler: host.agent.task
+    call: punch_implementation-story-qa-workflow
+  response:
+    data:
+      ok: true
+      submitted:
+        status: passed
+        story: stories/cherny-loop/app.yaml
+        trace_path: .artifacts/top10-dogfood/traces/story-qa-workflow-impl.jsonl
+        model: gpt-5.5
+        profile: codex-native
+        findings: []
+        summary: implementation story exercised

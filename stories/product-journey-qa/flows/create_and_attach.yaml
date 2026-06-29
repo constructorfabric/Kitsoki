@@ -1,0 +1,650 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      validate_product_journey_corpus:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: valid
+            personas: 5
+            scenarios: 6
+            targets: 10
+            errors: 0
+            warnings: 0
+            issues: []
+      emit_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: created
+            run_id: run-123
+            run_dir: .artifacts/product-journey/run-123
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+            persona_starting_surface: "docs-first; follow the documented path before trying hidden commands"
+            persona_first_question: "Can I follow the docs without private repo context or tribal knowledge?"
+            persona_evidence_emphasis: "page URLs, screenshots, prerequisite commands, stale-link proof, and onboarding smoke results"
+            persona_escalation_trigger: "stale docs, missing prerequisites, broken media, or commands that require unexplained setup"
+            persona_finding_bias: "Prefer onboarding clarity, documented next actions, and confusing-copy findings."
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            finding_total_count: 0
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 0
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 30
+            missing_proof_evidence_count: 30
+            proof_minimum_evidence_count: 0
+            minimum_evidence_count: 30
+            missing_proof_summary: "project-onboarding: generated_config_diff, onboarding_smoke_result"
+            driver_contract_summary: "Driver contract: 6 scenarios (product-discovery, project-onboarding, bugfix, prd-design, feature-implementation, +1 more); 6 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
+            next_driver_capture: "Next capture: product-discovery/browser_screenshot. Save a retained visual MCP screenshot or PNG reference."
+            next_driver_attach_command: 'python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind browser_screenshot --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Save a retained visual MCP screenshot or PNG reference."'
+            next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
+      emit_product_journey_matrix:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: matrix_created
+            matrix_id: matrix-123
+            matrix_dir: .artifacts/product-journey/matrices/matrix-123
+            deck_path: .artifacts/product-journey/matrices/matrix-123/deck.slidey.json
+            target_count: 10
+            assignment_count: 10
+            scenario_count: 6
+            persona_mode: primary
+            target_proof_id: proof-123
+            target_proof_checked_at: "2026-06-26T00:00:00+00:00"
+            target_proof_passed: 10
+            target_proof_failed: 0
+            target_proof_errors: 0
+            target_proof_ready: "yes"
+            target_proof:
+              proof_id: proof-123
+              created_at: "2026-06-26T00:00:00+00:00"
+              summary:
+                targets: 10
+                passed: 10
+                failed: 0
+                errors: 0
+      refresh_product_journey_targets:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: target_proof_created
+            proof_id: proof-123
+            proof_dir: .artifacts/product-journey/target-proofs/proof-123
+            proof_path: .artifacts/product-journey/target-proofs/proof-123/target-proof.json
+            markdown_path: .artifacts/product-journey/target-proofs/proof-123/target-proof.md
+            passed: 10
+            failed: 0
+            errors: 0
+            target_count: 10
+      attach_product_journey_evidence:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: attached
+            run_dir: .artifacts/product-journey/run-123
+            scenario: bugfix
+            evidence_kind: key_interaction_video
+            evidence_path: media/bugfix.mp4
+            evidence_source: local
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+      record_product_journey_finding:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: recorded
+            run_dir: .artifacts/product-journey/run-123
+            finding_kind: weakness
+            title: Onboarding hid next command
+            scenario: project-onboarding
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+      record_product_journey_blocker:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: blocker_recorded
+            run_dir: .artifacts/product-journey/run-123
+            scenario: prd-design
+            title: Design surface needed live model authorization
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+      seed_product_journey_demo:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: seeded
+            run_dir: .artifacts/product-journey/run-123
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+            evidence_added: 30
+            findings_added: 4
+            driver_events_added: 6
+            driver_event_count: 6
+            present_evidence_count: 30
+            findings_count: 5
+            finding_total_count: 5
+            strength_count: 1
+            weakness_count: 2
+            issue_count: 1
+            fix_count: 1
+            blocked_count: 0
+      record_product_journey_driver_event:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: driver_event_recorded
+            run_dir: .artifacts/product-journey/run-123
+            event_id: driver-event-1
+            scenario: product-discovery
+            dispatch_mode: replay
+            driver_status: captured
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            driver_journal_json_path: .artifacts/product-journey/run-123/driver-journal.json
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            published_deck_path: ""
+      review_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: reviewed
+            review_status: needs_evidence
+            summary: "needs_evidence: 16/19 checks passed, 2 warnings, 1 failures"
+            run_dir: .artifacts/product-journey/run-123
+            review_path: .artifacts/product-journey/run-123/review.json
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+            passed: 16
+            warnings: 2
+            failed: 1
+            total: 19
+            review_passed_count: 16
+            review_failed_count: 1
+            review_warning_count: 2
+            review_total_count: 19
+            review_backlog_summary: "fail: quality-gates (bugfix (3/5)); warn: non-demo-evidence (proof=0, demo=30); warn: playback-artifacts-resolve (artifacts/bugfix.mp4)"
+      prepare_product_journey_driver_handoff:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: driver_handoff_ready
+            run_id: run-123
+            run_dir: .artifacts/product-journey/run-123
+            driver_agent: .agents/agents/product-journey-qa-driver.md
+            driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+            driver_handoff_json_path: .artifacts/product-journey/run-123/driver-handoff.json
+            deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+            media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+            suggested_prompt: Drive product journey QA for run_dir=.artifacts/product-journey/run-123.
+            missing_evidence_count: 0
+      rollup_product_journey_matrix:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: rollup_created
+            matrix_id: matrix-123
+            matrix_dir: .artifacts/product-journey/matrices/matrix-123
+            rollup_path: .artifacts/product-journey/matrices/matrix-123/rollup.json
+            markdown_path: .artifacts/product-journey/matrices/matrix-123/rollup.md
+            deck_path: .artifacts/product-journey/matrices/matrix-123/rollup.slidey.json
+            runs_found: 1
+            assignments: 10
+            reviewed_runs: 1
+            ready_runs: 1
+            present_evidence_count: 6
+            required_evidence_count: 30
+            findings_count: 4
+            persona_outcomes: 1
+            scenario_outcomes: 5
+            driver_journal_rows: 4
+            driver_journal_events: 6
+            driver_journal_evidence_refs: 8
+            driver_journal_blocked_events: 1
+            quality_gate_satisfied_runs: 1
+            quality_gate_total_runs: 5
+            quality_gate_proof_minimum_evidence_count: 6
+            quality_gate_minimum_evidence_count: 30
+            missing_proof_evidence_rows: 17
+            quality_gate_missing_proof_evidence_count: 24
+            missing_proof_handoff_summary: "bugfix/candidate_diff: vscode/docs-minded-contributor -> .artifacts/product-journey/run-123/driver-handoff.md; bugfix/full_suite_result: vscode/docs-minded-contributor -> .artifacts/product-journey/run-123/driver-handoff.md; bugfix/key_interaction_video: vscode/docs-minded-contributor -> .artifacts/product-journey/run-123/driver-handoff.md; +14 more proof rows in rollup.md"
+            missing_assignment_count: 9
+      validate_product_journey_matrix:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: valid
+            matrix_dir: .artifacts/product-journey/matrices/matrix-123
+            checked_artifacts: 6
+            errors: 0
+            warnings: 0
+            validation_issue_summary: ""
+            issues: []
+      validate_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: valid
+            run_dir: .artifacts/product-journey/run-123
+            checked_artifacts: 22
+            errors: 0
+            warnings: 0
+            validation_issue_summary: ""
+            issues: []
+
+turns:
+  - intent: { name: validate_corpus, slots: {} }
+    expect_state: idle
+    expect_world:
+      status: corpus_validated
+      corpus_validation_status: valid
+      corpus_validation_errors: 0
+      corpus_validation_warnings: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: validate_product_journey_corpus }
+
+  - intent:
+      name: refresh_targets
+      slots:
+        seed: flow
+    expect_state: idle
+    expect_world:
+      status: targets_refreshed
+      seed: flow
+      target_proof_id: proof-123
+      target_proof_dir: .artifacts/product-journey/target-proofs/proof-123
+      target_proof_file: .artifacts/product-journey/target-proofs/proof-123/target-proof.json
+    expect_host_calls:
+      - handler: host.run
+        args: { call: refresh_product_journey_targets }
+
+  - intent:
+      name: matrix
+      slots:
+        seed: flow
+        matrix_personas: primary
+        target_proof_file: .artifacts/product-journey/target-proofs/proof-123/target-proof.json
+    expect_state: matrix_created
+    expect_world:
+      status: matrix_created
+      seed: flow
+      matrix_personas: primary
+      target_proof_file: .artifacts/product-journey/target-proofs/proof-123/target-proof.json
+      matrix_id: matrix-123
+      matrix_dir: .artifacts/product-journey/matrices/matrix-123
+      deck_path: .artifacts/product-journey/matrices/matrix-123/deck.slidey.json
+      matrix_target_count: 10
+      matrix_assignment_count: 10
+      matrix_scenario_count: 6
+      matrix_persona_mode: primary
+      target_proof_id: proof-123
+      target_proof_checked_at: "2026-06-26T00:00:00+00:00"
+      target_proof_passed: 10
+      target_proof_failed: 0
+      target_proof_errors: 0
+      target_proof_ready: "yes"
+    expect_view_matches: "Matrix scale[\\s\\S]*10 targets; 10 assignments; 6 scenarios each; mode[\\s\\S]*primary[\\s\\S]*Target proof readiness[\\s\\S]*yes; 10 passed, 0 failed, 0 errors"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_product_journey_matrix }
+
+  - intent:
+      name: rollup
+      slots:
+        rollup_run_dir: .artifacts/product-journey/run-123
+    expect_state: matrix_created
+    expect_world:
+      status: rollup_created
+      rollup_run_dir: .artifacts/product-journey/run-123
+      rollup_path: .artifacts/product-journey/matrices/matrix-123/rollup.json
+      rollup_deck_path: .artifacts/product-journey/matrices/matrix-123/rollup.slidey.json
+      rollup_markdown_path: .artifacts/product-journey/matrices/matrix-123/rollup.md
+      deck_path: .artifacts/product-journey/matrices/matrix-123/rollup.slidey.json
+      rollup_runs_found: 1
+      rollup_assignments: 10
+      rollup_reviewed_runs: 1
+      rollup_ready_runs: 1
+      rollup_missing_assignment_count: 9
+      rollup_present_evidence_count: 6
+      rollup_required_evidence_count: 30
+      rollup_persona_outcomes: 1
+      rollup_scenario_outcomes: 5
+      rollup_driver_journal_rows: 4
+      rollup_driver_journal_events: 6
+      rollup_driver_journal_evidence_refs: 8
+      rollup_driver_journal_blocked_events: 1
+      rollup_quality_gate_satisfied_runs: 1
+      rollup_quality_gate_total_runs: 5
+      rollup_quality_gate_proof_minimum_evidence_count: 6
+      rollup_quality_gate_minimum_evidence_count: 30
+      rollup_missing_proof_evidence_rows: 17
+      rollup_quality_gate_missing_proof_evidence_count: 24
+      rollup_missing_proof_handoff_summary: "bugfix/candidate_diff: vscode/docs-minded-contributor -> .artifacts/product-journey/run-123/driver-handoff.md; bugfix/full_suite_result: vscode/docs-minded-contributor -> .artifacts/product-journey/run-123/driver-handoff.md; bugfix/key_interaction_video: vscode/docs-minded-contributor -> .artifacts/product-journey/run-123/driver-handoff.md; +14 more proof rows in rollup.md"
+    expect_view_matches: "Rollup runs[\\s\\S]*1 / 10[\\s\\S]*Rollup outcomes[\\s\\S]*1 persona rows; 5 scenario rows[\\s\\S]*Rollup driver journal[\\s\\S]*6 events across 4 scenarios; 8 refs; 1 blocked[\\s\\S]*Rollup proof gates[\\s\\S]*1 / 5 satisfied; proof 6 / 30[\\s\\S]*Rollup proof backlog[\\s\\S]*17 rows; 24 missing run-slots[\\s\\S]*bugfix/candidate_diff[\\s\\S]*driver-handoff.md"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: rollup_product_journey_matrix }
+
+  - intent: { name: validate_matrix, slots: {} }
+    expect_state: matrix_created
+    expect_world:
+      status: matrix_validated
+      validation_status: valid
+      validation_errors: 0
+      validation_warnings: 0
+      validation_issue_summary: ""
+    expect_host_calls:
+      - handler: host.run
+        args: { call: validate_product_journey_matrix }
+
+  - intent:
+      name: start
+      slots:
+        project: vscode
+        persona: docs-minded-contributor
+        seed: flow-01-docs-minded-contributor
+    expect_state: run_created
+    expect_world:
+      status: run_created
+      project: vscode
+      persona: docs-minded-contributor
+      seed: flow-01-docs-minded-contributor
+      run_id: run-123
+      run_dir: .artifacts/product-journey/run-123
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+      persona_starting_surface: "docs-first; follow the documented path before trying hidden commands"
+      persona_first_question: "Can I follow the docs without private repo context or tribal knowledge?"
+      persona_evidence_emphasis: "page URLs, screenshots, prerequisite commands, stale-link proof, and onboarding smoke results"
+      persona_escalation_trigger: "stale docs, missing prerequisites, broken media, or commands that require unexplained setup"
+      persona_finding_bias: "Prefer onboarding clarity, documented next actions, and confusing-copy findings."
+      proof_evidence_count: 0
+      demo_evidence_count: 0
+      missing_evidence_count: 30
+      missing_proof_evidence_count: 30
+      proof_minimum_evidence_count: 0
+      minimum_evidence_count: 30
+      missing_proof_summary: "project-onboarding: generated_config_diff, onboarding_smoke_result"
+      driver_contract_summary: "Driver contract: 6 scenarios (product-discovery, project-onboarding, bugfix, prd-design, feature-implementation, +1 more); 6 missing-proof rows; 2 final gates. Inspect last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates."
+      next_driver_capture: "Next capture: product-discovery/browser_screenshot. Save a retained visual MCP screenshot or PNG reference."
+      next_driver_attach_command: 'python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --evidence-kind browser_screenshot --evidence-path <path-or-retained-id> --evidence-source <retained|external|local|cassette> --notes "Save a retained visual MCP screenshot or PNG reference."'
+      next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-123 --scenario product-discovery --title <blocker-title> --summary <why-this-scenario-could-not-be-captured> --evidence-path <trace-or-frame-path>"
+    expect_view_matches: "Starting surface[\\s\\S]*docs-first[\\s\\S]*Proof evidence[\\s\\S]*minimum 0 / 30[\\s\\S]*project-onboarding[\\s\\S]*Driver contract: 6 scenarios[\\s\\S]*last_result\\.driver_scenarios[\\s\\S]*Next capture: product-discovery/browser_screenshot[\\s\\S]*--attach-evidence[\\s\\S]*--evidence-kind browser_screenshot[\\s\\S]*--record-blocker[\\s\\S]*product-discovery"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_product_journey_run }
+
+  - intent:
+      name: attach
+      slots:
+        scenario: bugfix
+        evidence_kind: key_interaction_video
+        evidence_path: media/bugfix.mp4
+        source: local
+        notes: visual MCP capture placeholder
+    expect_state: run_created
+    expect_world:
+      status: evidence_attached
+      scenario: bugfix
+      evidence_kind: key_interaction_video
+      evidence_path: media/bugfix.mp4
+      evidence_source: local
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+    expect_host_calls:
+      - handler: host.run
+        args: { call: attach_product_journey_evidence }
+
+  - intent:
+      name: record
+      slots:
+        finding_kind: weakness
+        title: Onboarding hid next command
+        summary: The persona could not tell which Kitsoki story to launch after config generation.
+        scenario: project-onboarding
+        severity: medium
+        evidence_path: traces/onboarding.jsonl
+    expect_state: run_created
+    expect_world:
+      status: finding_recorded
+      finding_kind: weakness
+      finding_title: Onboarding hid next command
+      finding_summary: The persona could not tell which Kitsoki story to launch after config generation.
+      scenario: project-onboarding
+      evidence_path: traces/onboarding.jsonl
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+    expect_host_calls:
+      - handler: host.run
+        args: { call: record_product_journey_finding }
+
+  - intent:
+      name: blocker
+      slots:
+        scenario: prd-design
+        title: Design surface needed live model authorization
+        summary: The PRD/design scenario could not run under no-LLM automation without a cassette.
+        evidence_path: traces/prd-design-blocker.jsonl
+    expect_state: run_created
+    expect_world:
+      status: blocker_recorded
+      finding_kind: issue
+      finding_title: Design surface needed live model authorization
+      finding_summary: The PRD/design scenario could not run under no-LLM automation without a cassette.
+      scenario: prd-design
+      evidence_path: traces/prd-design-blocker.jsonl
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+    expect_host_calls:
+      - handler: host.run
+        args: { call: record_product_journey_blocker }
+
+  - intent:
+      name: driver_event
+      slots:
+        scenario: product-discovery
+        dispatch_mode: replay
+        driver_status: captured
+        mcp_tools: visual.open,visual.observe
+        evidence_refs: retained://image/product-discovery
+        summary: Driver captured the product discovery frame.
+    expect_state: run_created
+    expect_world:
+      status: driver_event_recorded
+      scenario: product-discovery
+      dispatch_mode: replay
+      driver_status: captured
+      driver_event_id: driver-event-1
+      driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+    expect_host_calls:
+      - handler: host.run
+        args: { call: record_product_journey_driver_event }
+
+  - intent: { name: seed_demo, slots: {} }
+    expect_state: run_created
+    expect_world:
+      status: demo_seeded
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+      finding_total_count: 5
+      strength_count: 1
+      weakness_count: 2
+      issue_count: 1
+      fix_count: 1
+      blocked_count: 0
+    expect_view_matches: "Finding matrix[\\s\\S]*5 total; strength 1, weakness 2, issue 1, fix 1, blocked 0"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: seed_product_journey_demo }
+
+  - intent: { name: review, slots: {} }
+    expect_state: run_created
+    expect_world:
+      status: reviewed
+      review_status: needs_evidence
+      review_summary: "needs_evidence: 16/19 checks passed, 2 warnings, 1 failures"
+      review_passed_count: 16
+      review_failed_count: 1
+      review_warning_count: 2
+      review_total_count: 19
+      review_backlog_summary: "fail: quality-gates (bugfix (3/5)); warn: non-demo-evidence (proof=0, demo=30); warn: playback-artifacts-resolve (artifacts/bugfix.mp4)"
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+    expect_view_matches: "Review checks[\\s\\S]*16 / 19 passed; 1 failed; 2 warnings[\\s\\S]*fail: quality-gates[\\s\\S]*warn: non-demo-evidence"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: review_product_journey_run }
+
+  - intent: { name: handoff, slots: {} }
+    expect_state: run_created
+    expect_world:
+      status: handoff_ready
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      deck_path: .artifacts/product-journey/run-123/deck.slidey.json
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+    expect_host_calls:
+      - handler: host.run
+        args: { call: prepare_product_journey_driver_handoff }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: run_created
+    expect_world:
+      status: accept_needs_validation
+      validation_status: ""
+      run_id: run-123
+    expect_host_calls: []
+
+  - intent: { name: validate, slots: {} }
+    expect_state: run_created
+    expect_world:
+      status: validated
+      validation_status: valid
+      validation_errors: 0
+      validation_warnings: 0
+      validation_issue_summary: ""
+    expect_host_calls:
+      - handler: host.run
+        args: { call: validate_product_journey_run }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      status: done
+      execution_plan_path: .artifacts/product-journey/run-123/execution-plan.md
+      driver_plan_path: .artifacts/product-journey/run-123/driver-plan.md
+      driver_journal_path: .artifacts/product-journey/run-123/driver-journal.md
+      agent_brief_path: .artifacts/product-journey/run-123/agent-brief.md
+      driver_handoff_path: .artifacts/product-journey/run-123/driver-handoff.md
+      media_manifest_path: .artifacts/product-journey/run-123/media-manifest.json
+      scenario_outcomes_path: .artifacts/product-journey/run-123/scenario-outcomes.md
+
+expect_no_errors: true

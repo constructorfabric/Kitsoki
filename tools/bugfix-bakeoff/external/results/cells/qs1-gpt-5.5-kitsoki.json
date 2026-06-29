@@ -1,0 +1,16 @@
+{
+  "project": "query-string",
+  "bug": "qs1",
+  "candidate": "gpt-5.5",
+  "treatment": "kitsoki",
+  "outcome": {
+    "oracle_pass": true,
+    "oracle_status": "pass",
+    "build_pass": null,
+    "suite_pass": true,
+    "quality": "solved",
+    "adjudicated": false,
+    "adjudication_note": ""
+  },
+  "notes": "external oracle; suite_pass is the SECONDARY signal (a correct fix may legitimately update one pre-existing test)"
+}

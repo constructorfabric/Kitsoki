@@ -60,11 +60,32 @@ export interface TriggerOptions {
   source: BugSource;
   /** Default title for the modal (operator can edit). */
   defaultTitle?: string;
+  /** Optional clicked DOM location for point-specific bug reports. */
+  placement?: BugPlacementContext;
   /** trace_ref to attach (e.g. the current session id). */
   traceRef?: string;
   severity?: string;
   /** Override capture deps (tests inject stubs). */
   deps?: Partial<CaptureDeps>;
+}
+
+export interface BugPlacementContext {
+  x: number;
+  y: number;
+  selector: string;
+  text?: string;
+  route?: string;
+}
+
+function formatPlacementContext(ctx: BugPlacementContext): string {
+  const lines = [
+    "Clicked location:",
+    `- viewport: ${Math.round(ctx.x)}, ${Math.round(ctx.y)}`,
+    `- target: ${ctx.selector}`,
+  ];
+  if (ctx.text) lines.push(`- text: ${ctx.text}`);
+  if (ctx.route) lines.push(`- route: ${ctx.route}`);
+  return lines.join("\n");
 }
 
 export const useBugReportStore = defineStore("bugReport", () => {
@@ -82,6 +103,7 @@ export const useBugReportStore = defineStore("bugReport", () => {
   // Editable review fields.
   const title = ref<string>("");
   const description = ref<string>("");
+  const placement = ref<BugPlacementContext | null>(null);
 
   // Stashed for submit().
   let captureId = "";
@@ -100,6 +122,7 @@ export const useBugReportStore = defineStore("bugReport", () => {
     errorInfo.value = null;
     title.value = "";
     description.value = "";
+    placement.value = null;
     captureId = "";
     activeSource = null;
     activeSeverity = undefined;
@@ -119,6 +142,7 @@ export const useBugReportStore = defineStore("bugReport", () => {
     activeSource = opts.source;
     activeSeverity = opts.severity;
     activeTraceRef = opts.traceRef;
+    placement.value = opts.placement ?? null;
     try {
       // Local captures are best-effort; never let one block the preview.
       try {
@@ -143,7 +167,9 @@ export const useBugReportStore = defineStore("bugReport", () => {
       depth.value = preview.depth ?? 0;
 
       title.value = opts.defaultTitle ?? "";
-      description.value = "";
+      description.value = opts.placement
+        ? `${formatPlacementContext(opts.placement)}\n\nWhat should change here?\n`
+        : "";
       status.value = "reviewing";
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
@@ -198,6 +224,7 @@ export const useBugReportStore = defineStore("bugReport", () => {
     errorInfo,
     title,
     description,
+    placement,
     reset,
     trigger,
     submit,

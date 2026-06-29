@@ -1,0 +1,66 @@
+{
+  "_comment": "Phase-2 artifact deck — the architect's validated design output for the trace-column pet, shown full-screen in kitsoki via deck-review. Authored as the validated architecture output that follows the PRD.",
+  "meta": {
+    "title": "Design — Trace-Column Pet",
+    "resolution": { "width": 1920, "height": 1080 },
+    "theme": "rose-pine-moon",
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Architecture · validated output",
+      "title": "Designing the trace-column pet",
+      "subtitle": "A self-contained sprite, a dock seam, and an opt-in toggle — zero new state, zero deps",
+      "narration": "The architect's validated output: a design for the trace-column pet — a self-contained sprite, a dock seam, and an opt-in toggle, with zero new state and zero dependencies."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Approach",
+      "lede": "Derive nothing new — dock at the column bottom.",
+      "body": "The pet introduces no new application state and reads no trace data. It is a purely decorative component, absolutely positioned at the bottom of the existing trace column, so it overlays the footer instead of joining the row flow. Three small, additive pieces: a sprite component, a dock seam, and an opt-in setting.",
+      "narration": "The design derives nothing from new state and reads no trace data. The pet is purely decorative, absolutely positioned at the bottom of the existing trace column so it overlays the footer instead of joining the row flow. Three small additive pieces: a sprite component, a dock seam, and an opt-in setting."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "The three slices",
+      "narration": "Slice one is the sprite component: TracePet dot vue, inline S-V-G with a C-S-S idle loop. Slice two is the dock seam, anchoring it at the bottom of the trace column without displacing rows. Slice three is the opt-in setting, off by default, that gates whether the pet mounts.",
+      "cards": [
+        { "label": "Slice 1 · Sprite", "sub": "TracePet.vue — inline SVG + CSS idle loop (bob, blink, wander, poop, eat); no props, no deps", "style": "primary" },
+        { "label": "Slice 2 · Dock seam", "sub": "anchor in InteractiveView.vue .iv__trace; absolutely positioned over the footer, never displaces rows", "style": "secondary" },
+        { "label": "Slice 3 · Opt-in", "sub": "persisted boolean, default false; 🐾 toggle in the State Diagram header mounts the pet", "style": "secondary" }
+      ]
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Data flow",
+      "narration": "The data flow is a straight line: the trace-column layout hosts the TracePet, anchored at its bottom, and TracePet renders an inline S-V-G sprite. Nothing flows the other way — the pet is a leaf.",
+      "cards": [
+        { "label": "Trace column layout", "sub": ".iv__trace — position: relative host", "style": "primary" },
+        { "label": "→ TracePet anchored bottom", "sub": "absolute, overlays the column footer", "style": "secondary" },
+        { "label": "→ inline SVG sprite", "sub": "CSS keyframes; decorative leaf, no data in or out", "style": "secondary" }
+      ]
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Decisions (ADRs)",
+      "narration": "Two anchoring decisions. First: inline S-V-G plus C-S-S keyframes only, so the feature ships zero assets and cannot slow the U-I. Second: opt-in and absolutely positioned at the column bottom, so it can never push, clip, or block a trace row. Reduced-motion is honored throughout.",
+      "columns": ["ADR", "Decision", "Why"],
+      "rows": [
+        { "cells": ["ADR-1 · Zero deps", "Inline SVG + CSS keyframes only", "No images, sprite sheets, libraries, or network — ships zero assets, can't slow the UI"] },
+        { "cells": ["ADR-2 · Opt-in anchor", "Opt-in + absolute bottom anchor", "Off by default; overlays the footer so it never pushes, clips, or blocks a trace row"] },
+        { "cells": ["ADR-3 · Accessible", "Honor prefers-reduced-motion", "Dampen/pause the bob & blink; pet is decorative (aria-hidden)"] }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Validated output",
+      "lede": "Design published — decomposition next.",
+      "body": "A published design: three additive slices, a leaf data flow, and decisions that keep the feature deterministic and weightless — true to kitsoki's no-deps spirit. The validated output the developer decomposes into a sequenced work plan next.",
+      "narration": "The validated output: a published design with three additive slices, a leaf data flow, and decisions that keep the feature deterministic and weightless — true to kitsoki's no-dependencies spirit. The developer decomposes this into a sequenced work plan next."
+    }
+  ]
+}

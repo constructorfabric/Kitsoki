@@ -1,0 +1,289 @@
+states:
+  matrix_created:
+    description: "A product-journey GitHub matrix exists; waiting for assignment runs."
+    relevant_world: [seed, matrix_id, matrix_dir, matrix_personas, matrix_target_count, matrix_assignment_count, matrix_scenario_count, matrix_persona_mode, target_proof_file, target_proof_id, target_proof_checked_at, target_proof_passed, target_proof_failed, target_proof_errors, target_proof_ready, deck_path, rollup_path, rollup_deck_path, rollup_markdown_path, rollup_runs_found, rollup_assignments, rollup_reviewed_runs, rollup_ready_runs, rollup_missing_assignment_count, rollup_present_evidence_count, rollup_required_evidence_count, rollup_persona_outcomes, rollup_scenario_outcomes, rollup_driver_journal_rows, rollup_driver_journal_events, rollup_driver_journal_evidence_refs, rollup_driver_journal_blocked_events, rollup_quality_gate_satisfied_runs, rollup_quality_gate_total_runs, rollup_quality_gate_proof_minimum_evidence_count, rollup_quality_gate_minimum_evidence_count, rollup_missing_proof_evidence_rows, rollup_quality_gate_missing_proof_evidence_count, rollup_missing_proof_handoff_summary, validation_status, validation_errors, validation_warnings, validation_issue_summary, status]
+    view:
+      - banner:
+          text: "MATRIX CREATED"
+          subtitle: "Plan assignment runs from the generated 10-repo GitHub sweep."
+          color: "#0F766E"
+      - kv:
+          pairs:
+            Matrix: '{{ world.matrix_id|default:"(pending)" }}'
+            Seed: "{{ world.seed }}"
+            Personas: "{{ world.matrix_personas }}"
+            Matrix scale: "{{ world.matrix_target_count }} targets; {{ world.matrix_assignment_count }} assignments; {{ world.matrix_scenario_count }} scenarios each; mode {{ world.matrix_persona_mode }}"
+            Target proof: '{{ world.target_proof_file|default:"(not refreshed)" }}'
+            Target proof readiness: '{{ world.target_proof_ready|default:"no" }}; {{ world.target_proof_passed }} passed, {{ world.target_proof_failed }} failed, {{ world.target_proof_errors }} errors'
+            Target proof checked: '{{ world.target_proof_checked_at|default:"(not refreshed)" }}'
+            Matrix dir: '{{ world.matrix_dir|default:"(pending)" }}'
+            Deck: '{{ world.deck_path|default:"(pending)" }}'
+            Rollup: '{{ world.rollup_deck_path|default:"(pending)" }}'
+            Rollup runs: "{{ world.rollup_runs_found }} / {{ world.rollup_assignments }}"
+            Rollup readiness: "{{ world.rollup_reviewed_runs }} reviewed; {{ world.rollup_ready_runs }} ready; {{ world.rollup_missing_assignment_count }} missing assignments"
+            Rollup evidence: "{{ world.rollup_present_evidence_count }} / {{ world.rollup_required_evidence_count }}"
+            Rollup outcomes: "{{ world.rollup_persona_outcomes }} persona rows; {{ world.rollup_scenario_outcomes }} scenario rows"
+            Rollup driver journal: "{{ world.rollup_driver_journal_events }} events across {{ world.rollup_driver_journal_rows }} scenarios; {{ world.rollup_driver_journal_evidence_refs }} refs; {{ world.rollup_driver_journal_blocked_events }} blocked"
+            Rollup proof gates: "{{ world.rollup_quality_gate_satisfied_runs }} / {{ world.rollup_quality_gate_total_runs }} satisfied; proof {{ world.rollup_quality_gate_proof_minimum_evidence_count }} / {{ world.rollup_quality_gate_minimum_evidence_count }}"
+            Rollup proof backlog: "{{ world.rollup_missing_proof_evidence_rows }} rows; {{ world.rollup_quality_gate_missing_proof_evidence_count }} missing run-slots"
+            Validation: '{{ world.validation_status|default:"(not validated)" }}'
+            Validation errors: "{{ world.validation_errors }}"
+            Validation warnings: "{{ world.validation_warnings }}"
+            Validation issues: '{{ world.validation_issue_summary|default:"(none)" }}'
+            Status: "{{ world.status }}"
+      - prose: "Use the matrix deck and matrix.json to launch one evidence-backed product-journey run per assignment, then roll up completed runs into the matrix review deck."
+      - prose: '{{ world.rollup_missing_proof_handoff_summary|default:"After rollup, open rollup.md for affected run handoffs that still need proof evidence." }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start project=... persona=... seed=..."
+              hint: "create a concrete run bundle for one matrix assignment"
+              intent: start
+            - label: "matrix seed=... target_proof_file=..."
+              hint: "regenerate the matrix with a refreshed proof artifact"
+              intent: matrix
+            - label: "rollup rollup_run_dir=..."
+              hint: "refresh the matrix rollup deck; omit the run dir to auto-discover matching runs"
+              intent: rollup
+            - label: "validate_matrix"
+              hint: "check matrix and rollup artifact consistency without rewriting artifacts"
+              intent: validate_matrix
+            - label: "validate_matrix_strict"
+              hint: "require refreshed GitHub proof before using this as a live sweep contract"
+              intent: validate_matrix_strict
+            - label: "accept"
+              hint: "finish with the current matrix bundle"
+              intent: accept
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      matrix:
+        - target: .
+          effects:
+            - set:
+                seed: "{{ slots.seed ?? world.seed }}"
+                matrix_personas: "{{ slots.matrix_personas ?? world.matrix_personas }}"
+                target_proof_file: "{{ slots.target_proof_file ?? world.target_proof_file }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "creating_matrix"
+            - invoke: host.run
+              id: emit_product_journey_matrix
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --emit-matrix
+                  - --json-output
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                  - --matrix-personas
+                  - "{{ slots.matrix_personas ?? world.matrix_personas }}"
+                  - --target-proof-file
+                  - "{{ slots.target_proof_file ?? world.target_proof_file }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                matrix_id: "stdout_json.matrix_id"
+                matrix_dir: "stdout_json.matrix_dir"
+                deck_path: "stdout_json.deck_path"
+                matrix_target_count: "stdout_json.target_count"
+                matrix_assignment_count: "stdout_json.assignment_count"
+                matrix_scenario_count: "stdout_json.scenario_count"
+                matrix_persona_mode: "stdout_json.persona_mode"
+                target_proof_id: "stdout_json.target_proof_id"
+                target_proof_checked_at: "stdout_json.target_proof_checked_at"
+                target_proof_passed: "stdout_json.target_proof_passed"
+                target_proof_failed: "stdout_json.target_proof_failed"
+                target_proof_errors: "stdout_json.target_proof_errors"
+                target_proof_ready: "stdout_json.target_proof_ready"
+              on_error: matrix_created
+            - set:
+                status: "matrix_created"
+      start:
+        - target: run_created
+          effects:
+            - set:
+                project: "{{ slots.project ?? world.project }}"
+                persona: "{{ slots.persona ?? world.persona }}"
+                seed: "{{ slots.seed ?? world.seed }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "creating"
+            - invoke: host.run
+              id: emit_product_journey_run
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --emit-run
+                  - --json-output
+                  - --project
+                  - "{{ slots.project ?? world.project }}"
+                  - --persona
+                  - "{{ slots.persona ?? world.persona }}"
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                run_id: "stdout_json.run_id"
+                run_dir: "stdout_json.run_dir"
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: matrix_created
+            - set:
+                status: "run_created"
+      rollup:
+        - target: .
+          effects:
+            - set:
+                rollup_run_dir: "{{ slots.rollup_run_dir ?? world.rollup_run_dir }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "rolling_up"
+            - invoke: host.run
+              id: rollup_product_journey_matrix
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --rollup-matrix
+                  - --json-output
+                  - --matrix-dir
+                  - "{{ world.matrix_dir }}"
+                  - --rollup-run-dir
+                  - "{{ slots.rollup_run_dir ?? world.rollup_run_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                rollup_summary: stdout_json
+                rollup_path: "stdout_json.rollup_path"
+                rollup_deck_path: "stdout_json.deck_path"
+                rollup_markdown_path: "stdout_json.markdown_path"
+                deck_path: "stdout_json.deck_path"
+                rollup_runs_found: "stdout_json.runs_found"
+                rollup_assignments: "stdout_json.assignments"
+                rollup_reviewed_runs: "stdout_json.reviewed_runs"
+                rollup_ready_runs: "stdout_json.ready_runs"
+                rollup_missing_assignment_count: "stdout_json.missing_assignment_count"
+                rollup_present_evidence_count: "stdout_json.present_evidence_count"
+                rollup_required_evidence_count: "stdout_json.required_evidence_count"
+                rollup_persona_outcomes: "stdout_json.persona_outcomes"
+                rollup_scenario_outcomes: "stdout_json.scenario_outcomes"
+                rollup_driver_journal_rows: "stdout_json.driver_journal_rows"
+                rollup_driver_journal_events: "stdout_json.driver_journal_events"
+                rollup_driver_journal_evidence_refs: "stdout_json.driver_journal_evidence_refs"
+                rollup_driver_journal_blocked_events: "stdout_json.driver_journal_blocked_events"
+                rollup_quality_gate_satisfied_runs: "stdout_json.quality_gate_satisfied_runs"
+                rollup_quality_gate_total_runs: "stdout_json.quality_gate_total_runs"
+                rollup_quality_gate_proof_minimum_evidence_count: "stdout_json.quality_gate_proof_minimum_evidence_count"
+                rollup_quality_gate_minimum_evidence_count: "stdout_json.quality_gate_minimum_evidence_count"
+                rollup_missing_proof_evidence_rows: "stdout_json.missing_proof_evidence_rows"
+                rollup_quality_gate_missing_proof_evidence_count: "stdout_json.quality_gate_missing_proof_evidence_count"
+                rollup_missing_proof_handoff_summary: "stdout_json.missing_proof_handoff_summary"
+              on_error: matrix_created
+            - set:
+                status: "rollup_created"
+      validate_matrix:
+        - target: .
+          effects:
+            - set:
+                status: "validating_matrix"
+            - invoke: host.run
+              id: validate_product_journey_matrix
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --validate-matrix
+                  - --json-output
+                  - --matrix-dir
+                  - "{{ world.matrix_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                validation_status: "stdout_json.status"
+                validation_errors: "stdout_json.errors"
+                validation_warnings: "stdout_json.warnings"
+                validation_issue_summary: "stdout_json.validation_issue_summary"
+              on_error: matrix_created
+            - set:
+                status: "matrix_validated"
+      validate_matrix_strict:
+        - target: .
+          effects:
+            - set:
+                status: "validating_matrix_strict"
+            - invoke: host.run
+              id: validate_product_journey_matrix_strict
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --validate-matrix
+                  - --strict-target-proof
+                  - --json-output
+                  - --matrix-dir
+                  - "{{ world.matrix_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                validation_status: "stdout_json.status"
+                validation_errors: "stdout_json.errors"
+                validation_warnings: "stdout_json.warnings"
+                validation_issue_summary: "stdout_json.validation_issue_summary"
+              on_error: matrix_created
+            - set:
+                status: "matrix_strict_validated"
+      accept:
+        - when: "world.validation_status == 'valid'"
+          target: done
+          effects:
+            - set: { status: "done" }
+        - target: matrix_created
+          effects:
+            - set: { status: "accept_needs_validation" }
+      quit:
+        - target: abandoned
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .

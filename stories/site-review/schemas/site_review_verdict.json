@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "site_review_verdict",
+  "description": "Verdict produced by the site-review story's agent.decide call. Pinned into world.verdict and written to .artifacts/site-review-<mode>-<sha>.json. The shape renders as a listing: one row per gap between what shipped and what the feature catalog / product site advertises, with 1+ evidence records explaining the commit/source that opened the gap.",
+  "type":    "object",
+  "required": ["decision", "summary", "confidence", "commits", "gaps"],
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["needs_update", "up_to_date"],
+      "description": "Binary verdict — needs_update means at least one shipped capability or site surface is out of sync."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "description": "One-paragraph rationale; cites feature ids, file paths, and commit short-shas."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "commits": {
+      "type": "array",
+      "description": "Every commit considered in this audit. Used as the lookup table referenced by gaps[].evidence[].commit. May be empty only when the verdict fell back to a structural audit.",
+      "items": {
+        "type": "object",
+        "required": ["sha", "subject", "capability"],
+        "properties": {
+          "sha":        { "type": "string", "description": "Short or full commit SHA." },
+          "subject":    { "type": "string", "description": "Commit subject line." },
+          "capability": { "type": "string", "description": "One sentence on the user-visible capability this commit delivered. Not a restatement of the subject." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "description": "One record per gap between what shipped and what the catalog/site shows. Empty array when decision == up_to_date.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "target", "evidence"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["missing-catalog-entry", "missing-demo", "site-inconsistency", "stale-doc"],
+            "description": "missing-catalog-entry: a shipped capability has no features/<id>.yaml. missing-demo: a cataloged feature has no recordable demo binding. site-inconsistency: catalog/site metadata disagrees with reality (e.g. a docs link outside the allowlist, a promoted feature missing required pieces). stale-doc: published site copy under tools/site/src/** (or the docs/** it is generated from) contradicts the code."
+          },
+          "target": { "type": "string", "description": "The feature id (for catalog/demo gaps) or repo-relative file path (for site/doc gaps) the gap is about." },
+          "lines":  { "type": "string", "description": "Optional line range inside the cited file, e.g. '110-117', when the gap is localized." },
+          "detail": { "type": "string", "description": "Optional one-line elaboration shown in the listing." },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "description": "1+ records of what shipped (a commit, or a source file) such that the target is now missing or wrong. One change per record.",
+            "items": {
+              "type": "object",
+              "required": ["commit", "change", "reason"],
+              "properties": {
+                "commit": { "type": "string", "description": "SHA from commits[], or the literal 'working-tree' for uncommitted changes, or 'structural' when no specific commit applies." },
+                "source": { "type": "string", "description": "Optional file/path that drives the gap (e.g. 'stories/deck-review/app.yaml' or 'tools/site/docs-manifest.json'). Cite when it sharpens the link." },
+                "change": { "type": "string", "description": "What the commit / source delivered or changed at the behavior or contract level." },
+                "reason": { "type": "string", "description": "Why this makes the target a gap. Quote or paraphrase the catalog/site's current state." }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "recommended_actions": {
+      "type": "array",
+      "description": "Short directive strings, ideally one per gaps[] entry in the same order.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

@@ -31,7 +31,7 @@ hosts:
   - host.agent.task
   - host.artifacts_dir
 
-# Single opus agent — read-only by construction (agent.decide rejects
+# Read-only review agent — read-only by construction (agent.decide rejects
 # Edit/Write/NotebookEdit at call time and load time). Bash is gated to
 # the built-in read-only allowlist (grep/find/cat/ls/git/jq/rg/…).
 agents:
@@ -152,8 +152,8 @@ intents:
     examples: ["no_submit"]
     priority: 85
   fix_docs:
-    description: "Internal: emitted by reviewed.on_enter when decision == needs_update, routing into the docs-writer agent."
-    examples: ["fix_docs"]
+    description: "Apply the documentation fixes from the latest needs_update verdict."
+    examples: ["fix docs", "apply fixes", "update the docs"]
     priority: 85
   fix_done:
     description: "Internal: emitted by fixing.on_enter once docs_writer has returned an artifact recording the edits."
@@ -173,7 +173,7 @@ intents:
     priority: 10
 
 exports:
-  intents: [start, baseline, review_again, quit, look]
+  intents: [start, baseline, fix_docs, review_again, quit, look]
 
 exits:
   done:

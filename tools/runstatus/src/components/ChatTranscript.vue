@@ -105,7 +105,30 @@
           class="chat-view"
           v-html="renderView(entry.text)"
         ></div>
-        <div v-else class="chat-text">{{ entry.text }}</div>
+        <template v-else>
+          <!-- Media annotation attached to this user turn: a marked-up frame of
+               the deck the operator pointed at, rendered like an attached
+               screenshot above their instruction. The poster <img> is hidden if
+               the producer has no still (e.g. a live slidey deck), leaving the
+               labeled "pointed at" chip. -->
+          <div
+            v-if="entry.role === 'user' && entry.annotation"
+            class="chat-annotation"
+            data-testid="chat-annotation"
+          >
+            <img
+              v-if="!brokenPosters.has(entry.annotation.mediaHandle)"
+              class="chat-annotation__img"
+              :src="annotationPoster(entry.annotation.mediaHandle)"
+              :alt="annotationLabel(entry.annotation)"
+              @error="brokenPosters.add(entry.annotation!.mediaHandle)"
+            />
+            <span class="chat-annotation__chip"
+              >📍 Pointed at: {{ annotationLabel(entry.annotation) }}</span
+            >
+          </div>
+          <div class="chat-text">{{ entry.text }}</div>
+        </template>
         <!-- Inline routing chip: how this free-text turn was resolved to an
              intent (tier + match reason + confidence). Surfaces the semantic-
              routing layer in the web chat the way the TUI does. -->
@@ -143,13 +166,34 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onBeforeUnmount } from "vue";
+import { ref, reactive, watch, nextTick, onMounted, onBeforeUnmount } from "vue";
 import type { View, ContextRouteInfo } from "../types.js";
 import type { StreamItem } from "../lib/activity.js";
 import type { RoutingInfo } from "../stores/run.js";
 import ActivityDisclosure from "./ActivityDisclosure.vue";
 import ViewElement from "./ViewElement.vue";
 import { renderAgentMarkdown } from "../lib/markdown.js";
+import { createDataSource } from "../data/source.js";
+
+// Resolve the annotation poster URL through the ambient DataSource.
+const _ds = createDataSource();
+// Media handles whose poster still 404'd (e.g. a live slidey deck has none):
+// once a poster <img> errors we stop trying to show it and keep just the chip.
+const brokenPosters = reactive(new Set<string>());
+
+/** A short label for the element/region a user annotation pointed at. */
+function annotationLabel(a: ChatEntry["annotation"]): string {
+  if (!a) return "annotation";
+  const t = a.anchor.target;
+  if (t?.kind === "semantic_element") return t.label || t.ref;
+  return t?.kind ?? "annotation";
+}
+
+/** The poster-still URL for an annotation's media (empty when the source has no
+ *  poster resolver — the <img> then errors out and only the chip shows). */
+function annotationPoster(handle: string): string {
+  return _ds.artifactPosterUrl?.(handle) ?? "";
+}
 
 export interface ChatEntry {
   role: "user" | "agent" | "narration";
@@ -161,6 +205,12 @@ export interface ChatEntry {
   isOffRamp?: boolean;
   /** Routing provenance for a free-text user turn (renders the routing chip). */
   routing?: RoutingInfo;
+  /** A media annotation the operator attached to this user turn (deck frame +
+   *  picked anchor) — rendered as a marked-up thumbnail above the instruction. */
+  annotation?: {
+    mediaHandle: string;
+    anchor: import("../lib/annotationAnchor.js").AnnotationAnchor;
+  };
   /**
    * The contextual-routing receipt, set on an agent bubble when the CRR tier
    * resolved this turn (renders the "⤳ … · contextual" route receipt chip).
@@ -392,17 +442,9 @@ watch(
 }
 
 .chat-bubble--agent {
-  /* Let the agent card grow to hold the 80-col view. */
+  /* Agent cards grow with their content; .chat-transcript owns vertical scrolling. */
   width: 100%;
   box-sizing: border-box;
-  /*
-     A single long agent reply must not consume the whole VS Code webview. Cap
-     the finished bubble against the viewport and let the bubble itself scroll;
-     the transcript viewport still owns normal conversation scrolling.
-   */
-  max-height: clamp(220px, calc(100dvh - 180px), 720px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .chat-bubble--user {
@@ -668,4 +710,28 @@ watch(
 /* The collapsed activity feed (the turn's preserved thinking/tool stream)
    lives in ActivityDisclosure.vue / ActivityFeed.vue — shared with the meta
    overlay so both chats present the agent's work identically. */
+
+/* Media annotation attached to a user turn — a marked-up frame thumbnail + the
+   "pointed at" chip, rendered above the typed instruction like an attachment. */
+.chat-annotation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  margin-bottom: 0.4em;
+}
+.chat-annotation__img {
+  max-width: 240px;
+  max-height: 150px;
+  border-radius: 6px;
+  border: 1px solid var(--k-paper-border, #d8dbe2);
+  object-fit: cover;
+}
+.chat-annotation__chip {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 0.15em 0.5em;
+  border-radius: 999px;
+  background: var(--k-paper-bg, rgba(255, 255, 255, 0.12));
+  border: 1px solid var(--k-paper-border, rgba(255, 255, 255, 0.2));
+}
 </style>

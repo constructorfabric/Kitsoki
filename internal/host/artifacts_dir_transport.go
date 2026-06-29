@@ -419,6 +419,17 @@ func copyFile(src, dst string) error {
 // Using the path (not the file contents) keeps this fast and idempotent for
 // the same destination regardless of file content changes.
 func artifactHandleID(stem, destPath string) string {
+	// Hash the CONTENT, not the path. A producer that re-renders to the SAME
+	// destination path (e.g. slidey-edit overwriting <stem>.html each refine)
+	// would otherwise keep emitting an identical handle — so the media URL never
+	// changes and the browser shows the cached stale render even though the file
+	// on disk was updated. Content-addressing yields a fresh handle exactly when
+	// the bytes change (and a stable one when they don't, so caching still
+	// works). Fall back to the path hash when the file can't be read.
+	if data, err := os.ReadFile(destPath); err == nil {
+		h := sha256.Sum256(data)
+		return fmt.Sprintf("%s#%x", stem, h[:4])
+	}
 	h := sha256.Sum256([]byte(destPath))
 	return fmt.Sprintf("%s#%x", stem, h[:4])
 }

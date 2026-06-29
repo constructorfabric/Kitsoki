@@ -4,19 +4,17 @@
   "branch": "main",
   "sections": [
     {
-      "title": "Getting started",
+      "title": "Start here",
       "items": [
+        { "from": "docs/evaluate-kitsoki.md", "to": "guide/evaluate-kitsoki.md" },
+        { "from": "docs/start-here.md", "to": "guide/start-here.md" },
         { "from": "docs/getting-started.md", "to": "guide/getting-started.md" }
       ]
     },
     {
       "title": "Authoring stories",
       "items": [
-        { "from": "docs/stories/authoring.md", "to": "guide/stories/authoring.md" },
-        { "from": "docs/stories/state-machine.md", "to": "guide/stories/state-machine.md" },
-        { "from": "docs/stories/prompts.md", "to": "guide/stories/prompts.md" },
-        { "from": "docs/stories/imports.md", "to": "guide/stories/imports.md" },
-        { "from": "docs/stories/story-style.md", "to": "guide/stories/story-style.md" }
+        { "from": "docs/stories/*.md", "to": "guide/stories/" }
       ]
     },
     {
@@ -28,15 +26,39 @@
     {
       "title": "Architecture",
       "items": [
-        { "from": "docs/architecture/concept.md", "to": "guide/architecture/concept.md" },
-        { "from": "docs/architecture/overview.md", "to": "guide/architecture/overview.md" },
-        { "from": "docs/architecture/semantic-routing.md", "to": "guide/architecture/semantic-routing.md" }
+        { "from": "docs/architecture/*.md", "to": "guide/architecture/" }
       ]
     },
     {
-      "title": "The web UI",
+      "title": "Testing and replay",
       "items": [
-        { "from": "docs/web/README.md", "to": "guide/web/index.md" }
+        { "from": "docs/tracing/*.md", "to": "guide/tracing/" },
+        { "from": "docs/testing/*.md", "to": "guide/testing/" }
+      ]
+    },
+    {
+      "title": "User interfaces",
+      "items": [
+        { "from": "docs/web/README.md", "to": "guide/web/index.md" },
+        { "from": "docs/tui/*.md", "to": "guide/tui/" }
+      ]
+    },
+    {
+      "title": "Reference",
+      "items": [
+        { "from": "docs/embedded/app-schema.md", "to": "guide/embedded/app-schema.md" },
+        { "from": "docs/embedded/apply-proposal.md", "to": "guide/embedded/apply-proposal.md" },
+        { "from": "docs/embedded/llm-guide.md", "to": "guide/embedded/llm-guide.md" },
+        { "from": "docs/embedded/render-format.md", "to": "guide/embedded/render-format.md" },
+        { "from": "docs/features/mvp.md", "to": "guide/features/mvp.md" },
+        { "from": "docs/branding/logo.md", "to": "guide/branding/logo.md" },
+        { "from": "docs/site/README.md", "to": "guide/site/index.md" }
+      ]
+    },
+    {
+      "title": "Case studies",
+      "items": [
+        { "from": "docs/case-studies/*.md", "to": "guide/case-studies/" }
       ]
     }
   ]

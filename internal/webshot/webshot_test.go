@@ -48,7 +48,18 @@ func (s *stubInvoker) Capture(_ context.Context, req CaptureRequest) error {
 		return err
 	}
 	defer func() { _ = f.Close() }()
-	return png.Encode(f, img)
+	if err := png.Encode(f, img); err != nil {
+		return err
+	}
+	if req.SemanticOutPath != "" {
+		if err := os.WriteFile(req.SemanticOutPath, []byte(`{"ok":true,"actions":[]}`), 0o644); err != nil {
+			return err
+		}
+	}
+	if req.RRWebOutPath != "" {
+		return os.WriteFile(req.RRWebOutPath, []byte(`{"schemaVersion":1,"source":"kitsoki-visual-record","events":[{"type":4},{"type":2}]}`), 0o644)
+	}
+	return nil
 }
 
 // noLLMHandler is a stand-in kitsoki-web handler: it 200s on GET / (so the real
@@ -118,6 +129,28 @@ func TestShot_ReturnsPNGOfKnownState(t *testing.T) {
 	}
 }
 
+func TestShotWithSemantic_ReturnsOptionalObservation(t *testing.T) {
+	h := &noLLMHandler{}
+	inv := &stubInvoker{}
+
+	out, err := ShotWithSemantic(context.Background(), Spec{StoryPath: "stories/bugfix", State: "triage"}, Options{
+		Server:  &HandlerServer{Handler: h, HealthTimeout: 5 * time.Second},
+		Browser: inv,
+	})
+	if err != nil {
+		t.Fatalf("ShotWithSemantic: %v", err)
+	}
+	if len(out.PNG) == 0 {
+		t.Fatal("ShotWithSemantic returned empty PNG")
+	}
+	if string(out.SemanticJSON) != `{"ok":true,"actions":[]}` {
+		t.Fatalf("SemanticJSON = %q", out.SemanticJSON)
+	}
+	if !strings.Contains(string(out.RRWebJSON), `"source":"kitsoki-visual-record"`) {
+		t.Fatalf("RRWebJSON = %q", out.RRWebJSON)
+	}
+}
+
 func TestTargetURL_AppendsHashQuery(t *testing.T) {
 	got, err := TargetURL("http://127.0.0.1:12345", Spec{
 		SessionID: "sid-123",
@@ -131,6 +164,32 @@ func TestTargetURL_AppendsHashQuery(t *testing.T) {
 	}
 	if want := "http://127.0.0.1:12345#/s/sid-123?chat=chat-456&embed=1"; got != want {
 		t.Fatalf("TargetURL = %q, want %q", got, want)
+	}
+}
+
+func TestTargetURL_RouteQueryOverridesHashRoute(t *testing.T) {
+	got, err := TargetURL("http://127.0.0.1:12345", Spec{
+		SessionID: "sid-123",
+		Query: map[string]string{
+			"route":         "/s/sid-123/chat",
+			"visual_region": "media",
+		},
+	})
+	if err != nil {
+		t.Fatalf("TargetURL: %v", err)
+	}
+	if want := "http://127.0.0.1:12345#/s/sid-123/chat?visual_region=media"; got != want {
+		t.Fatalf("TargetURL = %q, want %q", got, want)
+	}
+}
+
+func TestTargetURL_RouteQueryMustBeHashRoute(t *testing.T) {
+	_, err := TargetURL("http://127.0.0.1:12345", Spec{
+		SessionID: "sid-123",
+		Query:     map[string]string{"route": "https://example.test/"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "must start with /") {
+		t.Fatalf("TargetURL error = %v, want route validation", err)
 	}
 }
 
@@ -299,6 +358,28 @@ func TestNodeInvoker_BuildsWebShotArgv(t *testing.T) {
 	}
 }
 
+func TestNodeInvoker_BuildsSemanticAndRRWebOutArgv(t *testing.T) {
+	rec := &recordingRunner{}
+	inv := &NodeInvoker{RepoRoot: "/repo", Runner: rec}
+	err := inv.Capture(context.Background(), CaptureRequest{
+		URL:             "http://127.0.0.1:9/#/",
+		OutPath:         "/tmp/out.png",
+		SemanticOutPath: "/tmp/semantic.json",
+		RRWebOutPath:    "/tmp/session.rrweb.json",
+		Viewport:        Viewport{Width: 1600, Height: 900},
+	})
+	if err != nil {
+		t.Fatalf("Capture: %v", err)
+	}
+	joined := strings.Join(rec.args, " ")
+	if !strings.Contains(joined, "--semantic-out /tmp/semantic.json") {
+		t.Errorf("argv %q missing --semantic-out", joined)
+	}
+	if !strings.Contains(joined, "--rrweb-out /tmp/session.rrweb.json") {
+		t.Errorf("argv %q missing --rrweb-out", joined)
+	}
+}
+
 func TestNodeInvoker_BuildsAssertTextArgv(t *testing.T) {
 	rec := &recordingRunner{}
 	inv := &NodeInvoker{RepoRoot: "/repo", Runner: rec}
@@ -315,6 +396,66 @@ func TestNodeInvoker_BuildsAssertTextArgv(t *testing.T) {
 	for _, want := range []string{
 		"--assert-text Active work",
 		"--assert-text May I edit README.md?",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("argv %q missing %q", joined, want)
+		}
+	}
+}
+
+func TestNodeInvoker_BuildsActionArgv(t *testing.T) {
+	rec := &recordingRunner{}
+	inv := &NodeInvoker{RepoRoot: "/repo", Runner: rec}
+	err := inv.Capture(context.Background(), CaptureRequest{
+		URL:      "http://127.0.0.1:9/#/",
+		OutPath:  "/tmp/out.png",
+		Viewport: Viewport{Width: 1600, Height: 900},
+		Action: Action{
+			Kind:         "click",
+			ActionHandle: "testid:edit-story-btn",
+			Button:       "left",
+			Modifiers:    []string{"Alt"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Capture: %v", err)
+	}
+	joined := strings.Join(rec.args, " ")
+	for _, want := range []string{
+		"--action click",
+		"--action-handle testid:edit-story-btn",
+		"--button left",
+		"--modifier Alt",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("argv %q missing %q", joined, want)
+		}
+	}
+}
+
+func TestNodeInvoker_BuildsPointActionArgv(t *testing.T) {
+	rec := &recordingRunner{}
+	inv := &NodeInvoker{RepoRoot: "/repo", Runner: rec}
+	err := inv.Capture(context.Background(), CaptureRequest{
+		URL:      "http://127.0.0.1:9/#/",
+		OutPath:  "/tmp/out.png",
+		Viewport: Viewport{Width: 1600, Height: 900},
+		Action: Action{
+			Kind:      "contextmenu",
+			Point:     &Point{X: 12, Y: 34},
+			Button:    "right",
+			Modifiers: []string{"Alt"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Capture: %v", err)
+	}
+	joined := strings.Join(rec.args, " ")
+	for _, want := range []string{
+		"--action contextmenu",
+		"--point 12,34",
+		"--button right",
+		"--modifier Alt",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("argv %q missing %q", joined, want)

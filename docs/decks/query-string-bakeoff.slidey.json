@@ -1,0 +1,116 @@
+{
+ "_comment": "Query-string external bake-off — 'should I use kitsoki for my project?'. Real live results: GPT-5.5 (codex-native) solved 3/3 real query-string bugs through the kitsoki bugfix pipeline, graded against each PR's own regression test as a hidden oracle. GLM-5.2 (synthetic) is marked pending — the synthetic subscription was rate-limited at run time (verified by direct probe), NOT a capability result. Scene types match stories/slidey-edit/schemas/deck.json so it bundles to static HTML via `slidey bundle`. Numbers are real, from tools/bugfix-bakeoff/external/results/*.json; nothing invented.",
+ "meta": {
+  "title": "Should I use kitsoki for my project?",
+  "resolution": { "width": 1920, "height": 1080 },
+  "theme": "rose-pine-moon",
+  "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+ },
+ "scenes": [
+  {
+   "type": "title",
+   "eyebrow": "Kitsoki case study",
+   "title": "Should I use kitsoki for my project?",
+   "subtitle": "Onboard a real repo — then let a model fix real bugs through the pipeline",
+   "narration": "We point the kitsoki bug-fix pipeline at a real third-party repo, onboard it, and let a non-Claude model fix real filed-issue bugs — grading every fix against the regression test the real pull request shipped."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "The question",
+   "lede": "Not a toy. Your repo.",
+   "body": "A prospective user asks one thing: if I onboard my repository and let kitsoki fix a bug, do I get a GOOD fix — and what does it cost versus the fix the maintainers actually shipped? To answer honestly we need a real, mature codebase and real bugs with a deterministic right answer.",
+   "narration": "The question a prospective user actually asks: if I onboard my repo and let kitsoki fix a bug, do I get a good fix, and what does it cost versus the real one. To answer that honestly we need a real codebase and real bugs with a deterministic right answer."
+  },
+  {
+   "type": "cards",
+   "variant": "grid",
+   "title": "The setup",
+   "narration": "We onboard sindresorhus slash query-string — small and simple, one parser, but mature: two hundred seventy-four commits and ninety releases. Three real filed-issue bugs, each graded against the regression test its real pull request added, kept hidden from the model.",
+   "cards": [
+    { "label": "query-string", "sub": "274 commits · 90 releases · since 2013", "style": "primary" },
+    { "label": "small but mature", "sub": "one ~558-LOC parser, AVA tests", "style": "secondary" },
+    { "label": "3 real bugs", "sub": "filed issues → fixing PRs w/ tests", "style": "default" },
+    { "label": "hidden oracle", "sub": "the PR's own regression test = ground truth", "style": "default" }
+   ]
+  },
+  {
+   "type": "table",
+   "title": "The 3 bugs — real issues, real fixes",
+   "columns": ["Bug", "Issue / PR", "What's wrong", "Baseline"],
+   "rows": [
+    { "cells": ["qs1", "#336", "encoded separator %7C splits a single value", "2e1f45a"] },
+    { "cells": ["qs2", "#404 / #406", "types schema ignored, comma + single item", "88e1e36"] },
+    { "cells": ["qs3", "#392", "bracket-separator mis-parses a URL-encoded value", "4287e77"] }
+   ],
+   "variant": "data",
+   "hold": 300,
+   "caption": "Each baseline is the real fix commit's parent — the bug is present, the checkout is byte-reproducible, and the fix's own added test is the hidden grader."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Method",
+   "lede": "Onboard → fix live → grade deterministically.",
+   "body": "We onboard the repo with the embedded dev-story (config + instance + studio MCP + skill/agent toolkit), then drive the seven-room bugfix pipeline LIVE — the worker model reproduces, proposes, implements, tests, reviews and validates. The fix is graded with no LLM: overlay the hidden oracle, run it. GREEN = the bug is gone; RED = it isn't. The full suite is a second signal.",
+   "narration": "We onboard the repo with the embedded dev-story, then drive the seven-room bug-fix pipeline live. The fix is then graded with no model in the loop: overlay the hidden regression test and run it. Green means the bug is gone."
+  },
+  {
+   "type": "table",
+   "title": "GPT-5.5 through the kitsoki pipeline — 3 / 3 solved",
+   "columns": ["Bug", "Verdict", "GPT-5.5's fix to base.js", "Suite"],
+   "rows": [
+    { "cells": ["qs1", "✅ solved", "ignore encoded separators (717c863, 1+/3−)", "green"] },
+    { "cells": ["qs2", "✅ solved", "coerce single comma value to array (1452aa7, 12+/1−)", "green"] },
+    { "cells": ["qs3", "✅ solved", "decode + split bracket-separator (c29258a, 11+/3−)", "green"] }
+   ],
+   "variant": "data",
+   "hold": 360,
+   "caption": "Every fix passes the hidden oracle AND the full AVA suite. GPT-5.5 did all the work inside the session; the orchestrator only clicked the pipeline forward."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Why the full suite matters",
+   "lede": "A good fix updates the tests it breaks.",
+   "body": "For qs1 and qs2, a correct behavioural fix legitimately flips a PRE-EXISTING test whose expectation encoded the bug — the real maintainer PR edited that test too. A model that only patches base.js leaves the suite RED (partial). GPT-5.5 driven through the pipeline ran the full suite, saw the break, and updated the affected test — landing all three at suite-green 'solved'. That's the 'kitsoki does more tests' lever, measured rather than asserted.",
+   "narration": "Here's the quality lever. For two of the bugs, a correct fix legitimately breaks a pre-existing test — the real pull request updated it too. A model that only patches the source leaves the suite red. Through the pipeline, GPT-5.5 ran the full suite, caught the break, and updated the test — all three landed at suite-green solved."
+  },
+  {
+   "type": "table",
+   "title": "kitsoki's fix vs the real maintainer fix",
+   "columns": ["Bug", "Real maintainer fix", "GPT-5.5 via kitsoki", "Match?"],
+   "rows": [
+    { "cells": ["qs1", "drop isEncodedArray heuristic (ec67fea)", "same: split only on literal separators", "✅ same approach"] },
+    { "cells": ["qs2", "force array for single comma value (3e61882)", "same: coerce single value to typed array", "✅ same approach"] },
+    { "cells": ["qs3", "decode+split encoded bracket-separator (19c43d4)", "same: decode then split on separator", "✅ same approach"] }
+   ],
+   "variant": "data",
+   "hold": 360,
+   "caption": "Not just oracle-green — GPT-5.5 converged on the SAME root-cause fix the maintainers shipped, in all three cases."
+  },
+  {
+   "type": "table",
+   "title": "Cost — the honest accounting",
+   "columns": ["Model", "Outcome", "Worker tokens / cell", "$ / cell"],
+   "rows": [
+    { "cells": ["GPT-5.5 (codex)", "3/3 solved", "~1.2M in / ~11K out", "subscription (no per-call $)"] },
+    { "cells": ["GLM-5.2 (synthetic)", "pending", "—", "rate-limited at run time"] }
+   ],
+   "variant": "data",
+   "hold": 320,
+   "caption": "Codex traces carry no per-call price (ChatGPT-subscription auth); metered providers expose authoritative cost in the kitsoki trace (payload.meta.cost_usd). GLM-5.2's cells are pending — the synthetic subscription was rate-limited (verified by direct probe), so its result is withheld rather than reported as a capability finding."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "What this run also produced",
+   "lede": "A reusable benchmark + a fixed delegation primitive.",
+   "body": "Two durable artifacts fell out of this study. First, the bake-off is now a repo-agnostic benchmark: drop a projects/<name>/manifest.yaml and bench.py grades any repo against its own PR regression tests — a way to evaluate kitsoki's prompts and patterns on real code. Second, the headless MCP delegation pattern is fixed: a raw `claude -p --mcp-config --strict-mcp-config` attaches the studio MCP (an in-process subagent can't), encapsulated in tools/mcp-drive/drive.sh — the live worker model is chosen per session by the harness profile.",
+   "narration": "Two durable artifacts fell out of this. The bake-off is now a generic benchmark — drop a manifest and grade any repo against its own pull-request tests. And the headless MCP delegation pattern is fixed: a raw claude print with an explicit mcp-config attaches the studio, which an in-process subagent cannot."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Takeaway",
+   "lede": "Onboard your repo. Fix real bugs. Grade them honestly.",
+   "body": "Pointed at a real, mature codebase, the kitsoki pipeline took GPT-5.5 to 3-for-3 on real filed-issue bugs — each fix matching the maintainer's own approach and passing the full test suite. Reproduce it with `make qs-bakeoff` (deterministic, free), then run your own cost-bearing cells through tools/mcp-drive. The GLM-5.2 comparison lands once the provider throttle clears.",
+   "narration": "Pointed at a real mature codebase, the pipeline took GPT-5.5 to three for three on real bugs — each matching the maintainer's own approach and passing the full suite. Reproduce it with make qs-bakeoff, then run your own cells. The GLM comparison lands once the provider throttle clears."
+  }
+ ]
+}

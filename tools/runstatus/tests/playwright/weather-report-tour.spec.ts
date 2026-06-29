@@ -25,7 +25,7 @@
  * Record at watch-speed:
  *   pnpm exec playwright test weather-report-tour --project=chromium
  *
- * Requires a fresh binary: `make build && cp ./kitsoki bin/kitsoki`.
+ * Requires a fresh binary: `make build-bin`.
  */
 import { test, expect, chromium, type Browser, type BrowserContext, type Page, type Locator } from "@playwright/test";
 import path from "path";

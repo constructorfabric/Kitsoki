@@ -24,18 +24,73 @@ def write_text(path: Path, content: str, writes: list[str]) -> None:
     old = path.read_text(encoding="utf-8") if path.exists() else None
     if old != content:
         path.write_text(content, encoding="utf-8")
-    writes.append(str(path))
-
-
-def append_gitignore(path: Path, writes: list[str]) -> None:
-    block = "\n# Kitsoki local runtime\n.kitsoki.local.yaml\n.kitsoki/sessions/\n.artifacts/\n.context\n.worktrees\n"
-    current = path.read_text(encoding="utf-8") if path.exists() else ""
-    if ".kitsoki.local.yaml" not in current:
-        path.write_text(current.rstrip() + block, encoding="utf-8")
         writes.append(str(path))
 
 
-def app_yaml(project_id: str, title: str, workdir: str) -> str:
+def yaml_scalar(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return json.dumps(value)
+    return json.dumps(value)
+
+
+def yaml_dump(value, indent: int = 0) -> str:
+    pad = " " * indent
+    if isinstance(value, dict):
+        lines = []
+        for key in sorted(value):
+            item = value[key]
+            if isinstance(item, (dict, list)):
+                lines.append(f"{pad}{key}:")
+                lines.append(yaml_dump(item, indent + 2))
+            else:
+                lines.append(f"{pad}{key}: {yaml_scalar(item)}")
+        return "\n".join(lines)
+    if isinstance(value, list):
+        if not value:
+            return pad + "[]"
+        lines = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                lines.append(f"{pad}-")
+                lines.append(yaml_dump(item, indent + 2))
+            else:
+                lines.append(f"{pad}- {yaml_scalar(item)}")
+        return "\n".join(lines)
+    return pad + yaml_scalar(value)
+
+
+def profile_yaml_from_draft(profile: dict) -> str:
+    return yaml_dump(profile).rstrip() + "\n"
+
+
+def append_gitignore(path: Path, writes: list[str]) -> None:
+    additions = [
+        ".kitsoki.local.yaml",
+        ".kitsoki/sessions/",
+        ".artifacts/",
+        ".context/",
+        ".worktrees/",
+    ]
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    existing = {line.strip() for line in current.splitlines()}
+    existing_normalized = {line.rstrip("/") for line in existing}
+    missing = [entry for entry in additions if entry.rstrip("/") not in existing_normalized]
+    if not missing:
+        return
+    block = "\n# Kitsoki local runtime\n" + "\n".join(missing) + "\n"
+    path.write_text(current.rstrip() + block, encoding="utf-8")
+    writes.append(str(path))
+
+
+def app_yaml(data: dict) -> str:
+    project_id = data["project_id"]
+    title = data["project_title"]
     return f"""app:
   id: {project_id}-dev
   version: 0.1.0
@@ -91,6 +146,10 @@ imports:
       design_doc_filename:        "{{{{ world.design_doc_filename }}}}"
       design_ticket_dir:          "{{{{ world.design_ticket_dir }}}}"
       ticket_repo:                "{{{{ world.ticket_repo }}}}"
+      # Project toolchain commands. Empty means dev-story/bugfix keeps its
+      # default gates; non-Go projects should set these from their profile.
+      build_cmd:                  "{{{{ world.build_cmd }}}}"
+      test_cmd:                   "{{{{ world.test_cmd }}}}"
 
 world:
   workdir:                    {{ type: string, default: "." }}
@@ -105,6 +164,8 @@ world:
   design_durable_path:        {{ type: string, default: "docs/proposals" }}
   design_doc_filename:        {{ type: string, default: "" }}
   design_ticket_dir:          {{ type: string, default: "" }}
+  build_cmd:                  {{ type: string, default: {q(data.get("build_command", ""))} }}
+  test_cmd:                   {{ type: string, default: {q(data.get("test_command", ""))} }}
 
 root: core
 """
@@ -113,25 +174,122 @@ root: core
 def profile_yaml(data: dict) -> str:
     if data["project_id"] == "slidey":
         return slidey_profile_yaml(data)
-    return f"""project:
-  id: {q(data["project_id"])}
-  title: {q(data["project_title"])}
-  root: {q(data["target_path"])}
-  stack: {q(data["stack"])}
+    return generic_profile_yaml(data)
+
+
+def stack_kind(data: dict) -> str:
+    stack = (data.get("stack") or "").lower()
+    if "rust" in stack:
+        return "rust"
+    if "go project" in stack:
+        return "go"
+    if "node" in stack:
+        return "node"
+    return "generic"
+
+
+def enrich_project_shape(data: dict, root: Path) -> None:
+    data["has_makefile"] = (root / "Makefile").exists()
+    cargo = root / "Cargo.toml"
+    data["has_cargo"] = cargo.exists()
+    data["is_monorepo"] = False
+    if cargo.exists():
+        try:
+            text = cargo.read_text(encoding="utf-8")
+            data["is_monorepo"] = "[workspace]" in text or "\n[workspace." in text
+        except OSError:
+            data["is_monorepo"] = False
+
+
+def package_managers(data: dict, kind: str) -> str:
+    managers: list[str] = []
+    if kind == "rust" or data.get("has_cargo"):
+        managers.append("cargo")
+    elif kind == "go":
+        managers.append("go")
+    elif kind == "node":
+        managers.append("npm")
+    if data.get("has_makefile"):
+        managers.append("make")
+    return "[" + ", ".join(managers) + "]" if managers else "[]"
+
+
+def generic_profile_yaml(data: dict) -> str:
+    kind = stack_kind(data)
+    languages = {
+        "rust": "[rust]",
+        "go": "[go]",
+        "node": "[javascript]",
+    }.get(kind, "[]")
+    return f"""schema: project-profile/v1
+id: {data["project_id"]}
+title: {data["project_title"]}
+summary: |
+  Project-local Kitsoki dev-story binding for {data["project_title"]}. The
+  generated instance imports `@kitsoki/dev-story`; this repository owns only the
+  profile values, tool commands, and local setup files.
 
 commands:
   dev: {q(data.get("dev_command", ""))}
   test: {q(data.get("test_command", ""))}
   build: {q(data.get("build_command", ""))}
+  check: {q(data.get("check_command", ""))}
+
+repo:
+  root: "."
+  vcs: git
+  default_branch: main
+  remote: ""
+  monorepo: {str(bool(data.get("is_monorepo"))).lower()}
+
+stack:
+  kind: {q(kind)}
+  languages: {languages}
+  package_managers: {package_managers(data, kind)}
+
+testing:
+  mechanisms:
+    - kind: unit
+      runner: command
+      command: {q(data.get("test_command", ""))}
+    - kind: build
+      runner: command
+      command: {q(data.get("build_command", ""))}
 
 conventions:
-  source: {q(data.get("conventions", "local defaults"))}
-  transient_docs: ".context"
-  review_artifacts: ".artifacts"
-  worktrees: ".worktrees"
+  source: {data.get("conventions", "local defaults")}
+  dirs:
+    context:   {{ path: ".context",   use: local-runtime }}
+    artifacts: {{ path: ".artifacts", use: local-runtime }}
+    worktrees: {{ path: ".worktrees", use: local-runtime }}
+  gitignore:
+    manage: true
+    additions:
+      - ".kitsoki.local.yaml"
+      - ".kitsoki/sessions/"
+      - ".artifacts/"
+      - ".context/"
+      - ".worktrees/"
 
 tracker:
   provider: {q(data.get("tracker", "none"))}
+
+kitsoki:
+  story: dev-story
+  instance:
+    id: {data["project_id"]}-dev
+    path: .kitsoki/stories/{data["project_id"]}-dev/app.yaml
+    bindings:
+      ticket: host.local_files.ticket
+      vcs: host.git
+      ci: host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+  judge_mode: human
+  autonomy: supervised
+
+readiness:
+  status: not-run
 """
 
 
@@ -303,7 +461,7 @@ kitsoki:
   story: dev-story
   instance:
     id: slidey-dev
-    path: "stories/slidey-dev/app.yaml"
+    path: ".kitsoki/stories/slidey-dev/app.yaml"
     bindings:
       ticket: host.local_files.ticket
       vcs: host.git
@@ -325,12 +483,12 @@ setup_plan:
     - path: ".kitsoki/project-profile.yaml"
       action: create
       summary: "Declarative onboarding profile for Slidey."
-    - path: "stories/slidey-dev/app.yaml"
+    - path: ".kitsoki/stories/slidey-dev/app.yaml"
       action: create
       summary: "Materialized dev-story instance for Slidey."
     - path: ".kitsoki.yaml"
       action: create
-      summary: "Discover project-local stories under ./stories."
+      summary: "Discover project-local stories under ./.kitsoki/stories."
     - path: ".gitignore"
       action: merge
       summary: "Ignore local Kitsoki runtime/session artifacts."
@@ -344,7 +502,7 @@ setup_plan:
   verifications:
     - id: story-load
       kind: story
-      command: "kitsoki run stories/slidey-dev/app.yaml"
+      command: "kitsoki run .kitsoki/stories/slidey-dev/app.yaml"
       gate: required
     - id: unit-tests
       kind: tests
@@ -374,40 +532,65 @@ readiness:
 
 def config_yaml(project_id: str) -> str:
     return f"""story_dirs:
-  - ./stories
+  - ./.kitsoki/stories
 
-default_story: stories/{project_id}-dev/app.yaml
+default_story: .kitsoki/stories/{project_id}-dev/app.yaml
+project_profile: .kitsoki/project-profile.yaml
 """
 
 
-def readme(title: str, profile_path: str) -> str:
-    return f"""# {slug(title)}-dev
+def readme(data: dict, profile_path: str) -> str:
+    title = data["project_title"]
+    story_id = f"{data['project_id']}-dev"
+    commands = []
+    if data.get("dev_command"):
+        commands.append(("dev", data["dev_command"]))
+    if data.get("test_command"):
+        commands.append(("test", data["test_command"]))
+    if data.get("build_command"):
+        commands.append(("build", data["build_command"]))
+    command_block = "\n".join(cmd for _, cmd in commands) or "# No project commands were inferred during onboarding."
+    command_notes = "\n".join(f"- `{name}`: `{cmd}`" for name, cmd in commands) or "- No project commands were inferred; update `.kitsoki/project-profile.yaml` and this README after choosing them."
+    flow_note = (
+        "No deterministic flow fixtures are generated for this project instance yet. "
+        "Use the imported dev-story fixtures in the Kitsoki checkout for hub coverage, "
+        "and add project-local flows when this repo needs its own story-specific assertions."
+    )
+    return f"""# {story_id}
 
 Kitsoki dev-story instance for the {title} checkout.
 
 Run from the {title} repo root:
 
 ```sh
-kitsoki run stories/{slug(title)}-dev/app.yaml
+kitsoki run .kitsoki/stories/{story_id}/app.yaml
 ```
 
-This instance imports `@kitsoki/dev-story`, starts in the workbench, and seeds
-the project onboarding profile for {title}. It is supervised by default and does
-not require a real LLM for deterministic flow tests.
-
-Useful first checks:
+Or start the browser UI:
 
 ```sh
-node src/index.js examples/hello.slidey.json --validate
-node src/index.js examples/hello.slidey.json --port 5000 --no-open
-node src/index.js bundle examples/hello.slidey.json .artifacts/hello.html
-npm test
-npm run build
+kitsoki web
 ```
 
-Use the web player for normal deck review. Use the single-file HTML bundle when
-you need a portable review artifact. Render MP4 only when you need fixed video
-evidence, narration, or a source for a `video` scene.
+This instance imports `@kitsoki/dev-story` from the Kitsoki binary. The shared
+dev-story hub defines the general workflow; this repository owns the local
+profile, command defaults, and any project-specific extensions.
+
+Project profile: `{Path(profile_path).relative_to(Path(data["target_path"]))}`
+
+Inferred project commands:
+
+```sh
+{command_block}
+```
+
+Command map:
+
+{command_notes}
+
+Testing:
+
+{flow_note}
 """
 
 
@@ -425,22 +608,43 @@ def main() -> int:
         "conventions": sys.argv[8],
         "tracker": sys.argv[9] if len(sys.argv) > 9 else "none",
     }
+    draft_profile = None
+    if len(sys.argv) > 10 and sys.argv[10].strip():
+        draft_profile = json.loads(sys.argv[10])
+        commands = draft_profile.get("commands") if isinstance(draft_profile, dict) else {}
+        if isinstance(commands, dict):
+            data["dev_command"] = commands.get("dev") or data["dev_command"]
+            data["test_command"] = commands.get("test") or data["test_command"]
+            data["build_command"] = commands.get("build") or data["build_command"]
+        if isinstance(draft_profile.get("title"), str):
+            data["project_title"] = draft_profile["title"]
     root = Path(data["target_path"])
+    enrich_project_shape(data, root)
+    makefile = root / "Makefile"
+    if makefile.exists() and not data.get("check_command"):
+        try:
+            if re.search(r"^check\s*:", makefile.read_text(encoding="utf-8"), re.MULTILINE):
+                data["check_command"] = "make check"
+        except OSError:
+            data["check_command"] = ""
     writes: list[str] = []
-    dirs = [".kitsoki", ".context", ".artifacts", ".worktrees", f"stories/{data['project_id']}-dev"]
+    dirs = [".kitsoki", ".kitsoki/stories", ".context", ".artifacts", ".worktrees", f".kitsoki/stories/{data['project_id']}-dev"]
     for rel in dirs:
         (root / rel).mkdir(parents=True, exist_ok=True)
 
     config_path = root / ".kitsoki.yaml"
     profile_path = root / ".kitsoki" / "project-profile.yaml"
-    instance_path = root / "stories" / f"{data['project_id']}-dev" / "app.yaml"
-    readme_path = root / "stories" / f"{data['project_id']}-dev" / "README.md"
+    instance_path = root / ".kitsoki" / "stories" / f"{data['project_id']}-dev" / "app.yaml"
+    readme_path = root / ".kitsoki" / "stories" / f"{data['project_id']}-dev" / "README.md"
     gitignore_path = root / ".gitignore"
 
     write_text(config_path, config_yaml(data["project_id"]), writes)
-    write_text(profile_path, profile_yaml(data), writes)
-    write_text(instance_path, app_yaml(data["project_id"], data["project_title"], data["target_path"]), writes)
-    write_text(readme_path, readme(data["project_title"], str(profile_path)), writes)
+    if draft_profile is not None:
+        write_text(profile_path, profile_yaml_from_draft(draft_profile), writes)
+    else:
+        write_text(profile_path, profile_yaml(data), writes)
+    write_text(instance_path, app_yaml(data), writes)
+    write_text(readme_path, readme(data, str(profile_path)), writes)
     append_gitignore(gitignore_path, writes)
 
     print(json.dumps({

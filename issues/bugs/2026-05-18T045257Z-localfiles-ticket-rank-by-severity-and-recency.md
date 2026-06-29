@@ -91,7 +91,7 @@ into the response so the view can show it.
 ### Repro
 
 ```
-$ kitsoki run stories/kitsoki-dev/app.yaml
+$ kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml
 > tickets                      # → core.ticket_search, list auto-fetches
 ```
 

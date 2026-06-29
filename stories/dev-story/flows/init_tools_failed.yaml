@@ -1,0 +1,57 @@
+# init_tools_failed -- the toolkit + studio MCP install failing must be LOUD,
+# not silently pass as "applied". The file apply succeeds, the install_tools
+# step exits non-zero (fail_on_error), and onboarding routes to the
+# init_tools_failed read-out — from which `continue` proceeds with a world flag
+# that records the toolkit was skipped. No LLM, no real checkout.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: init
+initial_world:
+  init_target_path: "/Users/brad/code/slidey"
+  init_project_id: "slidey"
+  init_project_title: "Slidey"
+  init_profile_status: "draft"
+
+host_handlers:
+  host.run:
+    by_call:
+      apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"status":"applied","config_path":"/Users/brad/code/slidey/.kitsoki.yaml","instance_path":"/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"}'
+          stdout_json:
+            status: "applied"
+            config_path: "/Users/brad/code/slidey/.kitsoki.yaml"
+            instance_path: "/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"
+      install_tools:
+        # error (sibling of data) sets host.Result.Error, which fires the
+        # invoke's on_error arc — the real RunHandler sets this same error on a
+        # non-zero exit because the invoke passes fail_on_error: true.
+        data:
+          ok: false
+          exit_code: 1
+          stdout: "Error: kitsoki agent toolkit not staged into this binary: run `make embed-skills`"
+        error: "host.run: command exited 1"
+
+turns:
+  # confirm_init enters init_apply: on_enter runs apply (ok) then install_tools
+  # (fails) → on_error routes to the loud read-out instead of init_done.
+  - intent: { name: confirm_init, slots: {} }
+    expect_state: init_tools_failed
+    expect_world:
+      init_apply_result:
+        status: "applied"
+        config_path: "/Users/brad/code/slidey/.kitsoki.yaml"
+        instance_path: "/Users/brad/code/slidey/.kitsoki/stories/slidey-dev/app.yaml"
+      init_tools_ok: false
+    expect_view_matches: "install failed"
+
+  # continue: proceed without the toolkit, recording that it was skipped.
+  - intent: { name: init_applied, slots: {} }
+    expect_state: init_done
+    expect_world:
+      init_profile_status: "applied-no-tools"
+
+expect_no_errors: true

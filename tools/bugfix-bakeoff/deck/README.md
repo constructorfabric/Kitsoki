@@ -20,21 +20,20 @@ The spec follows the same slidey schema as
 [`stories/slidey-edit/baked/deck.json`](../../../stories/slidey-edit/baked/deck.json)
 (scene types `title` / `cards` / `narrative`; validated against
 [`stories/slidey-edit/schemas/deck.json`](../../../stories/slidey-edit/schemas/deck.json)).
-It bakes to a self-contained **static HTML deck** with `slidey bundle` —
-the exact bake path documented in
-[`stories/slidey-edit/README.md`](../../../stories/slidey-edit/README.md)
-(see "Baked demo artifacts"):
+**Commit only the `.slidey.json` spec.** The HTML is a deterministic render of
+the JSON — preview it with the **VS Code kitsoki extension** (renders the deck
+from the spec, no bake step) or bundle it locally for an off-disk file. A
+committed `.slidey.html` is just a stale multi-MB duplicate, so `*.slidey.html`
+is gitignored.
 
 ```bash
-# validate
-python3 -m json.tool tools/bugfix-bakeoff/deck/deck.json > /dev/null
+# validate the spec
+python3 -m json.tool docs/decks/bugfix-bakeoff.slidey.json > /dev/null
 
-# bake to a single self-contained HTML file (no server, opens off disk)
-slidey bundle tools/bugfix-bakeoff/deck/deck.json tools/bugfix-bakeoff/deck/deck.html
+# OPTIONAL local preview — bundle to a single self-contained HTML under
+# .artifacts/ (gitignored), never into docs/decks/:
+slidey bundle docs/decks/bugfix-bakeoff.slidey.json .artifacts/bugfix-bakeoff/deck.html
 ```
 
-The baked `deck.html` inlines the whole slidey SPA (several MB) and should
-**not** be committed — keep generated output under `.artifacts/` or
-gitignore it, per the repo artifact conventions. To author/edit
-interactively (render → annotate → refine), drive it through the
+To author/edit interactively (render → annotate → refine), drive it through the
 [`slidey-edit`](../../../stories/slidey-edit/) story.

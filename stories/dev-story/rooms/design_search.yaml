@@ -42,6 +42,8 @@ states:
             Idea: '{{ world.design_idea }}'
         when: "world.design_idea != ''"
       - heading: "Overlap scan"
+      - template: "⚠ {{ world.last_error }}"
+        when: "world.last_error != ''"
       - prose: '{{ world.design_existing_state.roadmap_fit|default:"(running — waiting for scout result)" }}'
       # ── Overlap detected: strong bail toward the existing case ──────────
       - template: "⚠ **This idea is already in flight.** You have existing draft(s)/design(s) for it (listed below). **Continue the existing case — do NOT start a new one.** A fresh design here just creates another duplicate folder to reconcile later."
@@ -120,6 +122,7 @@ states:
             - label:  "confirm"
               hint:   "no overlap — create the workspace and proceed"
               intent: confirm
+              when: "len(world.design_existing_state.overlaps ?? []) == 0 && world.design_existing_state.roadmap_fit != ''"
             - label:  "new design anyway"
               hint:   "start a NEW design despite the overlap (discouraged)"
               intent: override_new
@@ -160,11 +163,13 @@ states:
           effects:
             - set:
                 design_overlap_decision: ""
+                last_error: "This idea overlaps existing work. Choose an amend option, or explicitly select 'new design anyway' if you want a duplicate."
         - target: design_materialize
           effects:
             - set:
                 design_overlap_decision: "new"
                 design_change_target:    ""
+                last_error: ""
 
       # Overlap found: continue an existing draft. No new folder is created —
       # an in-progress draft directory becomes the workspace. Accepted proposal
@@ -176,6 +181,7 @@ states:
             - set:
                 design_overlap_decision: "change_existing"
                 design_change_target:    "{{ slots.target }}"
+                last_error: ""
             - invoke: host.run
               id: amend_workspace
               with:
@@ -196,6 +202,7 @@ states:
             - set:
                 design_overlap_decision: "new"
                 design_change_target:    ""
+                last_error: ""
 
       # Re-run the scout from scratch.
       # Explicit target (not ".") so on_enter re-fires and the scout runs.
@@ -205,6 +212,7 @@ states:
             - set:
                 design_existing_state: {}
                 design_existing_path:  ""
+                last_error: ""
 
       quit:
         - target: landing

@@ -1,0 +1,46 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: matrix_created
+initial_world:
+  seed: story-strict
+  matrix_id: matrix-123
+  matrix_dir: .artifacts/product-journey/matrices/matrix-123
+  matrix_personas: primary
+  deck_path: .artifacts/product-journey/matrices/matrix-123/deck.slidey.json
+  status: matrix_created
+
+host_handlers:
+  host.run:
+    by_call:
+      validate_product_journey_matrix_strict:
+        data:
+          ok: false
+          exit_code: 1
+          stdout_json:
+            status: invalid
+            matrix_id: matrix-123
+            errors: 1
+            warnings: 0
+            validation_issue_summary: "matrix-target-proof"
+            issues:
+              - severity: error
+                id: matrix-target-proof
+                message: Matrix targets do not include refreshed GitHub open-bug proof
+                detail: "vscode, kubernetes"
+
+turns:
+  - intent:
+      name: validate_matrix_strict
+    expect_state: matrix_created
+    expect_world:
+      status: matrix_strict_validated
+      validation_status: invalid
+      validation_errors: 1
+      validation_warnings: 0
+      validation_issue_summary: matrix-target-proof
+    expect_host_calls:
+      - handler: host.run
+        args: { call: validate_product_journey_matrix_strict }
+    expect_view_matches: "MATRIX CREATED[\\s\\S]*Validation[\\s\\S]*invalid[\\s\\S]*Validation errors[\\s\\S]*1[\\s\\S]*Validation issues[\\s\\S]*matrix-target-proof[\\s\\S]*Status[\\s\\S]*matrix_strict_validated"
+
+expect_no_errors: true

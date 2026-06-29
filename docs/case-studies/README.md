@@ -49,8 +49,22 @@ on prompt incantations to enforce structure.
   from its hermetic parent-commit baseline and graded against the fix's own
   regression test as a hidden oracle. Asks the headline question: **is
   structure worth more than a bigger model?** Framework at
-  [`tools/bugfix-bakeoff/`](../../tools/bugfix-bakeoff/). _(template — awaiting
-  live-run data.)_
+  [`tools/bugfix-bakeoff/`](../../tools/bugfix-bakeoff/). _(methodology
+  validated + first `bug9` results; full grid pending — structure proved
+  more thorough, not automatically cheaper.)_
+
+- **[query-string-bakeoff.md](query-string-bakeoff.md)** — *should I use
+  kitsoki for **my** project?* The bake-off pointed at a real third-party repo
+  ([`sindresorhus/query-string`](https://github.com/sindresorhus/query-string),
+  small/simple but mature — 274 commits, 90 releases): onboard it, fix 3
+  real filed-issue bugs, and grade each fix deterministically against the
+  regression test the real PR shipped. Gated reproducible scaffold at
+  [`tools/bugfix-bakeoff/external/`](../../tools/bugfix-bakeoff/external/)
+  (`make qs-bakeoff`); cost-vs-real-fix cells are operator-run.
+
+- **[onboarding-cross-repo.md](onboarding-cross-repo.md)** — cross-repo onboarding
+  validation, including `gears-rust`, `slidey`, `postgresql`, and `kubernetes`
+  harness profiles with repo-specific readiness gates before live work.
 
 - **[routing-model-cost-study.md](routing-model-cost-study.md)** — the
   model-selection lever after deterministic routing has already done its
@@ -58,6 +72,21 @@ on prompt incantations to enforce structure.
   Haiku / synthetic-small / GPT-mini-style candidates, and argues for
   room-by-room cheap-router promotion with explicit hard-negative tests
   and fallback rather than a global model downgrade.
+
+- **[glm52-quota-dogfood.md](glm52-quota-dogfood.md)** — the provider
+  reliability lever. A live GLM-5.2 run through synthetic.new used the local
+  quota controller to serialize work and learn observed token usage without
+  hitting 429s, then used `agent-bench` to show the remaining failure was
+  task-shape performance: valid submit, but over wall/output/cost budgets.
+
+- **[glm52-bakeoff-pass.md](glm52-bakeoff-pass.md)** — the harness-as-forcing-function
+  lever. Driving a GLM-5.2 worker end-to-end on a fresh root VM to a clean
+  `kitsoki/bug9` pass flushed out six *silent* infrastructure faults (verdict
+  leaked as an exit code, env not crossing the codex→MCP boundary, a tool
+  timeout shorter than a turn, a quota-limiter deadlock, a missing git
+  identity) plus an over-specified oracle. The lesson: the ticket steers the
+  fix layer, oracles must assert behavior not prose, and every real run pays
+  for itself in flushed-out bugs the green unit tests never saw.
 
 Future studies (planned, not yet written):
 

@@ -1,0 +1,64 @@
+# reporting — DETERMINISTIC (no LLM). Assemble the comparison report + build the
+# slidey deck SPEC from the summary rollup, by calling the harness's offline
+# report/deck builder (eval_pilot_report.py — the skill's "Report + deck" step;
+# free, no LLM). The deck spec it emits is the input to the slideshow room's
+# host.slidey.render.
+#
+# We bind deck.spec_path to the deck-builder's output path so slideshow renders
+# the freshly-built spec. In flow/no-LLM mode the builder is stubbed to point at
+# the BAKED baked/deck.json (a real slidey deck), so no live build runs.
+#
+# `once: true` keyed on report_markdown → reload-safe.
+
+states:
+
+  reporting:
+    description: "Assembling the comparison report + slidey deck spec (deterministic)."
+    relevant_world: [summary, deck, report_markdown]
+    view:
+      - heading: "Bake-off · reporting"
+      - kv:
+          pairs:
+            Deck:      '{{ world.deck.spec_path }}'
+            Headline:  '{{ world.deck.summary }}'
+      - prose: "The summary rollup is rendered to a comparison report + a slidey deck spec. Accept to render the deck to a static-HTML report."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "render the deck (host.slidey.render)"
+              intent: accept
+            - label:  "quit"
+              hint:   "abandon"
+              intent: quit
+    on_enter:
+      # Build the report markdown + the deck spec from the summary. Deterministic,
+      # offline — eval_pilot_report.py regenerates with zero re-spend. The deck
+      # builder writes the spec JSON; we bind its path into world.deck.spec_path
+      # so the next room renders exactly what was built.
+      - invoke: host.run
+        id: build_report
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "../session-mining/eval_pilot_report.py"
+            - "--summary"
+            - "results/summary.json"
+            - "--markdown"
+            - "results/report.md"
+            - "--deck"
+            - "results/deck.html"
+          cwd: "{{ world.harness_dir }}"
+        bind:
+          report_markdown: stdout_json.markdown
+          deck:            stdout_json.deck
+        on_error: scoring
+    on:
+      accept:
+        - target: slideshow
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

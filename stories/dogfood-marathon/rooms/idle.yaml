@@ -1,0 +1,46 @@
+# idle — confirm the run config (inner pipeline, backlog source, baseline policy)
+# and start the marathon. Deterministic, no LLM.
+
+states:
+
+  idle:
+    description: "Dogfood marathon. Pick the inner pipeline + backlog, then process every case and report the run."
+    relevant_world: [inner_pipeline, backlog_source, baseline_policy, profile, backlog_limit]
+    view:
+      - heading: "Dogfood marathon"
+      - prose: "Drive a backlog of cases through an inner kitsoki pipeline (bugfix / delivery-tail / ship-it), independently verify every deliverable, capture friction as findings, and bake the run into a slidey report. This wraps the dogfood-marathon skill — improve the pipeline WITHOUT overfitting to the cases."
+      - kv:
+          pairs:
+            Inner pipeline:  '{{ world.inner_pipeline }}'
+            Backlog source:  '{{ world.backlog_source }}'
+            Baseline policy: '{{ world.baseline_policy }}'
+            Maker profile:   '{{ world.profile }}'
+            Backlog limit:   '{{ world.backlog_limit }}'
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "start"
+              hint:  "load the backlog and start processing"
+            - label: "start backlog_source=… inner_pipeline=…"
+              hint:  "override the source / inner pipeline"
+            - label: "quit"
+              hint:  "abandon"
+            - label: "look"
+    on:
+      start:
+        - target: intake
+          effects:
+            - set:
+                backlog_source: "{{ slots.backlog_source ?? world.backlog_source }}"
+                inner_pipeline: "{{ slots.inner_pipeline ?? world.inner_pipeline }}"
+                # fresh run — reset the loop counters
+                case_index: 0
+                cases_processed: 0
+                results: { items: [] }
+                findings: { items: [] }
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_idle" }
+      look:
+        - target: .

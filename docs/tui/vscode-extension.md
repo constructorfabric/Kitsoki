@@ -191,23 +191,32 @@ The webview cannot reach the cross-origin `http://127.0.0.1:PORT` backend from a
 connection** and relays. The host owns reconnect; the webview side never backs
 off (a closed stream is the host's to revive).
 
-```
- webview                          extension host                 kitsoki web
- BridgeTransport                  Relay (relay.ts)               (Go server)
- ───────────────                  ──────────────                 ───────────
- call(method,params) ─{t:call}──▶ POST /rpc ─────────────────────▶ Orchestrator
-                     ◀{t:call-ok}─ ◀──── JSON-RPC result ──────────
-                     ◀{t:call-err}─ ◀──── JSON-RPC / HTTP error ────
+```mermaid
+sequenceDiagram
+    participant Webview as webview BridgeTransport
+    participant Host as extension host Relay
+    participant Server as kitsoki web
 
- openEventStream() ─{t:evt-open}─▶ GET /rpc/events (Node fetch SSE,
-   onMessage ◀{t:evt-msg}─────────  ◀═ raw `data:` frame string ═══  host-owned
-   onError   ◀{t:evt-err}─────────  ◀═ error → host reconnects ═════  backoff)
-                  ─{t:evt-close}──▶ abort the host EventSource
+    Webview->>Host: call(method, params)
+    Host->>Server: POST /rpc
+    Server-->>Host: JSON-RPC result or error
+    Host-->>Webview: call-ok / call-err
 
- postEventStream() ─{t:post-open}▶ POST /rpc/turn-stream (SSE)
-   onFrame ◀{t:post-frame}────────  ◀═ intermediate frame ═════════
-   resolve ◀{t:post-done}─────────  ◀═ {type:"done"} sentinel ═════
-   reject  ◀{t:post-err}──────────  ◀═ {type:"error"} sentinel ════
+    Webview->>Host: openEventStream()
+    Host->>Server: GET /rpc/events
+    Server-->>Host: raw data frame
+    Host-->>Webview: evt-msg
+    Server-->>Host: stream error
+    Host-->>Webview: evt-err
+    Webview->>Host: evt-close
+    Host->>Server: abort EventSource
+
+    Webview->>Host: postEventStream()
+    Host->>Server: POST /rpc/turn-stream
+    Server-->>Host: intermediate frame
+    Host-->>Webview: post-frame
+    Server-->>Host: done or error sentinel
+    Host-->>Webview: post-done / post-err
 ```
 
 The discriminant is `t`; `id` is a monotonic int minted in the webview and echoed

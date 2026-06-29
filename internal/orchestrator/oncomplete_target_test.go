@@ -151,6 +151,113 @@ func TestOnCompleteTarget_HappyPath(t *testing.T) {
 		"observer NewState should reflect the on_complete target")
 }
 
+func TestOnCompleteTarget_StaleCompletionDoesNotMutateAfterStateExit(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "target-stale"},
+		Root:  "init",
+		Hosts: []string{"host.test.block"},
+		World: map[string]app.VarDef{
+			"x":           {Type: "string", Default: ""},
+			"last_job_id": {Type: "string", Default: ""},
+		},
+		Intents: map[string]app.Intent{
+			"enter": {Title: "Enter"},
+			"leave": {Title: "Leave"},
+		},
+		States: map[string]*app.State{
+			"init": {
+				View: app.LegacyView("init"),
+				On: map[string][]app.Transition{
+					"enter": {{Target: "executing"}},
+				},
+			},
+			"executing": {
+				View: app.LegacyView("executing"),
+				OnEnter: []app.Effect{
+					{
+						Invoke:     "host.test.block",
+						Background: true,
+						Bind:       map[string]string{"last_job_id": "job_id"},
+						OnComplete: []app.Effect{
+							{Set: map[string]any{"x": "late mutation"}},
+							{Target: "done"},
+						},
+					},
+				},
+				On: map[string][]app.Transition{
+					"leave": {{Target: "other"}},
+				},
+			},
+			"other": {View: app.LegacyView("other x={{ world.x }}")},
+			"done":  {View: app.LegacyView("done x={{ world.x }}")},
+		},
+	}
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	jobStore, err := jobs.NewJobStore(s.DB())
+	require.NoError(t, err)
+
+	sched := jobs.NewScheduler(jobStore)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	reg := host.NewRegistry()
+	reg.Register("host.test.block", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		once.Do(func() { close(started) })
+		select {
+		case <-release:
+			return host.Result{Data: map[string]any{"ok": true}}, nil
+		case <-ctx.Done():
+			return host.Result{}, ctx.Err()
+		}
+	})
+
+	h := &staticHarness{intentName: "enter"}
+	orch := orchestrator.New(def, m, s, h,
+		orchestrator.WithHostRegistry(reg),
+		orchestrator.WithScheduler(sched),
+		orchestrator.WithJobStore(jobStore),
+	)
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	out, err := orch.Turn(ctx, sid, "enter")
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("executing"), out.NewState)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("background job did not start")
+	}
+
+	out, err = orch.RunIntent(ctx, sid, "leave", nil)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("other"), out.NewState)
+
+	close(release)
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	require.NoError(t, sched.WaitIdle(waitCtx))
+	require.NoError(t, orch.WaitListenerIdle(waitCtx, sid))
+
+	finalJourney, err := orch.LoadJourney(sid)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("other"), finalJourney.State,
+		"late completion from the old state must not target the session elsewhere")
+	require.Empty(t, finalJourney.World.Vars["x"],
+		"late completion from the old state must not apply on_complete mutations")
+}
+
 // TestOnCompleteTarget_OnErrorWinsOverTarget: when a host call inside the
 // on_complete chain hits its on_error redirect, the session should land on
 // the error state and the Target effect later in the chain is suppressed.

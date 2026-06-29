@@ -1,0 +1,62 @@
+app:
+  id: model-task-engineering
+  version: 0.1.0
+  title: "Model task engineering"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+
+world:
+  bench_manifest: { type: string, default: "stories/deliver/agent-bench/decompose_glm.yaml" }
+  case_id:        { type: string, default: "" }
+  trace_path:     { type: string, default: "" }
+  output_dir:     { type: string, default: ".artifacts/model-task-engineering" }
+
+  report_json:     { type: string, default: "" }
+  report_markdown: { type: string, default: "" }
+  report_deck:     { type: string, default: "" }
+  score_status:    { type: string, default: "" }
+  score_summary:   { type: string, default: "" }
+  score_error:     { type: string, default: "" }
+  score_stdout:    { type: string, default: "" }
+
+intents:
+  score:
+    description: "Score the configured trace and produce review artifacts."
+    examples: ["score", "run score", "evaluate this trace"]
+    priority: 90
+    slots:
+      bench_manifest: { type: string, required: false }
+      case_id:        { type: string, required: false }
+      trace_path:     { type: string, required: false }
+      output_dir:     { type: string, required: false }
+  rescore:
+    description: "Clear current score artifacts and run the score again."
+    examples: ["rescore", "score again"]
+    priority: 80
+  done:
+    description: "Accept the scored evidence and finish."
+    examples: ["done", "finish"]
+    priority: 60
+  quit:
+    description: "Abandon the model task engineering run."
+    examples: ["quit", "abort"]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "refresh", "?"]
+    priority: 10
+
+exits:
+  done:
+    description: "The trace was scored and artifacts were produced."
+    requires: [report_json, report_markdown, report_deck]
+  abandoned:
+    description: "The operator stopped before accepting the scored evidence."
+
+root: configure
+
+include:
+  - rooms/*.yaml

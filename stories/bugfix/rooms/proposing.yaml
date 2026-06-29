@@ -68,6 +68,12 @@ states:
               intent: look
     relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, propose_fix_artifact, reproduction_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
+      # (The synthesised-gate commit lives in implementing/on_enter — after the
+      #  worktree is synced and the reproducer's RED-test file is provably on disk
+      #  — NOT here: under autonomous llm_then_human the reproducing→proposing→
+      #  implementing chain collapses into ONE turn, so at proposing the async
+      #  reproducer's file write may not have settled and the commit no-ops.)
+
       # `working_dir` pins the agent subprocess to the bugfix worktree
       # so greps/reads against the live tree land on the feature branch,
       # not on main. See implementing.yaml header for the regression.
@@ -94,6 +100,18 @@ states:
           propose_fix_artifact: submitted
         on_error: idle
 
+      # Early low-confidence quit (escalate_low_value). A proposal the proposer
+      # itself rates below the floor is low value — escalate to a human BEFORE
+      # spending the judge call and the whole implement→test→review path. Guarded
+      # on a populated artifact so it can't fire before the proposer runs.
+      - when: |
+          world.escalate_low_value &&
+          world.propose_fix_artifact.summary_title != '' &&
+          world.propose_fix_artifact.confidence < world.proposer_confidence_floor
+        emit_intent: escalate_human
+        slots:
+          reason: "Low-confidence fix proposal ({{ world.propose_fix_artifact.confidence }} < floor {{ world.proposer_confidence_floor }}) for {{ world.ticket_id }}. Root cause: {{ world.propose_fix_artifact.root_cause }}. Decide before spending implement/test/review budget."
+
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
         with:
@@ -116,6 +134,20 @@ states:
         emit_intent: "{{ world.llm_verdict.intent }}"
         slots:
           feedback: "{{ world.llm_verdict.reason }}"
+
+      # Uncertain / sub-threshold judge with active escalation → quit to a human
+      # instead of HOLDING (the default), which an autonomous orchestrator told to
+      # "proceed" would steamroll. Complement of the auto-fire arc above.
+      - when: |
+          world.escalate_low_value &&
+          world.judge_mode != 'human' &&
+          world.llm_verdict.verdict != '' &&
+          (world.llm_verdict.verdict == 'uncertain' ||
+           world.llm_verdict.intent == 'uncertain' ||
+           world.llm_verdict.confidence < world.judge_confidence_threshold)
+        emit_intent: escalate_human
+        slots:
+          reason: "Judge uncertain/low-confidence on the fix proposal for {{ world.ticket_id }} (verdict {{ world.llm_verdict.verdict }}, confidence {{ world.llm_verdict.confidence }}): {{ world.llm_verdict.reason }}"
     on:
       accept:
         - target: implementing
@@ -131,7 +163,25 @@ states:
                 refine_feedback:   ""
                 cycle:             0
 
+      # (internal) active escalation → quit to a human with the question.
+      escalate_human:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                needs_human_reason: "{{ slots.reason }}"
+                last_error:         "NEEDS HUMAN (proposing): {{ slots.reason }}"
+                status:             "needs-human"
+
       refine:
+        # Budget exhausted WITH active escalation → ask a human instead of
+        # silently abandoning, so the operator can redirect rather than lose the run.
+        - when: "world.escalate_low_value && world.proposing_cycle >= world.proposing_budget"
+          target: "@exit:needs-human"
+          effects:
+            - set:
+                needs_human_reason: "Proposing budget exhausted for {{ world.ticket_id }} after {{ world.proposing_cycle }} cycles without an accepted fix. Last feedback: {{ world.refine_feedback }}"
+                last_error:         "NEEDS HUMAN (proposing): budget exhausted after {{ world.proposing_cycle }} cycles."
+                status:             "needs-human"
         - when: "world.proposing_cycle >= world.proposing_budget"
           target: "@exit:abandoned"
           effects:

@@ -1,0 +1,28 @@
+states:
+  overview:
+    description: "What is Kitsoki?"
+    relevant_world: [section]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Kitsoki turns a YAML state machine into a conversational app: you describe an agent's day as rooms and transitions, and the runtime drives it — in a terminal, the web, or an IDE — routing free text through a model only where you allow it."
+          - prose: "Every story is testable with NO live LLM: deterministic flow fixtures and recorded cassettes replay the exact interactions, so you can prove behavior cheaply before spending a single model call."
+        choices:
+          - heading: "Tour"
+          - list:
+              items:
+                - label: "next"
+                  hint: "how it works"
+                - label: "look"
+    on:
+      next:
+        - target: how_it_works
+          effects:
+            - set: { section: "how_it_works" }
+      restart:
+        - target: overview
+          effects:
+            - set: { section: "overview" }
+      look:
+        - target: overview

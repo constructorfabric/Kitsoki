@@ -14,7 +14,7 @@ import (
 
 // RungFor returns the lightest rung a delta kind lands at. Rung 1 is a
 // .kitsoki.yaml override (binding/world/intent-synonym); rung 2 materializes a
-// file under stories/<project>/ (stub-wire/gate, a new room-backed intent, or a
+// file under .kitsoki/stories/<project>/ (stub-wire/gate, a new room-backed intent, or a
 // dev-story-enrich). This is pure policy — see the rung-ladder table in
 // docs/architecture/ambient-mining.md and the mechanics in
 // docs/proposals/implicit-project-root.md.

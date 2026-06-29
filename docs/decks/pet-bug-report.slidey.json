@@ -1,0 +1,81 @@
+{
+  "_comment": "Bug report deck for a real clutter bug in the kitsoki web UI: a redundant 'Observe ↗' router-link in the InteractiveView topbar, sitting next to the Hide/show-trace toggle and easily confused with it (it navigates to the read-only observer for the same run). LIVE at tools/runstatus/src/views/InteractiveView.vue:85. The bug report carries an rrweb repro. meta.mode:pitch is required or scenes render blank. Scene shapes copied verbatim from docs/decks/agent-actions-overflow-bugfix.slidey.json and pet-prd.slidey.json.",
+  "meta": {
+    "title": "Bug: redundant Observe ↗ link",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": "rose-pine-moon",
+    "narration": {
+      "voice": "en-AU-NatashaNeural",
+      "rate": "+0%"
+    }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Bug report · kitsoki / runstatus",
+      "title": "A redundant Observe ↗ link",
+      "subtitle": "It sits beside the trace toggle and gets confused with it",
+      "narration": "A small clutter bug: a redundant Observe link in the topbar, sitting right next to the trace toggle and easily mistaken for it."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "What's wrong",
+      "lede": "Two controls that look like one job.",
+      "body": "The InteractiveView topbar carries an 'Observe ↗' router-link directly next to the Hide / show-trace toggle. The toggle controls the trace column you're already looking at; the link navigates away to the read-only observer for the very same run. Same neighbourhood, near-identical affordance — so people reach for one expecting the other, click out of their live session, and have to navigate back. It's pure clutter against a control it's easily confused with.",
+      "narration": "The topbar puts an Observe link right next to the trace toggle. The toggle shows or hides the trace you're already on; the link jumps to the read-only observer for the same run. They look alike, they sit together, and people click the wrong one — leaving their live session for no reason. It's clutter."
+    },
+    {
+      "type": "code",
+      "variant": "source",
+      "title": "InteractiveView.vue · the offending markup",
+      "lang": "html",
+      "code": "<router-link\n  :to=\"{ name: 'observe', params: { runId } }\"\n  class=\"iv__observe-link\"\n  data-testid=\"observe-link\"\n>Observe ↗</router-link>",
+      "highlight": [
+        3
+      ],
+      "annotations": [
+        {
+          "line": 3,
+          "text": "Lives in the topbar at InteractiveView.vue:85, beside the trace toggle"
+        },
+        {
+          "line": 5,
+          "text": "Navigates to the read-only observer for the same run — a dead-end relative to the live view"
+        }
+      ],
+      "caption": "tools/runstatus/src/views/InteractiveView.vue:85 — plus its CSS at ~937–946.",
+      "narration": "Here it is: a single router-link at InteractiveView line 85, with its own CSS just below. It points at the observer route for the run you're already watching live."
+    },
+    {
+      "type": "cards",
+      "variant": "numbered",
+      "title": "Reproduce & impact",
+      "cards": [
+        {
+          "label": "Open any kitsoki web run",
+          "sub": "the live InteractiveView with its trace column"
+        },
+        {
+          "label": "Look at the topbar",
+          "sub": "the Observe ↗ link sits right next to the trace toggle"
+        },
+        {
+          "label": "Reach for the toggle, hit the link",
+          "sub": "you're navigated out to the read-only observer of the same run"
+        }
+      ],
+      "caption": "Impact: confusable controls, an accidental trip out of the live session, zero added value.",
+      "narration": "To see it: open any web run, glance at the topbar, and reach for the trace toggle — the look-alike Observe link is right there to catch the misclick, sending you out to a read-only view of the run you're already on."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Evidence & triage",
+      "lede": "Repro captured; safe to one-shot.",
+      "body": "The report ships an rrweb repro — a deterministic browser replay showing the two confusable controls in the live topbar. The recommended fix is trivial and self-contained: delete the link at InteractiveView.vue:85 and its CSS rule (~937–946). No behaviour depends on it; the observer route stays reachable elsewhere. Triage recommendation: one-shot, unsupervised.",
+      "narration": "The report carries an rrweb repro that replays the confusable topbar. Because the fix is a self-contained deletion with nothing depending on it, this is a clean one-shot, unsupervised candidate."
+    }
+  ]
+}

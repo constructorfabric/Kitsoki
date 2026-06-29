@@ -205,7 +205,7 @@ states:
             # sees an explicit set — the same discipline bugfix/done re-pins
             # done_artifact with. This also makes ship-it importable as a tail
             # (the import-time exit-requires check inspects only the exit arc's
-            # own effects, not on_enter binds). See docs/stories/ship-it.md.
+            # own effects, not on_enter binds). See docs/stories/delivery-loop.md.
             - set:
                 status:     "needs-human"
                 last_error: "{{ world.last_error }}"

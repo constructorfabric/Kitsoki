@@ -19,6 +19,25 @@ gated ui-qa scenarios.
 schema violation, stale generated file, or spec↔feature mismatch — a stale
 manifest can never reach the embedded SPA.
 
+## Completeness invariants
+
+Beyond shape validation, `features-check` enforces that each cataloged feature
+has the pieces it needs to render correctly on the site (all deterministic,
+file-based — see `schema.ts`):
+
+- **promo ⇒ demo** — a feature with `promo:` must bind a `demo:`, or its grid
+  card ships empty.
+- **recordable tour demo ⇒ posterStep** — a non-external demo that has a `spec`
+  (and is not a stitched product-tour) *and* a `tour:` must name a
+  `demo.posterStep`, so the card/hero has a deterministic poster frame instead
+  of a black first frame. Tourless demos and stitched tours are exempt.
+- **in-site docs ⇒ allowlisted** — every `docs:` link under `docs/` must be
+  published by the site allowlist (`tools/site/docs-manifest.json`); otherwise
+  it silently degrades to an external GitHub blob link. Links outside `docs/`
+  (e.g. `stories/<name>/app.yaml`) are deliberate source links and exempt. Do
+  not link transient `docs/proposals/*` from a shipped feature — proposals are
+  deleted on ship.
+
 ## Field notes
 
 - `kind`: `feature` (product capability — promo grid + docs page),

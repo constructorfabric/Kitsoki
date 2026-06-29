@@ -5,7 +5,24 @@ completion automatically.
 
 ## Your task
 
-1. **Read** the epic at `{{ args.epic_path }}`.
+1. **Read** the epic at `{{ args.epic_path }}` exactly once before doing any
+   source inspection.
+   - Do not spawn subagents or use the Claude Code `Agent` tool. You are the
+     decomposer; nested agents waste quota and can inherit the wrong provider
+     model.
+   - Do not run shell commands. You do not have `Bash`; design the
+     `gate_command` strings from static repo evidence and let the downstream
+     delivery loop execute them.
+   - Treat proposal files under `docs/proposals/` as authoritative task specs.
+     If the proposal names implementation seams, tests, and docs, do not inspect
+     source at all. Decompose from the proposal.
+   - Keep fallback discovery bounded: only when the epic does not name enough
+     seams to write gates, inspect at most 3 directly relevant source/test
+     files. Count repeated reads of the same file against this budget. Stop
+     searching as soon as you can name the implementation seams and gates.
+   - Before writing output, do a short internal checklist only: epic understood,
+     seams named, gates red-at-baseline, deps ordered, output path known,
+     submit next. Do not keep investigating after the checklist passes.
 2. **Identify** the smallest independently-shippable implementation slices.
    - Each slice must be completable without changes from later slices.
    - Prefer vertical slices (end-to-end per feature) over horizontal layers.
@@ -61,5 +78,6 @@ briefs:
   with hyphens (pattern `^[a-z][a-z0-9-]*$`).
 - **Non-empty brief**: the `brief` field must be specific enough for the maker
   agent to work from (at least 10 characters, describes the goal and acceptance).
-- **Right-sized**: aim for 3–10 briefs for a typical epic. Too fine-grained wastes
-  integration overhead; too coarse makes each brief risky to ship atomically.
+- **Right-sized**: aim for 3–6 briefs for a typical proposal. Too fine-grained
+  wastes integration overhead; too coarse makes each brief risky to ship
+  atomically.

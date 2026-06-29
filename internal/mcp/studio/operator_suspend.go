@@ -72,14 +72,28 @@ type suspendBroker struct {
 	pending  map[string]*pendingQuestion
 	seq      int
 	finished bool
+
+	input     string
+	startedAt time.Time
+	snapshot  driveSnapshot
 }
 
-func newSuspendBroker() *suspendBroker {
+func newSuspendBroker(input string, startedAt time.Time, snapshot driveSnapshot) *suspendBroker {
 	return &suspendBroker{
 		questionCh: make(chan *pendingQuestion, 1),
 		doneCh:     make(chan turnResult, 1),
 		pending:    map[string]*pendingQuestion{},
+		input:      input,
+		startedAt:  startedAt,
+		snapshot:   snapshot,
 	}
+}
+
+type driveSnapshot struct {
+	state          string
+	world          map[string]any
+	allowedIntents []string
+	lastView       string
 }
 
 // park publishes a forwarded question batch and returns the channel the caller
@@ -146,6 +160,29 @@ func (b *suspendBroker) snapshotPending() []pendingQuestion {
 		})
 	}
 	return out
+}
+
+func (b *suspendBroker) snapshotRunning() *runningDrive {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.finished || len(b.pending) > 0 {
+		return nil
+	}
+	return &runningDrive{input: b.input, startedAt: b.startedAt}
+}
+
+func (b *suspendBroker) snapshotState() (driveSnapshot, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.finished {
+		return driveSnapshot{}, false
+	}
+	return driveSnapshot{
+		state:          b.snapshot.state,
+		world:          cloneAnyMap(b.snapshot.world),
+		allowedIntents: append([]string(nil), b.snapshot.allowedIntents...),
+		lastView:       b.snapshot.lastView,
+	}, true
 }
 
 // waitNext blocks until either the turn completes or the next question parks,

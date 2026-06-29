@@ -221,6 +221,36 @@ func (s *Store) Create(ctx context.Context, appID, room, scopeKey, title string)
 	return s.Get(ctx, id)
 }
 
+// GetOrEnsure returns the chat with the given ID. If the chat does not exist,
+// it inserts a minimal placeholder row (empty app_id/room/scope_key, title
+// "untitled chat", status "active") via INSERT OR IGNORE and then returns the
+// row. This is used by host.agent.converse under --harness replay, where the
+// preceding host.chat.resolve effect is served from a cassette without ever
+// touching the real ChatStore, so no row was inserted before the converse
+// handler runs.
+func (s *Store) GetOrEnsure(ctx context.Context, chatID string) (*Chat, error) {
+	c, err := s.Get(ctx, chatID)
+	if err == nil {
+		return c, nil
+	}
+	if !errors.Is(err, ErrChatNotFound) {
+		return nil, fmt.Errorf("chats.GetOrEnsure: %w", err)
+	}
+	// Row not found — insert a placeholder, ignoring conflicts so a concurrent
+	// GetOrEnsure on the same chatID is safe.
+	now := s.clock.Now().UnixMicro()
+	if _, execErr := s.db.ExecContext(ctx, `
+		INSERT OR IGNORE INTO chats
+		  (id, app_id, room, scope_key, title, status, claude_session_id,
+		   parent_chat_id, session_id, created_at, updated_at, last_active_at)
+		VALUES (?, '', '', '', 'untitled chat', 'active', '', NULL, NULL, ?, ?, ?)`,
+		chatID, now, now, now,
+	); execErr != nil {
+		return nil, fmt.Errorf("chats.GetOrEnsure: insert placeholder: %w", execErr)
+	}
+	return s.Get(ctx, chatID)
+}
+
 // Get returns the chat with the given ID, or ErrChatNotFound if it does not exist.
 func (s *Store) Get(ctx context.Context, chatID string) (*Chat, error) {
 	row := s.db.QueryRowContext(ctx, `

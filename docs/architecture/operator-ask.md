@@ -28,18 +28,27 @@ the operator is therefore consistent with how agent calls already
 behave — the turn is *already* parked. The bridge is one synchronous
 block layered on top of that park:
 
-```
-claude -p (agent)
-  └─ calls mcp__operator__ask({questions:[…]})        # AskUserQuestion stays DENIED
-       └─ kitsoki mcp-operator-ask  (MCP stdio grandchild)
-            └─ dials $KITSOKI_OPERATOR_ASK_SOCK (per-call unix socket), sends questions, BLOCKS
-                 └─ host operatorAskListener (internal/host/operator_ask_bridge.go) bridges socket ⇄ prompter
-                      └─ ctx OperatorPrompter.Ask(sessionID, questions)   # DI seam
-                           ├─ WEB: register pending Q → SSE push → answer RPC resolves
-                           └─ TUI: bubbletea msg → choice modal → submit resolves
-                      ← answers written back over the socket
-            ← tool_result = answers
-  └─ agent continues; agent verb returns; turn completes & renders
+```mermaid
+sequenceDiagram
+    participant Agent as claude -p agent
+    participant Tool as mcp__operator__ask
+    participant Bridge as kitsoki mcp-operator-ask
+    participant Socket as KITSOKI_OPERATOR_ASK_SOCK
+    participant Listener as operatorAskListener
+    participant Prompter as OperatorPrompter
+    participant Surface as Web or TUI
+
+    Agent->>Tool: ask questions
+    Tool->>Bridge: stdio MCP call
+    Bridge->>Socket: send questions and block
+    Socket->>Listener: per-call unix socket
+    Listener->>Prompter: Ask(sessionID, questions)
+    Prompter->>Surface: show pending question
+    Surface-->>Prompter: answer
+    Prompter-->>Socket: answers
+    Socket-->>Bridge: unblock
+    Bridge-->>Tool: tool_result = answers
+    Tool-->>Agent: agent continues
 ```
 
 ### Why an MCP tool, not a claude-code hook
@@ -129,14 +138,28 @@ wire/answer schema, the bounded wait, and the three `operator.question.*`
 trace events are reused verbatim. Only the round-trip transport differs,
 and the prompter picks one at dispatch:
 
-```
-Claude Code ──(session.drive)──▶ studio turn ──▶ agent sub-agent ──▶ mcp__operator__ask
-                                                       (per-call unix socket, EXISTING) │
-                              studio OperatorPrompter.Ask(sessionID, questions) ◀────────┘
-                                  ├─ PRIMARY: MCP elicitation request → client → answer  (one nested session.drive)
-                                  └─ FALLBACK: session.drive returns {awaiting_operator}; (turn parked, lock held)
-                                               client calls session.answer → resumes
-                              ← answers down the socket ──▶ sub-agent continues ──▶ turn completes
+```mermaid
+sequenceDiagram
+    participant Client as Claude Code
+    participant Studio as studio turn
+    participant Agent as agent sub-agent
+    participant Ask as mcp__operator__ask
+    participant Prompter as studio OperatorPrompter
+
+    Client->>Studio: session.drive
+    Studio->>Agent: dispatch sub-agent
+    Agent->>Ask: ask questions
+    Ask->>Prompter: OperatorPrompter.Ask
+    alt MCP elicitation supported
+        Prompter->>Client: elicitation request
+        Client-->>Prompter: answer
+    else fallback
+        Prompter-->>Client: awaiting_operator
+        Client->>Prompter: session.answer
+    end
+    Prompter-->>Ask: answers
+    Ask-->>Agent: continue
+    Agent-->>Studio: turn completes
 ```
 
 - **Primary — MCP elicitation.** When the client advertises the

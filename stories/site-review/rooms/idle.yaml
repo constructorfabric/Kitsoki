@@ -1,0 +1,65 @@
+# idle — entry. Hit `start` to run the review.
+
+states:
+
+  idle:
+    description: "Site review parked. Hit start to audit the catalog + site against HEAD."
+    view:
+      - prose: "Single-shot site audit. The reviewer reads the feature catalog (features/*.yaml) and the product site (tools/site/) against recent commits and decides whether they advertise what actually shipped."
+      - kv:
+          pairs:
+            "Working dir":   '{{ world.cwd|default:"(probing…)" }}'
+            "Repo root":     '{{ world.repo_root|default:"(not a git tree)" }}'
+            "Last commit":   '{{ world.commit_sha|default:"(not yet probed)" }}'
+            "Last verdict":  '{{ world.verdict.decision|default:"(not yet run)" }}'
+            "Last artifact": '{{ world.artifact_path|default:"(none)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "start"
+              hint:   "audit recent commits (~20) + working tree"
+              intent: start
+            - label:  "baseline"
+              hint:   "audit the whole catalog + site (no commit-range filter)"
+              intent: baseline
+            - label:  "quit"
+              hint:   "leave the story"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render the scene"
+              intent: look
+    relevant_world: [cwd, repo_root, commit_sha, verdict, artifact_path]
+    on_enter:
+      # Probe location so the operator can see which tree they're auditing
+      # before committing to `start`. Best-effort: a non-git directory just
+      # leaves repo_root empty.
+      - invoke: host.run
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              jq -nc \
+                --arg cwd  "$(pwd)" \
+                --arg root "$(git rev-parse --show-toplevel 2>/dev/null || true)" \
+                '{cwd:$cwd, repo_root:$root}'
+        bind:
+          cwd:       "stdout_json.cwd"
+          repo_root: "stdout_json.repo_root"
+    on:
+      start:
+        - target: reviewing
+          effects:
+            - set:
+                review_mode: "recent"
+      baseline:
+        - target: reviewing
+          effects:
+            - set:
+                review_mode: "baseline"
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

@@ -37,31 +37,25 @@ reading order for new authors:
 
 ## 1. Picking a mode
 
-```
-                              Need user input?
-                                    │
-                  ┌─────────────────┴──────────────────┐
-                  │                                    │
-              yes, one of                          yes, free text
-              N options                          ╱   (no enumerable set)
-                  │                            ╱       │
-                  │                          ╱      Use a prose:
-       Is the input free-form text         ╱       hint + the
-       OR a list / structured form?      ╱         semantic router.
-                  │                    ╱
-       ┌──────────┼────────────┐
-       │          │            │
-   pick ONE   pick MANY    fill a STRUCTURED
-   from list  from list    submission (≥2 fields)
-       │          │            │
-       ▼          ▼            ▼
-   single mode  multi mode  form mode
-       │
-       └─ Need one free-form parameter
-          alongside the pick?
-              │
-              ▼
-          single + param:
+```mermaid
+flowchart TD
+    need{"Need user input?"}
+    options["One of N options"]
+    free["Free text<br/>no enumerable set"]
+    shape{"Input shape?"}
+    single["pick ONE from list<br/>single mode"]
+    multi["pick MANY from list<br/>multi mode"]
+    form["structured submission<br/>2+ fields<br/>form mode"]
+    param{"Need one free-form<br/>parameter alongside the pick?"}
+    singleParam["single + param"]
+    prose["Use prose hint<br/>+ semantic router"]
+
+    need --> options
+    need --> free --> prose
+    options --> shape
+    shape --> single --> param --> singleParam
+    shape --> multi
+    shape --> form
 ```
 
 Rules of thumb:

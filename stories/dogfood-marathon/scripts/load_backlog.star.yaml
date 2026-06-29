@@ -1,0 +1,7 @@
+inputs:
+  source:          { type: string, required: true }
+  limit:           { type: int,    required: false }
+  baseline_policy: { type: string, required: false }
+
+outputs:
+  backlog: { type: object }

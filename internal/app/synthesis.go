@@ -235,7 +235,7 @@ func synthesizedRouting() *RoutingConfig {
 // `hosts: declared` on the dev-story import is satisfied. It mirrors
 // kitsoki-dev's hosts: block — every host the dev-story subtree may invoke,
 // including the iface-backed handlers (rebound via host_bindings) and the bare
-// hosts the chain calls directly. Kept in sync with stories/kitsoki-dev/app.yaml.
+// hosts the chain calls directly. Kept in sync with .kitsoki/stories/kitsoki-dev/app.yaml.
 func synthesizedRootHosts() []string {
 	return []string{
 		// Iface-backed handlers (dev-story defaults; rebindable via bindings).

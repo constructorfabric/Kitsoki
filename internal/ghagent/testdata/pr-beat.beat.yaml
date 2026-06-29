@@ -1,0 +1,22 @@
+# pr-beat.beat.yaml — drives the minimal PR autopilot beat (pr-beat.app.yaml).
+# A `start` turn reads pr_status (served by the inline host.git handler, no gh)
+# and lands in `done`. Proves the PR route runs ONE real beat through the engine.
+test_kind: flow
+app: ../pr-beat.app.yaml
+initial_state: pr_check
+initial_world:
+  pr_id: "7"
+  gh_job_id: "job-stub"
+  gh_origin_ref: "github:o/r/pr/7"
+  repo: "o/r"
+
+host_handlers:
+  host.git: { data: { ok: true, state: "OPEN", sha: "deadbeef" } }
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: done
+    expect_world:
+      pr_state: "OPEN"
+
+expect_no_errors: true

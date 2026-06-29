@@ -34,7 +34,7 @@ sleep 1
 
 if [ "$build" -eq 1 ]; then
   echo "▸ make build (embedding the current SPA)…" >&2
-  ( cd "$repo" && make build >/dev/null && cp ./kitsoki bin/kitsoki )
+  ( cd "$repo" && make build-bin >/dev/null )   # NEVER cp ./kitsoki bin/kitsoki — invalidates the macOS sig → SIGKILL
 fi
 [ -x "$repo/bin/kitsoki" ] || { echo "bin/kitsoki missing — run without --no-build" >&2; exit 2; }
 

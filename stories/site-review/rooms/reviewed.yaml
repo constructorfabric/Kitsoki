@@ -1,0 +1,72 @@
+# reviewed — terminal display state. Shows the verdict and the path
+# to the artifact. From here the operator can apply the fixes, review
+# again (e.g. after a new commit), or quit.
+
+states:
+
+  reviewed:
+    description: "Site review complete."
+    view:
+      - kv:
+          pairs:
+            "Commit":     "{{ world.commit_sha }}"
+            "Mode":       '{{ world.review_mode|default:"recent" }}'
+            "Decision":   '{{ world.verdict.decision|default:"(missing)" }}'
+            "Confidence": '{{ world.verdict.confidence|default:"(n/a)" }}'
+            "Gaps":       '{{ world.verdict.gaps|length|default:"0" }}'
+            "Artifact":   '{{ world.artifact_path|default:"(not written)" }}'
+      - heading: "Summary"
+      - prose: '{{ world.verdict.summary|default:"(no summary)" }}'
+      - heading: "Shipped in scope"
+      - code: |
+          {% for c in world.verdict.commits %}- {{ c.sha }} — {{ c.subject }}
+            capability: {{ c.capability }}
+          {% empty %}(none — structural audit){% endfor %}
+      - heading: "Gaps (kind · target)"
+        when: 'world.verdict.decision == "needs_update"'
+      - code: |
+          {% for g in world.verdict.gaps %}[{{ g.kind }}] {{ g.target }}{% if g.detail %} — {{ g.detail }}{% endif %}
+          {% for e in g.evidence %}    [{{ e.commit }}{% if e.source %} · {{ e.source }}{% endif %}] {{ e.change }}
+              → {{ e.reason }}
+          {% endfor %}{% empty %}(none cited){% endfor %}
+        when: 'world.verdict.decision == "needs_update"'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            # In staged mode the engine stops here (reviewed is a decision
+            # gate) and the fix_gaps auto-advance is suppressed, so the
+            # operator needs an explicit way to apply the fixes. Shown only
+            # when the verdict flagged gaps; in one-shot mode the on_enter
+            # emit fires and this room never renders. See
+            # docs/proposals/execution-modes-and-gate-deciders.md.
+            - label:  "fix_gaps"
+              hint:   "author the missing catalog entries / patch stale site copy"
+              intent: fix_gaps
+              when:   'world.verdict.decision == "needs_update"'
+            - label:  "review_again"
+              hint:   "re-run against the current HEAD"
+              intent: review_again
+            - label:  "quit"
+              hint:   "exit"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render the scene"
+              intent: look
+    relevant_world: [commit_sha, verdict, artifact_path]
+    on_enter:
+      # Live progress breadcrumb — streamed per-room as the one-shot chain
+      # passes through (and shown above the verdict when staged stops here).
+      - say: 'Review complete — verdict: {{ world.verdict.decision }}{% if world.verdict.decision == "needs_update" %} ({{ world.verdict.gaps|length }} gap(s) cited){% endif %}.'
+      # This is an operator gate. A needs_update verdict exposes the
+      # `fix_gaps` action but does not auto-edit the working tree; the
+      # write-capable site_writer runs only after an explicit operator pick.
+    on:
+      fix_gaps:
+        - target: fixing
+      review_again:
+        - target: reviewing
+      quit:
+        - target: "@exit:done"
+      look:
+        - target: .

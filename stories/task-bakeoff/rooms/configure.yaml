@@ -1,0 +1,55 @@
+# configure — DETERMINISTIC (no LLM). Declare the MATRIX: the three axes the
+# bake-off compares over.
+#
+#   tasks       the task/case axis        (e.g. bug9, bug12, bug14)
+#   candidates  the harness/model axis    (e.g. opus-4.8, sonnet-4.6)
+#   contenders  the structure axis        (e.g. kitsoki, single)
+#
+# A cell = (task × candidate × contender). This room ECHOES the loaded matrix
+# (sourced from the harness manifest tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml and seeded
+# into world by the operator/flow — we do NOT re-author the manifest; the harness
+# owns it) and records the cell-count total.
+#
+# Honesty note: a full 3-axis cartesian product is not expressible in kitsoki
+# set-effects (no nested loop primitive), so the explicit cell ROSTER
+# (world.cells.items) is supplied alongside the axes — in flow/no-LLM mode via
+# initial_world, in a live run by the configure-time host step a follow-up slice
+# will wire (host.run → a tiny roster-builder reading the manifest). cells_total
+# is the authoritative count and is asserted against the roster downstream.
+
+states:
+
+  configure:
+    description: "Declare the bake-off matrix (tasks × candidates × contenders)."
+    relevant_world: [tasks, candidates, contenders, cells, cells_total]
+    view:
+      - heading: "Bake-off · configure the matrix"
+      - kv:
+          pairs:
+            Tasks:      "{{ world.tasks|join:', ' }}"
+            Candidates: "{{ world.candidates|join:', ' }}"
+            Contenders: "{{ world.contenders|join:', ' }}"
+            Cells:      "{{ world.cells_total }}"
+      - prose: "A cell = (task × candidate × contender), one hermetic worktree each. Accept to track the run."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "advance to running (track the cell roster)"
+              intent: accept
+            - label:  "quit"
+              hint:   "abandon"
+              intent: quit
+    on_enter:
+      # Compute the authoritative cell count from the three axes. (The explicit
+      # roster items are supplied; this total cross-checks them.)
+      - set:
+          cells_total: "{{ len(world.tasks) }}"
+    on:
+      accept:
+        - target: running
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

@@ -311,7 +311,10 @@ func ghPRStatus(ctx context.Context, workdir string, args map[string]any) (Resul
 	if strings.TrimSpace(prID) == "" {
 		return Result{Error: "git.pr_status: pr_id argument is required"}, nil
 	}
-	stdout, stderr, code, err := cliExec(ctx, workdir, "gh", "pr", "view", prID, "--json", "state,statusCheckRollup")
+	ghArgs := []string{"pr", "view", prID}
+	ghArgs = append(ghArgs, repoFlag(args)...)
+	ghArgs = append(ghArgs, "--json", "state,statusCheckRollup")
+	stdout, stderr, code, err := cliExec(ctx, workdir, "gh", ghArgs...)
 	if err != nil {
 		return Result{Error: fmt.Sprintf("git.pr_status: exec: %v", err)}, nil
 	}

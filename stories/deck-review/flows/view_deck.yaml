@@ -1,0 +1,39 @@
+# view_deck — boot into review (render auto-fires) → viewing → done → @exit:viewed.
+#
+# host.slidey.render + host.artifacts_dir stubbed (no slidey runs). The render
+# room auto-emits `rendered` on_enter once deck_handle binds, so the session
+# boots straight to viewing; the operator then reviews and `done`s.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  deck: { spec_path: "docs/decks/example-prd.slidey.json", summary: "PRD: trace-column pet (4 scenes)." }
+  phase_label: "Phase 1 · PRD"
+  ticket_url: "https://github.com/bsacrobatix/Kitsoki/issues/101"
+
+host_handlers:
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: ".artifacts/deck-review/example-prd.html"
+          semantic_path: ""
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "deck-review#1", kind: "slideshow", mime: "text/html" }, path: ".artifacts/deck-review/example-prd.html", kind: "slideshow", mime: "text/html" }
+
+turns:
+  # boot: render fires on_enter → viewing (deck_handle bound).
+  - intent: { name: begin, slots: {} }
+    expect_state: viewing
+    expect_world:
+      deck_handle: "deck-review#1"
+  # operator finishes reviewing.
+  - intent: { name: done, slots: {} }
+    expect_state: "__exit__viewed"
+
+expect_terminal: true
+expect_no_errors: true

@@ -1055,13 +1055,12 @@ func applyFreeFormFallback(def *AppDef) {
 	if !ok || src == nil || len(src.On[intentName]) == 0 {
 		return
 	}
-	fallbackParent := parentStatePath(statePath)
 	fallback := cloneTransitions(src.On[intentName])
+	for i := range fallback {
+		fallback[i].Target = statePath
+	}
 	walkStates(def.States, "", func(path string, s *State) {
 		if s == nil || path == statePath || s.Terminal {
-			return
-		}
-		if parentStatePath(path) != fallbackParent {
 			return
 		}
 		if s.DefaultIntent != "" || s.AgentOffRamp != nil {
@@ -2243,10 +2242,70 @@ func validateStarlarkEffects(file string, def *AppDef, errs *[]error) {
 			addErr(fmt.Sprintf("%s: host.starlark.run script %q has no sidecar (expected %q): %v", loc, rawScript, sidecarPath, readErr))
 			return
 		}
-		if _, parseErr := starlarkhost.ParseSidecar(raw); parseErr != nil {
+		sc, parseErr := starlarkhost.ParseSidecar(raw)
+		if parseErr != nil {
 			addErr(fmt.Sprintf("%s: host.starlark.run sidecar %q is malformed: %v", loc, sidecarPath, parseErr))
+			return
+		}
+
+		// Statically vet the wired `inputs:` against how the machine actually
+		// resolves them. host.starlark.run does NOT expr-evaluate inputs — the
+		// machine resolves each value first, and ONLY a string wrapping the whole
+		// value in `{{ }}` is evaluated (a sole `{{ expr }}` preserves the typed
+		// value). A BARE `world.foo` is therefore passed to the script VERBATIM as
+		// the literal string "world.foo", which silently breaks resolution
+		// (deck-not-found, "expected int, got string" at runtime, deep in an
+		// on_error arc). Catch both shapes here, at load, where the fix is one edit.
+		inputs, _ := eff.With["inputs"].(map[string]any)
+		for name, val := range inputs {
+			s, isStr := val.(string)
+			// (a) heuristic: a string value that is a bare expression (refs a world
+			// root, or uses the `??` / `?.` expr operators) with no `{{ }}` (or `{%
+			// %}`) template — the unambiguous footgun. Scoped to `inputs:`, so prose
+			// fields elsewhere (description:, summary_markdown:, …) never trip it.
+			if isStr && looksLikeBareStarlarkInputExpr(s) {
+				addErr(fmt.Sprintf("%s: host.starlark.run input %q is a bare expression %q — it reaches the script as that literal string, not its value. Template it: %q (a sole {{ }} preserves the typed value).",
+					loc, name, s, "{{ "+strings.TrimSpace(s)+" }}"))
+				continue
+			}
+			// (b) type check: a NON-templated literal wired to a declared input
+			// whose type it can never satisfy (e.g. a string literal to a declared
+			// `int`). Templated values (`{{ … }}` / `{% … %}`) resolve at runtime, so
+			// skip them. Zero false positives — there is no string→int coercion.
+			spec, declared := sc.Inputs[name]
+			if !declared {
+				continue // the engine ignores undeclared inputs
+			}
+			if isStr && (strings.Contains(s, "{{") || strings.Contains(s, "{%")) {
+				continue
+			}
+			if !starlarkhost.ValueMatchesType(val, spec.Type) {
+				addErr(fmt.Sprintf("%s: host.starlark.run input %q is declared %s but is wired to a non-template %T (%v) that can never satisfy it — pass a %s literal or a {{ }} template.",
+					loc, name, starlarkhost.NormType(spec.Type), val, val, starlarkhost.NormType(spec.Type)))
+			}
 		}
 	})
+}
+
+// bareStarlarkInputRootRE matches a value that STARTS WITH a world-root accessor
+// (world./slots./args./form. and the optional-chain/index forms) — the dominant
+// shape of an unevaluated `inputs:` expression.
+var bareStarlarkInputRootRE = regexp.MustCompile(`^(world|slots|args|form)\s*[.?\[]`)
+
+// looksLikeBareStarlarkInputExpr reports whether a host.starlark.run `inputs:`
+// string value is a bare (untemplated) expression. High-precision by design — it
+// only fires inside an `inputs:` block, where values are never prose: a leading
+// world-root accessor, or the `??` / `?.` expr operators that do not occur in
+// real literals. A `{{ }}` / `{% %}` template is correct and never flagged.
+func looksLikeBareStarlarkInputExpr(s string) bool {
+	t := strings.TrimSpace(s)
+	if t == "" || strings.Contains(t, "{{") || strings.Contains(t, "{%") {
+		return false
+	}
+	if bareStarlarkInputRootRE.MatchString(t) {
+		return true
+	}
+	return strings.Contains(t, "??") || strings.Contains(t, "?.")
 }
 
 // metaEnvVarRE matches `$NAME` and `${NAME}` tokens in a cwd: string.

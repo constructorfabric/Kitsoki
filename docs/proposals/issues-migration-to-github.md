@@ -11,9 +11,9 @@ kitsoki-dev flow fixtures stub `host.gh.ticket` (kitsoki-dev flows 5/5, dev-stor
 31/31); and the superseded `bug-sync-proposal.md` is deleted.
 **One step remains:** run the real bulk migration on `constructorfabric/Kitsoki`
 — an outward mass-write (~15 issues + comments + closes) the maintainer triggers
-once. After it lands, delete this proposal + the epic.
+once. After it lands, delete this proposal.
 **Kind:**   runtime
-**Epic:**   ./github-issues-tracker.md
+**Epic:**   — standalone
 
 ## Why
 
@@ -42,7 +42,7 @@ deleted — so history and evidence stay reachable.
   `issues/README.md:63` reserved for exactly this) so re-running skips
   already-migrated files. `external:` is the one safe write into the
   otherwise-frozen pile.
-- **Rebind** — `stories/kitsoki-dev/app.yaml`
+- **Rebind** — `.kitsoki/stories/kitsoki-dev/app.yaml`
   `host_bindings: { ticket: host.gh.ticket }` (replacing
   `host.local_files.ticket`), with `ticket_repo: constructorfabric/Kitsoki`
   (slice #1) threaded into the provider args. This is the moment the dogfood
@@ -88,7 +88,7 @@ state, and evidence preserved), `kitsoki-dev` reads/writes GitHub, and
 
 - **Code:** a `kitsoki issues migrate` command (`cmd/kitsoki/`) reusing the
   localfiles reader + slice #1 ops + slice #2's attachment upload;
-  `stories/kitsoki-dev/app.yaml` (the `host_bindings` rebind + `ticket_repo`;
+  `.kitsoki/stories/kitsoki-dev/app.yaml` (the `host_bindings` rebind + `ticket_repo`;
   remove local-files `ticket_globs`).
 - **Repo:** `issues/DEPRECATED.md` + a banner on `issues/README.md`;
   `external:` blocks written into each migrated file (the only mutation to the

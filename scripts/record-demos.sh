@@ -32,7 +32,7 @@ FORCE=0
 
 command -v jq >/dev/null 2>&1 || { echo "record-demos: jq is required" >&2; exit 2; }
 [ -f "$INDEX" ] || { echo "record-demos: $INDEX missing — run: make features-index" >&2; exit 2; }
-[ -x "$BIN" ] || { echo "record-demos: $BIN missing — run: make build && cp ./kitsoki bin/kitsoki" >&2; exit 2; }
+[ -x "$BIN" ] || { echo "record-demos: $BIN missing — run: make build-bin" >&2; exit 2; }
 
 # A restored .artifacts cache may carry a stale generated feature index. Refresh
 # it after cache restore and before any skip/record decisions.

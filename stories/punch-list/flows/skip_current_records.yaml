@@ -1,0 +1,90 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  manifest_path: "stories/punch-list/testdata/two_items.yaml"
+
+host_handlers:
+  host.run:
+    by_call:
+      punch_load:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            state_path: ".artifacts/punch-list/two_items.state.json"
+            item_count: "2"
+            error: ""
+            items:
+              - { id: validate-punch-list, title: "Validate the punch-list story", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "stories/cherny-loop/app.yaml", status: pending, verify: [ { kind: story_validate, story: "stories/punch-list/app.yaml" } ], trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl" }
+              - { id: policy-demo, title: "Exercise the policy check", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "", status: pending, verify: [ { kind: command, cmd: "true" } ], trace_path: ".artifacts/punch-list/traces/policy-demo.jsonl" }
+      punch_board-0-:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            items: []
+            results: { items: [] }
+            next_item: { id: validate-punch-list, title: "Validate the punch-list story", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "stories/cherny-loop/app.yaml", verify: [ { kind: story_validate, story: "stories/punch-list/app.yaml" } ], trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl" }
+            next_item_id: validate-punch-list
+            route: dispatch
+            has_pending: true
+            processed_count: 0
+            passed_count: 0
+            partial_count: 0
+            failed_count: 0
+            skipped_count: 0
+            pending_count: 2
+            count_summary: "Processed 0 | Passed 0 | Partial 0 | Failed 0 | Skipped 0 | Pending 2"
+      punch_board-0-skipped:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            items: []
+            results:
+              items:
+                - { id: validate-punch-list, title: "Validate the punch-list story", status: skipped, summary: "trace locked before the target story could be opened" }
+            next_item: { id: policy-demo, title: "Exercise the policy check", story: "stories/punch-list/app.yaml", mode: drive, profile: codex-native, model: gpt-5.5, implementation_story: "", verify: [ { kind: command, cmd: "true" } ], trace_path: ".artifacts/punch-list/traces/policy-demo.jsonl" }
+            next_item_id: policy-demo
+            route: dispatch
+            has_pending: true
+            processed_count: 1
+            passed_count: 0
+            partial_count: 0
+            failed_count: 0
+            skipped_count: 1
+            pending_count: 1
+            count_summary: "Processed 1 | Passed 0 | Partial 0 | Failed 0 | Skipped 1 | Pending 1"
+      punch_policy-validate-punch-list:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            policy_result: { status: ok, message: "profile/model/verifier policy passed" }
+            error: ""
+  host.agent.task:
+    by_call:
+      punch_drive-validate-punch-list:
+        delay: "20ms"
+        data:
+          ok: true
+          submitted: { status: partial, story: "stories/punch-list/app.yaml", trace_path: ".artifacts/punch-list/traces/validate-punch-list.jsonl", model: gpt-5.5, profile: codex-native, findings: [ { severity: high, summary: "trace locked" } ], summary: "trace locked before the target story could be opened" }
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: load
+  - intent: { name: next_item, slots: {} }
+    expect_state: board
+  - intent: { name: next_item, slots: {} }
+    advance_clock: "2s"
+    expect_state: needs_human
+  - intent: { name: skip_current, slots: {} }
+    expect_state: board
+    expect_world:
+      skipped_count: 1
+      pending_count: 1
+      current_item_id: policy-demo
+
+expect_terminal: false
+expect_no_errors: true

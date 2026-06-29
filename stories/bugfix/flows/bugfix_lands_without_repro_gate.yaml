@@ -1,0 +1,89 @@
+# bugfix_lands_without_repro_gate — the new default: a ticket with NO repro_command
+# (gate_command == "") still LANDS to main instead of bailing to needs-human.
+#
+# The never-RED trap only fires when a regression gate was configured. With no
+# repro_command, testing's accept skips the trap, computes landing_gate =
+# default_landing_gate ("go build ./... && go test ./..."), and enters the tail;
+# the tail re-verifies THAT gate on the merged commit (never ship blind) → shipped.
+#
+# Contrast bugfix_ships_direct.yaml (repro_command present → RED→GREEN regression
+# discipline). Zero LLM.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-NOREPRO-1"
+  ticket_title:     "Tidy a confusing log line"
+  thread:           "TKT-NOREPRO-1"
+  workspace_id:     "logtidy"
+  workdir:          ".worktrees/logtidy"
+  worktree_path:    ".worktrees/logtidy"
+  feature_branch:   "logtidy"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "direct-ship"
+  gate_command:     ""        # no repro_command → no regression gate
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/logtidy" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Fix applied"
+        summary_markdown: "Clarified the log line; no behavior change."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        files_changed:    ["internal/log/line.go"]
+  host.agent.ask:
+    data:
+      ok: true
+      submitted: { summary_title: "Fix proposal", summary_markdown: "Reword.", fix_description: "x", root_cause: "y", affected_files: ["internal/log/line.go"] }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # No regression_gate_exec — the repro gate is skipped when gate_command is "".
+      integrate_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "abc1234", last_op_ok: true, last_error: "" } }
+      # the tail's verify re-runs the DEFAULT landing gate (build + suite) — GREEN.
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok  ./...  1.2s" } }
+      cleanup_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: cleaned, last_op_ok: true, last_error: "" } }
+
+turns:
+  - intent: { name: start,  slots: {} }
+    expect_state: reproducing
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    # No repro_command → the pre-fix regression gate never ran.
+    expect_world:
+      regression_red_pre_fix: false
+  # accept from testing: no regression gate configured → the never-RED trap is
+  # SKIPPED, the fix LANDS, and the tail verifies the default build/test gate.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:                  shipped
+      regression_red_pre_fix:  false
+      landing_gate:            "go build ./... && go test ./..."
+      shipped_sha:             "abc1234"
+      tail__integrate_outcome: integrated
+      tail__verify_ok:         true
+      tail__cleanup_outcome:   cleaned
+
+expect_terminal: true
+expect_no_errors: true

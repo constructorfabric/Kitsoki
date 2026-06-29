@@ -86,7 +86,7 @@ will let an operator:
 
 | # | Slice | Kind | Scope (one line) | Depends on | Status | File |
 |---|---|---|---|---|---|---|
-| 1 | Observation kinds | tracing | A semantic kind taxonomy over `EventKind` so consumers badge/color/collapse/lay-out by category | — | Draft | [`trace-observation-kinds.md`](trace-observation-kinds.md) |
+| 1 | Observation kinds | tracing | A semantic kind taxonomy over `EventKind` so consumers badge/color/collapse/lay-out by category | — | Shipped; see `internal/store/observation.go`, `tools/runstatus/src/lib/observation.ts`, and `docs/tracing/trace-format.md` | — |
 | 2 | Decision-first detail | tui | Hero the gate/routing detail with the decision; demote prompt/response to an evidence drawer | 1 (soft), 4 (soft) | Draft | [`trace-decision-detail.md`](trace-decision-detail.md) |
 | 3 | Multi-view + waterfall | tui | Co-equal view modes (Tree / Timeline-waterfall / Graph) + a filterable trace-list triage table | 1 (soft) | Draft | [`trace-view-modes.md`](trace-view-modes.md) |
 | 4 | Decide alternatives | runtime | The decide agent emits ranked runner-up scores; recorded in the verdict + `gate_decided` | — | Draft | [`decision-alternatives.md`](decision-alternatives.md) |

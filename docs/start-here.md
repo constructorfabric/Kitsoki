@@ -7,8 +7,9 @@ different paths. Use this page to pick the shortest useful route.
 
 | You are | Read in order |
 |---|---|
-| Evaluating the idea | [`../README.md`](../README.md) -> [`architecture/concept.md`](architecture/concept.md) -> [`case-studies/bug-fix.md`](case-studies/bug-fix.md) |
+| Skeptical and deciding whether Kitsoki is worth it | [`evaluate-kitsoki.md`](evaluate-kitsoki.md) -> [`architecture/concept.md`](architecture/concept.md) -> [`case-studies/bug-fix.md`](case-studies/bug-fix.md) -> [`case-studies/bugfix-bakeoff.md`](case-studies/bugfix-bakeoff.md) |
 | Running kitsoki locally | [`../README.md`](../README.md#quickstart) -> [`getting-started.md`](getting-started.md) -> [`tracing/testing.md`](tracing/testing.md) |
+| Setting up kitsoki in your own project | [`getting-started.md`](getting-started.md) -> [`project-onboarding.md`](project-onboarding.md) -> [`stories/dev-story-onboarding.md`](stories/dev-story-onboarding.md) |
 | Writing a story | [`stories/architecture.md`](stories/architecture.md) -> [`recipes/`](recipes/README.md) -> [`stories/authoring.md`](stories/authoring.md) -> [`embedded/app-schema.md`](embedded/app-schema.md) |
 | Contributing to kitsoki | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) -> [`architecture/overview.md`](architecture/overview.md) -> [`architecture/developer-guide.md`](architecture/developer-guide.md) |
 | Debugging a session | [`tracing/README.md`](tracing/README.md) -> [`tracing/testing.md`](tracing/testing.md) -> [`tracing/trace-format.md`](tracing/trace-format.md) |
@@ -29,3 +30,9 @@ The runtime owns the workflow graph. The LLM is called only at named,
 traceable decision points: routing a turn, extracting structured data, or doing
 bounded agent work. The trace records the result so the session can be replayed,
 tested, and audited.
+
+The important question is not "can a model do this?" A strong enough model can
+often do a surprising amount once. The question is whether the workflow can be
+repeated, inspected, replayed, tested without new LLM spend, and improved by
+turning recurring model judgment into deterministic software. That is the
+reason to use Kitsoki.

@@ -10,8 +10,8 @@
 # load-bearing git commands. `set -e` trips on a failing remove, the real
 # exit + stderr bind to last_op_ok / last_op_output, and last_op_outcome
 # only flips to "cleaned" behind `when: world.last_op_ok == true`. A no-op
-# remove can therefore never report a false "cleaned" (the smoking gun,
-# git-ops-smoothing.md §Why).
+# remove can therefore never report a false "cleaned" (the cleanup bug that
+# motivated the delivery-loop hardening).
 #
 # Force / confirm: force=true uses `git worktree remove --force` + `git
 # branch -D`. Without force, an unmerged branch fails the safe `git branch

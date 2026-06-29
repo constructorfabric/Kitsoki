@@ -6,8 +6,14 @@ points at a place on the artifact, attaches an instruction, and the bundle rides
 the existing read-only [off-path](operator-ask.md) surface to the agent (and the
 feedback/refine loop). This generalises the rrweb-only [spatial
 capture](../tui/spatial-capture.md) / [visual ambient](visual-ambient.md) seam to
-every media kind through one **anchor union** and one **producer-agnostic plugin
-contract**, so kitsoki never learns a producer's internals.
+every media kind through one **anchor union** and two **producer-agnostic plugin
+contracts**, so kitsoki never learns a producer's internals:
+
+- a **static** [semantic-sidecar](#the-semantic-sidecar-plugin-contract) beside a
+  rendered artifact (for baked, frozen media), and
+- a **live** [embed protocol](#the-embed-protocol-live-producer-surfaces) for an
+  interactive producer that owns its own surface (the **slidey deck** — the
+  reference example).
 
 ## The anchor union
 
@@ -49,7 +55,7 @@ sibling fields.
 | **mp4** | `<video>` + timeline + frame-grab | `time_range`; grab a frame → `frame` → `region` |
 | **rrweb** | rrweb Replayer iframe ([ReplayFrame](../tui/spatial-capture.md)) | `time_range`, `dom_node`, or `region` |
 | **html** | sandboxed iframe (frozen) | `dom_node` or `region` |
-| **slidey** | poster-backed semantic overlay | `semantic_element` (preferred), else `dom_node`/`region` |
+| **slidey** | the **live interactive deck** ([embed protocol](#the-embed-protocol-live-producer-surfaces)) | `semantic_element` (`<scene>/<el>` picked on the real slide) |
 
 rrweb/html/slidey resolve a DOM root the *same* way (`elementFromPoint`); png/frame
 share the *same* canvas draw layer; mp4 is "grab a frame, then behave like png";
@@ -87,9 +93,75 @@ the annotator falls back to the pixel/DOM picker (the graceful
 - **Client registry (web):** `lib/semanticPlugins.ts` maps `plugin` → an optional
   label formatter; an absent entry renders generically. This is the *only* plugin
   surface — everything else is data.
-- **Producer (slidey):** `~/code/slidey/src/semantic.js` emits the sidecar and
-  stamps `data-slidey-el` during render; deterministic (same spec → identical
-  sidecar).
+
+This static contract suits a **baked, frozen** artifact (an mp4-rendered deck, a
+diagram PNG). An *interactive* producer like the slidey HTML deck instead owns its
+own surface and reports picks **live** — see the [embed
+protocol](#the-embed-protocol-live-producer-surfaces) below, which is how
+`stories/slidey-edit` actually works.
+
+## The embed protocol (live producer surfaces)
+
+A producer that renders an **interactive** surface (the slidey HTML deck is the
+reference example) doesn't need a baked sidecar: the live artifact already knows
+which view is on screen and which element the operator clicked. kitsoki embeds it
+in an iframe and exchanges three **producer-neutral** `postMessage` events — it
+interprets none of the producer's internals, only round-trips the opaque
+`scope`/`ref` tokens into the refine.
+
+```
+host  → producer   embed:annotate  { enabled }                         // toggle pick mode
+producer → host    embed:view      { producer, scope, label, count }   // which view is on screen
+producer → host    embed:pick      { producer, scope, ref, label, bbox }// the element pointed at
+```
+
+- `scope` — the opaque view token (slidey: the scene index). kitsoki tracks the
+  latest in the run store (`embedScope`) and rides it on the refine as the
+  `current_scene` slot, so the edit targets **the slide the operator is looking
+  at**. This holds **even with no annotation**: a plain free-text refine typed in
+  the chat carries `embedScope` as a `current_scene` *supplement slot* on the turn
+  (`sendText` → the `turn` RPC's `slots` → `WithTurnSupplements` →
+  `orchestrator.WithSupplementSlots`, gap-filling only so the router's
+  classification wins). So "make the title bolder" lands on the viewed slide
+  without pointing at anything. `ref` — the opaque element id (slidey: `<scene>/<field>`), turned into a
+  `semantic_element` anchor (same wire shape as a sidecar pick, via
+  `serializeAnchor`), so it flows through the identical anchor pipeline.
+
+| side | where |
+|---|---|
+| **host (kitsoki)** | `lib/embedView.ts` (`parseEmbedView`/`parseEmbedPick`/`installEmbed*Listener`/`sendAnnotateMode`); `components/ArtifactAnnotator.vue` mounts the live deck for `mediaKind: "slidey"`, enables pick mode on load, and emits the anchor; `stores/run.ts` tracks `embedScope`; `components/ViewElement.vue` rides `current_scene` on the dispatch. |
+| **producer (slidey)** | **the reference plugin** — `~/code/slidey/web/useDeck.js` posts `embed:view` on every scene render; `~/code/slidey/web/embed-annotate.js` discovers pickable blocks **straight from the rendered layout** — every *revealed* `.reveal` block under the active scene region (the deck's own structural/animation units), so coverage tracks the templates automatically (every scene type, every meaningful block) and follows the in-scene reveal transitions. It draws pick markers over those real elements and posts `embed:pick`; rebuilt on `slidey:scene-changed`/resize; wired in `web/components/App.vue`. A template overrides the id-derived `ref`/`label` per block with optional `data-embed-field`/`data-embed-label` attributes (e.g. the image frame edits `src`). |
+
+kitsoki knows **nothing** about slidey: a second producer (a notebook, a CAD
+viewer) becomes annotatable by implementing the same three messages. The
+slidey-specific resolution — which scene the `scope` names, which field the `ref`
+edits, and the **gate** that rejects an edit straying off the viewed slide — lives
+entirely in the *story* (`stories/slidey-edit/scripts/{resolve_scene,gate_edited_scene}.star`),
+not in kitsoki core.
+
+> **Gotcha (story authors):** a `when:` guard on the *same* effect item as an
+> `invoke:` silently skips the invoke. Keep the guard off invoke effects (the
+> scene gate is reached only on the success path, so it needs none).
+
+> **Gotcha (story authors):** `host.starlark.run` does **not** expr-evaluate its
+> `inputs:` — the machine resolves each value first, and only a string wrapping
+> the whole value in `{{ }}` is evaluated (a sole `{{ expr }}` preserves the typed
+> value, so an `int` stays an `int`). A **bare** `world.foo` reaches the script as
+> the literal string `"world.foo"`, which silently breaks resolution — the symptom
+> that "the deck never shows the edits": resolve_scene looks up a deck literally
+> named `world.deck.spec_path` (not found → `scene_index -1` → reviser told to make
+> no change) and the gate gets a string `scene_index` → `expected int, got string`
+> → `on_error` → the rerender never fires. Always template these:
+> `spec_path: "{{ world.deck.spec_path }}"`. The same applies to a value a
+> transition-effect script needs from world — pass it as a resolved input, not via
+> `ctx.world` (which is a stale snapshot inside a transition effect). This is now
+> caught **at load**: `validateStarlarkEffects` rejects a bare-expression `inputs:`
+> value (and a literal that can't satisfy its declared sidecar type), so
+> `kitsoki validate <app.yaml>` — or any run/flow load — fails fast with a
+> "did you mean `{{ … }}`?" message instead of a silent runtime no-op. `kitsoki
+> trace --turn <n>` also prints each host call's resolved inputs + outputs, so an
+> unevaluated input shows verbatim there. Regression: `stories/slidey-edit/flows/refine_resolves_viewed_scene.yaml`
+> + `internal/app/loader_starlark_inputs_test.go`.
 
 ## Serving the companions
 
@@ -121,10 +193,26 @@ Guidance is recorded as a decision with its `input.visual` alongside.
 
 ## The PoC: `stories/slidey-edit`
 
-A story for creating/editing slidey presentations end-to-end:
-`drafting` (author a deck spec) → `rendering` (`host.slidey.render` → mp4 +
-`.semantic.json`) → `reviewing` (the deck as media + Annotate) → `refining`
-(consume the anchored feedback, edit the exact scene element, re-render) →
-`reviewing`. A deterministic flow + cassette + baked artifacts make it no-LLM
-(`go run ./cmd/kitsoki test flows stories/slidey-edit/app.yaml`); the tour video
-walks the annotate→refine loop.
+A story for creating/editing slidey presentations end-to-end. A **new** deck goes
+`drafting` (author a spec) → `rendering`; editing an **existing** deck
+(`edit kitsoki-pitch`) skips straight to `rendering` with **no authoring agent**.
+Then `rendering` (`host.slidey.render --format html` → a self-contained interactive
+deck) → `reviewing` (the live deck as media + Annotate) → `refining` → `reviewing`.
+
+`refining` is where slide-correctness is enforced:
+
+1. `resolve_scene.star` picks the target slide — the **viewed** scene
+   (`current_scene`, from the deck's `embed:view`) over the picked anchor's ref;
+   with no signal it returns `-1` rather than guessing — and hands the reviser that
+   scene's current JSON.
+2. the reviser edits the exact element the operator pointed at (the live
+   `embed:pick` ref).
+3. `gate_edited_scene.star` rejects any edit that strayed to another slide, so the
+   reply never falsely reads "done".
+
+A deterministic flow + cassette + baked artifacts make it no-LLM
+(`go run ./cmd/kitsoki test flows stories/slidey-edit/app.yaml`, incl.
+`refine_wrong_slide_gate.yaml`). The scene scripts are unit-tested against the real
+35-scene `kitsoki-pitch` deck (`stories/slidey-edit/scripts/scene_gate_scripts_test.go`).
+See the [embed annotation protocol](#the-embed-protocol-live-producer-surfaces) for
+the live-pick mechanism.

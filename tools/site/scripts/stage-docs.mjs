@@ -66,6 +66,107 @@ function rewriteLinks(content, repoFile, siteFile, map) {
   });
 }
 
+function escapeRawHtmlPlaceholders(content) {
+  let fenced = false;
+  return content
+    .split("\n")
+    .map((line) => {
+      if (/^\s*(```|~~~)/.test(line)) {
+        fenced = !fenced;
+        return line;
+      }
+      if (fenced) return line;
+      return line.replace(/</g, "&lt;").replace(/&lt;\/?([A-Za-z][^>\n]{0,80})>/g, (m, inner) => {
+        if (/^[a-z][a-z0-9+.-]*:/i.test(inner)) return m;
+        return m.replace(/>/g, "&gt;");
+      });
+    })
+    .join("\n");
+}
+
+function addVPreFrontmatter(content) {
+  if (!content.startsWith("---\n")) {
+    return `---\nv-pre: true\n---\n\n${content}`;
+  }
+  const end = content.indexOf("\n---", 4);
+  if (end === -1) {
+    return `---\nv-pre: true\n---\n\n${content}`;
+  }
+  const frontmatter = content.slice(4, end);
+  if (/^v-pre:/m.test(frontmatter)) return content;
+  return `---\nv-pre: true\n${frontmatter}${content.slice(end)}`;
+}
+
+function wrapVPreContainer(content) {
+  if (!content.startsWith("---\n")) return `::: v-pre\n${content}\n:::\n`;
+  const end = content.indexOf("\n---", 4);
+  if (end === -1) return `::: v-pre\n${content}\n:::\n`;
+  const closeEnd = end + "\n---".length;
+  const afterClose = content[closeEnd] === "\n" ? closeEnd + 1 : closeEnd;
+  return `${content.slice(0, afterClose)}\n::: v-pre\n${content.slice(afterClose)}\n:::\n`;
+}
+
+function fencedCodeToIndented(content) {
+  const lines = content.split("\n");
+  const out = [];
+  let fenced = false;
+  for (const line of lines) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      out.push("");
+      continue;
+    }
+    out.push(fenced ? `    ${line}` : line);
+  }
+  return out.join("\n");
+}
+
+function firstHeading(repoPath) {
+  const abs = path.join(repoRoot, repoPath);
+  if (!fs.existsSync(abs)) return path.basename(repoPath, ".md");
+  const match = fs.readFileSync(abs, "utf8").match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : path.basename(repoPath, ".md");
+}
+
+function siteHref(sitePath) {
+  return "/" + sitePath.replace(/\.md$/, ".html").replace(/index\.html$/, "");
+}
+
+function writeDocsLanding() {
+  const lines = [
+    "---",
+    "layout: doc",
+    "---",
+    "",
+    "# Kitsoki docs",
+    "",
+    "Start with the evaluation path if you are deciding whether Kitsoki is worth the structure. Kitsoki's core claim is control inversion: the workflow is an auditable state machine, and the LLM is a bounded callee at named, traceable decision points.",
+    "",
+    "## Evaluate the claim",
+    "",
+    "- [Evaluate Kitsoki](/guide/evaluate-kitsoki.html): the skeptical-developer case for why this is not just a chat agent, a structured-output wrapper, or a workflow engine with prompts attached.",
+    "- [Concept](/guide/architecture/concept.html): the architecture thesis behind control inversion and progressive determinism.",
+    "- [Proof demos](/features/): videos generated from deterministic feature fixtures, including runtime guardrails, trace introspection, operator handoff, and replayed real runs.",
+    "- [Bug-fix case study](/guide/case-studies/bug-fix.html): the shape of an end-to-end repo workflow: reproduce, patch, test, review, validate.",
+    "- [Bugfix bake-off](/guide/case-studies/bugfix-bakeoff.html): early evidence for the claim that structure can matter more than another unbounded prompt.",
+    "",
+    "## Why the docs matter",
+    "",
+    "A Kitsoki story is not hidden in a prompt. The docs below cover the public pieces of that story model: how to author rooms and intents, how host calls and traces work, how replay removes live LLM spend from testing, and how the same story drives web, TUI, MCP, demos, and fixtures.",
+    "",
+  ];
+
+  for (const section of sections) {
+    lines.push(`## ${section.title}`, "");
+    for (const entry of section.entries) {
+      lines.push(`- [${firstHeading(entry.from)}](${siteHref(entry.to)})`);
+    }
+    lines.push("");
+  }
+
+  fs.writeFileSync(path.join(guideDir, "index.md"), lines.join("\n"));
+}
+
 fs.rmSync(guideDir, { recursive: true, force: true });
 const map = expand();
 let staged = 0;
@@ -73,7 +174,11 @@ for (const [from, to] of map) {
   const content = fs.readFileSync(path.join(repoRoot, from), "utf8");
   const out = path.join(srcDir, to);
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, rewriteLinks(content, from, to, map));
+  fs.writeFileSync(
+    out,
+    wrapVPreContainer(addVPreFrontmatter(fencedCodeToIndented(escapeRawHtmlPlaceholders(rewriteLinks(content, from, to, map))))),
+  );
   staged++;
 }
-console.log(`stage-docs: staged ${staged} doc(s) -> ${path.relative(repoRoot, guideDir)}`);
+writeDocsLanding();
+console.log(`stage-docs: staged ${staged} doc(s) + landing -> ${path.relative(repoRoot, guideDir)}`);

@@ -1,0 +1,83 @@
+{
+ "_comment": "Bugfix narrative deck for slidey-128 (grid cards narration drift). Every number, diff, and test count is replayed verbatim from the real bugfix run recorded in stories/slidey-bugfix/cassettes/tour.cassette.yaml (slidey main commit 19c8798). Scene types match stories/slidey-edit/baked/deck.json so it bakes to static HTML via `slidey bundle`.",
+ "meta": {
+  "title": "Bugfix: grid cards narration drift",
+  "resolution": { "width": 1920, "height": 1080 },
+  "theme": "rose-pine-moon",
+  "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+ },
+ "scenes": [
+  {
+   "type": "title",
+   "eyebrow": "Kitsoki bugfix · slidey-128",
+   "title": "Grid cards drift out of sync",
+   "subtitle": "Narration runs ahead of the cards past the sixth item",
+   "narration": "On a grid cards scene with more than six items, the narration runs ahead of the on-screen reveals. We drove the whole fix through the kitsoki bugfix pipeline — reproduce, implement, test, validate — unsupervised."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "The symptom",
+   "lede": "From the seventh card, the audio slips.",
+   "body": "A grid `cards` scene with eight items and per-item narration plays in lock-step for the first six cards, then drifts. By the last card the spoken line is roughly two-thirds of a second ahead of the reveal — visible and audible. The narration scheduler trusts the frame estimate, and the estimate had quietly diverged from what the renderer actually holds.",
+   "narration": "A grid with eight items plays in sync for six cards, then drifts. By the last card the narration is about two-thirds of a second ahead. The scheduler trusts the estimate, and the estimate was wrong."
+  },
+  {
+   "type": "cards",
+   "variant": "grid",
+   "title": "What broke",
+   "narration": "Two functions that must agree disagreed past the sixth card: the estimator counted thirty frames per overflow item, the renderer held twenty.",
+   "cards": [
+    { "label": "Estimator", "sub": "timing.js:330 summed cards_item_N ?? 30", "style": "primary" },
+    { "label": "Renderer", "sub": "renderer.js:129 holds TIMING[step] ?? 20", "style": "secondary" },
+    { "label": "Table only keys 0–5", "sub": "cards_item_6+ hit each function's fallback", "style": "default" },
+    { "label": "Drift", "sub": "10 frames over-counted per overflow card", "style": "default" }
+  ]
+  },
+  {
+   "type": "table",
+   "title": "Reproduction — RED before the fix",
+   "columns": ["Fixture", "Estimate", "Renderer-true", "Gap"],
+   "rows": [
+    { "cells": ["8-item grid", "484 frames", "464 frames", "20 frames (~0.67s @ 30fps)"] },
+    { "cells": ["Over-counted", "cards_item_6 + cards_item_7", "10 frames each", "= the 20f gap"] }
+   ],
+   "hold": 300,
+   "variant": "data",
+   "caption": "A deterministic unit test in test/timing.test.js computes the renderer-true total for an 8-item grid and asserts estimateScene equals it. It failed: expected 464, actual 484."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Root cause",
+   "lede": "One source of truth, two fallbacks.",
+   "body": "timing.js carries a NOTE that the estimator and renderer must stay in lock-step, because narration audio is laid against the estimated boundaries. The TIMING table only defines cards_item_0 through cards_item_5. For every card beyond the sixth, the estimator used a 30-frame fallback while the renderer's setState used its generic 20-frame fallback — so the estimate ran ten frames long per overflow card.",
+   "narration": "The estimator and renderer must stay in lock-step — but the table only keys the first six items, and the two functions used different fallbacks past that point. Ten frames long per extra card."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "The fix",
+   "lede": "Align the overflow fallback: 30 → 20.",
+   "body": "The minimal correct change is one character of intent: the estimator's overflow fallback becomes ?? 20, matching the renderer's generic hold, with a comment documenting the lock-step contract. In-table grids (≤6 cards) and every other scene type are untouched.\n\n-      for (let i = 0; i < n; i++) f += T[`cards_item_${i}`] ?? 30;\n+      // overflow items have no table key; the renderer holds 20f, so must we\n+      for (let i = 0; i < n; i++) f += T[`cards_item_${i}`] ?? 20;",
+   "narration": "The fix is one fallback: thirty becomes twenty, matching the renderer, with a comment pinning the contract. In-table grids and every other scene type are untouched."
+  },
+  {
+   "type": "table",
+   "title": "Validation — GREEN after the fix",
+   "columns": ["Suite", "Tests", "Pass", "Fail"],
+   "rows": [
+    { "cells": ["timing.test.js (targeted)", "19", "19", "0"] },
+    { "cells": ["Whole suite (node --test)", "97", "94", "0 · 3 pre-existing skips"] },
+    { "cells": ["slidey-128 regression", "added", "ok", "RED→GREEN (484→464)"] }
+   ],
+   "hold": 360,
+   "variant": "data",
+   "caption": "no build step — timing.js is pure CommonJS, exercised directly by node --test. The regression test pins the estimate to the renderer hold for 6-, 8-, and 12-item grids."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Outcome",
+   "lede": "PR-ready, one-shot, unsupervised.",
+   "body": "The pipeline reproduced the bug with a failing test, applied the minimal fix, ran the regression green, and validated the full suite — then parked on a clean branch carrying the summary, the diff, and the test log. Merged to slidey main as commit 19c8798.",
+   "narration": "Reproduced with a failing test, fixed minimally, validated green, and parked PR-ready on a clean branch. Merged as commit 19c8798."
+  }
+ ]
+}

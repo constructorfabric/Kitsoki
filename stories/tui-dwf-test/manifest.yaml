@@ -1,0 +1,54 @@
+version: punch-list/v1
+defaults:
+  harness: live
+  profile: codex-native
+  model: gpt-5.5
+  trace_root: /Users/brad/code/Kitsoki/stories/tui-dwf-test/traces
+  require_trace_model: true
+items:
+- id: scope
+  title: Scope the task
+  priority: 1
+  story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+  mode: drive
+  prompt: Read the goal carefully and identify the parts that need implementation for implement workflow commands from the TUI.
+  implementation_story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+  implementation_prompt: Read the goal carefully and identify the parts that need implementation for implement workflow commands from the TUI.
+  verify:
+  - kind: story_validate
+    story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+- id: implement
+  title: Implement the core slice
+  priority: 2
+  story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+  mode: drive
+  prompt: Make the smallest coherent implementation for implement workflow commands from the TUI and keep the result reviewable.
+  implementation_story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+  implementation_prompt: Make the smallest coherent implementation for implement workflow commands from the TUI and keep the result reviewable.
+  verify:
+  - kind: story_validate
+    story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+- id: wire
+  title: Wire the surfaces
+  priority: 3
+  story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+  mode: drive
+  prompt: Thread the result through the MCP, CLI, and runstatus-facing surfaces for implement workflow commands from the TUI.
+  implementation_story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+  implementation_prompt: Thread the result through the MCP, CLI, and runstatus-facing surfaces for implement workflow commands from the TUI.
+  verify:
+  - kind: story_validate
+    story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+- id: test
+  title: Test and document it
+  priority: 4
+  story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+  mode: drive
+  prompt: Add deterministic checks, docs, and dogfood evidence for implement workflow commands from the TUI.
+  implementation_story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+  implementation_prompt: Add deterministic checks, docs, and dogfood evidence for implement workflow commands from the TUI.
+  verify:
+  - kind: story_validate
+    story: /Users/brad/code/Kitsoki/stories/tui-dwf-test/app/app.yaml
+  - kind: command
+    cmd: go test ./...

@@ -32,7 +32,7 @@ comes later. This epic stays open to track #2.
 `dev-story` is already provider-neutral — it declares abstract
 `host_interfaces` (`ticket` / `vcs` / `ci` / `workspace` / `transport`) and
 binds none of them (`stories/dev-story/app.yaml:174`). The only worked
-*instance* is `stories/kitsoki-dev/app.yaml`, which targets **this repo**:
+*instance* is `.kitsoki/stories/kitsoki-dev/app.yaml`, which targets **this repo**:
 local-file tickets (`issues/bugs/*.md`), kitsoki's own proposal templates,
 and a flat `docs/proposals/` publish home. Pointing the same hub at a
 **foreign repo** — a user asked for `constructorfabric/gears-rust` — surfaces

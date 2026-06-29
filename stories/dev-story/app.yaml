@@ -109,7 +109,7 @@ hosts:
   # published PRD. Its decide/task/search/artifacts_dir/ide.open_file/run
   # needs are already covered above; converse + chat.resolve are unique to
   # it. An instance importing dev-story with `hosts: declared` must list
-  # both in its own allow-list (see stories/kitsoki-dev/app.yaml).
+  # both in its own allow-list (see .kitsoki/stories/kitsoki-dev/app.yaml).
   - host.agent.converse
   - host.chat.resolve
   # ── Ad-hoc structured plan (rooms/landing|applying|verifying.yaml) ─────
@@ -157,6 +157,13 @@ agents:
   # plan's goal is met, it never makes the change.
   gate_reviewer:
     system_prompt: "You are an adversarial quality gate. Judge the goal artifact against the stated goal. Default to pass=false unless the goal is clearly, fully met. When you fail it, give a specific, actionable reason the next iteration can act on."
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob]
+    bash_profile: read-only
+    external_side_effect: false
+
+  profile_drafter:
+    system_prompt: "You draft Kitsoki project-profile/v1 JSON for a target repository. Use the deterministic discovery as the floor, improve it only when the repository evidence supports the change, and preserve the architecture: the project owns .kitsoki/project-profile.yaml and .kitsoki/stories/<id>-dev/app.yaml, while the instance imports @kitsoki/dev-story. Return only schema-valid JSON through the submit tool."
     model: claude-sonnet-4-6
     tools: [Read, Grep, Glob]
     bash_profile: read-only
@@ -455,7 +462,22 @@ world:
   judge_mode:                  { type: string, default: "human" }
   judge_confidence_threshold:  { type: float,  default: 0.8 }
   bugfix_mode:                 { type: string, default: "full" }
+  # bugfix_destination selects the post-fix landing:
+  #   open-pr        — hand the finished fix to pr-refinement and open a PR
+  #   leave-worktree — stop after the validated bugfix, preserving the worktree
+  #   local-merge    — use bugfix's direct-ship tail to merge into base_branch
+  bugfix_destination:          { type: string, default: "open-pr" }
   merge_strategy:              { type: string, default: "squash" }
+  # build_cmd / test_cmd — the project's REAL build + test commands, projected
+  # into the bf import so the bugfix testing/validating gates run them instead of
+  # the `go build ./...` / `go test ./...` defaults baked into host.local
+  # (internal/host/local_ci.go). Empty ⇒ the Go defaults (back-compat for a Go
+  # target). An INSTANCE targeting a non-Go repo sets these from its project
+  # profile so an onboarded repo's fixes are gated by its own toolchain with NO
+  # per-session override. See stories/bugfix
+  # (world.build_cmd / world.test_cmd, consumed by validating.yaml / testing.yaml).
+  build_cmd:                   { type: string, default: "" }
+  test_cmd:                    { type: string, default: "" }
 
   # ── Standup / agent / code-review scratch ────────────────────────
   standup_summary:     { type: string, default: "" }
@@ -603,6 +625,13 @@ world:
   init_apply_result:     { type: object, default: {} }
   init_apply_ok:         { type: bool, default: false }
   init_apply_output:     { type: string, default: "" }
+  init_tools_result:     { type: object, default: {} }
+  init_tools_ok:         { type: bool, default: false }
+  init_tools_output:     { type: string, default: "" }
+  init_profile_mode:     { type: string, default: "deterministic" }
+  init_profile_draft:    { type: object, default: {} }
+  init_profile_validation: { type: object, default: {} }
+  init_profile_json:     { type: string, default: "" }
 
   # ── Design pipeline (rooms/design*.yaml) ───────────────────────
   # 4-stage pipeline: intake → search → refine → draft+publish.
@@ -650,19 +679,18 @@ world:
 
   # ── External-target profile (doc shape + placement) ───────────────
   # Defaults reproduce kitsoki's own behaviour exactly (flat docs/proposals
-  # + docs/prd, slug-named files, a feature ticket on publish). An instance
-  # app (e.g. the gears team's own gears-rust instance, in the gears repo under
-  # stories/gears-rust/, importing this hub) overrides these to retarget the
-  # PRD → Design walk at
-  # a foreign repo: publish into <workdir>/<durable> under a FIXED gears-sdlc
-  # filename (PRD.md / DESIGN.md), reading the target's own doc templates, and
-  # skipping the kitsoki feature ticket. See the "doc profile" section of the
-  # dev-story README.
+  # + docs/prd, slug-named files, a feature ticket on publish). An importing
+  # project instance can retarget the PRD → Design walk by overriding these:
+  # publish into <workdir>/<durable>, choose fixed filenames, read the target's
+  # own doc templates, and choose local ticket, GitHub ticket, or no-ticket
+  # follow-up. See the "doc profile" section of the dev-story README.
   repo_root:             { type: string, default: "" }                        # external checkout root (forward-compat; ticket passthrough is the deferred gh-adapter slice)
-  publish_durable_path:  { type: string, default: "docs/prd" }                # prd publish home (projected into the prd import); per-gear: gears/<gear>/docs
+  publish_durable_path:  { type: string, default: "docs/prd" }                # prd publish home (projected into the prd import)
   prd_doc_filename:      { type: string, default: "" }                        # fixed PRD filename for an external target (e.g. "PRD"); "" ⇒ slug-named
+  prd_mockup_path:       { type: string, default: "" }                        # optional feature-mockup HTML (relative to workdir); non-empty ⇒ prd_published emits + embeds it inline as the PRD's mockup. "" ⇒ no mockup (default for every instance).
+  mockup_handle:         { type: string, default: "" }                        # runtime bind: the content-addressed handle of the emitted PRD mockup (prd_published on_enter); "" ⇒ no mockup embedded.
   design_template_dir:   { type: string, default: "docs/proposals/templates" } # where the design author reads its doc templates
-  design_durable_path:   { type: string, default: "docs/proposals" }          # design publish home; per-gear: gears/<gear>/docs
+  design_durable_path:   { type: string, default: "docs/proposals" }          # design publish home
   design_doc_filename:   { type: string, default: "" }                        # fixed DESIGN filename for an external target (e.g. "DESIGN"); "" ⇒ slug-named
   design_ticket_dir:     { type: string, default: "issues/features" }         # where the linking feature ticket is minted; "" ⇒ skip (external target)
   ticket_repo:           { type: string, default: "" }                        # owner/repo for GitHub-issue tickets; non-empty ⇒ feature publish mints a GitHub issue instead of a local file (slice #3). kitsoki-dev pins constructorfabric/Kitsoki.
@@ -682,6 +710,9 @@ world:
   # ── PR handoff (lifted from `pr` import's exits.merged.set) ───────
   last_pr_url:         { type: string, default: "" }
   status:              { type: string, default: "open" }   # open | merged | abandoned
+  human_review_reason: { type: string, default: "" }        # concise reason posted when autonomy needs a human
+  human_review_issue_comment_id: { type: string, default: "" }
+  human_review_pr_comment_ok:    { type: bool,   default: false }
 
   # ── Carry-fields for the bf → pr handoff projection ───────────────
   # bf's @exit:done writes done_artifact via `set:` (per the
@@ -769,9 +800,9 @@ intents:
     priority: 35
   go_idea:
     title: "New Idea"
-    description: "Start an ad hoc idea or proposal — no ticket required."
-    examples: ["idea", "new idea", "propose", "proposal", "ad hoc", "draft proposal", "i have an idea", "work on a proposal", "new proposal", "write a proposal"]
-    priority: 32
+    description: "Start or amend an ad hoc design/proposal — draft, review, clarify decisions, resolve proposal questions, or make a proposal ready for human review. No ticket required."
+    examples: ["idea", "new idea", "propose", "proposal", "ad hoc", "draft proposal", "i have an idea", "work on a proposal", "new proposal", "write a proposal", "design proposal", "start a design", "use the design workflow", "amend existing proposal", "proposal ready for review", "human review proposal", "resolve proposal questions", "tighten proposal narration", "audit this proposal", "fold decisions back into the design", "make this proposal terse and clear"]
+    priority: 50
   go_code_review:
     title: "Code Review"
     description: "Review a teammate's PR."
@@ -997,6 +1028,19 @@ intents:
         type: string
         required: true
         description: "What should change in the onboarding profile."
+  draft_profile:
+    title: "Draft Onboarding Profile With LLM"
+    description: "Ask an LLM to draft a project-profile/v1 candidate, then validate it before applying."
+    examples: ["draft profile with llm", "use llm profile", "improve profile"]
+    priority: 45
+  profile_drafted:
+    description: "(internal) LLM profile draft completed — validate it."
+    examples: []
+    priority: 1
+  profile_validated:
+    description: "(internal) profile validation completed — return to review."
+    examples: []
+    priority: 1
   init_discovered:
     description: "(internal) project discovery completed — show the profile review."
     examples: []
@@ -1027,6 +1071,12 @@ intents:
     title: "Pick Ticket"
     description: "Pick a ticket from the current results and start working on it."
     examples: ["pick TKT-001", "select 1", "pick 2", "open this ticket"]
+    synonyms:
+      - "pick {n}"
+      - "select {n}"
+      - "choose {n}"
+      - "pick row {n}"
+      - "select row {n}"
     priority: 95
     slots:
       id:
@@ -1074,6 +1124,21 @@ intents:
     description: "Start the bugfix path when the operator asks to fix, debug, investigate, or work on bugs. If no ticket is picked yet, the landing room will ask them to pick one first."
     examples: ["fix bug", "bugfix", "work on bug", "fix bugs", "i want to fix a bug", "i want to work on some bugs"]
     priority: 55
+  bugfix_open_pr:
+    title: "Fix Bug and Open PR"
+    description: "Run the bugfix pipeline, then open and refine a pull request."
+    examples: ["fix this and open a pr", "bugfix to pr", "open a pull request after fixing"]
+    priority: 56
+  bugfix_leave_worktree:
+    title: "Fix Bug and Leave Worktree"
+    description: "Run the bugfix pipeline and leave the completed local worktree for manual review."
+    examples: ["fix this and leave a worktree", "bugfix local worktree", "leave the worktree after fixing"]
+    priority: 56
+  bugfix_merge_local:
+    title: "Fix Bug and Merge Locally"
+    description: "Run the bugfix pipeline and merge the fix into the local base branch."
+    examples: ["fix this and merge locally", "merge to main after fixing", "bugfix to local main"]
+    priority: 56
   go_pr_refinement:
     title: "PR Refinement"
     description: "Hand off to the pr-refinement sub-story for an open PR."
@@ -1198,9 +1263,14 @@ intents:
       feedback: { type: string, required: true }
   accept:
     title: "Accept & Publish"
-    description: "Accept the proposal draft and publish it."
+    description: "Publish the proposal draft and file a feature ticket."
     examples: ["accept", "approve", "looks good", "lgtm", "publish it"]
     priority: 85
+  accept_no_ticket:
+    title: "Publish Only"
+    description: "Publish the proposal draft without filing an implementation ticket."
+    examples: ["publish only", "save without ticket", "don't file a ticket", "no ticket"]
+    priority: 84
   proceed_new:
     title: "Create New"
     description: "No meaningful overlap — create a brand-new proposal."
@@ -1292,7 +1362,7 @@ intents:
   # to the LLM router and captures the whole utterance whole.
   work:
     title: "Describe Work"
-    description: "Describe a piece of work for the free-form workbench agent to pick up — explore code, draft a change, investigate a failure. Read-only until you approve a change."
+    description: "Describe implementation/debugging/investigation work for the free-form workbench agent to pick up — explore code, draft a code change, investigate a failure. Read-only until you approve a change. Do not use for proposal authoring, proposal review, design-workflow, or proposal-decision turns; those go to New Idea."
     examples: ["fix the login crash", "investigate why the build is slow", "look at how imports resolve and sketch a change", "refactor the loader", "add a test for the off-ramp"]
     priority: 45
     slots:
@@ -1344,6 +1414,14 @@ intents:
     description: "(internal) the step landed — run the verify gate."
     examples: []
     priority: 1
+  bugfix_done_open_pr:
+    description: "(internal) completed bugfix should open a PR."
+    examples: []
+    priority: 1
+  bugfix_done_leave_worktree:
+    description: "(internal) completed bugfix should preserve the local worktree."
+    examples: []
+    priority: 1
 
 # Root state — the engineer's-day free-form workbench (rooms/landing.yaml).
 # Replaces the former `main` catalog as the landing. `main` is RETAINED as a
@@ -1383,12 +1461,18 @@ imports:
       base_branch:     "{{ world.base_branch }}"
       feature_branch:  "{{ world.feature_branch }}"
       bugfix_mode:     "{{ world.bugfix_mode }}"
+      # Project the project's real build/test commands into bf so its
+      # testing/validating gates use the right toolchain (empty ⇒ Go defaults).
+      build_cmd:       "{{ world.build_cmd }}"
+      test_cmd:        "{{ world.test_cmd }}"
       # The picked bug's repro_command (bound by ticket_search.pick_ticket).
       # bf's `reproducing` room runs it RED-first; empty ⇒ LLM-only reproducer.
       gate_command:    "{{ world.gate_command }}"
-      # dev-story hands bf's @exit:done to the pr-refinement import — the PR
-      # tail, not slice 4's direct-ship-to-local-main tail. Pin open-PR.
-      bugfix_exit:     "open-PR"
+      # Destination is parent-controlled:
+      #   local-merge    -> bf's direct-ship tail (local base_branch merge)
+      #   open-pr        -> bf done -> pr-refinement
+      #   leave-worktree -> bf done -> landing, preserving workdir
+      bugfix_exit:     "{% if world.bugfix_destination == 'local-merge' %}direct-ship{% else %}open-PR{% endif %}"
       judge_mode:      "{{ world.judge_mode }}"
       judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
 
@@ -1402,41 +1486,44 @@ imports:
       import: [start, change_ticket]
 
     # Exit projections. bf's @exit:done writes done_artifact via the
-    # `set:` block on done_awaiting_reply.on.accept; we lift that
-    # artifact's presentation fields into the parent's pr_title /
-    # pr_body, then transition into the `pr` import (which projects
-    # those parent keys into the pr child's world via world_in:).
+    # `set:` block on done_awaiting_reply.on.accept. The parent chooses the
+    # destination: open-pr enters `pr`; leave-worktree lands back at the
+    # workbench with the local worktree preserved.
     exits:
       done:
-        to: pr
+        to: bugfix_done_router
         set:
           pr_title: "{{ world.bf__done_artifact.summary_title }}"
           pr_body:  "{{ world.bf__done_artifact.summary_markdown }}"
+          status:   "fixed"
       abandoned:
-        to: landing
+        to: human_review_report
         set:
           status: "abandoned"
-      # slice 4 added bf's direct-ship terminals (shipped / needs-human). This
-      # hub pins bugfix_exit: open-PR, so neither fires in practice — but the
-      # loader requires every child exit be mapped. shipped lands like a merge;
-      # needs-human lands like an abandon (carrying the error).
+          human_review_reason: "{{ world.bf__abandon_reason }}"
+      # slice 4 added bf's direct-ship terminals (shipped / needs-human). The
+      # local-merge destination reaches shipped after bugfix's shared ship-it
+      # tail integrates into base_branch and verifies the merged commit.
       shipped:
         to: landing
         set:
-          status: "shipped"
+          status: "local-merged"
       needs-human:
-        to: landing
+        to: human_review_report
         set:
           status: "needs-human"
+          last_error: "{{ world.bf__last_error }}"
+          human_review_reason: "{{ world.bf__last_error }}"
       # bf's repro RED-gate GREEN branch (bugfix-repro-gate slice): the bug's
       # repro_command passed on the unchanged worktree, so it does not currently
       # reproduce. Land back at the workbench carrying the gate output; a human
       # decides wontfix / cannot-reproduce or supplies a sharper repro.
       not-reproducible:
-        to: landing
+        to: human_review_report
         set:
           status:     "not-reproducible"
           last_error: "{{ world.bf__last_error }}"
+          human_review_reason: "{{ world.bf__last_error }}"
       # bf's triage-only mode (bugfix_mode: triage) ends here: a standardized
       # verdict was produced without attempting a fix. This hub runs bf in
       # full/open-PR mode so triaged never fires in practice, but the loader
@@ -1488,9 +1575,12 @@ imports:
           status:      "merged"
           last_pr_url: "{{ world.pr__pr_url }}"
       abandoned:
-        to: landing
+        to: human_review_report
         set:
           status: "abandoned"
+          pr_id: "{{ world.pr__pr_id != '' ? world.pr__pr_id : world.pr_id }}"
+          last_pr_url: "{{ world.pr__pr_url != '' ? world.pr__pr_url : world.last_pr_url }}"
+          human_review_reason: "{{ world.pr__refine_feedback }}"
       # pushback_resolved is declared by pr-refinement but Wave 2 does
       # not exercise it (Wave 3 may use it for re-review loops). Map to
       # main as a safety landing so the loader is happy.
@@ -1642,10 +1732,10 @@ imports:
       workdir:    "{{ world.workdir == '' ? '.' : world.workdir }}"
       judge_mode: "{{ world.judge_mode }}"
       judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
-      # Doc-profile passthrough: an external instance (gears-rust) overrides
-      # these on the hub so the imported prd publishes its PRD into the target
-      # tree under the fixed gears-sdlc name. Defaults keep prd's own
-      # docs/prd/<slug>.md behaviour for kitsoki-dev.
+      # Doc-profile passthrough: an importing instance overrides these on the
+      # hub so the imported prd publishes into that project's target tree and
+      # filename convention. Defaults keep prd's own docs/prd/<slug>.md
+      # behaviour for kitsoki-dev.
       publish_durable_path: "{{ world.publish_durable_path }}"
       prd_doc_filename:     "{{ world.prd_doc_filename }}"
 

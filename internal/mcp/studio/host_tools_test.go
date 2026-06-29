@@ -3,6 +3,7 @@ package studio_test
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -92,6 +93,55 @@ func TestHostRun_ArgsMode(t *testing.T) {
 	// $HOME stays literal (no shell), and the spaced element is one argv token.
 	assert.Contains(t, got.Stdout, "$HOME")
 	assert.Equal(t, "one two $HOME", strings.TrimSpace(got.Stdout))
+}
+
+// TestHostRun_TruncatesLongOutput caps a large stdout by default, keeps the
+// failing tail, marks it truncated, and spills the full output to a sidecar.
+func TestHostRun_TruncatesLongOutput(t *testing.T) {
+	ctx := context.Background()
+	cs := newStudioHostRunner(ctx, t)
+
+	res, err := callTool(ctx, cs, "host.run", map[string]any{
+		"dir": t.TempDir(),
+		// Emit ~50k of output then a recognizable failing tail.
+		"cmd": "for i in $(seq 1 5000); do echo 0123456789; done; echo FAIL-TAIL >&2; exit 1",
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, contentText(res))
+
+	var got studio.HostRunOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.False(t, got.OK)
+	assert.Equal(t, 1, got.ExitCode)
+	assert.True(t, got.Truncated, "large output is truncated by default")
+	assert.LessOrEqual(t, len(got.Stdout), 4096+200, "stdout capped near the default limit")
+	assert.Contains(t, got.Stdout, "output truncated", "truncation marker present")
+	assert.Contains(t, got.Stdout, "FAIL-TAIL", "the failing tail is kept")
+	require.NotEmpty(t, got.OutputPath, "full output spilled to a sidecar")
+	full, ferr := os.ReadFile(got.OutputPath)
+	require.NoError(t, ferr)
+	assert.Greater(t, len(full), 4096, "sidecar holds the full output")
+}
+
+// TestHostRun_NoTruncateWhenDisabled returns the full output when the caller
+// opts out with truncate_output<=0.
+func TestHostRun_NoTruncateWhenDisabled(t *testing.T) {
+	ctx := context.Background()
+	cs := newStudioHostRunner(ctx, t)
+
+	res, err := callTool(ctx, cs, "host.run", map[string]any{
+		"dir":             t.TempDir(),
+		"cmd":             "for i in $(seq 1 5000); do echo 0123456789; done",
+		"truncate_output": -1,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, contentText(res))
+
+	var got studio.HostRunOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.False(t, got.Truncated)
+	assert.Empty(t, got.OutputPath)
+	assert.Greater(t, len(got.Stdout), 4096, "full output returned when opted out")
 }
 
 // TestHostRun_MissingDir rejects a call with no dir — a gate must name the tree

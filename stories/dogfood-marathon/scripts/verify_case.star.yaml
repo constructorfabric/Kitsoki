@@ -1,0 +1,6 @@
+inputs:
+  case:         { type: object, required: false }
+  drive_result: { type: object, required: false }
+
+outputs:
+  verify_result: { type: object }

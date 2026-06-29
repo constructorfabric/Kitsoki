@@ -1,4 +1,4 @@
-import { defineStore } from "pinia";
+import { defineStore, acceptHMRUpdate } from "pinia";
 import { computed, ref } from "vue";
 import type {
   AppDef,
@@ -70,6 +70,16 @@ export interface TranscriptEntry {
   /** Routing provenance, resolved reactively from events (see chatEntries). */
   routing?: RoutingInfo;
   /**
+   * Set on a USER bubble dispatched from the media-annotation composer: the
+   * artifact the operator pointed at + the picked anchor, so the bubble renders
+   * the annotation (a thumbnail of the deck frame with the region/marker) above
+   * the typed instruction — exactly like attaching a marked-up screenshot.
+   */
+  annotation?: {
+    mediaHandle: string;
+    anchor: import("../lib/annotationAnchor.js").AnnotationAnchor;
+  };
+  /**
    * The contextual-routing receipt, set on an AGENT bubble when the CRR tier
    * resolved this turn. Renders the "routed to … · contextual" receipt chip in
    * the agent bubble; absent for deterministic/semantic/LLM turns.
@@ -113,6 +123,26 @@ export const useRunStore = defineStore("run", () => {
   const transcript = ref<TranscriptEntry[]>([]);
   // Streaming state: the ordered thinking/tool feed of the in-flight turn.
   const pendingStream = ref<StreamItem[]>([]);
+  // True while a store-driven turn is in flight (submit/turn/continue). A
+  // surface watches this to show the "agent is working" thinking bubble even for
+  // dispatches it didn't originate — e.g. an annotation sent from a media
+  // ViewElement, which calls submitIntent directly rather than the chat input.
+  const busy = ref(false);
+  // The latest place an embedded artifact reports it is showing (the generic
+  // `embed:view` protocol — see lib/embedView.ts). `embedScope` is the opaque
+  // token a refine carries as the `current_scene` slot so the edit targets the
+  // slide/view the operator is actually looking at; `embedLabel` is for display.
+  // `embedStep` is the producer-native reveal/transition within that scope,
+  // used only to reopen annotation embeds at the exact same visual position.
+  // Producer-neutral: kitsoki never interprets the scope.
+  const embedScope = ref<string>("");
+  const embedStep = ref<string>("");
+  const embedLabel = ref<string>("");
+  function setEmbedView(view: { scope: string; step?: string; label?: string }): void {
+    embedScope.value = view.scope;
+    embedStep.value = view.step ?? "";
+    embedLabel.value = view.label ?? "";
+  }
   // currentView is the latest TurnResult (the current room's view + menu).
   const currentView = ref<TurnResult | null>(null);
   // allowedIntents is the enriched per-intent menu of the current room.
@@ -542,7 +572,12 @@ export const useRunStore = defineStore("run", () => {
     live: LiveSource,
     sessionId: string,
     method: "turn" | "submit",
-    params: { input?: string; intent?: string; slots?: Record<string, unknown> },
+    params: {
+      input?: string;
+      intent?: string;
+      slots?: Record<string, unknown>;
+      anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor;
+    },
     onRouting?: (routing: RoutingInfo, turn?: number) => void
   ): Promise<{ result: TurnResult; streamedText: string; stream: StreamItem[] }> {
     pendingStream.value = [];
@@ -609,28 +644,42 @@ export const useRunStore = defineStore("run", () => {
     sessionId: string,
     intent: string,
     slots: Record<string, unknown> = {},
-    displayLabel?: string
+    displayLabel?: string,
+    opts?: {
+      anchor?: import("../lib/annotationAnchor.js").AnnotationAnchor;
+      annotation?: TranscriptEntry["annotation"];
+    }
   ): Promise<TurnResult> {
-    transcript.value.push({ role: "user", text: userText(intent, slots, displayLabel) });
-    let result: TurnResult;
-    let capturedStream = "";
-    let capturedItems: StreamItem[] | undefined;
-    if ("turnStream" in source) {
-      const out = await runTurnStream(source as LiveSource, sessionId, "submit", {
-        intent,
-        slots,
-      });
-      result = out.result;
-      capturedStream = out.streamedText;
-      capturedItems = out.stream;
-    } else {
-      result = await source.submit(sessionId, intent, slots);
+    transcript.value.push({
+      role: "user",
+      text: userText(intent, slots, displayLabel),
+      ...(opts?.annotation ? { annotation: opts.annotation } : {}),
+    });
+    busy.value = true;
+    try {
+      let result: TurnResult;
+      let capturedStream = "";
+      let capturedItems: StreamItem[] | undefined;
+      if ("turnStream" in source) {
+        const out = await runTurnStream(source as LiveSource, sessionId, "submit", {
+          intent,
+          slots,
+          ...(opts?.anchor ? { anchor: opts.anchor } : {}),
+        });
+        result = out.result;
+        capturedStream = out.streamedText;
+        capturedItems = out.stream;
+      } else {
+        result = await source.submit(sessionId, intent, slots, opts?.anchor);
+      }
+      if (typeof result.turn_number === "number") {
+        await backfillTurnTrace(source, sessionId, result.turn_number);
+      }
+      applyTurnResult(result, capturedStream, capturedItems);
+      return result;
+    } finally {
+      busy.value = false;
     }
-    if (typeof result.turn_number === "number") {
-      await backfillTurnTrace(source, sessionId, result.turn_number);
-    }
-    applyTurnResult(result, capturedStream, capturedItems);
-    return result;
   }
 
   /**
@@ -648,9 +697,17 @@ export const useRunStore = defineStore("run", () => {
     let result: TurnResult;
     let capturedStream = "";
     let capturedItems: StreamItem[] | undefined;
+    // When the operator is viewing an embedded deck, ride the slide they're
+    // looking at as a `current_scene` supplement slot so a free-text refine
+    // targets THAT slide with no annotation needed (gap-fill only — the router's
+    // own classification wins). Producer-neutral: `embedScope` is an opaque token.
+    const viewSlots: Record<string, unknown> = embedScope.value
+      ? { current_scene: embedScope.value }
+      : {};
     if ("turnStream" in source) {
       const out = await runTurnStream(source as LiveSource, sessionId, "turn", {
         input: text,
+        ...(embedScope.value ? { slots: viewSlots } : {}),
       }, (routing, turn) => {
         userEntry.routing = routing;
         if (typeof turn === "number") userEntry.turn = turn;
@@ -823,6 +880,11 @@ export const useRunStore = defineStore("run", () => {
     currentView,
     allowedIntents,
     pendingStream,
+    busy,
+    embedScope,
+    embedStep,
+    embedLabel,
+    setEmbedView,
     harnessProfiles,
     harnessModel,
     harnessEffort,
@@ -842,3 +904,11 @@ export const useRunStore = defineStore("run", () => {
     applyTurnResult,
   };
 });
+
+// Preserve the run store (transcript, current view, …) across Vite HMR. Without
+// this, editing this module hot-reloads the store and RESETS its state — the
+// conversation appears to "lose" all but the most recent messages. The accept
+// hook hands the updated store definition to the existing instance instead.
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useRunStore, import.meta.hot));
+}

@@ -62,6 +62,23 @@ async function toReviewing(source: ReturnType<typeof stubSource>) {
   return store;
 }
 
+async function toReviewingWithPlacement(source: ReturnType<typeof stubSource>) {
+  const store = useBugReportStore();
+  await store.trigger({
+    source: source as unknown as BugSource,
+    defaultTitle: "Bug report at clicked location",
+    placement: {
+      x: 12,
+      y: 34,
+      selector: '[data-testid="translated-label"]',
+      text: "Guardar cambios",
+      route: "/#/s/pub-1/chat",
+    },
+    deps,
+  });
+  return store;
+}
+
 describe("BugReportModal", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -130,6 +147,40 @@ describe("BugReportModal", () => {
 
     expect(store.status).toBe("filed");
     expect(store.filed?.path).toBe("issues/bugs/id-1.md");
+  });
+
+  it("shows clicked placement context and submits it in the reviewed description", async () => {
+    const source = stubSource();
+    await toReviewingWithPlacement(source);
+    mount(BugReportModal);
+    await flushPromises();
+
+    expect(
+      document.querySelector('[data-testid="bug-modal-placement-target"]')!
+        .textContent
+    ).toContain('[data-testid="translated-label"]');
+    expect(
+      document.querySelector('[data-testid="bug-modal-placement-point"]')!
+        .textContent
+    ).toContain("12");
+    expect(
+      (
+        document.querySelector(
+          '[data-testid="bug-modal-description"]'
+        ) as HTMLTextAreaElement
+      ).value
+    ).toContain("Clicked location:");
+
+    (
+      document.querySelector(
+        '[data-testid="bug-modal-submit"]'
+      ) as HTMLButtonElement
+    ).click();
+    await flushPromises();
+
+    const params = source.reportBug.mock.calls[0][0];
+    expect(params.description).toContain("Clicked location:");
+    expect(params.description).toContain("Guardar cambios");
   });
 
   it("cancel discards and returns to idle", async () => {

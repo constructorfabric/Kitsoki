@@ -40,7 +40,12 @@ class Price:
 # Keyed by a model-id prefix; longest matching prefix wins (see price_for).
 PRICING: dict[str, Price] = {
     # Opus 4.x — the Claude Code default for heavy coding sessions.
-    "claude-opus-4": Price(15.0, 75.0, 18.75, 30.0, 1.50),
+    # Updated 2026-06 to the current Opus 4.8 list price ($5 in / $25 out per
+    # Mtok; cache_read 0.1x = 0.5, write_5m 1.25x = 6.25, write_1h 2x = 10).
+    # Verified against kitsoki's native per-call meta.cost_usd on a real bugfix
+    # trace: this table reproduces the recorded session cost to within ~0.4%.
+    # (The prior 15/75 row was stale Opus-4 pricing and overstated cost ~3x.)
+    "claude-opus-4": Price(5.0, 25.0, 6.25, 10.0, 0.50),
     # Sonnet 4.x — the demo's agent model and a common Claude Code tier.
     "claude-sonnet-4": Price(3.0, 15.0, 3.75, 6.0, 0.30),
     # Haiku 4.5 — cheap tier.

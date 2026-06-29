@@ -1,0 +1,46 @@
+states:
+  idle:
+    description: "Waiting to run harness parity QA."
+    relevant_world: [question, surfaces, output_root, markdown_path, visual_policy, status]
+    view:
+      - banner:
+          text: "HARNESS PARITY QA"
+          subtitle: "Deterministic Claude/Codex stream and surface parity checks."
+          color: "#0F766E"
+      - kv:
+          pairs:
+            Surfaces: "{{ world.surfaces }}"
+            Output root: "{{ world.output_root }}"
+            Markdown: "{{ world.markdown_path }}"
+            Visual policy: "{{ world.visual_policy }}"
+            Status: "{{ world.status }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start"
+              hint: "run the no-LLM parity gate"
+              intent: start
+              param: { slot: question, type: string, placeholder: "what changed?", required: false }
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      start:
+        - target: running
+          effects:
+            - set:
+                question: '{{ slots.question ?? "Compare Claude and Codex harness activity across operator surfaces." }}'
+                surfaces: '{{ slots.surfaces ?? world.surfaces }}'
+                output_root: '{{ slots.output_root ?? world.output_root }}'
+                markdown_path: '{{ slots.markdown_path ?? world.markdown_path }}'
+                visual_policy: '{{ slots.visual_policy ?? world.visual_policy }}'
+                parity_result: {}
+                status: "running"
+      quit:
+        - target: done
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .

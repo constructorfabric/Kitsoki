@@ -308,6 +308,36 @@ function onCancel(): void {
             </ul>
           </section>
 
+          <!-- Click placement -->
+          <section
+            v-if="store.placement"
+            class="br-section"
+            data-testid="bug-modal-placement"
+          >
+            <h4 class="br-h">Clicked location</h4>
+            <dl class="br-placement">
+              <div>
+                <dt>Target</dt>
+                <dd data-testid="bug-modal-placement-target">
+                  {{ store.placement.selector }}
+                </dd>
+              </div>
+              <div>
+                <dt>Viewport</dt>
+                <dd data-testid="bug-modal-placement-point">
+                  {{ Math.round(store.placement.x) }},
+                  {{ Math.round(store.placement.y) }}
+                </dd>
+              </div>
+              <div v-if="store.placement.text">
+                <dt>Text</dt>
+                <dd data-testid="bug-modal-placement-text">
+                  {{ store.placement.text }}
+                </dd>
+              </div>
+            </dl>
+          </section>
+
           <!-- Title + description -->
           <section class="br-section">
             <label class="br-label" for="br-title">Title</label>
@@ -513,6 +543,24 @@ function onCancel(): void {
   display: flex;
   gap: 0.5rem;
   padding: 0.1rem 0;
+}
+.br-placement {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+}
+.br-placement div {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.br-placement dt {
+  color: var(--k-fg-muted, #94a3b8);
+}
+.br-placement dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 .br-level {
   color: var(--k-warning, #f59e0b);

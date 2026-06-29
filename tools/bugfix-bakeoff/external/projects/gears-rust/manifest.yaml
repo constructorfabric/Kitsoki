@@ -1,0 +1,136 @@
+# External-project bake-off manifest — gears-rust (a large, mature Rust monorepo).
+#
+# Same shape as projects/query-string/manifest.yaml, but the target is a heavy
+# Rust workspace, so each bug pins its OWN crate + cargo invocation (the per-bug
+# `oracle:` block overrides the project default; bench.py merges them). The hidden
+# oracle is a STANDALONE integration test (`inject: write`) that calls the crate's
+# public API — RED at baseline_sha, GREEN after the real fix's source.
+#
+# This corpus is the stable reference captured from the 2026-06 gears-rust dogfood
+# marathon (10 bugs, all shipped + independently verified) + the hard-case stress
+# run (H1 FAIL / H2 PASS / H3 PASS / H4 STALL). Provenance, the full corpus table,
+# and the H1/H4 findings live in this project's README.md (committed, durable).
+#
+# GATED: the arming check builds Rust (cargo) against a LOCAL checkout of a heavy,
+# PRIVATE repo — never cloned in `make test`. Run against a local mirror:
+#   GEARS_RUST_REPO=~/code/gears-rust make gears-bakeoff
+#   # or: go test -tags gearsbakeoff -run TestGearsBakeoff -count=1 -v ./tools/bugfix-bakeoff/external/
+# Set CARGO_TARGET_DIR to a persistent dir so deps cache across oracles.
+kind: bugfix_bakeoff_external
+version: 1
+
+project:
+  id: gears-rust
+  repo: https://github.com/bsacrobatix/gears-rust.git   # private fork; arm via --repo-dir (local)
+  local_only: true             # heavy + private: NOT cloned by the qsbakeoff loop; armed via the gearsbakeoff test against a local mirror
+  title: "gears-rust — Constructor 'gears' declarative service platform (Rust monorepo)"
+  language: rust
+  runner: cargo
+  install: ""                  # cargo builds on demand; no separate install step
+  onboard_app: "@kitsoki/dev-story"
+  test_cmd: ""                 # no whole-workspace suite (too heavy)
+  suite: false                 # the hidden oracle is the only signal (bench.py honours this)
+  # Project default oracle contract; every bug overrides target/run/inject below.
+  oracle:
+    inject: write              # the oracle is a standalone tests/*.rs file (not appended)
+    run: 'cargo test {match}'
+
+# ── Armable fixtures (standalone oracle, RED@baseline → GREEN@fix) ──────────────
+# These four have a clean public-API oracle and are exercised by the gated test.
+bugs:
+  - id: bug1
+    title: "gh-4115: k8s underscore env-var override of a dashed gear name is dropped"
+    crate: cf-gears-toolkit
+    fix_sha: a7080261
+    baseline_sha: e3ab3c27
+    fix_source: libs/toolkit/src/bootstrap/config/mod.rs
+    oracle_test: oracles/bug1.rs
+    oracle:
+      target: libs/toolkit/tests/oracle_bug1.rs
+      run: 'cargo test -p cf-gears-toolkit --features bootstrap --test oracle_bug1'
+    ticket: |
+      A gear named with dashes (e.g. `static-authz-plugin`) is stored in
+      AppConfig.gears under the dashed key. In Kubernetes, env var names cannot
+      contain dashes, so operators use underscores
+      (APP__GEARS__STATIC_AUTHZ_PLUGIN__CONFIG__PRIORITY=50). The figment env
+      pipeline lowercases to gears.static_authz_plugin.config.priority, but the
+      HashMap key is dashed, so the lookup misses and the override is silently
+      dropped — the gear keeps its YAML value. The underscore form must override
+      the dashed gear.
+
+  - id: bug4
+    title: "errors: CanonicalError lacks From<io::Error>/From<serde_json::Error>"
+    crate: cf-modkit-canonical-errors
+    fix_sha: e21d79ab
+    baseline_sha: c7a95be5
+    fix_source: libs/modkit-canonical-errors/src/error.rs
+    oracle_test: oracles/bug4.rs
+    oracle:
+      target: libs/modkit-canonical-errors/tests/oracle_bug4.rs
+      run: 'cargo test -p cf-modkit-canonical-errors --test oracle_bug4'
+    ticket: |
+      cf_modkit_errors::CanonicalError does not implement From<std::io::Error> or
+      From<serde_json::Error>, so `?` cannot propagate those into a
+      Result<_, CanonicalError>. Expected: From<io::Error> → 500/"Internal";
+      From<serde_json::Error> → 400/"Invalid Argument" with the serde message as
+      detail; `?` propagation compiles.
+
+  - id: bug5
+    title: "resource-group: RG-prefix wrongly forced onto external membership types"
+    crate: cyberware-resource-group
+    fix_sha: 8737281d
+    baseline_sha: 70d19538
+    fix_source: modules/system/resource-group/resource-group/src/domain
+    oracle_test: oracles/bug5.rs
+    oracle:
+      target: modules/system/resource-group/resource-group/tests/oracle_bug5.rs
+      run: 'cargo test -p cyberware-resource-group --test oracle_bug5'
+    ticket: |
+      TypeService::create_type/update_type validate allowed_membership_types with
+      validate_type_code, which enforces the RG namespace prefix. But membership
+      types are EXTERNAL domain types (e.g. gts.cf.core.idp.user.v1~) and must not
+      be forced into the RG namespace. Membership codes must accept external
+      (non-RG-prefixed) types while still rejecting empty/over-length; RG-prefixed
+      stays accepted. add_membership/remove_membership are already correct.
+
+  - id: bug9
+    title: "modkit: duplicate YAML mapping keys silently accepted during config parse"
+    crate: cf-modkit
+    fix_sha: aba9d854
+    baseline_sha: 9a94081f
+    fix_source: libs/modkit/src/bootstrap/config/mod.rs
+    oracle_test: oracles/bug9.rs
+    oracle:
+      target: libs/modkit/tests/oracle_bug9.rs
+      run: 'cargo test -p cf-modkit --features bootstrap --test oracle_bug9'
+    ticket: |
+      AppConfig::load_layered parses YAML via figment's last-key-wins provider, so
+      a config with a duplicate mapping key (two `module1:` under `modules:`) is
+      accepted silently and the earlier definition is dropped. A duplicate mapping
+      key must be REJECTED — load_layered returns an Err mentioning 'duplicate';
+      valid configs still load.
+
+# ── Reference-only fixtures (captured corpus; oracle is copy-in or overlay) ─────
+# These are part of the stable reference (full provenance below) but their oracle
+# is an in-module copy-in snippet or a whole-test-file overlay, so they are not
+# auto-armed by the standalone `inject: write` path yet. Extend bench.py with an
+# `inject: insert-at-marker` mode to arm the copy-in set. Verdicts are from the
+# independent-verify runs (real PR oracle).
+reference_only:
+  marathon:   # all shipped, independent-oracle PASS
+    - { id: bug2,  crate: cf-modkit-transport-grpc, fix_sha: 6e954c6f, baseline_sha: ddbc3034, verdict: PASS, oracle_kind: copy-in }
+    - { id: bug3,  crate: cf-modkit-macros,         fix_sha: 17cc2fcd, baseline_sha: a8bde695, verdict: PASS, oracle_kind: copy-in }
+    - { id: bug6,  crate: cf-modkit-odata,          fix_sha: ba166a57, baseline_sha: 4fe14125, verdict: PASS, oracle_kind: copy-in }
+    - { id: bug7,  crate: cf-modkit-auth,           fix_sha: 7ed1c603, baseline_sha: 4ce1cdb5, verdict: PASS, oracle_kind: copy-in }
+    - { id: bug8,  crate: cyberware-modkit-db,      fix_sha: c3c96ac7, baseline_sha: d817f059, verdict: PASS, oracle_kind: copy-in }
+    - { id: bug10, crate: cf-mini-chat-sdk,         fix_sha: 7563f5cd, baseline_sha: 9589b8bd, verdict: PASS, oracle_kind: copy-in }
+  hard:       # stress set
+    - { id: H1, crate: cf-oagw,                fix_sha: 9ca475ed, baseline_sha: fee90d80, verdict: FAIL,  oracle_kind: overlay, note: "maker reproducer asserted wire framing, not body-arrival; real oracle 2/5" }
+    - { id: H2, crate: cf-account-management,  fix_sha: f0873f75, baseline_sha: 5311e174, verdict: PASS,  oracle_kind: overlay }
+    - { id: H3, crate: cf-account-management,  fix_sha: 26ad613f, baseline_sha: 9df63dfd, verdict: PASS,  oracle_kind: overlay }
+    - { id: H4, crate: cyberware-resource-group, fix_sha: 5a58a219, baseline_sha: 8737281d, verdict: STALL, oracle_kind: copy-in, note: "reproducing maker call hung 31min; no inactivity watchdog" }
+
+treatments: [kitsoki, single]
+run:
+  story: stories/bugfix/app.yaml
+  worktree_root: .worktrees

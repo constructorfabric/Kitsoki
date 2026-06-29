@@ -8,7 +8,6 @@ initial_world:
   workspace: "stories/slidey-edit/baked"
   deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "deck" }
   deck_handle: "slidey-edit#1"
-  semantic_handle: "slidey-semantic#1"
   addressed: { items: [] }
   cycle: 6
   refine_budget: 6

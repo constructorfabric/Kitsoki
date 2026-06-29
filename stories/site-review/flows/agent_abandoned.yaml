@@ -1,0 +1,30 @@
+# agent_abandoned — the agent never submits. host.agent.decide returns
+# Result.Error, on_error: review_failed fires. Verifies the failure path
+# is reachable and the user can recover via review_again.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+
+host_cassette: cassettes/agent_abandoned.cassette.yaml
+
+turns:
+  # start → reviewing. preflight binds the sha; agent.decide returns an
+  # error; on_error routes to review_failed. host.artifacts_dir is
+  # skipped (effects after the erroring invoke don't run).
+  - intent: { name: start, slots: {} }
+    expect_state: review_failed
+    expect_world:
+      commit_sha: "feedfacecafe0000"
+
+  # The user can retry.
+  - intent: { name: review_again, slots: {} }
+    expect_state: review_failed
+    expect_world:
+      commit_sha: "feedfacecafe0000"
+
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__abandoned
+
+expect_terminal: true

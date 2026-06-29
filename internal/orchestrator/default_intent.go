@@ -50,7 +50,7 @@ func (o *Orchestrator) routeViaDefaultIntent(ctx context.Context, sid app.Sessio
 		allowedNames[i] = ai.Name
 	}
 
-	intentName := resolveDefaultIntentName(st, allowedNames)
+	intentName := resolveDefaultIntentName(o.def, journey.State, st, allowedNames)
 	if intentName == "" {
 		// Declared but not currently allowed (e.g. a guard is false this turn).
 		return nil, false, nil
@@ -112,7 +112,7 @@ func (o *Orchestrator) routeViaFreeFormFallback(ctx context.Context, sid app.Ses
 	for i, ai := range allowedIntents {
 		allowedNames[i] = ai.Name
 	}
-	intentName = resolveIntentAlias(st, intentName)
+	intentName = resolveIntentAlias(o.def, journey.State, st, intentName)
 	if !containsString(allowedNames, intentName) {
 		return nil, false, nil
 	}
@@ -207,12 +207,12 @@ func baseOrchestratorStateName(path string) string {
 // folded machine uses an import-prefixed key ("core__discuss"); the rewriter
 // records that mapping in IntentAliases, so we resolve through it. Returns ""
 // when the resolved name is not in the allowed set.
-func resolveDefaultIntentName(st *app.State, allowed []string) string {
+func resolveDefaultIntentName(def *app.AppDef, state app.StatePath, st *app.State, allowed []string) string {
 	di := strings.TrimSpace(st.DefaultIntent)
 	if di == "" {
 		return ""
 	}
-	di = resolveIntentAlias(st, di)
+	di = resolveIntentAlias(def, state, st, di)
 	for _, a := range allowed {
 		if a == di {
 			return di
@@ -221,11 +221,36 @@ func resolveDefaultIntentName(st *app.State, allowed []string) string {
 	return ""
 }
 
-func resolveIntentAlias(st *app.State, name string) string {
-	if st == nil {
+func resolveIntentAlias(def *app.AppDef, state app.StatePath, st *app.State, name string) string {
+	if def == nil {
 		return strings.TrimSpace(name)
 	}
 	name = strings.TrimSpace(name)
+	if st == nil {
+		return name
+	}
+
+	path := strings.TrimSpace(string(state))
+	if idx := strings.Index(path, "#"); idx >= 0 {
+		path = path[:idx]
+	}
+	if path == "" {
+		path = string(state)
+	}
+	for {
+		n := lookupStateByPath(def, app.StatePath(path))
+		if n != nil {
+			if mapped, ok := n.IntentAliases[name]; ok && strings.TrimSpace(mapped) != "" {
+				return mapped
+			}
+		}
+		idx := strings.LastIndexByte(path, '.')
+		if idx < 0 {
+			break
+		}
+		path = path[:idx]
+	}
+
 	if mapped, ok := st.IntentAliases[name]; ok && strings.TrimSpace(mapped) != "" {
 		return mapped
 	}

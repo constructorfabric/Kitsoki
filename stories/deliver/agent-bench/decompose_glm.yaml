@@ -1,0 +1,38 @@
+version: agent_bench/v1
+cases:
+  - id: deliver-decompose-glm52
+    description: >
+      Controlled GLM-5.2 performance harness for the deliver story's
+      host.agent.task decomposer. The default score path is offline: point
+      --trace at a recorded live trace or update trace after a gated run.
+    trace: ../../../.artifacts/agent-bench/deliver-decompose-glm52/trace.jsonl
+    run:
+      workdir: ../../..
+      timeout: 15m
+      command:
+        - go
+        - run
+        - ./cmd/kitsoki
+        - drive
+        - stories/deliver/app.yaml
+        - --harness
+        - live
+        - --profile
+        - synthetic-claude
+        - --trace
+        - .artifacts/agent-bench/deliver-decompose-glm52/trace.jsonl
+        - --script
+        - stories/deliver/agent-bench/decompose_glm.script
+    budgets:
+      max_wall_seconds: 600
+      max_tool_calls: 20
+      max_read_calls: 12
+      max_files_read: 12
+      max_input_tokens: 150000
+      max_output_tokens: 16000
+      max_total_tokens: 170000
+      max_cost_usd: 1.00
+      max_thinking_events: 20
+    expectations:
+      require_submit: true
+      forbidden_tools: [Agent, Task, AskUserQuestion]

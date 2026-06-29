@@ -78,13 +78,17 @@ live in the sections above.
 
 ## Worked examples and per-story references
 
+- [`project-onboarding.md`](project-onboarding.md) — set up a committed,
+  working kitsoki environment (instance + studio MCP + skill/agent toolkit) in
+  your own repo; backed by the dev-story
+  [`init` pipeline](stories/dev-story-onboarding.md).
 - [`case-studies/`](case-studies/README.md) — worked examples of
   progressive determinism applied to real workflows. Start with
   [`case-studies/bug-fix.md`](case-studies/bug-fix.md): how a
   prompt-driven agent loop became the multi-room `bugfix` pipeline.
 - **Per-story READMEs** — each story under `../stories/` ships its own
   authoritative reference. Notable ones:
-  [`../stories/kitsoki-dev/README.md`](../stories/kitsoki-dev/README.md)
+  [`../.kitsoki/stories/kitsoki-dev/README.md`](../.kitsoki/stories/kitsoki-dev/README.md)
   (dogfood operator walkthrough),
   [`../stories/bugfix/README.md`](../stories/bugfix/README.md)
   (the bugfix pipeline),

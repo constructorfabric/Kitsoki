@@ -1,0 +1,40 @@
+{
+  "bug": "bug9",
+  "candidate": "opus-4.8",
+  "treatment": "single",
+  "profile": "claude-native",
+  "model": "opus",
+  "effort": "medium",
+  "provider": "anthropic",
+  "outcome": {
+    "oracle_pass": false,
+    "oracle_status": "fail",
+    "build_pass": true,
+    "suite_pass": false,
+    "quality": "solved",
+    "adjudicated": true,
+    "adjudication_note": "Refuses session B naming the owner; threaded session_id through host_dispatch.go like the canonical fix. Oracle false-fails on canonical wording."
+  },
+  "compliance": {
+    "reproduced_red": true,
+    "added_regression_test": false,
+    "suite_green": false,
+    "in_scope": true,
+    "stage_order": false,
+    "rate": 0.4
+  },
+  "metrics": {
+    "input_tokens": 27138,
+    "output_tokens": 31601,
+    "cache_read_tokens": 3347915,
+    "cache_write_tokens": 140344,
+    "total_tokens": 3546998,
+    "cost_usd": 4.003113,
+    "cost_exact": true,
+    "wall_time_s": 299.0,
+    "guidance_turns": 1
+  },
+  "transcript_path": "/Users/brad/.claude/projects/-Users-brad-code-Kitsoki--worktrees-bakeoff-bug9-opus-4-8-single/4acbed1b-f0b7-4192-886d-af4da62f8615.jsonl",
+  "trace_found": false,
+  "notes": "oracle TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP: rc=1"
+}

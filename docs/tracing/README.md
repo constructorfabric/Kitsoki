@@ -14,14 +14,22 @@ and contributors alike.*
 
 ## How the pieces fit
 
-```
-        record                 replay / project
-  turn ───────▶  trace (JSONL)  ───────▶  state · world · transcript
-                    │
-                    ├── flow tests assert on the projection      (testing.md)
-                    ├── cassettes stand in for host/LLM calls    (cassettes.md)
-                    ├── `kitsoki turn` drives one turn against it (turn.md)
-                    └── `kitsoki replay-routing` re-runs routing  (../architecture/semantic-routing.md)
+```mermaid
+flowchart LR
+    turn["turn"]
+    trace["trace<br/>JSONL"]
+    projection["state + world + transcript"]
+    tests["flow tests<br/>assert projection"]
+    cassettes["cassettes<br/>stand in for host/LLM calls"]
+    oneTurn["kitsoki turn<br/>drive one turn"]
+    routing["kitsoki replay-routing<br/>rerun routing"]
+
+    turn -->|"record"| trace
+    trace -->|"replay / project"| projection
+    trace --> tests
+    trace --> cassettes
+    trace --> oneTurn
+    trace --> routing
 ```
 
 - **[`trace-format.md`](trace-format.md)** — the JSONL schema: the

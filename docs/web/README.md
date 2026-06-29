@@ -119,6 +119,10 @@ A single session view lives at `/s/:sessionId`
 `/s/:sessionId/chat`. The live-source client (`data/live-source.ts`) is
 initialised with the route's `session_id` and sends it on every RPC.
 
+The meta menu also includes a **Dynamic workflows** launcher. It opens a modal
+that creates, validates, launches, exports, and refreshes workflow receipts
+through the same runstatus RPCs the CLI and MCP surfaces use.
+
 ---
 
 ## The session view
@@ -400,15 +404,19 @@ new engine concepts.
 
 ### The flow
 
-```
-background job terminal ─▶ PostJobNotification (notifications row)   [engine]
-                        └▶ RefreshSummary ($inbox unread counts)     [engine]
-                        └▶ notifyBackgroundTurn(outcome)             [engine]
-                                 │
-                    notificationRelay (a SessionObserver the          [web wiring]
-                    server registers per live session)
-                                 ▼
-              SSE: runstatus.notification ─▶ browser badge + toast
+```mermaid
+flowchart TD
+    terminal["background job terminal"]
+    post["PostJobNotification<br/>notifications row"]
+    summary["RefreshSummary<br/>$inbox unread counts"]
+    notify["notifyBackgroundTurn(outcome)"]
+    relay["notificationRelay<br/>SessionObserver per live session"]
+    sse["SSE: runstatus.notification"]
+    browser["browser badge + toast"]
+
+    terminal --> post
+    terminal --> summary
+    terminal --> notify --> relay --> sse --> browser
 ```
 
 A per-session relay (`internal/runstatus/server/notifications.go`) multiplexes
@@ -416,12 +424,19 @@ every live session's posts onto **one** cross-session SSE feed the home chrome
 subscribes to; the badge increments and, for `success` / `action_required`
 severity only, a transient toast appears. Clicking either jumps you back:
 
-```
-browser click ─▶ runstatus.session.teleport {notification_id}
-                   │  resolve notification (JobStore)
-                   │  inbox.FromNotification → TeleportTarget   (internal/inbox/inbox.go)
-                   └─ Orchestrator.Teleport(sid, target)        (internal/orchestrator/teleport.go)
-                        └─ turnResult (re-rendered room + restored slots) ─▶ browser
+```mermaid
+sequenceDiagram
+    participant Browser as browser
+    participant RPC as runstatus.session.teleport
+    participant JobStore as JobStore
+    participant Inbox as inbox.FromNotification
+    participant Orchestrator as Orchestrator.Teleport
+
+    Browser->>RPC: notification_id
+    RPC->>JobStore: resolve notification
+    RPC->>Inbox: build TeleportTarget
+    RPC->>Orchestrator: Teleport(sid, target)
+    Orchestrator-->>Browser: turnResult with room + restored slots
 ```
 
 Teleport is request/response, not push — it reuses the stackless jump the TUI
@@ -684,11 +699,20 @@ as a JSON-RPC error.
 
 ## Architecture
 
-```
-browser ──HTTP/SSE──▶ server.Server ──▶ SessionProvider (registry)
-                          │                    │   ├─ Entry{Source, Driver} per session
-                          │                    │   └─ StoryHeader catalogue (webconfig)
-                          └── per-session Source/Driver resolved by session_id
+```mermaid
+flowchart LR
+    browser["browser"]
+    server["server.Server"]
+    provider["SessionProvider<br/>registry"]
+    entry["Entry{Source, Driver}<br/>per session"]
+    catalogue["StoryHeader catalogue<br/>webconfig"]
+    resolved["per-session Source/Driver<br/>resolved by session_id"]
+
+    browser -->|"HTTP / SSE"| server
+    server --> provider
+    provider --> entry
+    provider --> catalogue
+    server --> resolved
 ```
 
 - **`internal/webconfig`** — config load (`.kitsoki.yaml`), directory resolution

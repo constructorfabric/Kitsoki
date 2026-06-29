@@ -1,0 +1,48 @@
+# architect_design replay recording (slidey-dev) — free-text → intent routing
+# for the slidey ARCHITECT/DESIGN rrweb tour. Under `kitsoki web --harness
+# replay`, the operator TYPES each line below; the recording maps it (by state)
+# to the slot-bearing intent the live router would extract. Host.* calls are
+# backed by architect_design-host.cassette.yaml. The session is seeded mid-graph
+# (initial_state core.prd_published, core__prd__prd_file set) via the flow
+# fixture under the live-harness SeedFixture path. No LLM at replay time.
+#
+# Only the TYPED free-text turns need entries; the tour's confirm/ready/accept
+# advances are explicit intents driven through the InteractiveView store hook.
+# Entry inputs match the type-and-send texts in the slidey-architect-design tour
+# manifest verbatim. Routing mirrors architect_design.yaml (the canonical flow).
+kind: recording
+app_id: slidey-dev
+app_version: "0.1.0"
+generated_at: "2026-06-24T00:00:00Z"
+generator: "authored from architect_design.yaml (no LLM at replay)"
+min_confidence: 0.80
+
+entries:
+  # 1. "continue" at prd_published → carry the published PRD into design intake.
+  - state: core.prd_published
+    input: "continue"
+    intent:
+      name: core__continue
+      slots: {}
+    confidence: 0.95
+    majority_of: 1
+
+  # 2. The design intent, typed at design intake.
+  - state: core.design
+    input: "realize the speaker-notes-export PRD as a slidey runtime design"
+    intent:
+      name: core__discuss
+      slots:
+        message: "realize the speaker-notes-export PRD as a slidey runtime design"
+    confidence: 0.92
+    majority_of: 1
+
+  # 3. The refine note, typed at design_refine.
+  - state: core.design_refine
+    input: "name the notes collector and the CLI seam, and the per-scene Markdown shape"
+    intent:
+      name: core__discuss
+      slots:
+        message: "name the notes collector and the CLI seam, and the per-scene Markdown shape"
+    confidence: 0.90
+    majority_of: 1

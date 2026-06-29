@@ -7,7 +7,7 @@
  * Used by oregon-trail-e2e.spec.ts and tour-video.spec.ts.
  *
  * IMPORTANT: the binary serves the SPA via go:embed, so a fresh UI requires
- * `make build && cp ./kitsoki bin/kitsoki` before recording — an un-rebuilt
+ * `make build-bin` before recording — an un-rebuilt
  * bin/kitsoki serves a stale bundle.
  */
 import { spawn, spawnSync, type ChildProcess } from "child_process";
@@ -78,6 +78,63 @@ export const SETTLE_MS = 1400;
  * navigation kept getting written without one. Import this instead. */
 export function dwell(page: Page, ms: number): Promise<void> {
   return page.waitForTimeout(Math.round(ms * PACE));
+}
+
+/**
+ * Full-screen a produced markdown artifact and ease-scroll it top→bottom, then
+ * close — the demo-target "every artifact is full-screened via the modal to show
+ * the full content" beat, reused by every phase capture (PRD, design,
+ * decomposition, bugfix summary, PR summary).
+ *
+ * Driven through the global `__openArtifact` hook (ArtifactModal, mounted in
+ * App.vue) which full-screens MarkdownModal on the given `.md` path (read via
+ * runstatus.file.read). The dwells and the scroll are FIXED (not PACE-scaled):
+ * the conversation is captured lean (WEB_CHAT_PACE=0) and the readable dwells are
+ * added deterministically by `slidey rrweb-repace`, but the document read-through
+ * must stay smooth/legible regardless of capture pace.
+ */
+export async function showArtifact(
+  page: Page,
+  artifactPath: string,
+  opts: { scrollMs?: number; topDwellMs?: number; endDwellMs?: number } = {},
+): Promise<void> {
+  const scrollMs = opts.scrollMs ?? 5200;
+  const topDwellMs = opts.topDwellMs ?? 1600;
+  const endDwellMs = opts.endDwellMs ?? 1600;
+  await page.evaluate((p) => {
+    (window as unknown as { __openArtifact?: (s: string) => void }).__openArtifact?.(p);
+  }, artifactPath);
+  await expect(page.getByTestId("markdown-modal")).toBeVisible({ timeout: 8000 });
+  // Wait for the markdown to actually render (the modal fetches the file via RPC)
+  // and to be tall enough to scroll.
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[data-testid="markdown-modal-body"] .mm-md') as HTMLElement | null;
+    return !!el && el.scrollHeight > el.clientHeight - 1;
+  }, undefined, { timeout: 8000 });
+  await page.waitForTimeout(topDwellMs); // read the top of the document
+  await page.evaluate(async (ms) => {
+    const el = document.querySelector('[data-testid="markdown-modal-body"]') as HTMLElement | null;
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 2) return;
+    const from = el.scrollTop;
+    const t0 = performance.now();
+    await new Promise<void>((res) => {
+      const tick = (now: number) => {
+        const p = Math.min(1, (now - t0) / ms);
+        const eased = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        el.scrollTop = from + (max - from) * eased;
+        if (p < 1) requestAnimationFrame(tick);
+        else res();
+      };
+      requestAnimationFrame(tick);
+    });
+  }, scrollMs);
+  await page.waitForTimeout(endDwellMs); // rest on the end of the document
+  await page.evaluate(() => {
+    (window as unknown as { __closeArtifact?: () => void }).__closeArtifact?.();
+  });
+  await expect(page.getByTestId("markdown-modal")).toHaveCount(0, { timeout: 5000 });
 }
 
 /**
@@ -159,6 +216,10 @@ export async function startWebServer(opts: {
   hostCassette?: string;
   /** Optional .kitsoki.yaml path (--config), e.g. to declare harness_profiles. */
   config?: string;
+  /** Report-bug ticket target (--ticket-repo). Pass "" for LOCAL filing
+   *  (issues/bugs/<id>.md), or "owner/repo" to file a real GitHub issue via gh.
+   *  When undefined the flag is omitted and `kitsoki web`'s own default applies. */
+  ticketRepo?: string;
   /** Harness for free-text routing, e.g. "replay" (with `recording`). */
   harness?: string;
   /** Recording YAML for --harness replay (deterministic, hand-authorable). */
@@ -180,7 +241,7 @@ export async function startWebServer(opts: {
   if (opts.config) checkPaths.push(opts.config);
   for (const p of checkPaths) {
     if (!fs.existsSync(p)) {
-      const hint = p === BIN ? " (run 'make build && cp ./kitsoki bin/kitsoki', or unset KITSOKI_WEB_GO_RUN to use go run)" : "";
+      const hint = p === BIN ? " (run 'make build-bin', or unset KITSOKI_WEB_GO_RUN to use go run)" : "";
       throw new Error(`missing required path: ${p}${hint}`);
     }
   }
@@ -196,6 +257,7 @@ export async function startWebServer(opts: {
   if (opts.mode) args.push("--mode", opts.mode);
   if (opts.hostCassette) args.push("--host-cassette", opts.hostCassette);
   if (opts.config) args.push("--config", opts.config);
+  if (opts.ticketRepo !== undefined) args.push("--ticket-repo", opts.ticketRepo);
 
   // Slow-play passthrough (opt-in): when the RECORDING process has
   // KITSOKI_CASSETTE_SLOWPLAY set, forward it to the spawned server so a

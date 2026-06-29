@@ -1,0 +1,40 @@
+{
+  "bug": "bug9",
+  "candidate": "sonnet-4.6",
+  "treatment": "single",
+  "profile": "claude-native",
+  "model": "sonnet",
+  "effort": "medium",
+  "provider": "anthropic",
+  "outcome": {
+    "oracle_pass": false,
+    "oracle_status": "fail",
+    "build_pass": true,
+    "suite_pass": false,
+    "quality": "solved",
+    "adjudicated": true,
+    "adjudication_note": "After 1 guidance turn, refuses session B naming the owner. Oracle false-fails on canonical wording."
+  },
+  "compliance": {
+    "reproduced_red": true,
+    "added_regression_test": false,
+    "suite_green": false,
+    "in_scope": true,
+    "stage_order": true,
+    "rate": 0.6
+  },
+  "metrics": {
+    "input_tokens": 73,
+    "output_tokens": 32800,
+    "cache_read_tokens": 2887889,
+    "cache_write_tokens": 276362,
+    "total_tokens": 3197124,
+    "cost_usd": 3.016758,
+    "cost_exact": true,
+    "wall_time_s": 288.0,
+    "guidance_turns": 2
+  },
+  "transcript_path": "/Users/brad/.claude/projects/-Users-brad-code-Kitsoki--worktrees-bakeoff-bug9-sonnet-4-6-single/ce9bf3d5-6811-4cbf-ae09-5eba9a4849d1.jsonl",
+  "trace_found": false,
+  "notes": "oracle TestRepro_ConcurrentSessionsShareCheckout_DestroysWIP: rc=1"
+}

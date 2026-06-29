@@ -1,0 +1,219 @@
+# site-review — single-shot agent.decide story that asks a read-only
+# Opus agent whether the PRODUCT SITE + FEATURE CATALOG are still in
+# sync with recently-delivered capabilities. The verdict is written to
+# .artifacts/ keyed by commit sha.
+#
+# Sibling of stories/docs-review (same shape, different target): where
+# docs-review audits docs/** against code, site-review audits the
+# feature catalog (features/*.yaml) and the product site (tools/site/)
+# against what actually shipped — catching capabilities delivered with
+# no catalog entry / demo, and site copy that has drifted out of sync.
+#
+# Walks: idle → reviewing → reviewed → (fix_gaps) → fixing → fixed.
+#
+# reviewing.on_enter chains three host calls:
+#   1. host.run — capture HEAD sha + recent git log/diffstat AND the
+#      current feature-catalog ids + site page inventory into one JSON
+#      envelope (stdout_json).
+#   2. host.agent.decide — opus agent reads the repo, the catalog, and
+#      the site, and emits a typed verdict (needs_update / up_to_date
+#      with a list of gaps).
+#   3. host.artifacts_dir — write the verdict JSON to
+#      .artifacts/site-review-<mode>-<sha>.json.
+#
+# The story is small enough to run from `kitsoki turn` (one `start`
+# intent walks the whole pipeline because emit_intent fires `done` once
+# the artifact is written) and equally usable from `kitsoki run` for
+# interactive operator-facing review.
+
+app:
+  id: site-review
+  version: 0.1.0
+  title: "Site review — is the product site + feature catalog in sync with what shipped?"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.agent.decide
+  - host.agent.task
+  - host.artifacts_dir
+
+# Read-only review agent — read-only by construction (agent.decide rejects
+# Edit/Write/NotebookEdit at call time and load time). Bash is gated to
+# the built-in read-only allowlist (grep/find/cat/ls/git/jq/rg/…).
+agents:
+  site_reviewer:
+    system_prompt: |
+      You are a product-site auditor. Compare what kitsoki has recently
+      SHIPPED (recent commits + working tree) against two surfaces that
+      are supposed to advertise it:
+
+        - the feature catalog: features/*.yaml (the single source of
+          truth for the promo grid, feature pages, demo recordings, and
+          QA scenarios), and
+        - the product site under tools/site/ (landing, feature index,
+          guide copy under src/guide/**, the docs allowlist
+          tools/site/docs-manifest.json).
+
+      Decide whether the site is stale: a capability that shipped but has
+      NO catalog entry / demo, a promoted feature missing required pieces,
+      or site copy that now contradicts the code. Be concrete: cite the
+      feature id or file path and the commit that introduced the gap. When
+      in doubt, prefer "needs_update" with a low confidence so a human
+      takes a second look.
+
+      OUTPUT CONTRACT — read this before you start.
+
+      The ONLY way to produce your verdict is by calling the `submit`
+      tool with a JSON object that conforms to the site_review_verdict
+      schema. The submit tool's `arguments` field IS the verdict;
+      nothing else you write reaches the caller.
+
+      DO NOT:
+        - paste the verdict as a fenced YAML block in chat
+        - paste the verdict as a fenced JSON block in chat
+        - describe your findings in prose only
+        - end your turn without calling submit (the caller will treat
+          that as abandonment and retry up to 3 times before failing)
+
+      The submit call comes LAST, after you've done your reading.
+      Plan your reads (Read/Grep/Glob/Bash) in whatever order you
+      need, then call submit exactly once.
+    model: claude-opus-4-7
+    tools: [Read, Grep, Glob, Bash]
+    bash_profile: read-only
+
+  # Write-capable agent used by the `fixing` room. Reads world.verdict's
+  # gaps listing and applies the corresponding edits: authoring missing
+  # features/*.yaml catalog entries and patching stale site copy. Leaves
+  # everything uncommitted for the operator to review.
+  site_writer:
+    system_prompt: |
+      You are a product-site maintainer. You will be handed a JSON
+      verdict that lists gaps between what shipped and what the feature
+      catalog / product site advertises. Your job is to CLOSE the gaps —
+      concrete, minimal, surgical changes:
+
+        - kind "missing-catalog-entry" / "missing-demo": author a
+          features/<id>.yaml entry following features/AGENTS.md and the
+          existing entries as templates (id matches filename stem, valid
+          kind, title/tagline/summary, and — for a promoted feature — a
+          demo binding and posterStep). Do NOT invent a demo recording;
+          if no deterministic flow/cassette exists yet, leave the demo
+          spec pointing at the intended path and note it in the artifact.
+        - kind "site-inconsistency" / "stale-doc": edit the cited site
+          source (tools/site/src/** or the docs/** it is generated from)
+          to match current reality.
+
+      Read each cited source before editing.
+
+      OUTPUT CONTRACT — read this before you start.
+
+      Use `Edit` / `Write` to modify the catalog/site in the working
+      tree. When you are done, call the `submit` tool with a JSON object
+      conforming to the site_fix_artifact schema (list of files you
+      changed + a one-line per-file summary). Do NOT commit; leave the
+      changes uncommitted for the operator to review and to run
+      `make features` against.
+    model: claude-opus-4-7
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile: read-only
+    external_side_effect: false
+
+world:
+  # Captured by idle.on_enter so the operator can see which tree they
+  # are about to audit.
+  cwd:               { type: string, default: "" }
+  repo_root:         { type: string, default: "" }
+
+  # Captured by the host.run preflight before agent.decide runs.
+  commit_sha:        { type: string, default: "" }
+  commit_count:      { type: string, default: "" }
+  recent_log:        { type: string, default: "" }
+  recent_changes:    { type: string, default: "" }
+  working_tree_diff: { type: string, default: "" }
+  # Current feature-catalog ids (one per line) and product-site page
+  # inventory — captured in BOTH modes because the reviewer needs to
+  # know what is already cataloged to find what is missing.
+  feature_catalog:   { type: string, default: "" }
+  site_pages:        { type: string, default: "" }
+
+  # Agent output.
+  verdict:          { type: object, default: {} }
+  # Scalar sentinel bound alongside `verdict` so the reviewing.done
+  # guard can cheaply detect a successful submit (decision is required
+  # by the schema; absence proves the submit never landed).
+  verdict_decision: { type: string, default: "" }
+
+  # Selects between two audit modes:
+  #   "recent"   — focus on the last ~20 commits + working-tree changes
+  #                (useful in CI / after a feature lands)
+  #   "baseline" — full sweep: the whole catalog + every site page, no
+  #                commit-range filter (use after long site drift)
+  review_mode:      { type: string, default: "recent" }
+
+  # Filesystem path returned by host.artifacts_dir.
+  artifact_path:    { type: string, default: "" }
+
+  # Output of the `fixing` room — written by site_writer after it
+  # authors/patches the cited targets. Mirrors the site_fix_artifact
+  # schema.
+  fix_artifact:     { type: object, default: {} }
+  # Scalar sentinel, set in parallel with fix_artifact (same pattern as
+  # verdict_decision). Bound from submitted.summary (required, minLength
+  # 10) so the post-bind emit guard can tell "fix completed" from "host
+  # call queued but binds haven't settled yet".
+  fix_summary:      { type: string, default: "" }
+
+intents:
+  start:
+    description: "Run the site review against the current HEAD (last ~20 commits + working tree)."
+    examples: ["start", "review", "go"]
+    priority: 90
+  baseline:
+    description: "Run a baseline review — audit the whole catalog + site, ignoring commit range."
+    examples: ["baseline", "full", "audit all"]
+    priority: 90
+  done:
+    description: "Internal: emitted by reviewing.on_enter once the artifact has landed."
+    examples: ["done"]
+    priority: 85
+  no_submit:
+    description: "Internal: emitted by reviewing.on_enter when agent.decide returned ok but no schema-conforming submit landed (e.g. empty submitted, missing decision)."
+    examples: ["no_submit"]
+    priority: 85
+  fix_gaps:
+    description: "Author the missing catalog entries / patch the stale site copy from the latest needs_update verdict."
+    examples: ["fix gaps", "apply fixes", "update the site"]
+    priority: 85
+  fix_done:
+    description: "Internal: emitted by fixing.on_enter once site_writer has returned an artifact recording the edits."
+    examples: ["fix_done"]
+    priority: 85
+  review_again:
+    description: "Re-run the review (e.g. after a new commit)."
+    examples: ["again", "re-run", "review again"]
+    priority: 60
+  quit:
+    description: "Exit the story."
+    examples: ["quit", "exit", "bail"]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "what now?"]
+    priority: 10
+
+exports:
+  intents: [start, baseline, fix_gaps, review_again, quit, look]
+
+exits:
+  done:
+    description: "Operator dismissed the verdict."
+  abandoned:
+    description: "Operator quit before a verdict landed."
+
+root: idle
+
+include:
+  - rooms/*.yaml

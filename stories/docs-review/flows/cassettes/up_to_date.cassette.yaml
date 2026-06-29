@@ -4,12 +4,13 @@
 kind: host_cassette
 app_id: docs-review
 generated_at: 2026-05-28T00:00:00Z
-match_on: [handler]
+match_on: [handler, call]
 
 episodes:
   - id: preflight_run
     match:
       handler: host.run
+      call: docs-preflight
     response:
       data:
         ok: true
@@ -27,6 +28,7 @@ episodes:
   - id: agent_decide
     match:
       handler: host.agent.decide
+      call: docs-reviewer
     response:
       data:
         ok: true
@@ -46,6 +48,7 @@ episodes:
   - id: artifacts_dir_write
     match:
       handler: host.artifacts_dir
+      call: docs-verdict-artifact
     response:
       data:
         ok: true

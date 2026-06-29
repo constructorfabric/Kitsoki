@@ -6,21 +6,16 @@ composed by [`internal/sysprompt`](../../internal/sysprompt/doc.go), ordered
 most-stable → least-stable, passed to claude via `--system-prompt` (which
 **replaces** Claude Code's default coding-agent prompt).
 
-```
-┌─ Layer 1 — KITSOKI (engine builtin, identical everywhere) ──────── most stable
-│  internal/sysprompt/templates/kitsoki.md — what kitsoki is, the operator's
-│  role (one pluggable operator at one recorded decision point), and how to
-│  behave (decide; output is data, contract-bound, recorded, replayable).
-├─ Layer 2 — PROJECT (per-app, authored) ──────────────────────────
-│  app.context / app.context_path / prompts/_project.md — the app's domain,
-│  purpose, and voice. Rendered through the app's prompt renderer.
-├─ Layer 3 — TASK (per-call) ──────────────────────────────────────  least stable
-│  the verb contract + the agent persona (system_prompt) + (routing only) the
-│  Intent Library + Tool Contract.
-└───────────────────────────────────────────────────────────────────
-        ⇩ claude --system-prompt  (REPLACES Claude Code's default)
-   Per-turn data (state, view, world, recent turns, the user utterance) rides
-   on STDIN as the user message — never in the system prompt.
+```mermaid
+flowchart TD
+    kitsoki["Layer 1: KITSOKI<br/>engine builtin, identical everywhere<br/>most stable"]
+    project["Layer 2: PROJECT<br/>per-app domain, purpose, voice"]
+    task["Layer 3: TASK<br/>verb contract, persona,<br/>intent library, tool contract<br/>least stable"]
+    system["claude --system-prompt<br/>replaces Claude Code default"]
+    stdin["Per-turn data on STDIN<br/>state, view, world, recent turns,<br/>user utterance"]
+
+    kitsoki --> project --> task --> system
+    stdin -->|"user message, not system prompt"| system
 ```
 
 ## Why layered, and why this order

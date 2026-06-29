@@ -9,7 +9,34 @@
     "narration": {
       "voice": "en-AU-NatashaNeural"
     },
-    "mode": "pitch"
+    "mode": "pitch",
+    "personas": [
+      {
+        "id": "pm",
+        "name": "Priya",
+        "role": "Product manager",
+        "intro": "Turns a one-line idea into a validated PRD and a mockup deck.",
+        "color": "#58a6ff",
+        "glyph": "🧭"
+      },
+      {
+        "id": "architect",
+        "name": "Arden",
+        "role": "Architect",
+        "intro": "Shapes requirements into a design epic, slices, and ADRs.",
+        "color": "#bc8cff",
+        "glyph": "📐"
+      },
+      {
+        "id": "dev",
+        "name": "Devin",
+        "role": "Developer",
+        "intro": "Decomposes, fixes a mid-stream bug, refines, and ships — every step traceable.",
+        "color": "#3fb950",
+        "glyph": "🛠️",
+        "avatar": "data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 viewBox%3D%220 0 200 200%22 width%3D%22200%22 height%3D%22200%22 role%3D%22img%22 aria-label%3D%22Kitsoki mesa sun avatar%22%3E %3Ccircle cx%3D%22100%22 cy%3D%22100%22 r%3D%2295%22 fill%3D%22%23f0e3c8%22 stroke%3D%22%23c97b4a%22 stroke-width%3D%229%22%2F%3E %3Cg transform%3D%22translate(28 32.3) scale(0.72)%22%3E %3Ccircle cx%3D%22100%22 cy%3D%2270%22 r%3D%2230%22 fill%3D%22%23e0a23a%22%2F%3E %3Cg stroke%3D%22%23e0a23a%22 stroke-width%3D%225%22 stroke-linecap%3D%22round%22%3E %3Cline x1%3D%22150%22 y1%3D%2270%22 x2%3D%22138%22 y2%3D%2270%22%2F%3E %3Cline x1%3D%22135%22 y1%3D%2235%22 x2%3D%22127%22 y2%3D%2243%22%2F%3E %3Cline x1%3D%22100%22 y1%3D%2220%22 x2%3D%22100%22 y2%3D%2232%22%2F%3E %3Cline x1%3D%2265%22 y1%3D%2235%22 x2%3D%2273%22 y2%3D%2243%22%2F%3E %3Cline x1%3D%2250%22 y1%3D%2270%22 x2%3D%2262%22 y2%3D%2270%22%2F%3E %3C%2Fg%3E %3Cpath d%3D%22M20 150 L20 120 L60 120 L60 105 L140 105 L140 120 L180 120 L180 150 Z%22 fill%3D%22%23a8492b%22%2F%3E %3Cpath d%3D%22M20 150 L180 150 L180 168 L20 168 Z%22 fill%3D%22%237d2e1c%22%2F%3E %3Crect x%3D%2292%22 y%3D%22120%22 width%3D%2216%22 height%3D%2230%22 fill%3D%22%233a2418%22%2F%3E %3C%2Fg%3E %3C%2Fsvg%3E"
+      }
+    ]
   },
   "scenes": [
     {
@@ -20,17 +47,77 @@
       "narration": "This is one dev story end to end on the slidey repository — from a product idea to a merged pull request, with kitsoki driving every step."
     },
     {
-      "type": "narrative",
-      "eyebrow": "The cast",
-      "lede": "Four roles, one shared, traceable pipeline.",
-      "body": "A product manager starts with an idea. An architect turns requirements into a design. A developer decomposes the design into tasks, fixes a bug that lands mid-stream, and ships the feature. Every hand-off is a notification; every artifact is a validated, replayable output.",
+      "type": "personas",
+      "variant": "cast",
+      "title": "The cast",
+      "personas": [
+        "pm",
+        "architect",
+        "dev"
+      ],
+      "caption": "Three roles, one shared, traceable pipeline — every hand-off a notification, every artifact a validated, replayable output.",
       "narration": "A product manager, an architect, and a developer share one traceable pipeline. Every hand-off is a notification, and every artifact is a validated, replayable output."
     },
     {
-      "type": "narrative",
-      "eyebrow": "1 · Product manager",
-      "lede": "An idea becomes a validated PRD plus mockups.",
-      "body": "The PM starts with a one-line idea — add a feature to slidey — and kitsoki runs the conversation-driven intake: it asks clarifying questions, drafts the PRD, and produces an HTML mockup deck. The PRD and mockups are the validated output of this phase.",
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "Who does what",
+      "cases": [
+        {
+          "who": "pm",
+          "action": "Frames a one-line idea into a PRD + mockups",
+          "detail": "conversation-driven intake"
+        },
+        {
+          "who": "architect",
+          "action": "Turns the requirements into a design",
+          "detail": "epic, slices, ADRs, mermaid"
+        },
+        {
+          "who": "dev",
+          "action": "Decomposes the design into a work plan",
+          "detail": "agent-sized briefs"
+        },
+        {
+          "who": "dev",
+          "action": "Fixes a bug that lands mid-stream",
+          "detail": "one-shot, unsupervised, PR-ready"
+        },
+        {
+          "who": "dev",
+          "action": "Refines the feature from demo videos",
+          "detail": "spatial-oracle annotation"
+        },
+        {
+          "who": "dev",
+          "action": "Opens the pull requests",
+          "detail": "every step on the record"
+        }
+      ],
+      "narration": "Across the story, the product manager frames the idea, the architect designs it, and the developer decomposes, fixes a bug, refines the feature, and opens the pull requests."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "1 · Idea → PRD + mockups",
+      "cases": [
+        {
+          "who": "pm",
+          "action": "Types a one-line idea: add a feature to slidey",
+          "detail": "conversation-driven intake begins"
+        },
+        {
+          "who": "pm",
+          "action": "Answers clarifying questions; a PRD is drafted",
+          "detail": "plus an HTML mockup deck"
+        },
+        {
+          "who": "pm",
+          "action": "Publishes the validated PRD + mockups",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "The PRD and mockups are the validated output of the product-manager phase.",
       "narration": "The product manager starts with a one-line idea: add a feature to slidey. Kitsoki runs a conversation-driven intake — clarifying questions, a drafted PRD, and a mockup deck — and the PRD plus mockups are the validated output."
     },
     {
@@ -44,10 +131,27 @@
       "narration": "Here the PM drives the intake live: the brief is refined into a PRD and a mockup deck, all replayed deterministically with no model in the loop."
     },
     {
-      "type": "narrative",
-      "eyebrow": "2 · Architect",
-      "lede": "Requirements become a design epic, slices, and ADRs.",
-      "body": "The architect gets a notification — new requirements ready. They review the PRD, ask questions, then produce the design: a design epic broken into slices, with ADRs and mermaid diagrams, summarised in a slidey deck. The design is this phase's validated output.",
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "2 · Requirements → design",
+      "cases": [
+        {
+          "who": "architect",
+          "action": "Reviews the new PRD and asks questions",
+          "detail": "notified: requirements ready"
+        },
+        {
+          "who": "architect",
+          "action": "Produces the design epic, slices, and ADRs",
+          "detail": "with mermaid diagrams"
+        },
+        {
+          "who": "architect",
+          "action": "Publishes the design, summarised in a slidey deck",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "The design — an epic broken into slices, with ADRs — is the architect phase's validated output.",
       "narration": "The architect is notified that new requirements are ready. They review, ask questions, and produce the design — an epic broken into slices, ADRs, and mermaid diagrams — summarised in a slidey deck."
     },
     {
@@ -61,10 +165,27 @@
       "narration": "The architect walks from the PRD into a structured design, with each slice and decision captured as a traceable artifact."
     },
     {
-      "type": "narrative",
-      "eyebrow": "3 · Developer · decomposition",
-      "lede": "The design becomes a validated work plan.",
-      "body": "The developer is notified that a new design is ready. They review it, ask questions, and decompose the design epic and slices into right-sized tasks. The decomposed work plan is the output — and it takes time to produce, so it runs in the background.",
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "3 · Design → work plan",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Reviews the published design",
+          "detail": "notified: design ready"
+        },
+        {
+          "who": "dev",
+          "action": "Decomposes the epic and slices into right-sized tasks",
+          "detail": "agent-ready briefs"
+        },
+        {
+          "who": "dev",
+          "action": "Validates the work plan",
+          "detail": "runs in the background — it takes time"
+        }
+      ],
+      "caption": "The decomposed work plan is the output — and because it takes time, it runs in the background.",
       "narration": "The developer reviews the new design and decomposes its epic and slices into right-sized tasks. The work plan is the output, and because it takes time, it runs in the background."
     },
     {
@@ -78,10 +199,27 @@
       "narration": "The design is decomposed into a validated manifest of agent-sized briefs, ready to fan out into development."
     },
     {
-      "type": "narrative",
-      "eyebrow": "4 · Developer · the interrupt",
-      "lede": "A bug lands mid-stream — triage says one-shot.",
-      "body": "While the decomposition runs, a new bug is opened against slidey. The bug-fix room triages it and recommends a one-shot, unsupervised fix. The developer says go. Kitsoki reproduces the bug, proposes a root-cause fix, implements it in an isolated worktree, runs the real test suite, self-reviews, and validates — closing out PR-ready.",
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "4 · A bug lands mid-stream",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Triage recommends a one-shot, unsupervised fix",
+          "detail": "a new slidey bug is opened"
+        },
+        {
+          "who": "dev",
+          "action": "Says go — kitsoki reproduces, fixes, tests, self-reviews",
+          "detail": "in an isolated worktree, real test suite"
+        },
+        {
+          "who": "dev",
+          "action": "Validates the fix — closing out PR-ready",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "While the decomposition runs, the bug-fix room triages, fixes, and validates a real slidey bug.",
       "narration": "Mid-stream, a bug is opened against slidey. The bug-fix room triages it as a one-shot unsupervised fix. The developer says go, and kitsoki reproduces, fixes, tests, reviews, and validates it — closing out ready for a pull request."
     },
     {
@@ -95,10 +233,27 @@
       "narration": "Every room is a deterministic state-machine beat: reproduce, propose, implement in a worktree, run the real test suite, self-review, and validate."
     },
     {
-      "type": "narrative",
-      "eyebrow": "5 · Developer · feature delivery",
-      "lede": "Tasks complete in the background; demo videos arrive.",
-      "body": "The decomposition finishes; the developer reviews it and transitions it into development in the background. As portions complete, demo videos are produced and land in the inbox — and the developer refines the functionality directly in the videos, pointing at exactly what to change with spatial-oracle annotations.",
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "5 · Demo videos → spatial refine",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Reviews demo videos that land in the inbox",
+          "detail": "as tasks complete in the background"
+        },
+        {
+          "who": "dev",
+          "action": "Points at an exact element on the rendered frame",
+          "detail": "spatial-oracle annotation"
+        },
+        {
+          "who": "dev",
+          "action": "An anchored refine edits precisely that scene",
+          "detail": "location-tied feedback"
+        }
+      ],
+      "caption": "The developer refines the functionality by pointing right at it — location-tied, spatial-oracle feedback.",
       "narration": "The work plan moves into background development. As portions complete, demo videos arrive in the inbox, and the developer refines the functionality by pointing right at it — location-tied, spatial-oracle feedback."
     },
     {
@@ -112,10 +267,27 @@
       "narration": "A reviewer points at an exact element on the rendered frame, and that anchor flows into a refine pass that edits precisely what was pointed at."
     },
     {
-      "type": "narrative",
-      "eyebrow": "6 · Developer · ship",
-      "lede": "Bug fix done, feature done — open the PRs.",
-      "body": "The developer is notified the bug fix is done, reviews the slidey summary with its reproduction and validation video, and opens the PR. Then they open the PR for the feature epic with its demo video. The story closes where it started: a slidey repo, now two PRs richer.",
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "6 · Open the PRs",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Reviews the bug-fix summary + validation video",
+          "detail": "notified: bug fix done"
+        },
+        {
+          "who": "dev",
+          "action": "Opens the pull request on slidey",
+          "detail": "reproduction + validation evidence"
+        },
+        {
+          "who": "dev",
+          "action": "Opens the feature epic's PR with its demo video",
+          "detail": "two PRs richer"
+        }
+      ],
+      "caption": "The story closes where it started: a slidey repo, now two pull requests richer — every step on the record.",
       "narration": "The bug fix is done; the developer reviews its summary and opens the pull request. Then the feature epic's PR goes up with its demo video. Two pull requests, every step on the record."
     },
     {

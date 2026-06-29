@@ -2,6 +2,7 @@ package studio
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -211,4 +212,26 @@ func miningEvent(t *testing.T, turn int64, ts time.Time, kind store.EventKind, p
 		Kind:    kind,
 		Payload: raw,
 	}
+}
+
+func TestTruncateBodyCapsAndMarks(t *testing.T) {
+	// Under the limit: unchanged.
+	assert.Equal(t, "hello", truncateBody("hello", 200))
+	// Disabled (<=0): unchanged even when long.
+	long := strings.Repeat("x", 500)
+	assert.Equal(t, long, truncateBody(long, 0))
+	assert.Equal(t, long, truncateBody(long, -1))
+	// Over the limit: capped, marker appended, prefix preserved.
+	got := truncateBody(strings.Repeat("a", 300), 200)
+	assert.Contains(t, got, "(truncated)")
+	assert.True(t, strings.HasPrefix(got, strings.Repeat("a", 200)))
+}
+
+func TestWorkBodyTruncationDefaultsAndOptOut(t *testing.T) {
+	items := []WorkItem{{Body: strings.Repeat("b", 400)}}
+	for i := range items {
+		items[i].Body = truncateBody(items[i].Body, defaultWorkBodyLimit)
+	}
+	assert.Less(t, len([]rune(items[0].Body)), 400)
+	assert.Contains(t, items[0].Body, "(truncated)")
 }

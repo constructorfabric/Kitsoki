@@ -8,11 +8,13 @@
 //
 //   - the prompt is read from stdin (codex `exec` reads the instructions from
 //     stdin when no positional prompt is given) — same delivery as claude;
-//   - there is no permission flag, and `codex exec` auto-cancels every MCP tool
-//     call unless its approval+sandbox gate is disabled, so we run with
-//     `--dangerously-bypass-approvals-and-sandbox` — the only way the validator
+//   - codex does not accept Claude's allowed/disallowed tool flags. Calls that
+//     carry a mutator deny-list preserve the story's read-only posture via
+//     `--sandbox read-only`; other calls still use
+//     `--dangerously-bypass-approvals-and-sandbox`, the only way the validator
 //     submit tool can execute (verified live; see TranslateInvocation). This is
-//     why `--agent codex` requires a trusted/externally-sandboxed environment;
+//     why write-capable `--agent codex` paths require a trusted/externally
+//     sandboxed environment;
 //   - MCP config is not a file flag: the --mcp-config JSON is read and each
 //     server is converted to codex `-c mcp_servers.<name>.{command,args,env}`
 //     TOML config overrides;
@@ -30,8 +32,9 @@
 //
 // Flags claude understands but codex does not (--permission-mode,
 // --setting-sources, --effort, --exclude-dynamic-system-prompt-sections,
-// --no-session-persistence, --verbose, --allowedTools, --disallowedTools,
-// --output-format) are dropped during translation.
+// --no-session-persistence, --verbose, --allowedTools, --output-format) are
+// dropped during translation. --disallowedTools is interpreted only to select
+// Codex's sandbox for read-only story agents.
 package host
 
 import (
@@ -39,6 +42,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -104,12 +108,21 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 
 		switch flag {
 		case "-p", "--verbose", "--exclude-dynamic-system-prompt-sections", "--no-session-persistence",
-			"--disable-slash-commands":
+			"--disable-slash-commands", "--strict-mcp-config":
 			// Dropped: no codex equivalent (or supplied differently).
+			// `--strict-mcp-config` is a claude-only boolean (restrict MCP to the
+			// --mcp-config file). codex exec rejects it ("unexpected argument
+			// '--strict-mcp-config'", exit 2) — which silently burned every
+			// acceptance attempt in ~60ms and made codex-profile sessions
+			// "impossible" (validator submit never ran). codex registers the
+			// validator MCP via the `-c mcp_servers.*` overrides below instead.
 		case "--permission-mode", "--setting-sources", "--effort",
-			"--allowedTools", "--disallowedTools":
+			"--allowedTools":
 			// Dropped along with their value. (Tool-scoping is a parity gap;
 			// codex runs with the bypass flag set below.)
+		case "--disallowedTools":
+			// Codex has no direct equivalent. Kitsoki's read-only posture is
+			// enforced by the story/tooling layer; see the bypass rationale below.
 		case "--output-format":
 			// Always normalized to codex's --json below.
 		case "--session-id":
@@ -147,41 +160,63 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 
 	// Base exec invocation. `resume <id>` is prepended when re-engaging a
 	// recorded session across the decide/task/converse nudge rounds.
+	//
+	// `codex exec resume` is a DIFFERENT subcommand from `codex exec` with a
+	// much narrower arg surface: `codex exec resume --json --skip-git-repo-check
+	// <SESSION_ID> [PROMPT]`. It rejects the sandbox/approval flag, `-m`, `-C`,
+	// `-c` overrides, and any passthrough flag with "unexpected argument …".
+	// The recorded session already fixed the model, cwd, sandbox posture, and
+	// MCP wiring, so on a resume we emit ONLY the accepted flags. (Surfaced by a
+	// live converse follow-up failing with "unexpected argument '--sandbox'",
+	// dogfood issue #33.)
+	isResume := strings.TrimSpace(resumeID) != ""
 	args := []string{"exec"}
-	if id := strings.TrimSpace(resumeID); id != "" {
-		args = append(args, "resume", id)
+	if isResume {
+		args = append(args, "resume", strings.TrimSpace(resumeID))
 	}
-	args = append(args,
-		"--json",
-		"--skip-git-repo-check",
-		// `codex exec` auto-cancels EVERY MCP tool call ("user cancelled MCP
-		// tool call") in non-interactive mode — verified live (2026-06-11)
-		// against codex-cli 0.139.0 across approval_policy="never", every
-		// sandbox mode, per-server trust keys, and both ephemeral (-c) and
-		// persisted (`codex mcp add`) registration. The ONLY way to let the
-		// validator `submit` tool actually execute is to disable codex's
-		// approval+sandbox gate. Since the MCP-submit path is load-bearing for
-		// parity (schema validation + nudge/abandonment recovery + post_cmd
-		// verifiers), we run codex with the bypass flag. This is safe ONLY when
-		// kitsoki runs codex in a trusted/externally-sandboxed context; the
-		// operator opts in by selecting `--agent codex`.
-		"--dangerously-bypass-approvals-and-sandbox",
-	)
+	args = append(args, "--json", "--skip-git-repo-check")
+	if !isResume {
+		// `codex exec` auto-cancels EVERY MCP tool call ("user cancelled MCP tool
+		// call") in non-interactive mode — verified live (2026-06-11) against
+		// codex-cli 0.139.0 across approval_policy="never", every sandbox mode,
+		// per-server trust keys, and both ephemeral (-c) and persisted (`codex mcp
+		// add`) registration. The ONLY way to let the validator `submit` tool and
+		// the operator-ask/write-mode MCP bridge execute is to disable codex's
+		// approval+sandbox gate. Kitsoki's read-only posture is still expressed via
+		// --disallowedTools / Bash MCP policy; relying on Codex's read-only sandbox
+		// preempts Kitsoki's own write-mode opt-in and makes MCP-only dogfood unable
+		// to apply an operator-granted edit.
+		args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 
-	// Forward the model ONLY when it is not a claude model id (reuse the shared
-	// helper). Stories/router specify claude model names; passing those to codex
-	// fails, so we drop them and let codex use its configured model. A genuine
-	// codex/OpenAI model name is forwarded as `-m`.
-	if m := strings.TrimSpace(model); m != "" && !isClaudeModelID(m) {
-		args = append(args, "-m", m)
-	}
-	if strings.TrimSpace(workingDir) != "" {
-		args = append(args, "-C", workingDir)
-	}
-	// Convert each MCP server in the --mcp-config file into codex `-c` overrides.
-	args = append(args, codexMCPConfigArgs(mcpConfig)...)
-	// Forwarded/passthrough flags (--add-dir and any unknown flag).
-	args = append(args, out...)
+		// Forward the model ONLY when it is not a claude model id (reuse the shared
+		// helper). Stories/router specify claude model names; passing those to codex
+		// fails, so we drop them and let codex use its configured model. A genuine
+		// codex/OpenAI model name is forwarded as `-m`.
+		if m := strings.TrimSpace(model); m != "" && !isClaudeModelID(m) {
+			args = append(args, "-m", m)
+		}
+		// `-C/--cd <DIR>` is accepted by `codex exec` but NOT by `codex exec resume`
+		// (the resume subcommand rejects it: "unexpected argument '-C'"). On a
+		// resume the working root is fixed by the recorded session, so omit it.
+		//
+		// The value MUST be absolute. The runner sets the child process cwd to
+		// inv.WorkingDir (agent_runner.go: cmd.Dir = inv.WorkingDir), so codex
+		// already starts IN workingDir; a RELATIVE `-C workingDir` would then
+		// resolve against that cwd (workingDir/workingDir) → "No such file or
+		// directory (os error 2)" and every attempt fails. An absolute path is
+		// idempotent regardless of the inherited cwd.
+		if strings.TrimSpace(workingDir) != "" && strings.TrimSpace(resumeID) == "" {
+			cd := workingDir
+			if abs, err := filepath.Abs(workingDir); err == nil {
+				cd = abs
+			}
+			args = append(args, "-C", cd)
+		}
+		// Convert each MCP server in the --mcp-config file into codex `-c` overrides.
+		args = append(args, codexMCPConfigArgs(mcpConfig)...)
+		// Forwarded/passthrough flags (--add-dir and any unknown flag).
+		args = append(args, out...)
+	} // end !isResume — resume rejects all of the above flags.
 
 	// Compose the stdin prompt: system prompt (if any) prepended to the user
 	// prompt claude would have piped on stdin. Unlike copilot, codex keeps the
@@ -190,9 +225,37 @@ func (codexBackend) TranslateInvocation(claudeArgs []string, stdin, workingDir s
 	if sp := strings.TrimSpace(systemPrompt); sp != "" {
 		prompt = sp + "\n\n---\n\n" + stdin
 	}
+	// codex (≥0.142) DEFERS MCP server tools behind its `tool_search` tool — a
+	// registered server's tools (e.g. the acceptance-loop validator `submit`) are
+	// NOT in the eager tool list, so a prompt that says "call submit(…)" finds no
+	// such tool and the model emulates it as TEXT — every acceptance attempt then
+	// fails and the host.agent.task bounces (verified live, codex-cli 0.142.3).
+	// Tool-search itself works: when the model is told to discover the tool first
+	// it calls server="kitsoki-validator" tool="submit" and the payload validates.
+	// So whenever we registered MCP servers (mcpConfig present, !resume), prepend
+	// an explicit discovery instruction. Resume inherits the recorded session's
+	// wiring and arg surface, so it is left untouched.
+	if !isResume && strings.TrimSpace(mcpConfig) != "" {
+		prompt = codexMCPToolSearchPreamble + "\n\n---\n\n" + prompt
+	}
 
 	return Invocation{Args: args, Stdin: prompt, WorkingDir: workingDir}
 }
+
+// codexMCPToolSearchPreamble instructs a codex agent to surface deferred MCP
+// tools via tool_search before using them. codex ≥0.142 does not expose MCP
+// server tools eagerly; without this, the validator `submit` tool (and any other
+// kitsoki-registered MCP tool the prompt asks for) appears to "not exist" and the
+// model fakes the call in prose. Phrased producer-neutrally — it names no
+// specific server so it holds for the validator, operator-ask, and write-mode
+// bridges alike.
+const codexMCPToolSearchPreamble = "TOOL ACCESS (codex): Some tools provided to you — including the " +
+	"`submit` tool used to submit your final result — are NOT listed in your " +
+	"default tool set. They are reachable only via the `tool_search` tool. " +
+	"BEFORE you conclude that a tool the task asks for (e.g. `submit`) is " +
+	"unavailable, you MUST call `tool_search` to locate it, then call it. Never " +
+	"emulate such a tool by printing its name or its arguments as text — a " +
+	"printed call does nothing."
 
 // codexMCPConfigArgs reads a claude-shaped --mcp-config JSON file
 // ({"mcpServers":{name:{command,args,env}}}) and emits codex `-c` TOML config

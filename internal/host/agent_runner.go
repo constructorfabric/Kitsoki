@@ -309,12 +309,19 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 	inv := backend.TranslateInvocation(cliArgs, stdin, workingDir)
 
 	if r := backend.runnerFromContext(ctx); r != nil {
+		reservation, qErr := reserveProviderQuota(ctx, backend, inv.Stdin)
+		if qErr != nil {
+			return ClaudeRun{}, "", qErr
+		}
+		finish := quotaFinishOnce(reservation)
+		defer finish(nil, "")
 		// Test seam: stub almost certainly emits non-JSONL text. Run
 		// it once (with the backend's translated argv/stdin), parse what
 		// we can (zero or more JSONL events), and fall back to using its
 		// raw output as the assistant reply.
 		cr, err := r(ctx, inv.Args, inv.Stdin, inv.WorkingDir)
 		if err != nil {
+			finish(cr.Usage, err.Error())
 			return cr, "", err
 		}
 		reply, parsedSID, rawEvs, usage, cost := parseStreamJSONOutput(ctx, cr.Stdout)
@@ -329,9 +336,16 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 		cr.Usage = usage
 		cr.CostUSD = cost
 		recordAgentUsage(ctx, usage, cost)
+		finish(usage, cr.Stderr+" "+cr.Stdout)
 		return cr, parsedSID, nil
 	}
 
+	reservation, qErr := reserveProviderQuota(ctx, backend, inv.Stdin)
+	if qErr != nil {
+		return ClaudeRun{}, "", qErr
+	}
+	finish := quotaFinishOnce(reservation)
+	defer finish(nil, "")
 	cmd := exec.CommandContext(ctx, bin, inv.Args...)
 	cmd.Stdin = strings.NewReader(inv.Stdin)
 	cmd.Dir = inv.WorkingDir
@@ -351,6 +365,7 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 	cmd.Stderr = &se
 
 	if startErr := cmd.Start(); startErr != nil {
+		finish(nil, startErr.Error())
 		return ClaudeRun{Infra: startErr}, "", nil
 	}
 
@@ -478,7 +493,19 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 		reply = rawLines.String()
 	}
 	cr.Stdout = strings.TrimRight(reply, "\n")
+	finish(cr.Usage, cr.Stderr+" "+cr.Stdout)
 	return cr, parsedSID, nil
+}
+
+func quotaFinishOnce(reservation *quotaReservation) func(map[string]any, string) {
+	finished := false
+	return func(usage map[string]any, errText string) {
+		if finished {
+			return
+		}
+		finished = true
+		reservation.finish(usage, errText)
+	}
 }
 
 // emitStreamEvent surfaces one parsed stream-json event into slog so

@@ -1,6 +1,6 @@
 # Worked example: the project profile kitsoki's init phase would synthesize for
 # the kitsoki repo itself (the dogfood case — it should reproduce what
-# stories/kitsoki-dev/ binds by hand). This is the dry-run report shown at
+# .kitsoki/stories/kitsoki-dev/ binds by hand). This is the dry-run report shown at
 # init_review: readiness.status is `not-run` and nothing is written yet.
 #
 # Validates against project-profile.schema.json (proven in docs/proposals/project-init.md §Verification).
@@ -9,7 +9,7 @@ id: kitsoki
 title: kitsoki — self-hosting dev loop
 summary: |
   Go runtime + embedded Vue 3 web UI (`tools/runstatus/`). dev-story is bound
-  to local-file / git providers, mirroring `stories/kitsoki-dev/`. Mined from
+  to local-file / git providers, mirroring `.kitsoki/stories/kitsoki-dev/`. Mined from
   the maintainers' own Claude Code transcripts (recency sample).
 
 generated:
@@ -142,7 +142,7 @@ kitsoki:
   story: dev-story
   instance:
     id: kitsoki
-    path: "stories/kitsoki-dev/app.yaml"
+    path: ".kitsoki/stories/kitsoki-dev/app.yaml"
     bindings:
       ticket: host.local_files.ticket
       vcs: host.git
@@ -152,6 +152,16 @@ kitsoki:
   harness_profile: claude
   judge_mode: human
   autonomy: supervised
+
+dev_story_profile:
+  docs:
+    publish_durable_path: docs/prd
+    design_template_dir: docs/proposals/templates
+    design_durable_path: docs/proposals
+    design_ticket_dir: issues/features
+  bugfix:
+    build_cmd: "make build"
+    test_cmd: "make test"
 
 mining:
   job: intents-20260615
@@ -171,12 +181,18 @@ mining:
       status: gap
       recommendation: "No room gates the partition; reuse the work-decomposition manifest lint."
 
+onboarding:
+  baseline_commit: "0000000"
+  first_onboarding_commit: "0000000"
+  deterministic_flow: "stories/dev-story/flows/init_kitsoki_project.yaml"
+  recording_policy: no-llm-only
+
 setup_plan:
   writes:
     - path: ".kitsoki/project-profile.yaml"
       action: create
       summary: "This profile — the declarative source of the dev-story instance."
-    - path: "stories/kitsoki-dev/app.yaml"
+    - path: ".kitsoki/stories/kitsoki-dev/app.yaml"
       action: create
       summary: "Generated dev-story instance with the bindings above (already exists for kitsoki; init would create it for a fresh project)."
     - path: ".kitsoki.yaml"

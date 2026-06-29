@@ -1,0 +1,67 @@
+# design_publish_only — publish a proposal without filing a feature ticket.
+#
+# Starts at the draft review checkpoint with the draft already present. The
+# fixture only covers the accept_no_ticket arc: publish_design.py gets an empty
+# ticket_dir/repo, design_done renders the no-ticket copy, and the implement
+# action is hidden because ticket_id remains empty.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design_draft
+initial_world:
+  judge_mode: "human"
+  workdir: "."
+  design_slug: "routing-tuning"
+  design_workspace: "docs/proposals/.workspace/routing-tuning"
+  design_durable_path: "docs/proposals"
+  design_doc_filename: ""
+  design_change_target: ""
+  design_idea: "Add routing tuning docs, fixtures, and reports."
+  design_kind: "story"
+  design_cycle: 1
+  design_draft_cycle: 1
+  design_draft_budget: 3
+  design_draft_doc: "docs/proposals/.workspace/routing-tuning/004-proposal.md"
+  design_artifact:
+    title: "Story: routing tuning"
+    kind: "story"
+    confidence: 0.88
+    needs_clarification: false
+    follow_up_questions: []
+    file_path: "docs/proposals/.workspace/routing-tuning/004-proposal.md"
+    summary_markdown: |
+      ## Story: routing tuning
+
+      Add a repeatable routing-tuning loop with fixtures, reports, and session-mined cases.
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.run:
+    by_call:
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"design_file":"docs/proposals/routing-tuning.md","ticket_id":"","ticket_path":"","ticket_title":"","ticket_url":"docs/proposals/routing-tuning.md"}'
+          stdout_json:
+            design_file: "docs/proposals/routing-tuning.md"
+            ticket_id: ""
+            ticket_path: ""
+            ticket_title: ""
+            ticket_url: "docs/proposals/routing-tuning.md"
+
+turns:
+  - intent: { name: accept_no_ticket, slots: {} }
+    expect_state: design_done
+    expect_world:
+      design_file: "docs/proposals/routing-tuning.md"
+      ticket_id: ""
+      ticket_type: ""
+      design_ticket_path: ""
+    expect_host_calls:
+      - handler: host.run
+        args: { call: "publish" }
+    expect_view_matches: "Published without filing a feature ticket\\."
+
+expect_no_errors: true

@@ -1,0 +1,51 @@
+# running — ORCHESTRATION STUB (thin; delegates to the harness). Tracks the cell
+# roster as a checklist. The cost-bearing per-cell execution
+# (tools/bugfix-bakeoff/{prepare,run_cell}.sh) is the ONLY piece that spends money
+# and is run MANUALLY, never in CI/auto — the AGENTS.md no-LLM rule + the
+# matrix-task-comparison skill's "Running cells" section.
+#
+# So this room does NOT execute cells itself in the default/flow path. It:
+#   1. surfaces the roster + progress (pending / ran / scored per cell), and
+#   2. on accept, advances to scoring, where the harness's FREE aggregate.py
+#      rolls up whatever cells/*.json the manual run produced.
+#
+# Where a live operator HAS wired a run-driver, the commented host.run below shows
+# the shape (one host.run per cell, cwd=harness_dir). It is intentionally inert in
+# the committed story (no `when:` fires it) to keep `running` honest: we track the
+# work, we do not fabricate cell results. See README.md "remaining work".
+
+states:
+
+  running:
+    description: "Tracking the cell roster (cost-bearing cells are run manually via the harness)."
+    relevant_world: [cells, cells_total, cells_ran, harness_dir]
+    view:
+      - heading: "Bake-off · running (cell roster)"
+      - kv:
+          pairs:
+            Total:   "{{ world.cells_total }}"
+            Ran:     "{{ world.cells_ran }}"
+            Harness: "{{ world.harness_dir }}"
+      - prose: "Cells are executed manually via tools/bugfix-bakeoff/external/drive_cell.sh / escalate.sh (the only cost-bearing steps). This room tracks the roster; accept once the cell results are written to aggregate them."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "accept"
+              hint:   "advance to scoring (aggregate the cell results)"
+              intent: accept
+            - label:  "quit"
+              hint:   "abandon"
+              intent: quit
+    on_enter:
+      # Count the cells whose status advanced past `pending` (ran or scored) for
+      # the progress view. Deterministic projection over the supplied roster.
+      - set:
+          cells_ran: "{{ len(world.cells.items) }}"
+    on:
+      accept:
+        - target: scoring
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

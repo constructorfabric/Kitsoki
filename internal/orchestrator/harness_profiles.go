@@ -34,6 +34,10 @@ type HarnessProfile struct {
 	// Env is the ${VAR}-expanded env retarget merged onto the forked CLI. Carried
 	// here for resolution; never exposed through Profiles() / traces.
 	Env map[string]string
+	// Quota enables local throttling for this profile before calls reach the
+	// provider. It is secret-free but operational, so omit it from ProfileInfo
+	// until there is a dedicated status surface.
+	Quota host.QuotaControl
 	// Plugin routes through an agent plugin instead of a backend CLI. Optional.
 	Plugin string
 }
@@ -203,6 +207,7 @@ func (o *Orchestrator) resolveSelection(fallbackBackend string) (backend string,
 			Effort: effort,
 			Env:    p.Env,
 		},
+		Quota: p.Quota,
 	}
 	// A plugin profile keeps the fallback backend (plugins route through the
 	// agent registry, not a backend fork); a CLI profile selects its backend.

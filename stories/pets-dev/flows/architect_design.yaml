@@ -1,0 +1,138 @@
+# architect_design (pets-dev) — the ARCHITECT/DESIGN HALF of the PRD → Design
+# walk on kitsoki.
+#
+# The capture flow for the `pets-architect-design` rrweb tour clip: an architect
+# picks up the published trace-pet PRD, carries it into design intake, refines
+# the brief (component model + trace-column dock seam), and the design author
+# writes the epic / slices / ADRs / mermaid, publishing the design and minting a
+# feature ticket. Enters at core.prd_published (the PRD half already done —
+# seeded via core__prd__prd_file) so the clip is the design half only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.prd_published
+initial_world:
+  judge_mode: "human"
+  core__workdir:               "."
+  core__prd__prd_file:         "docs/prd/trace-pet.md"
+  core__design_durable_path:   "docs/proposals"
+  core__design_doc_filename:   ""
+  core__design_template_dir:   "docs/proposals/templates"
+  core__design_ticket_dir:     "issues/features"
+
+host_handlers:
+  host.ide.open_file:
+    data: { ok: true, connected: false }
+  host.agent.search:
+    data: { hits: [], top: null }
+  host.agent.decide:
+    data: { ok: true, submitted: { questions: [] } }
+    by_call:
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "A net-new ambient sprite anchored in the existing trace column; no overlap." }
+      references_research:
+        data:
+          ok: true
+          submitted:
+            items:
+              - { path: "docs/prd/trace-pet.md", sections: "§5", rationale: "the PRD this design realizes" }
+      brief_check:
+        data:
+          ok: true
+          submitted: { verdict: "continue", reason: "Crisp why, clear metric, components named.", questions: [] }
+  host.artifacts_dir:
+    data: { ok: true, path: "docs/proposals/.workspace/trace-pet/001-brief.md", message_id: "out#1" }
+  host.agent.task:
+    by_call:
+      design_author:
+        data:
+          ok: true
+          submitted:
+            title:            "Web: trace-column pet"
+            kind:             "runtime"
+            summary_markdown: |
+              ## Web: trace-column pet
+
+              Realizes the trace-pet PRD as a tiny, opt-in animated SVG sprite
+              anchored at the bottom of the existing trace column — pure inline
+              SVG + CSS, no images, no deps.
+
+              ### Epic
+              Dock a small animated SVG pet at the BOTTOM of the kitsoki web trace
+              column that idles (bob/blink) while a session runs, absolutely
+              positioned so it never displaces trace rows.
+
+              ### Slices
+              1. `TracePet.vue` — a self-contained inline-SVG sprite component
+                 with a CSS keyframe idle animation (bob/blink); no images, no
+                 deps.
+              2. Trace-column dock seam — anchor `TracePet` at the bottom of the
+                 trace column in the trace-column layout (InteractiveView.vue /
+                 trace column component), absolutely positioned over the column
+                 footer.
+              3. Opt-in setting — a persisted toggle, off by default, that mounts
+                 the pet only when enabled.
+
+              ### Data flow
+
+              ```mermaid
+              flowchart LR
+                col[trace column layout] --> pet[TracePet anchored bottom]
+                pet --> svg[inline SVG sprite]
+              ```
+
+              ### ADRs
+              - ADR-1: Inline SVG + CSS keyframes only — zero dependencies, zero
+                added network — so the pet ships no assets and can't slow the UI.
+              - ADR-2: Opt-in, absolutely positioned at the column bottom so it
+                never displaces trace rows or blocks trace content.
+            file_path:           "docs/proposals/.workspace/trace-pet/004-proposal.md"
+            confidence:          0.82
+            needs_clarification: false
+            follow_up_questions: []
+      refine_brief:
+        data:
+          ok: true
+          submitted:
+            summary: "Idea is clear; the design sections need the component model and the trace-column dock seam."
+            gaps:    ["Name the sprite component and where it docks in the trace column", "Specify the idle animation and the opt-in toggle"]
+      refine_brief_update:
+        data:
+          ok: true
+          submitted:
+            summary: "Folded in the operator's note — the TracePet component, dock seam, and idle animation are now scoped."
+            gaps:    ["Specify the opt-in setting persistence"]
+  host.run:
+    by_call:
+      uniquify:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { slug: "trace-pet", workspace: "docs/proposals/.workspace/trace-pet" }
+      publish:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            design_file:  "docs/proposals/trace-pet.md"
+            ticket_id:    "F-2026-06-23T120000Z-trace-pet"
+            ticket_path:  "issues/features/F-2026-06-23T120000Z-trace-pet.md"
+            ticket_title: "kitsoki trace-column pet"
+
+turns:
+  - intent: { name: core__continue, slots: {} }
+    expect_state: core.design
+  - intent: { name: core__discuss, slots: { message: "realize the trace-pet PRD as a kitsoki web design" } }
+    expect_state: core.design_search
+  - intent: { name: core__confirm, slots: {} }
+    expect_state: core.design_refine
+  - intent: { name: core__discuss, slots: { message: "name the sprite component and the trace-column dock seam, and the idle animation" } }
+    expect_state: core.design_refine
+  - intent: { name: core__ready, slots: {} }
+    expect_state: core.design_draft
+  - intent: { name: core__accept, slots: {} }
+    expect_state: core.design_done
+
+expect_no_errors: true

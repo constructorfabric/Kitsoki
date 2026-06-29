@@ -7,16 +7,17 @@
 # breath as the scan.
 #
 # The fix makes the scout an EARLY GATE:
-#   - intake mints only a candidate slug; NO folder is created.
+#   - intake mints only a deterministic candidate slug; NO folder is created.
 #   - design_search.on_enter runs ONLY the scout (no folder, no references).
 #   - when the scout finds an overlap, change_existing continues the existing
 #     draft WITHOUT ever calling uniquify — so no fourth folder is born.
 #
 # This flow drives the full intake → scan → amend path with the scout returning
 # overlaps, and asserts the side-effects that USED to leak now do not:
-#   turn 1: NO host.run (uniquify), NO host.agent.search/references, NO
+#   turn 1: NO host.run uniquify, NO host.agent.search/references, NO
 #           002/003 artifact writes; design_workspace stays empty.
-#   turn 2: change_existing → design_refine pointing the workspace at the
+#   turn 2: accidental confirm stays put and explains that overlap selection is required.
+#   turn 3: change_existing → design_refine pointing the workspace at the
 #           EXISTING draft, with no uniquify/materialize folder minted.
 
 test_kind: flow
@@ -28,8 +29,6 @@ initial_world:
 host_handlers:
   host.agent.decide:
     by_call:
-      name_slug:
-        data: { ok: true, submitted: { slug: "web-pixel-pet", rationale: "pixel-art companion for the web ui" } }
       existing_scan:
         data:
           ok: true
@@ -41,6 +40,12 @@ host_handlers:
   # Stubs for design_refine on_enter (reached via change_existing).
   host.run:
     by_call:
+      name_slug:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"slug":"web-pixel-pet","workspace":"docs/proposals/.workspace/web-pixel-pet"}'
+          stdout_json: { slug: "web-pixel-pet", workspace: "docs/proposals/.workspace/web-pixel-pet" }
       amend_workspace:
         data: { ok: true, stdout_json: { slug: "tamagotchi-pet-ui", workspace: "docs/proposals/.workspace/tamagotchi-pet-ui/" } }
   host.artifacts_dir:
@@ -70,13 +75,23 @@ turns:
           - { path: "docs/proposals/.workspace/tamagotchi-web-pet/", kind: "in_progress", summary: "Second duplicate draft for the same idea; drop it.", recommendation: "supersede" }
         roadmap_fit: "Already in flight as two in-progress drafts — continue tamagotchi-pet-ui, do not start a third."
     expect_host_calls:
-      - handler: host.agent.decide
+      - handler: host.run
         args: { call: "name_slug" }
       - handler: host.agent.decide
         args: { call: "existing_scan" }
     # The bug: a folder + reference sweep happened despite the overlap. None of
     # these may fire on the scan turn now.
-    expect_no_host_calls: [host.run, host.agent.search, host.artifacts_dir]
+    expect_no_host_calls: [host.agent.search, host.artifacts_dir]
+
+  # Accidental confirm while overlaps exist stays put and explains the required
+  # action instead of silently bouncing.
+  - intent: { name: confirm, slots: {} }
+    expect_state: design_search
+    expect_world:
+      design_overlap_decision: ""
+      design_workspace: ""
+      last_error: "This idea overlaps existing work. Choose an amend option, or explicitly select 'new design anyway' if you want a duplicate."
+    expect_view_matches: "Choose an amend option"
 
   # Continue the pre-existing case. The existing draft becomes the workspace and
   # we drop straight into refine — no uniquify/materialize folder is minted.
@@ -86,6 +101,7 @@ turns:
       design_overlap_decision: "change_existing"
       design_change_target:    "docs/proposals/.workspace/tamagotchi-pet-ui/"
       design_workspace:        "docs/proposals/.workspace/tamagotchi-pet-ui/"
+      last_error: ""
     expect_host_calls:
       - handler: host.run
         args: { call: "amend_workspace" }

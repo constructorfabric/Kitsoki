@@ -1,0 +1,56 @@
+# recording — append the current case's result to world.results, then advance the
+# loop. expr-lang has no list-append, so the record is built in starlark
+# (record_case.star) — the slidey-edit accumulate_addressed discipline.
+#
+# One record = {case_id, title, triage, exit, verify_status, verify_how,
+# cost_usd, tokens, wall_s, findings:[...]}. The record is assembled from the
+# per-case scratch (current_case / triage_verdict / drive_result / verify_result);
+# nothing is fabricated. Then case_index + cases_processed advance and the
+# dispatcher (processing) is re-entered for the next case.
+
+states:
+
+  recording:
+    description: "Recording the current case's outcome, then advancing to the next case."
+    relevant_world: [current_case, triage_verdict, drive_result, verify_result, results, case_index]
+    view:
+      - heading: "Dogfood marathon · recording"
+      - kv:
+          pairs:
+            Case:    '{{ world.current_case.id }}'
+            Verdict: '{{ world.triage_verdict.verdict|default:"—" }}'
+            Exit:    '{{ world.drive_result.exit|default:"—" }}'
+            Verify:  '{{ world.verify_result.status|default:"—" }}'
+            Recorded: '{{ world.results.items|length }}'
+      - prose: "Appending this case's outcome (triage · exit · independent-verify · cost/tokens · time · findings) to the marathon results, then moving to the next case."
+    on_enter:
+      - invoke: host.starlark.run
+        id: record_case
+        with:
+          script: scripts/record_case.star
+          inputs:
+            case:           "{{ world.current_case }}"
+            triage_verdict: "{{ world.triage_verdict }}"
+            drive_result:   "{{ world.drive_result }}"
+            verify_result:  "{{ world.verify_result }}"
+        bind:
+          results:  results
+          findings: findings
+        on_error: processing   # don't strand the loop on a record error
+      - emit_intent: record_done
+    on:
+      record_done:
+        # Advance the loop counters and re-enter the dispatcher. case_index +
+        # cases_processed both increment so the dispatcher's guard makes progress.
+        - target: processing
+          effects:
+            - set:
+                case_index:      "{{ world.case_index + 1 }}"
+                cases_processed: "{{ world.cases_processed + 1 }}"
+                current_case:    {}
+                current_case_id: ""
+                triage_verdict:  {}
+                drive_result:    {}
+                verify_result:   {}
+      look:
+        - target: .

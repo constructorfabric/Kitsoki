@@ -1,0 +1,88 @@
+// Code generated from features/slidey-decomposition.yaml by scripts/features/generate.ts. DO NOT EDIT.
+// Edit the YAML and run `make features` to regenerate.
+
+import { type TourStep } from "../types.js";
+
+// Re-export so a Playwright spec can import the step type alongside the array.
+export type { TourStep };
+
+export const SLIDEY_DECOMPOSITION_TOUR_STEPS: readonly TourStep[] = [
+  {
+    id: "sdc-intro-home",
+    route: "home",
+    title: "A design becomes a work plan",
+    body: "Phase 2 published the speaker-notes-export design on the slidey repo. Now the deliver loop fans it into an executable plan — decomposing the epic into dependency-ordered, gate-bearing briefs, linting them, and loading a validated work plan. No LLM in the loop.",
+    placement: "center",
+    kind: "explain",
+    advance: "next",
+    waitForTarget: "home-view",
+    dwellMs: 5500,
+    drive: [],
+  },
+  {
+    id: "sdc-story-card",
+    route: "home",
+    target: "story-card",
+    title: "The deliver loop",
+    body: "This is the deliver story: the epic front-door of the delivery loop. It takes the speaker-notes-export epic and turns it into a decomposition at .artifacts/deliver/decomposition.yaml — briefs the fleet can ship.",
+    placement: "right",
+    kind: "explain",
+    advance: "next",
+    waitForTarget: "story-card",
+    dwellMs: 5000,
+    drive: [],
+  },
+  {
+    id: "sdc-new-session",
+    route: "home",
+    target: "new-session-btn",
+    title: "Open the seeded session",
+    body: "Click New session. The run opens already configured with the speaker-notes-export epic seeded — ready to decompose.",
+    placement: "right",
+    kind: "action",
+    advance: "route-match",
+    advanceRoute: "interactive",
+    waitForTarget: "new-session-btn",
+    dwellMs: 3500,
+    drive: [],
+  },
+  {
+    id: "sdc-configure",
+    route: "interactive",
+    target: "chat-transcript",
+    title: "The epic is seeded",
+    body: "The deliver front-door opens with the speaker-notes-export epic already configured (its path seeded). One step — start — decomposes it into briefs, lints them, and loads the work plan.",
+    placement: "right",
+    kind: "explain",
+    advance: "next",
+    waitForTarget: "chat-transcript",
+    dwellMs: 5500,
+    drive: [{"type":"wait-state","state":"configure"},{"type":"reveal-turn"}],
+  },
+  {
+    id: "sdc-decompose",
+    route: "interactive",
+    target: "chat-transcript",
+    title: "Decompose → lint → load",
+    body: "Start fans the epic into three dependency-ordered briefs — a SceneNotes model, a handout renderer, and a --notes CLI flag — each with its own go test gate. A structural lint passes, and the validated work plan loads into the fleet.",
+    placement: "right",
+    kind: "explain",
+    advance: "next",
+    waitForTarget: "chat-transcript",
+    dwellMs: 7000,
+    drive: [{"type":"click-intent","intent":"start"},{"type":"wait-state","state":"fleet.load"},{"type":"reveal-turn"}],
+  },
+  {
+    id: "sdc-fleet-load",
+    route: "interactive",
+    target: "chat-transcript",
+    title: "A validated work plan",
+    body: "The run lands in fleet.load: three briefs loaded from .artifacts/deliver/decomposition.yaml, dependency-ordered and gate-bearing, ready for the fleet to ship slice by slice. The design is now an executable plan — no LLM spent.",
+    placement: "right",
+    kind: "explain",
+    advance: "next",
+    waitForTarget: "chat-transcript",
+    dwellMs: 6500,
+    drive: [{"type":"reveal-turn"}],
+  },
+];

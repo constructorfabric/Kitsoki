@@ -1,0 +1,53 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  workdir: "."
+  surfaces: "tui,web,vscode"
+  output_root: ".artifacts/harness-parity-qa"
+  markdown_path: ".context/harness-parity-qa.md"
+  visual_policy: "deterministic"
+
+host_handlers:
+  host.run:
+    by_call:
+      run_parity:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            passed: true
+            status: complete
+            surfaces: ["tui", "web", "vscode"]
+            output_root: ".artifacts/harness-parity-qa"
+            markdown_path: ".context/harness-parity-qa.md"
+            summary_path: ".artifacts/harness-parity-qa/summary.json"
+            summary_markdown: "Deterministic harness parity gate is defined for tui, web, vscode."
+            checks:
+              - id: provider-stream-normalization
+                kind: go-test
+                command: "go test ./internal/host -run TestAgentStream_HarnessParityThinkingAndToolUse"
+                contract: "Claude and Codex stream fixtures normalize to the same ordered thinking/tool activity feed."
+            visual_gate:
+              policy: deterministic
+              automated: false
+              reason: "Vision review is intentionally gated."
+
+turns:
+  - intent:
+      name: start
+      slots:
+        question: "Prove Claude and Codex activity streams render the same."
+    expect_state: running
+    expect_world:
+      status: ready
+    expect_host_calls:
+      - handler: host.run
+        args: { call: run_parity }
+
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      status: done
+
+expect_no_errors: true

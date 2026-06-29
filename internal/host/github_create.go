@@ -174,6 +174,13 @@ func ghAppendMetadata(body string, args map[string]any) string {
 	return strings.TrimRight(body, "\n") + "\n\n" + block + "\n"
 }
 
+// GHParseMetadata is the exported entry point onto ghParseMetadata: it recovers
+// the fenced ```kitsoki body-metadata block from a comment/issue body. Exported
+// (rather than duplicated) so the GitHub-agent's ack substrate and its tests
+// round-trip the same block ghAppendMetadata writes, against a single source of
+// truth for the fence format.
+func GHParseMetadata(body string) map[string]any { return ghParseMetadata(body) }
+
 // ghParseMetadata recovers the ```kitsoki body-metadata block written by
 // ghAppendMetadata, returning the key/value pairs as a map (nil when absent).
 func ghParseMetadata(body string) map[string]any {

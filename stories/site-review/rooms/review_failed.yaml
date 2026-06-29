@@ -1,0 +1,39 @@
+# review_failed — landing state when any host call in
+# reviewing.on_enter errors. Most common cause: the Opus agent
+# abandoned the conversation without calling submit() after
+# `host.agent.decide`'s internal nudge loop (5 validator retries ×
+# 3 outer --resume iterations) was exhausted. Surfaces the diagnostic
+# instead of silent-bouncing to idle.
+
+states:
+
+  review_failed:
+    description: "A host call inside reviewing.on_enter returned an error."
+    view:
+      - prose: "Review run failed. Most likely cause: the reviewer agent gave up without calling submit(). The handler nudges the agent up to 3 times via --resume before bailing — see internal/host/agent_decide.go for the loop. Re-run after fixing the underlying cause (e.g. shallow git history, mis-shaped schema, agent binary missing)."
+      - kv:
+          pairs:
+            "Commit":   '{{ world.commit_sha|default:"(not captured)" }}'
+            "Verdict":  '{{ world.verdict.decision|default:"(none — submit was never called or the JSON was rejected)" }}'
+            "Artifact": '{{ world.artifact_path|default:"(not written)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "review_again"
+              hint:   "re-run the pipeline"
+              intent: review_again
+            - label:  "quit"
+              hint:   "exit"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render the scene"
+              intent: look
+    relevant_world: [commit_sha, verdict, artifact_path]
+    on:
+      review_again:
+        - target: reviewing
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

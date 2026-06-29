@@ -14,7 +14,7 @@ import (
 )
 
 // materializeCmd graduates the implicit project root (rung 0/1) to a real
-// stories/<slug>/app.yaml file (rung 2). It synthesizes the root from
+// .kitsoki/stories/<slug>/app.yaml file (rung 2). It synthesizes the root from
 // .kitsoki.yaml, slugs from --name or the repo basename, refuses to overwrite an
 // existing file, emits a normal dev-story instance (one import + host_bindings +
 // world + a provenance header), and re-loads its own output to prove the
@@ -26,12 +26,12 @@ func materializeCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "materialize",
-		Short: "Graduate the implicit dev-story root to a real stories/<slug>/app.yaml",
+		Short: "Graduate the implicit dev-story root to a real .kitsoki/stories/<slug>/app.yaml",
 		Long: `Materialize writes the implicit project root — the dev-story instance the
 loader synthesizes from .kitsoki.yaml 'root:' — to a real, hand-editable
-stories/<slug>/app.yaml file (rung 2 of the blank-root ladder).
+.kitsoki/stories/<slug>/app.yaml file (rung 2 of the blank-root ladder).
 
-The emitted file is a normal dev-story instance exactly like stories/kitsoki-dev:
+The emitted file is a normal dev-story instance exactly like .kitsoki/stories/kitsoki-dev:
 one import of dev-story, the host_bindings + world from your .kitsoki.yaml
 overrides, and a provenance header. Materialize refuses to overwrite an existing
 file (edit it directly once graduated) and re-loads its own output, aborting and
@@ -69,8 +69,8 @@ Examples:
 // runMaterialize is the testable core of the materialize command: load the
 // config, resolve the slug, synthesize-then-emit, refuse to overwrite, write,
 // and re-load-and-validate (removing the partial on failure). repoRoot is both
-// the @kitsoki/dev-story resolution root and the stories/<slug>/ write root.
-// Returns the written path on success.
+// the @kitsoki/dev-story resolution root and the .kitsoki/stories/<slug>/ write
+// root. Returns the written path on success.
 func runMaterialize(repoRoot, configPath, nameFlag string) (string, error) {
 	webCfg, err := webconfig.Load(configPath)
 	if err != nil {
@@ -93,7 +93,7 @@ func runMaterialize(repoRoot, configPath, nameFlag string) (string, error) {
 		return "", fmt.Errorf("synthesize implicit root: %w", synthErr)
 	}
 
-	outPath := filepath.Join(repoRoot, "stories", slug, "app.yaml")
+	outPath := filepath.Join(repoRoot, ".kitsoki", "stories", slug, "app.yaml")
 	if _, statErr := os.Stat(outPath); statErr == nil {
 		return "", fmt.Errorf("%s already exists; this root is already materialized — edit it directly", outPath)
 	}

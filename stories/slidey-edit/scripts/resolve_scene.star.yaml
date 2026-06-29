@@ -1,0 +1,13 @@
+# resolve_scene — resolve the targeted slide + hand back its current content.
+# See resolve_scene.star for the resolution priority (viewed scene > anchor ref).
+inputs:
+  spec_path:     { type: string, required: true }
+  anchor_ref:    { type: string, required: false }
+  current_scene: { type: string, required: false }
+
+outputs:
+  scene_index: { type: int }
+  scene:       { type: object }
+  scene_json:  { type: string }
+  scene_label: { type: string }
+  scene_count: { type: int }

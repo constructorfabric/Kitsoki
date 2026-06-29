@@ -1,0 +1,72 @@
+# bugfix_commit_includes_synthesized_repro_paths — when a bare bug report causes
+# the reproducer to author a RED test, the pipeline must first commit that test
+# as the discrete pre-fix reproducer commit, then stage the full implementation
+# worktree delta even if the implementer reports only production files.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposing
+initial_world:
+  ticket_id:        "TKT-COMMIT-REPRO"
+  ticket_title:     "Commit synthesized reproducer with the implementation"
+  thread:           "TKT-COMMIT-REPRO"
+  workspace_id:     "commit-repro"
+  workdir:          ".worktrees/commit-repro"
+  worktree_path:    ".worktrees/commit-repro"
+  feature_branch:   "commit-repro"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  gate_command:     ""
+  repro_committed:  false
+  reproduction_artifact:
+    summary_title:    "RED reproducer"
+    summary_markdown: "Authored a regression test."
+    bug_verified:     true
+    repro_command:    "go test ./cmd/kitsoki -run TestRegistry_TerminalSessionNotListedAsActive -count=1"
+    repro_test_paths: ["cmd/kitsoki/registry_test.go"]
+  propose_fix_artifact:
+    summary_title:    "Filter terminal sessions"
+    summary_markdown: "Filter terminal sessions from active story headers."
+    fix_description:  "Consult snapshots before populating active_sessions."
+    root_cause:       "Story headers treated every registry entry as active."
+    affected_files:   ["cmd/kitsoki/registry.go"]
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/commit-repro" } }
+  host.git:
+    data: { ok: true, sha: "fixsha", diff: "" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Filter terminal sessions"
+        summary_markdown: "Updated the registry implementation."
+        applied:          true
+        files_changed:    ["cmd/kitsoki/registry.go"]
+  host.run:
+    by_call:
+      commit_repro_test:
+        data: { ok: true, exit_code: 0, stdout_json: { sha: "redsha", committed: true } }
+
+turns:
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    expect_world:
+      gate_command:    "go test ./cmd/kitsoki -run TestRegistry_TerminalSessionNotListedAsActive -count=1"
+      landing_gate:    "go test ./cmd/kitsoki -run TestRegistry_TerminalSessionNotListedAsActive -count=1"
+      repro_committed: true
+    expect_host_calls:
+      # The implementation commit now stages the agent's full worktree delta
+      # (stage_all) rather than an explicit file list, so a synthesized helper/test
+      # the implementer didn't name still lands. The reproducer's RED test is
+      # committed separately as the discrete pre-fix commit (commit_repro_test).
+      - handler: host.git.commit
+        args:
+          workdir: ".worktrees/commit-repro"
+          message: "Filter terminal sessions"
+          stage_all: true
+
+expect_no_errors: true

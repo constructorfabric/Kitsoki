@@ -1,6 +1,6 @@
 ---
 name: kitsoki-mcp-debug
-description: Debug and test the Kitsoki studio MCP server and its tools from the repo checkout. Use when working on `kitsoki mcp`, `cmd/kitsoki/mcp_test_client.go`, `internal/mcp/studio`, MCP tool registration, stdio MCP handshake failures, `mcp-test` output, or when the user wants to verify studio MCP changes without reloading an LLM client.
+description: Debug and test the Kitsoki studio MCP server and its tools from the repo checkout. Use when working on `kitsoki mcp`, `cmd/kitsoki/mcp_test_client.go`, `internal/mcp/studio`, MCP tool registration, stdio MCP handshake failures, visual MCP tools (`visual.open`, `visual.observe`, `visual.act`), `mcp-test` output, or when the user wants to verify studio MCP changes without reloading an LLM client.
 ---
 
 # Kitsoki MCP Debug
@@ -104,6 +104,84 @@ those areas. Keep verification focused and report the sandbox blocker.
   tools.
 - image/render behavior: start with `render.tui` before `render.tui_png` or
   `render.web`; `render.web` may degrade when no browser-capable host is wired.
+
+## Visual MCP / Web QA
+
+Use visual MCP when the claim is about what a real operator can see or point at
+in the web surface. For Slidey deck QA, the high-signal path is:
+
+1. Open a no-LLM/replay session with the story cassette or flow seed.
+2. Drive to the rendered deck or review state.
+3. Call `visual.open` with `kind:"web"` and a `query` that deep-links the
+   single-page app route:
+
+   ```json
+   {
+     "kind": "web",
+     "session_id": "<session>",
+     "query": {
+       "route": "/s/<session>/chat",
+       "visual_annotate": "1"
+     }
+   }
+   ```
+
+4. Call `visual.observe` and verify `regions` include the relevant surface:
+   `media`, `deck`, and `annotation` for Slidey deck annotation work.
+5. If `visual.act` is involved, verify the action is executable through the
+   returned semantic handles. Treat non-actionable semantic text as an MCP/UI
+   bug, not as a user workaround.
+
+Use a local DB for repeatable command-line MCP visual smoke when the shared DB
+is read-only:
+
+```sh
+GOCACHE=/private/tmp/kitsoki-go-cache go run ./cmd/kitsoki mcp-test \
+  --stories-dir ./stories \
+  --timeout 20s \
+  --server-arg mcp \
+  --server-arg --stories-dir --server-arg ./stories \
+  --server-arg --db --server-arg .artifacts/visual-mcp-smoke/sessions.db
+```
+
+Slidey-specific traps:
+
+- `visual.open` must capture the session route, not just the runstatus observer
+  landing page.
+- The deck annotator should be open when testing anchor/refine flows; use
+  `visual_annotate=1` or the specific media handle.
+- Baked demo decks rely on ignored generated files under
+  `stories/slidey-edit/baked/`. If an isolated worktree shows a missing
+  `deck.html`, check whether the main checkout has the ignored artifact before
+  changing tracked story logic.
+- Prompt args that pass a scene object must serialize it explicitly. If the
+  prompt renders `map[...]`, add a string world key such as `scene_json` and
+  test the Starlark output.
+- Sidecar-promoted videos are not live Slidey embeds. Keep the live picker
+  gated to slideshow/deck media so mp4 + semantic sidecars still use the overlay
+  path.
+
+## Monitoring / checking a RUNNING session
+
+You **cannot** check on a job another connection/process is driving via a second
+`session.status`/`studio.handles` call:
+- the MCP CLIENT serialises tool calls per stdio connection (a second call waits
+  behind the in-flight `session.drive`), and
+- kitsoki sessions are **per-process** — a different `kitsoki mcp` process can't
+  see another's handles.
+
+The studio SERVER is NOT the bottleneck — it's provably concurrent (guard test
+`internal/mcp/studio/session_concurrent_readonly_test.go`; ticket
+`2026-06-25T121622Z-…` is wontfix). So don't go hunting for a server-side lock.
+
+Instead read the trace from disk: **`kitsoki trace status <trace|id> [--json]`** —
+one-shot, cross-process, prints `{state, turn, status, last_error, cost, idle}`
+and flags ⚠ STALLED. This is the supported way to watch a live MCP-driven run.
+
+**Model selection is a `session.new {profile}` parameter, not a story edit:** a
+profile that pins a model (e.g. `codex-native` → gpt-5.5, `synthetic-claude` →
+GLM) SUPERSEDES the story agent-def `model:` (`internal/host/agents.go`). The bare
+`codex` profile pins nothing and falls back to the agent-def — that's the trap.
 
 Before committing, run `git diff --check` and confirm only intended files are
 staged. Leave unrelated untracked files alone.

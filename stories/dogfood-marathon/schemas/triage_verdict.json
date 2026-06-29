@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "triage_verdict",
+  "description": "Read-only triage verdict for one marathon case (mirrors bugfix triage-only mode).",
+  "type": "object",
+  "required": ["verdict"],
+  "properties": {
+    "verdict":  { "type": "string", "enum": ["ALREADY-FIXED", "STILL-LIVE", "PARTIAL", "UNCLEAR"], "description": "Whether the defect still exists at the baseline." },
+    "evidence": { "type": "string", "description": "Concrete code evidence (file:line / function / regression test)." },
+    "note":     { "type": "string", "description": "One-line rationale." }
+  },
+  "additionalProperties": true
+}

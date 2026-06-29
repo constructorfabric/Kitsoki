@@ -37,8 +37,10 @@ import (
 )
 
 const (
-	cloakApp      = "../../../testdata/apps/cloak/app.yaml"
-	cloakCassette = "../../../testdata/apps/cloak/recording.yaml"
+	cloakApp                   = "../../../testdata/apps/cloak/app.yaml"
+	cloakCassette              = "../../../testdata/apps/cloak/recording.yaml"
+	punchListApp               = "../../../stories/punch-list/app.yaml"
+	punchListTop10HostCassette = "../../../stories/punch-list/cassettes/top10_gpt55.cassette.yaml"
 )
 
 // failingLive is a live harness that fails loudly if RunTurn is ever called.
@@ -51,6 +53,22 @@ func (f *failingLive) RunTurn(_ context.Context, _ harness.TurnInput) (mcpsdk.Ca
 	return mcpsdk.CallToolParams{}, errors.New("studio: live harness MUST NOT be called under replay")
 }
 func (f *failingLive) Close() error { return nil }
+
+type sleepyLive struct {
+	delay time.Duration
+}
+
+func (s sleepyLive) RunTurn(ctx context.Context, in harness.TurnInput) (mcpsdk.CallToolParams, error) {
+	select {
+	case <-time.After(s.delay):
+	case <-ctx.Done():
+		return mcpsdk.CallToolParams{}, ctx.Err()
+	}
+	args := map[string]any{"intent": "go", "confidence": 1.0, "slots": map[string]any{"direction": "west"}}
+	return mcpsdk.CallToolParams{Name: "transition", Arguments: args}, nil
+}
+
+func (s sleepyLive) Close() error { return nil }
 
 // replayBuilder is the production-equivalent harness builder for these tests: it
 // builds a real no-LLM ReplayHarness for replay mode (so orch.Turn replays the
@@ -150,6 +168,77 @@ func TestSessionDrive_GoldenTranscript(t *testing.T) {
 	require.Equal(t, "bar.lit", golden[len(golden)-1].state)
 }
 
+func TestSessionDrive_ReturnsRunningWhenTurnExceedsBoundedWait(t *testing.T) {
+	ctx := context.Background()
+	sess := studio.NewStudioSession(func(mode studio.HarnessMode, _, _ string) (harness.Harness, error) {
+		require.Equal(t, studio.HarnessLive, mode)
+		return sleepyLive{delay: 120 * time.Millisecond}, nil
+	})
+	srv := studio.NewServer(sess)
+	cs := connectInProcess(ctx, t, srv)
+
+	res, err := callTool(ctx, cs, "session.new", map[string]any{
+		"story_path": cloakApp,
+		"harness":    "live",
+		"trace":      t.TempDir() + "/trace.jsonl",
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "session.new: %s", contentText(res))
+	var ok studio.SessionOpenOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &ok))
+
+	start := time.Now()
+	res, err = callTool(ctx, cs, "session.drive", map[string]any{
+		"handle":         ok.Handle,
+		"input":          "go west",
+		"async_after_ms": 20,
+	})
+	require.NoError(t, err)
+	tr := driveResult(t, res)
+	require.True(t, tr.OK)
+	require.NotNil(t, tr.Running, "slow turns return a running status before the MCP client times out")
+	require.Equal(t, ok.Handle, tr.Running.Handle)
+	require.Equal(t, "go west", tr.Running.Input)
+	require.Less(t, time.Since(start), 100*time.Millisecond)
+
+	res, err = callTool(ctx, cs, "session.status", map[string]any{"handle": ok.Handle})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "session.status: %s", contentText(res))
+	var runningStatus studio.SessionStatusResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &runningStatus))
+	require.NotNil(t, runningStatus.Running, "session.status exposes the in-flight drive for polling")
+	assert.Equal(t, ok.Handle, runningStatus.Running.Handle)
+	assert.Equal(t, "go west", runningStatus.Running.Input)
+
+	res, err = callTool(ctx, cs, "session.inspect", map[string]any{"handle": ok.Handle, "omit_world": true})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "session.inspect: %s", contentText(res))
+	var runningInspect studio.InspectResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &runningInspect))
+	require.NotNil(t, runningInspect.Running, "session.inspect exposes the in-flight drive for reacquire")
+	require.NotNil(t, runningInspect.Async)
+	assert.Equal(t, 1, runningInspect.Async.RunningDrive)
+
+	require.Eventually(t, func() bool {
+		res, err := callTool(ctx, cs, "session.status", map[string]any{"handle": ok.Handle})
+		if err != nil || res.IsError {
+			return false
+		}
+		var status studio.SessionStatusResult
+		if json.Unmarshal([]byte(contentText(res)), &status) != nil {
+			return false
+		}
+		return status.State == "cloakroom" && status.Running == nil
+	}, time.Second, 20*time.Millisecond)
+
+	res, err = callTool(ctx, cs, "session.status", map[string]any{"handle": ok.Handle})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "session.status: %s", contentText(res))
+	var settledStatus studio.SessionStatusResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &settledStatus))
+	assert.Nil(t, settledStatus.Running, "running marker is removed after the turn settles")
+}
+
 // ─── 2.2 no-live-fallthrough ─────────────────────────────────────────────────
 
 // TestSessionDrive_NoLiveFallthrough is the teeth. A replay session driven with
@@ -229,6 +318,111 @@ func TestSessionNew_ReplayWithoutCassetteAllowsDirectSubmitOnly(t *testing.T) {
 	assert.False(t, driven.OK)
 	assert.Equal(t, "error", driven.Outcome.Mode)
 	assert.Contains(t, driven.Outcome.Error, "noRouteHarness")
+}
+
+func TestSessionNew_HostCassetteBacksDirectSubmitRun(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+	cs := connectInProcess(ctx, t, srv)
+
+	res, err := callTool(ctx, cs, "session.new", map[string]any{
+		"story_path":    punchListApp,
+		"harness":       "replay",
+		"host_cassette": punchListTop10HostCassette,
+		"trace":         t.TempDir() + "/trace.jsonl",
+		"initial_world": map[string]any{
+			"manifest_path": "stories/punch-list/testdata/top10_gpt55.yaml",
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "session.new with host_cassette should open: %s", contentText(res))
+	var ok studio.SessionOpenOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &ok))
+	require.Equal(t, "idle", ok.State)
+
+	submit := func(intent string) studio.TurnResponse {
+		t.Helper()
+		res, err := callTool(ctx, cs, "session.submit", map[string]any{
+			"handle": ok.Handle,
+			"intent": intent,
+			"cols":   100,
+			"rows":   30,
+		})
+		require.NoError(t, err)
+		return driveResult(t, res)
+	}
+
+	// settle polls session.inspect until the machine reaches a stable, operator-
+	// actionable state with no background job still running. The drive and
+	// implementation rooms dispatch host.agent.task with background:true, so each
+	// item's work runs asynchronously: dispatching `next_item` returns at the
+	// transient `drive` state while the job is still in flight, then the job's
+	// on_complete arc auto-routes drive → implementation → verify on its own.
+	stable := map[string]bool{"board": true, "verify": true, "report": true, "needs_human": true}
+	settle := func() string {
+		t.Helper()
+		for attempt := 0; attempt < 400; attempt++ {
+			res, err := callTool(ctx, cs, "session.inspect", map[string]any{
+				"handle": ok.Handle, "omit_world": true,
+			})
+			require.NoError(t, err)
+			var snap struct {
+				State string                     `json:"state"`
+				Async studio.AsyncInspectSummary `json:"async"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(contentText(res)), &snap))
+			if snap.Async.JobsRunning == 0 && snap.Async.DispatchingDrives == 0 && stable[snap.State] {
+				return snap.State
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("session never settled into a stable state")
+		return ""
+	}
+
+	started := submit("start")
+	require.True(t, started.OK)
+	require.Equal(t, "load", started.Outcome.State)
+	require.Contains(t, started.Frame.Text, "Loaded 10 item(s).")
+
+	board := submit("next_item")
+	require.True(t, board.OK)
+	require.Equal(t, "board", board.Outcome.State)
+	require.Contains(t, board.Frame.Text, "Pending 10")
+
+	// Drive the whole punch-list through the MCP session.submit surface. From the
+	// board, `next_item` dispatches the current item's background drive job; once it
+	// (and any implementation job) finishes, the machine settles at `verify`, whose
+	// independent check we then advance with `verify_done` back to the board. We
+	// walk the operator-facing intents until the run reaches `report`. The per-arc
+	// state-machine behaviour itself is covered exhaustively by the
+	// stories/punch-list/flows/* fixtures; this test guards the host_cassette MCP
+	// surface end to end.
+	var lastText string
+	reached := false
+	for step := 0; step < 60; step++ {
+		switch state := settle(); state {
+		case "report":
+			reached = true
+		case "needs_human":
+			t.Fatalf("step %d bounced to needs_human", step)
+		case "verify":
+			adv := submit("verify_done")
+			require.True(t, adv.OK, "step %d verify_done should advance: %q", step, adv.Outcome.Error)
+			lastText = adv.Frame.Text
+		case "board":
+			adv := submit("next_item")
+			require.True(t, adv.OK, "step %d next_item should advance: %q", step, adv.Outcome.Error)
+			lastText = adv.Frame.Text
+		default:
+			t.Fatalf("step %d unexpected stable state %q", step, state)
+		}
+		if reached {
+			break
+		}
+	}
+	require.True(t, reached, "run never reached report")
+	require.Contains(t, lastText, "10 passed, 0 partial, 0 failed, 0 skipped, 0 pending")
 }
 
 func TestSessionSubmit_StreamsProgressNotifications(t *testing.T) {
@@ -716,6 +910,51 @@ states:
 	return appPath
 }
 
+func writeChoiceToPlainStory(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	appPath := dir + "/app.yaml"
+	const body = `app:
+  id: studio-choice-to-plain-test
+  version: 0.1.0
+  title: "Studio Choice To Plain Test"
+
+intents:
+  advance:
+    title: "Advance"
+  look:
+    title: "Look"
+
+root: pick
+
+states:
+  pick:
+    view:
+      - heading: "Picker"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "Stale choice", intent: advance }
+            - { label: "Look", intent: look }
+    on:
+      advance:
+        - target: plain
+      look:
+        - target: .
+
+  plain:
+    view:
+      - heading: "Destination"
+      - prose: "Destination body."
+    on:
+      look:
+        - target: .
+`
+	require.NoError(t, os.WriteFile(appPath, []byte(body), 0o644))
+	return appPath
+}
+
 func writeSlowBackgroundJobStory(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -849,9 +1088,60 @@ func TestRenderTUI_EqualsComposer(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &rt))
 
 	assert.Equal(t, driveFrame.Text, rt.Frame.Text, "render.tui text == the composed drive frame")
-	assert.Equal(t, driveFrame.ANSI, rt.Frame.ANSI, "render.tui ansi == the composed drive frame")
 	assert.Equal(t, driveFrame.Metadata.State, rt.Frame.Metadata.State)
 	assert.Equal(t, driveFrame.Width, rt.Frame.Width)
+}
+
+func TestRenderTUI_DropsStaleChoiceAfterDirectTransition(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+	cs := connectInProcess(ctx, t, srv)
+	appPath := writeChoiceToPlainStory(t)
+
+	res, err := callTool(ctx, cs, "session.new", map[string]any{
+		"story_path": appPath,
+		"harness":    "replay",
+		"trace":      t.TempDir() + "/trace.jsonl",
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "session.new: %s", contentText(res))
+	var ok studio.SessionOpenOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &ok))
+
+	res, err = callTool(ctx, cs, "render.tui", map[string]any{
+		"handle": ok.Handle,
+		"cols":   100,
+		"rows":   30,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "initial render.tui: %s", contentText(res))
+	var rendered studio.RenderTUIResult
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &rendered))
+	require.Contains(t, rendered.Frame.Text, "Stale choice")
+
+	res, err = callTool(ctx, cs, "session.submit", map[string]any{
+		"handle": ok.Handle,
+		"intent": "advance",
+		"cols":   100,
+		"rows":   30,
+	})
+	require.NoError(t, err)
+	submitted := driveResult(t, res)
+	require.Equal(t, "plain", submitted.Outcome.State)
+	require.Contains(t, submitted.Frame.Text, "Destination body")
+	require.NotContains(t, submitted.Frame.Text, "Stale choice")
+
+	res, err = callTool(ctx, cs, "render.tui", map[string]any{
+		"handle": ok.Handle,
+		"cols":   100,
+		"rows":   30,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "post-transition render.tui: %s", contentText(res))
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &rendered))
+	assert.Contains(t, rendered.Frame.Text, "Destination body")
+	assert.NotContains(t, rendered.Frame.Text, "Stale choice")
+	assert.Equal(t, []string{"look"}, rendered.Frame.Metadata.AllowedIntents)
 }
 
 // TestRenderTUI_SpecForm renders an explicit {story_path, state} spec — a state

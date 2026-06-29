@@ -34,6 +34,7 @@ package studio
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	"kitsoki/internal/app"
 
@@ -55,10 +56,25 @@ const implementationName = "kitsoki-studio"
 type Server struct {
 	mcpSrv *mcpsdk.Server
 	sess   *StudioSession
+	// visualHandles are lightweight logical surfaces opened by visual.open.
+	// They deliberately do not own a browser process in the first slice; they
+	// bind a stable visual handle to an existing driving handle and reuse the
+	// render/session seams for observation, snapshots, and deterministic acts.
+	visualMu      sync.Mutex
+	visualHandles map[string]*VisualHandle
+	visualImages  map[string]*VisualImage
+	visualRecords map[string]*VisualRecording
+	nextVisualID  int
 	// webShot is the injectable render.web seam (slice 4 webshot.Shot, wrapped
 	// by cmd/kitsoki). Nil → render.web degrades to text (no browser host). A
 	// test injects a stub that returns a synthetic PNG with no Chromium.
 	webShot WebShotFunc
+	// webShotResult is the richer visual.snapshot seam: it returns the PNG plus
+	// the page-side compact semantic observation when the browser helper emits
+	// one. Kept separate so existing render.web tests can inject only WebShotFunc.
+	webShotResult WebShotResultFunc
+	// webAct performs browser actions for web/vscode visual.act targets.
+	webAct WebActFunc
 	// readOnly drops the only story-tree mutation tool (story.write) from the
 	// registry. The read tools (story.read/validate/graph/test), the session
 	// driving tools (session.*, replay-default → no LLM, no story-file
@@ -97,7 +113,12 @@ func WithImportResolver(resolver app.ImportResolver) ServerOption {
 // (or one seeded with an initial workspace). The server is ready to call Run or
 // Connect. Pass ReadOnly() to omit story.write (the Q&A surface).
 func NewServer(sess *StudioSession, opts ...ServerOption) *Server {
-	srv := &Server{sess: sess}
+	srv := &Server{
+		sess:          sess,
+		visualHandles: make(map[string]*VisualHandle),
+		visualImages:  make(map[string]*VisualImage),
+		visualRecords: make(map[string]*VisualRecording),
+	}
 	for _, opt := range opts {
 		opt(srv)
 	}
@@ -127,6 +148,9 @@ func NewServer(sess *StudioSession, opts ...ServerOption) *Server {
 	// story.* — the deterministic, LLM-free authoring tools (slice 6).
 	srv.registerStoryTools()
 
+	// workflow.* — dynamic-workflow create/validate/export receipts.
+	srv.registerWorkflowTools()
+
 	// session.* / render.* — drive a live (replay-default) session and see it
 	// (slice 7).
 	srv.registerSessionTools()
@@ -144,6 +168,10 @@ func NewServer(sess *StudioSession, opts ...ServerOption) *Server {
 	// (e.g. go test) outside any live session, to gate on the real deliverable.
 	srv.registerHostTools()
 
+	// visual.* — token-efficient visual interaction over web/TUI/VS Code-like
+	// surfaces, built on existing session/render seams.
+	srv.registerVisualTools()
+
 	return srv
 }
 
@@ -157,6 +185,24 @@ func (srv *Server) Session() *StudioSession { return srv.sess }
 // injects a stub returning a synthetic PNG with no browser. When unset,
 // render.web degrades to a text-only "needs a browser-capable host" result.
 func (srv *Server) SetWebShot(fn WebShotFunc) { srv.webShot = fn }
+
+// SetWebShotResult injects the richer web renderer used by visual.snapshot. It
+// also keeps render.web available by adapting the result back to PNG bytes.
+func (srv *Server) SetWebShotResult(fn WebShotResultFunc) {
+	srv.webShotResult = fn
+	if fn == nil {
+		srv.webShot = nil
+		return
+	}
+	srv.webShot = func(ctx context.Context, spec WebRenderSpec) ([]byte, error) {
+		res, err := fn(ctx, spec)
+		return res.PNG, err
+	}
+}
+
+// SetWebAct injects the browser action seam used by visual.act for web/vscode
+// handles.
+func (srv *Server) SetWebAct(fn WebActFunc) { srv.webAct = fn }
 
 // Run starts the studio server on the StdioTransport and blocks until the context
 // is done or the peer disconnects. This is the entry point for `kitsoki mcp`.

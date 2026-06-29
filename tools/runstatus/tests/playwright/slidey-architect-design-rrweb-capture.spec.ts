@@ -39,6 +39,7 @@ import {
   cinematicGoto,
   ChapterRecorder,
   writeChapters,
+  showArtifact,
   type WebServer,
 } from "./_helpers/server.js";
 import { installCapture, dumpCapture, writeEvents } from "./_helpers/rrweb-replay.js";
@@ -46,10 +47,19 @@ import { SLIDEY_ARCHITECT_DESIGN_TOUR_STEPS, type TourStep } from "../../src/tou
 
 const CHAPTER_SOURCE = "features/slidey-architect-design.yaml";
 
-const ADDR = "127.0.0.1:7762";
+// REPLAY harness (not nil --flow): the operator TYPES the design intent + refine
+// note, routed to slot-bearing core__discuss by the recording (a nil-harness
+// --flow cannot extract a slot from typed prose). The flow is still passed —
+// but ONLY for its initial_state (core.prd_published) / initial_world seed (the
+// design phase starts mid-graph, after the PRD is published); the live-harness
+// SeedFixture path teleports there while the recording routes free text and the
+// host cassette backs every host.* call. See .context/slidey-replay-clips.md.
+const ADDR = "127.0.0.1:7754";
 const STORY_DIR = path.join(repoRoot, "stories", "slidey-dev");
 const FLOW = path.join(STORY_DIR, "flows", "architect_design.yaml");
-const EMBED_REPO = path.join(repoRoot, ".artifacts", "slidey-hybrid", "clean-stories");
+const RECORDING = path.join(STORY_DIR, "assets", "architect_design-recording.yaml");
+const HOST_CASSETTE = path.join(STORY_DIR, "assets", "architect_design-host.cassette.yaml");
+const EMBED_REPO = repoRoot;
 
 const ARTIFACT_DIR = path.join(repoRoot, ".artifacts", "rrweb-eval", "slidey-architect-design");
 const BASELINE_FRAMES_DIR = path.join(ARTIFACT_DIR, "baseline-frames");
@@ -77,7 +87,10 @@ test.beforeAll(async () => {
   fs.writeFileSync(DIAG_LOG, "");
   server = await startWebServer({
     addr: ADDR,
-    flow: FLOW,
+    harness: "replay",
+    flow: FLOW, // seed-only (initial_state/world) under the live-harness path
+    recording: RECORDING,
+    hostCassette: HOST_CASSETTE,
     storiesDir: STORY_DIR,
     extraEnv: { KITSOKI_REPO: EMBED_REPO },
   });
@@ -145,39 +158,101 @@ async function runDrive(page: Page, actions: TourStep["drive"]): Promise<void> {
   }
 }
 
+// The InputBar's composer send() emits the room's ACTIVE text-intent directly,
+// NOT free-text routing — so a typed message only reaches the right room's
+// discuss when the composer is bound to that room's intent. After a navigation
+// the InputBar lags the state a render tick (still bound to the OUTGOING room's
+// surface). We avoid the trap by driving through InteractiveView's own store
+// hooks (`window.__kitsokiSendText` → session.turn → the replay recording routes
+// it; `window.__kitsokiSubmitIntent` → the reactive submit path the buttons
+// use), so the chat + InputBar re-render for the new room and the turn lands on
+// the intended intent — never the stale dev-story landing `work`. A brief
+// composer-settle still gives the camera a clean frame.
+const LANDING_PLACEHOLDER_RE = /describe work/i;
+async function waitForComposerSettled(page: Page, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastKey = "";
+  let stableCount = 0;
+  while (Date.now() < deadline) {
+    const snap = await page.evaluate(() => {
+      const composer = document.querySelector('[data-testid="composer-input"]') as HTMLElement | null;
+      const floor = document.querySelector('[data-testid="text-floor-input"]') as HTMLElement | null;
+      const pick = composer ?? floor;
+      const vis = (el: HTMLElement | null) =>
+        !!el && el.getBoundingClientRect().height > 0 && getComputedStyle(el).visibility !== "hidden";
+      return {
+        hasComposer: vis(composer),
+        hasFloor: vis(floor),
+        placeholder: pick ? (pick.getAttribute("placeholder") ?? "") : "",
+        key: pick ? `${composer ? "c" : "f"}:${pick.getAttribute("placeholder") ?? ""}` : "",
+      };
+    });
+    const single = (snap.hasComposer ? 1 : 0) + (snap.hasFloor ? 1 : 0) === 1;
+    const notLanding = !LANDING_PLACEHOLDER_RE.test(snap.placeholder);
+    if (single && notLanding && snap.key !== "" && snap.key === lastKey) {
+      stableCount++;
+      if (stableCount >= 2) return;
+    } else {
+      stableCount = 0;
+    }
+    lastKey = snap.key;
+    await page.waitForTimeout(150);
+  }
+  diag(`waitForComposerSettled: timed out (last key="${lastKey}")`);
+}
+
+// waitForTurnSettled blocks until no turn is in flight. The InteractiveView
+// renders `thinking-bubble` exactly while `pending` is true (its runTurn
+// guard), and — critically — runTurn is a NO-OP if a prior turn is still
+// pending: __kitsokiSendText / __kitsokiSubmitIntent silently drop the action
+// and resolve instantly. So the previous turn (e.g. the refine `discuss` that
+// re-runs the design_refiner via host.agent.task) must FULLY land before the
+// next intent (`ready`) is issued, or `ready` is dropped and the session never
+// leaves design_refine. A `wait-state` on the room we're already in is
+// trivially-true and does NOT prove the turn settled — this does. We require
+// the bubble to be absent for two consecutive polls so a between-turns flicker
+// doesn't read as settled.
+async function waitForTurnSettled(page: Page, timeoutMs = 20000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let clearStreak = 0;
+  while (Date.now() < deadline) {
+    const thinking = await page.evaluate(
+      () => !!document.querySelector('[data-testid="thinking-bubble"]'),
+    );
+    if (!thinking) {
+      clearStreak++;
+      if (clearStreak >= 2) return;
+    } else {
+      clearStreak = 0;
+    }
+    await page.waitForTimeout(150);
+  }
+  diag("waitForTurnSettled: timed out (thinking-bubble never cleared)");
+}
+
 async function typeAndSend(page: Page, text: string): Promise<void> {
-  const filled = await page.evaluate((t) => {
-    const input =
-      (document.querySelector('[data-testid="composer-input"]') as HTMLInputElement | null) ??
-      (document.querySelector('[data-testid="text-floor-input"]') as HTMLInputElement | null);
-    if (!input) return false;
-    input.focus();
-    input.value = t;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
+  await waitForTurnSettled(page);
+  await waitForComposerSettled(page);
+  const ok = await page.evaluate(async (t) => {
+    const fn = (window as unknown as { __kitsokiSendText?: (s: string) => Promise<void> }).__kitsokiSendText;
+    if (!fn) return false;
+    await fn(t);
     return true;
   }, text);
-  if (!filled) throw new Error("composer-input not found (no composer or text floor)");
-  await page.waitForTimeout(200);
-  const sent = await page.evaluate(() => {
-    const btn =
-      (document.querySelector('[data-testid="composer-send"]') as HTMLElement | null) ??
-      (document.querySelector('[data-testid="text-floor-send"]') as HTMLElement | null);
-    if (!btn) return false;
-    btn.click();
-    return true;
-  });
-  if (!sent) throw new Error("composer-send not found");
+  if (!ok) throw new Error("__kitsokiSendText hook not present (InteractiveView not mounted?)");
 }
 
 async function clickIntent(page: Page, intent: string): Promise<void> {
-  const ok = await page.evaluate((id) => {
-    const btn = document.querySelector(`[data-testid="intent-btn-${id}"]`) as HTMLElement | null;
-    if (!btn) return false;
-    btn.scrollIntoView({ block: "center" });
-    btn.click();
+  await waitForTurnSettled(page);
+  const ok = await page.evaluate(async (name) => {
+    const fn = (window as unknown as {
+      __kitsokiSubmitIntent?: (n: string, s?: Record<string, unknown>) => Promise<void>;
+    }).__kitsokiSubmitIntent;
+    if (!fn) return false;
+    await fn(name, {});
     return true;
   }, intent);
-  if (!ok) throw new Error(`intent button ${intent} not found`);
+  if (!ok) throw new Error(`__kitsokiSubmitIntent hook not present for ${intent}`);
 }
 
 async function waitForState(page: Page, state: string, timeoutMs: number): Promise<void> {
@@ -314,6 +389,12 @@ test("slidey architect-design rrweb capture (baseline + event stream)", async ()
     }
 
     await expect(page.getByTestId("tour-overlay")).toHaveCount(0, { timeout: 5000 });
+
+    // ── Full-screen the published design and scroll through it ───────────────
+    diag("opening published design artifact");
+    chapters.open("sad-design-artifact", "Published design — full document", CHAPTER_SOURCE);
+    await showArtifact(page, "stories/slidey-dev/assets/architect_design-doc.md");
+    diag("design artifact shown + scrolled");
 
     const { events, viewport } = await dumpCapture(page);
     diag(`rrweb captured ${events.length} events @ ${viewport.width}x${viewport.height} dsf=${viewport.deviceScaleFactor}`);

@@ -1,10 +1,10 @@
 /**
  * media-artifact.spec.ts — Playwright end-to-end test + demo video for the
- * visual-outputs media ViewElement feature.
+ * recorded-media ViewElement feature.
  *
  * What this tests
  * ───────────────
- * The visual-outputs feature adds a "media" ViewElement kind to the kitsoki
+ * The recorded-media feature adds a "media" ViewElement kind to the kitsoki
  * web UI. When a story room emits a typed view containing media elements, the
  * SPA renders:
  *   • video/* MIME → <video controls> with src=/artifact/<handle>

@@ -1,0 +1,431 @@
+states:
+  idle:
+    description: "Waiting to create a product-journey QA run bundle."
+    relevant_world: [project, persona, seed, matrix_personas, target_proof_file, corpus_validation_status, corpus_validation_errors, corpus_validation_warnings, status]
+    view:
+      - banner:
+          text: "PRODUCT JOURNEY QA"
+          subtitle: "Create repeatable persona/scenario bundles for visual MCP and Kitsoki MCP evidence."
+          color: "#7C3AED"
+      - kv:
+          pairs:
+            Project: "{{ world.project }}"
+            Persona: "{{ world.persona }}"
+            Seed: "{{ world.seed }}"
+            Matrix personas: "{{ world.matrix_personas }}"
+            Target proof: '{{ world.target_proof_file|default:"(not refreshed)" }}'
+            Corpus: '{{ world.corpus_validation_status|default:"(not checked)" }}'
+            Status: "{{ world.status }}"
+      - prose: "Create a no-LLM run bundle or a 10-repo GitHub matrix, then attach visual/MCP evidence as scenarios play out."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start project=... persona=... seed=..."
+              hint: "emit a run bundle under .artifacts/product-journey"
+              intent: start
+            - label: "matrix seed=... matrix_personas=primary"
+              hint: "emit the 10-repo GitHub matrix under .artifacts/product-journey/matrices"
+              intent: matrix
+            - label: "dogfood_smoke seed=..."
+              hint: "prove matrix, run, review, validation, rollup, and decks in one no-LLM loop"
+              intent: dogfood_smoke
+            - label: "driver_replay_smoke scenario=... persona=... seed=..."
+              hint: "prove one reusable-driver scenario with cassette evidence and journal-linked refs"
+              intent: driver_replay_smoke
+            - label: "driver_replay_sweep persona=... seed=..."
+              hint: "prove every reusable-driver scenario with cassette evidence and playback refs"
+              intent: driver_replay_sweep
+            - label: "validate_corpus"
+              hint: "preflight personas, scenarios, quality gates, and the GitHub target catalog"
+              intent: validate_corpus
+            - label: "refresh_targets seed=..."
+              hint: "write a GitHub target-proof artifact for bug-count and popularity floors"
+              intent: refresh_targets
+            - label: "load run_dir=..."
+              hint: "load an existing run bundle so a driver can attach evidence through this story"
+              intent: load
+            - label: "look"
+              intent: look
+    on:
+      validate_corpus:
+        - target: .
+          effects:
+            - set:
+                status: "validating_corpus"
+            - invoke: host.run
+              id: validate_product_journey_corpus
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --validate-corpus
+                  - --json-output
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                corpus_validation_status: "stdout_json.status"
+                corpus_validation_errors: "stdout_json.errors"
+                corpus_validation_warnings: "stdout_json.warnings"
+              on_error: idle
+            - set:
+                status: "corpus_validated"
+      refresh_targets:
+        - target: .
+          effects:
+            - set:
+                seed: "{{ slots.seed ?? world.seed }}"
+                status: "refreshing_targets"
+            - invoke: host.run
+              id: refresh_product_journey_targets
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --refresh-github-targets
+                  - --json-output
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                  - --smoke-scenario
+                  - "{{ slots.scenario ?? 'bugfix' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                target_proof_id: "stdout_json.proof_id"
+                target_proof_dir: "stdout_json.proof_dir"
+                target_proof_file: "stdout_json.proof_path"
+                target_proof_summary: stdout_json
+              on_error: idle
+            - set:
+                status: "targets_refreshed"
+      matrix:
+        - target: matrix_created
+          effects:
+            - set:
+                seed: "{{ slots.seed ?? world.seed }}"
+                matrix_personas: "{{ slots.matrix_personas ?? world.matrix_personas }}"
+                target_proof_file: "{{ slots.target_proof_file ?? world.target_proof_file }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "creating_matrix"
+            - invoke: host.run
+              id: emit_product_journey_matrix
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --emit-matrix
+                  - --json-output
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                  - --matrix-personas
+                  - "{{ slots.matrix_personas ?? world.matrix_personas }}"
+                  - --target-proof-file
+                  - "{{ slots.target_proof_file ?? world.target_proof_file }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                matrix_id: "stdout_json.matrix_id"
+                matrix_dir: "stdout_json.matrix_dir"
+                deck_path: "stdout_json.deck_path"
+                matrix_target_count: "stdout_json.target_count"
+                matrix_assignment_count: "stdout_json.assignment_count"
+                matrix_scenario_count: "stdout_json.scenario_count"
+                matrix_persona_mode: "stdout_json.persona_mode"
+                target_proof_id: "stdout_json.target_proof_id"
+                target_proof_checked_at: "stdout_json.target_proof_checked_at"
+                target_proof_passed: "stdout_json.target_proof_passed"
+                target_proof_failed: "stdout_json.target_proof_failed"
+                target_proof_errors: "stdout_json.target_proof_errors"
+                target_proof_ready: "stdout_json.target_proof_ready"
+              on_error: idle
+            - set:
+                status: "matrix_created"
+      dogfood_smoke:
+        - target: dogfood_created
+          effects:
+            - set:
+                seed: "{{ slots.seed ?? world.seed }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                review_status: ""
+                review_summary: ""
+                status: "dogfood_smoking"
+            - invoke: host.run
+              id: dogfood_product_journey_smoke
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --dogfood-smoke
+                  - --json-output
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                  - --smoke-persona
+                  - "{{ slots.persona ?? world.persona }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                dogfood_id: "stdout_json.dogfood_id"
+                dogfood_dir: "stdout_json.dogfood_dir"
+                dogfood_report_path: "stdout_json.report_path"
+                dogfood_deck_path: "stdout_json.deck_path"
+                dogfood_matrix_deck_path: "stdout_json.matrix_deck_path"
+                dogfood_run_deck_path: "stdout_json.run_deck_path"
+                dogfood_rollup_deck_path: "stdout_json.rollup_deck_path"
+                corpus_validation_status: "stdout_json.corpus_validation_status"
+                corpus_validation_errors: "stdout_json.corpus_validation_errors"
+                corpus_validation_warnings: "stdout_json.corpus_validation_warnings"
+                matrix_dir: "stdout_json.matrix_dir"
+                run_dir: "stdout_json.run_dir"
+                deck_path: "stdout_json.deck_path"
+                review_status: "stdout_json.review_status"
+                review_summary: "stdout_json.review_summary"
+                dogfood_review_passed: "stdout_json.review_passed"
+                dogfood_review_total: "stdout_json.review_total"
+                dogfood_review_warnings: "stdout_json.review_warnings"
+                dogfood_review_failed: "stdout_json.review_failed"
+                dogfood_review_backlog_summary: "stdout_json.review_backlog_summary"
+                validation_status: "stdout_json.run_validation_status"
+                validation_warnings: "stdout_json.run_validation_warnings"
+                validation_issue_summary: "stdout_json.run_validation_issue_summary"
+                dogfood_run_validation_warnings: "stdout_json.run_validation_warnings"
+                dogfood_matrix_validation_warnings: "stdout_json.matrix_validation_warnings"
+                dogfood_run_validation_issue_summary: "stdout_json.run_validation_issue_summary"
+                dogfood_matrix_validation_issue_summary: "stdout_json.matrix_validation_issue_summary"
+              on_error: idle
+            - set:
+                status: "dogfood_smoke_created"
+      driver_replay_smoke:
+        - target: dogfood_created
+          effects:
+            - set:
+                seed: "{{ slots.seed ?? world.seed }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                review_status: ""
+                review_summary: ""
+                status: "driver_replay_smoking"
+            - invoke: host.run
+              id: driver_replay_product_journey_smoke
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --driver-replay-smoke
+                  - --json-output
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                dogfood_id: "stdout_json.smoke_id"
+                dogfood_dir: "stdout_json.smoke_dir"
+                dogfood_report_path: "stdout_json.report_path"
+                dogfood_deck_path: "stdout_json.deck_path"
+                dogfood_run_deck_path: "stdout_json.run_deck_path"
+                run_dir: "stdout_json.run_dir"
+                deck_path: "stdout_json.deck_path"
+                driver_replay_scenario: "stdout_json.scenario"
+                driver_replay_persona: "stdout_json.persona"
+                driver_replay_attached_evidence_count: "stdout_json.attached_evidence_count"
+                driver_replay_media_manifest_path: "stdout_json.media_manifest_path"
+                driver_replay_journal_path: "stdout_json.driver_journal_path"
+                driver_replay_handoff_path: "stdout_json.driver_handoff_path"
+                review_status: "stdout_json.review_status"
+                review_summary: "stdout_json.review_summary"
+                dogfood_review_passed: "stdout_json.review_passed"
+                dogfood_review_total: "stdout_json.review_total"
+                dogfood_review_warnings: "stdout_json.review_warnings"
+                dogfood_review_failed: "stdout_json.review_failed"
+                dogfood_review_backlog_summary: "stdout_json.review_backlog_summary"
+                validation_status: "stdout_json.validation_status"
+                dogfood_run_validation_warnings: "stdout_json.validation_warnings"
+                dogfood_run_validation_issue_summary: "stdout_json.validation_issue_summary"
+              on_error: idle
+            - set:
+                status: "driver_replay_smoke_created"
+      driver_replay_sweep:
+        - target: dogfood_created
+          effects:
+            - set:
+                seed: "{{ slots.seed ?? world.seed }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                review_status: ""
+                review_summary: ""
+                status: "driver_replay_sweeping"
+            - invoke: host.run
+              id: driver_replay_product_journey_sweep
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --driver-replay-sweep
+                  - --json-output
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                  - --smoke-persona
+                  - "{{ slots.persona ?? world.persona }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                dogfood_id: "stdout_json.sweep_id"
+                dogfood_dir: "stdout_json.sweep_dir"
+                dogfood_report_path: "stdout_json.report_path"
+                dogfood_deck_path: "stdout_json.deck_path"
+                deck_path: "stdout_json.deck_path"
+                driver_replay_scenario: "stdout_json.status"
+                driver_replay_persona: "stdout_json.persona"
+                driver_replay_scenario_count: "stdout_json.scenario_count"
+                driver_replay_playback_scenarios: "stdout_json.playback_scenarios"
+                driver_replay_attached_evidence_count: "stdout_json.attached_evidence_count"
+                validation_status: "stdout_json.status"
+                validation_errors: "stdout_json.validation_errors"
+                validation_warnings: "stdout_json.validation_warnings"
+                validation_issue_summary: "stdout_json.failed_scenario_summary"
+              on_error: idle
+            - set:
+                status: "driver_replay_sweep_created"
+      start:
+        - target: run_created
+          effects:
+            - set:
+                project: "{{ slots.project ?? world.project }}"
+                persona: "{{ slots.persona ?? world.persona }}"
+                seed: "{{ slots.seed ?? world.seed }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "creating"
+            - invoke: host.run
+              id: emit_product_journey_run
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --emit-run
+                  - --json-output
+                  - --project
+                  - "{{ slots.project ?? world.project }}"
+                  - --persona
+                  - "{{ slots.persona ?? world.persona }}"
+                  - --seed
+                  - "{{ slots.seed ?? world.seed }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                run_id: "stdout_json.run_id"
+                run_dir: "stdout_json.run_dir"
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: idle
+            - set:
+                status: "run_created"
+      load:
+        - target: run_created
+          effects:
+            - set:
+                run_dir: "{{ slots.run_dir }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "loading"
+            - invoke: host.run
+              id: load_product_journey_run
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --summarize-run
+                  - --json-output
+                  - --run-dir
+                  - "{{ slots.run_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                run_id: "stdout_json.run_id"
+                run_dir: "stdout_json.run_dir"
+                project: "stdout_json.project"
+                persona: "stdout_json.persona"
+                seed: "stdout_json.seed"
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+                review_status: "stdout_json.review_status"
+                review_summary: "stdout_json.review_summary"
+                review_passed_count: "stdout_json.review_passed_count"
+                review_failed_count: "stdout_json.review_failed_count"
+                review_warning_count: "stdout_json.review_warning_count"
+                review_total_count: "stdout_json.review_total_count"
+                review_backlog_summary: "stdout_json.review_backlog_summary"
+              on_error: idle
+            - set:
+                status: "run_loaded"
+      look:
+        - target: .

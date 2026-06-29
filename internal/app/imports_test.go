@@ -62,7 +62,7 @@ func TestImports_ParentFold(t *testing.T) {
 //
 // Regression for the dogfood: typing `start` in core.bf.idle queued
 // host.agent.ask_with_mcp with `prompt: prompts/reproducing_executing.md`;
-// the runtime looked for it under stories/kitsoki-dev/ (parent) and
+// the runtime looked for it under .kitsoki/stories/kitsoki-dev/ (parent) and
 // failed because it lives under stories/bugfix/ (child). The visible
 // symptom was "I typed start and nothing happened" — the redirect
 // landed back at idle.

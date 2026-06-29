@@ -56,6 +56,11 @@ outside the intent alphabet you declare.
 
 ## Quickstart
 
+Prebuilt downloads are published on
+[GitHub Releases](https://github.com/bsacrobatix/Kitsoki/releases/latest) for
+macOS, Linux, and Windows. The product site has the platform list at
+[Download Kitsoki](https://bsacrobatix.github.io/Kitsoki/download.html).
+
 ### 1. Build
 
 ```sh
@@ -116,12 +121,12 @@ it's the suite CI runs and the [pre-PR gate](CONTRIBUTING.md) runs. Open PRs wit
 
 ## Dogfood mode — fixing kitsoki with kitsoki
 
-`stories/kitsoki-dev/` is the dogfood instance: kitsoki working on
+`.kitsoki/stories/kitsoki-dev/` is the dogfood instance: kitsoki working on
 kitsoki itself (and on each of its stories) through its own UI, with
 the bug file as both ticket and conversation log.
 
 ```sh
-./kitsoki run stories/kitsoki-dev/app.yaml
+./kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml
 ```
 
 Lands at the engineer's-day landing room. From there: `tickets` to
@@ -137,11 +142,11 @@ Autonomous variant (LLM-judge auto-fires confident verdicts, bails
 to human only on uncertainty):
 
 ```sh
-./kitsoki run stories/kitsoki-dev/app.yaml \
+./kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml \
     --warp scenarios/autonomous_ready.yaml
 ```
 
-See **[`stories/kitsoki-dev/README.md`](stories/kitsoki-dev/README.md)**
+See **[`.kitsoki/stories/kitsoki-dev/README.md`](.kitsoki/stories/kitsoki-dev/README.md)**
 for the full operator walkthrough, the
 **[`docs/case-studies/bug-fix.md`](docs/case-studies/bug-fix.md)**
 case study for the architecture, and

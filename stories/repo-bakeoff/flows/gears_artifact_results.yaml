@@ -1,0 +1,263 @@
+# gears_artifact_results — private/local repo path for repo-history training.
+#
+# Covers the no-cost product loop for a heavy local repo:
+# idle -> configure -> prepare (bench.py verify --repo-dir + no-drive handoff
+# audit) -> running -> scoring (bench.py summarize --results
+# .artifacts/external-bakeoff/results) -> reporting. Host calls are stubbed; the
+# real gears-rust RED/GREEN proof is covered by the gated gearsbakeoff test.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  project: gears-rust
+  repo_dir: /Users/brad/code/gears-rust
+  results_dir: ../../../.artifacts/external-bakeoff/results
+  bugs: [bug1]
+  candidates: [opus-4.8]
+
+host_handlers:
+  host.run:
+    by_call:
+      preflight_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: |
+            {
+              "ok": true,
+              "project": "gears-rust",
+              "local_only": true,
+              "repo_dir": "/Users/brad/code/gears-rust",
+              "bugs": ["bug1"],
+              "reference_only": [],
+              "candidates": [
+                {
+                  "key": "opus-4.8",
+                  "short": "opus",
+                  "profile": "claude-native",
+                  "provider": "anthropic",
+                  "model": "opus",
+                  "effort": "high",
+                  "metered": false
+                }
+              ],
+              "errors": [],
+              "warnings": []
+            }
+      verify_oracles_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: |
+            [bench] gears-rust/bug1 oracle=fail suite=None -> failed
+            [bench] gears-rust/bug1 oracle=pass suite=None -> solved
+            OK  bug1: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+      prepare_handoffs_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ok: true
+            project: gears-rust
+            selected_cells: 1
+            prepared_cells: 1
+            stale_prepared_cells: 0
+            missing_prepared_cells: 0
+            markdown: ../../../.artifacts/external-bakeoff/readiness/repo-bakeoff-handoffs.md
+            audits:
+              - project: gears-rust
+                bug: bug1
+                candidate: opus-4.8
+                ok: true
+                errors: []
+                warnings: []
+      drive_plan_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ok: true
+            project: gears-rust
+            repo_dir: /Users/brad/code/gears-rust
+            bugs: [bug1]
+            candidates: [opus-4.8]
+            markdown: "- `bug1` x `opus-4.8`: `tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug1 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score`"
+            commands:
+              - bug: bug1
+                candidate: opus-4.8
+                command: "tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug1 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score"
+      completion_local:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ok: true
+            project: gears-rust
+            status: complete
+            checks:
+              preflight_ok: true
+              arming_verified: true
+              no_cost_ready: true
+              ready_to_drive: true
+              result_evidence_complete: true
+              live_scored: true
+            results:
+              selected_cells: 1
+              prepared_cells: 1
+              unprepared_cells: 0
+              stale_prepared_cells: 0
+              result_cells: 1
+              missing_cells: 0
+              stale_result_cells: 0
+              attempted_cells: 1
+              pending_cells: 0
+              solved_cells: 1
+              partial_cells: 0
+              failed_cells: 0
+            blockers: []
+            markdown: .artifacts/external-bakeoff/report/completion.md
+      summarize:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            project: gears-rust
+            cells:
+              - project: gears-rust
+                bug: bug1
+                candidate: opus-4.8
+                treatment: kitsoki
+                outcome:
+                  oracle_pass: true
+                  oracle_status: pass
+                  build_pass: null
+                  suite_pass: null
+                  quality: solved
+                  adjudicated: false
+                  adjudication_note: ""
+                compliance:
+                  rate: null
+                  note: "not measured by external grader"
+                metrics:
+                  cost_usd: null
+                  total_tokens: 1234
+                  wall_time_s: null
+                  guidance_turns: 0
+                  agent_calls: 3
+                trace_found: false
+                notes: "synthetic no-LLM scoring fixture"
+            rollup:
+              by_candidate:
+                opus-4.8:
+                  n: 1
+                  solved: 1
+                  partial: 0
+                  failed: 0
+                  solve_rate: 1.0
+            summary_path: .artifacts/external-bakeoff/results/summary.json
+            deck:
+              spec_path: .artifacts/external-bakeoff/report/deck.slidey.json
+              summary: "gears-rust bake-off: 1/1 attempted solved"
+            markdown: .artifacts/external-bakeoff/report/report.md
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: configure
+    expect_world:
+      cells_total: 1
+
+  - intent: { name: accept, slots: {} }
+    expect_state: prepare
+    expect_world:
+      preflight_log: |
+        {
+          "ok": true,
+          "project": "gears-rust",
+          "local_only": true,
+          "repo_dir": "/Users/brad/code/gears-rust",
+          "bugs": ["bug1"],
+          "reference_only": [],
+          "candidates": [
+            {
+              "key": "opus-4.8",
+              "short": "opus",
+              "profile": "claude-native",
+              "provider": "anthropic",
+              "model": "opus",
+              "effort": "high",
+              "metered": false
+            }
+          ],
+          "errors": [],
+          "warnings": []
+        }
+      verify_log: |
+        [bench] gears-rust/bug1 oracle=fail suite=None -> failed
+        [bench] gears-rust/bug1 oracle=pass suite=None -> solved
+        OK  bug1: baseline=RED (want RED), real-fix=GREEN (want GREEN)
+      handoffs_ready: true
+      handoff_audit:
+        ok: true
+        project: gears-rust
+        selected_cells: 1
+        prepared_cells: 1
+        stale_prepared_cells: 0
+        missing_prepared_cells: 0
+        markdown: ../../../.artifacts/external-bakeoff/readiness/repo-bakeoff-handoffs.md
+        audits:
+          - project: gears-rust
+            bug: bug1
+            candidate: opus-4.8
+            ok: true
+            errors: []
+            warnings: []
+
+  - intent: { name: accept, slots: {} }
+    expect_state: running
+    expect_world:
+      preflight_ready: true
+      oracles_armed: true
+      handoffs_ready: true
+      cell_commands_markdown: "- `bug1` x `opus-4.8`: `tools/bugfix-bakeoff/external/drive_cell.sh --project gears-rust --bug bug1 --candidate opus-4.8 --repo-dir /Users/brad/code/gears-rust --score`"
+    expect_view_matches: "Handoffs:       audited"
+
+  - intent: { name: accept, slots: {} }
+    expect_state: reporting
+    expect_world:
+      completion_status: complete
+      completion_markdown: .artifacts/external-bakeoff/report/completion.md
+      completion:
+        ok: true
+        project: gears-rust
+        status: complete
+        checks:
+          preflight_ok: true
+          arming_verified: true
+          no_cost_ready: true
+          ready_to_drive: true
+          result_evidence_complete: true
+          live_scored: true
+        results:
+          selected_cells: 1
+          prepared_cells: 1
+          unprepared_cells: 0
+          stale_prepared_cells: 0
+          result_cells: 1
+          missing_cells: 0
+          stale_result_cells: 0
+          attempted_cells: 1
+          pending_cells: 0
+          solved_cells: 1
+          partial_cells: 0
+          failed_cells: 0
+        blockers: []
+        markdown: .artifacts/external-bakeoff/report/completion.md
+      summary_path: .artifacts/external-bakeoff/results/summary.json
+      deck:
+        spec_path: .artifacts/external-bakeoff/report/deck.slidey.json
+        summary: "gears-rust bake-off: 1/1 attempted solved"
+      report_markdown: .artifacts/external-bakeoff/report/report.md
+    expect_view_matches: "Completion:         complete"
+
+expect_no_errors: true

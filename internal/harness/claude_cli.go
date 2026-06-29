@@ -10,7 +10,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
+	"github.com/google/uuid"
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"kitsoki/internal/app"
@@ -100,14 +102,23 @@ func (c ClaudeCLIConfig) validatorTool() string {
 // beg the model for "raw JSON". Semantic slot formats (e.g. `format: jql`) are
 // enforced by that validator, the same way the Agent host call enforces them.
 //
-// Invocation detail: the complete prompt is piped via stdin to avoid argv size
-// limits; the per-turn JSON Schema, the --mcp-config document, and the capture
-// file all live in one tempdir removed on return.
+// Invocation detail: the cold turn primes a persistent Claude session with the
+// stable composed router prompt via --system-prompt; warm turns resume that
+// session and pipe only the per-turn dynamic context/user text on stdin. The
+// per-turn JSON Schema, the --mcp-config document, and the capture file all
+// live in one tempdir removed on return.
 type ClaudeCLIHarness struct {
-	appDef       *app.AppDef
-	cfg          ClaudeCLIConfig
-	stablePrefix string
-	logger       *slog.Logger
+	appDef        *app.AppDef
+	cfg           ClaudeCLIConfig
+	stablePrefix  string
+	claudeSession claudeCLISessionState
+	logger        *slog.Logger
+}
+
+type claudeCLISessionState struct {
+	mu     sync.Mutex
+	id     string
+	primed bool
 }
 
 // NewClaudeCLI creates a ClaudeCLIHarness for the given app definition.
@@ -147,18 +158,24 @@ func (h *ClaudeCLIHarness) SetAppDef(appDef *app.AppDef) {
 	}
 	h.appDef = appDef
 	h.stablePrefix = buildStablePrefix(appDef)
+	h.resetClaudeSession()
 }
 
 // WithClaudeModel returns a copy of the harness using the given model.
 // Pass an empty string to reset to DefaultClaudeModel.
 func (h *ClaudeCLIHarness) WithClaudeModel(model string) *ClaudeCLIHarness {
-	copy := *h
+	cfg := h.cfg
 	if model == "" {
-		copy.cfg.Model = DefaultClaudeModel
+		cfg.Model = DefaultClaudeModel
 	} else {
-		copy.cfg.Model = model
+		cfg.Model = model
 	}
-	return &copy
+	return &ClaudeCLIHarness{
+		appDef:       h.appDef,
+		cfg:          cfg,
+		stablePrefix: h.stablePrefix,
+		logger:       h.logger,
+	}
 }
 
 // WithLogger sets the logger for trace emission.
@@ -267,29 +284,35 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 		return mcp.CallToolParams{}, fmt.Errorf("harness/claude-cli: write mcp-config: %w", err)
 	}
 
+	claudeSessionID, resumeClaudeSession := h.prepareClaudeSession()
+	systemPrompt := ""
+	if !resumeClaudeSession {
+		// The stable router prefix + output contract are turn-invariant, so the
+		// cold dispatch primes a persistent Claude session with them as the
+		// system prompt. Warm dispatches resume that session and send only the
+		// per-turn context/user input on stdin.
+		//
+		// Routing composes through the same layered builder as every agent verb
+		// (internal/sysprompt): the kitsoki grounding (Layer 1) and any project
+		// context (Layer 2) are prepended to the routing prefix + output contract
+		// (Layer 3), so the router is grounded identically to the rest of the system.
+		composed := sysprompt.Compose(sysprompt.Spec{
+			Verb:    sysprompt.Route,
+			Project: projectLayer(h.appDef),
+			Task:    h.stablePrefix + buildSubmitInstruction(h.cfg.validatorTool()),
+		})
+		systemPrompt = composed.SystemPrompt
+	}
 	dynamic := buildDynamicSuffix(h.appDef, in)
-	// The stable router prefix + output contract are turn-invariant, so they
-	// become claude's system prompt (via --system-prompt, which *replaces*
-	// Claude Code's own default system prompt — see buildClaudeArgs). Only the
-	// per-turn context and the user utterance ride on stdin as the user message.
-	//
-	// Routing composes through the same layered builder as every agent verb
-	// (internal/sysprompt): the kitsoki grounding (Layer 1) and any project
-	// context (Layer 2) are prepended to the routing prefix + output contract
-	// (Layer 3), so the router is grounded identically to the rest of the system.
-	composed := sysprompt.Compose(sysprompt.Spec{
-		Verb:    sysprompt.Route,
-		Project: projectLayer(h.appDef),
-		Task:    h.stablePrefix + buildSubmitInstruction(h.cfg.validatorTool()),
-	})
-	systemPrompt := composed.SystemPrompt
 	userMessage := dynamic + "\n## User Input\n\n" + in.UserText + "\n"
 
-	args := buildClaudeArgs(h.cfg, configPath, systemPrompt)
+	args := buildClaudeArgs(h.cfg, configPath, systemPrompt, claudeSessionID, resumeClaudeSession)
 	if l.Enabled(ctx, slog.LevelDebug) {
 		l.DebugContext(ctx, trace.EvHarnessRequest,
 			slog.Int("system_prompt_bytes", len(systemPrompt)),
 			slog.Int("user_message_bytes", len(userMessage)),
+			slog.Bool("claude_session_resume", resumeClaudeSession),
+			slog.String("claude_session_id", claudeSessionID),
 			slog.String("prompt_head", trace.Truncate(systemPrompt, trace.TruncateCap)),
 		)
 		l.DebugContext(ctx, trace.EvHarnessExec,
@@ -337,6 +360,9 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 	if parseErr != nil {
 		return mcp.CallToolParams{}, fmt.Errorf("harness/claude-cli: parse validated payload: %w", parseErr)
 	}
+	if !resumeClaudeSession {
+		h.markClaudeSessionPrimed(claudeSessionID)
+	}
 
 	intentName, slots, confidence := parseTransitionArgs(params)
 	l.DebugContext(ctx, trace.EvHarnessResponseParsed,
@@ -348,8 +374,9 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 }
 
 // buildClaudeArgs returns the CLI argument list for `claude -p`. configPath
-// is the --mcp-config file path; systemPrompt, when non-empty, is passed as
-// claude's system prompt. The model is always included.
+// is the --mcp-config file path. Cold calls pass systemPrompt via
+// --system-prompt and pin the new persistent conversation with --session-id;
+// warm calls pass --resume and intentionally omit systemPrompt.
 //
 // systemPrompt is passed via --system-prompt, which *replaces* Claude Code's
 // built-in default system prompt rather than stacking on top of it (the
@@ -357,9 +384,9 @@ func (h *ClaudeCLIHarness) RunTurn(ctx context.Context, in TurnInput) (mcp.CallT
 // use). --exclude-dynamic-system-prompt-sections additionally strips the
 // per-machine sections claude would otherwise inject (cwd, env info, memory
 // paths, git status) — all irrelevant to intent routing. The net effect is
-// that the only system prompt claude sees for a routing turn is kitsoki's own
-// lean router prefix.
-func buildClaudeArgs(cfg ClaudeCLIConfig, configPath, systemPrompt string) []string {
+// that a cold routing turn primes the session with kitsoki's own lean router
+// prefix, and warm turns reuse that prefix without resending it.
+func buildClaudeArgs(cfg ClaudeCLIConfig, configPath, systemPrompt, sessionID string, resume bool) []string {
 	model := cfg.Model
 	if model == "" {
 		model = DefaultClaudeModel
@@ -367,11 +394,17 @@ func buildClaudeArgs(cfg ClaudeCLIConfig, configPath, systemPrompt string) []str
 	args := []string{
 		"-p",
 		"--output-format", "json",
-		"--no-session-persistence",
 		"--permission-mode", "bypassPermissions",
 		"--model", model,
 	}
-	if systemPrompt != "" {
+	if resume {
+		if sessionID != "" {
+			args = append(args, "--resume", sessionID)
+		}
+	} else if sessionID != "" {
+		args = append(args, "--session-id", sessionID)
+	}
+	if !resume && systemPrompt != "" {
 		args = append(args,
 			"--system-prompt", systemPrompt,
 			"--exclude-dynamic-system-prompt-sections",
@@ -381,6 +414,36 @@ func buildClaudeArgs(cfg ClaudeCLIConfig, configPath, systemPrompt string) []str
 		args = append(args, "--mcp-config", configPath)
 	}
 	return args
+}
+
+func (h *ClaudeCLIHarness) prepareClaudeSession() (sessionID string, resume bool) {
+	h.claudeSession.mu.Lock()
+	defer h.claudeSession.mu.Unlock()
+
+	if h.claudeSession.primed && h.claudeSession.id != "" {
+		return h.claudeSession.id, true
+	}
+	sessionID = uuid.NewString()
+	h.claudeSession.id = sessionID
+	h.claudeSession.primed = false
+	return sessionID, false
+}
+
+func (h *ClaudeCLIHarness) markClaudeSessionPrimed(sessionID string) {
+	h.claudeSession.mu.Lock()
+	defer h.claudeSession.mu.Unlock()
+
+	if h.claudeSession.id == sessionID {
+		h.claudeSession.primed = true
+	}
+}
+
+func (h *ClaudeCLIHarness) resetClaudeSession() {
+	h.claudeSession.mu.Lock()
+	defer h.claudeSession.mu.Unlock()
+
+	h.claudeSession.id = ""
+	h.claudeSession.primed = false
 }
 
 // parseValidatedPayload decodes the JSON written by the MCP validator on a

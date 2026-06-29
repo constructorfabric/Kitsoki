@@ -383,6 +383,51 @@ func TestIntentNotAllowedInState(t *testing.T) {
 	require.True(t, found, "ValidationFailed event must be emitted")
 }
 
+// ─── (g) imported intent aliases resolve for user input and menus ───────────
+
+func TestResolveImportedIntentAliasOnUserIntent(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "import-intent-alias"},
+		Root:  "bf",
+		World: map[string]app.VarDef{},
+		Intents: map[string]app.Intent{
+			// Bare intent name is kept for schema lookup; the imported handler is
+			// rewritten to `bf__start`.
+			"start": {},
+		},
+		States: map[string]*app.State{
+			"bf": {
+				Type:    "compound",
+				Initial: "idle",
+				States: map[string]*app.State{
+					"idle": {
+						On: map[string][]app.Transition{
+							"bf__start": {{Target: "done"}},
+						},
+						IntentAliases: map[string]string{"start": "bf__start"},
+					},
+				},
+			},
+			"done": {Terminal: true},
+		},
+	}
+
+	m := mustNew(t, def)
+	w := world.New()
+
+	res, err := m.Turn(context.Background(), "bf.idle", w, intent.IntentCall{Intent: "start", Slots: world.Slots{}})
+	require.NoError(t, err)
+	require.Nil(t, res.ValidationError)
+	require.Equal(t, app.StatePath("done"), res.NewState)
+
+	allowed := m.AllowedIntents("bf.idle", w)
+	names := make(map[string]struct{}, len(allowed))
+	for _, intent := range allowed {
+		names[intent.Name] = struct{}{}
+	}
+	require.Contains(t, names, "start")
+}
+
 // ─── world effects test ───────────────────────────────────────────────────────
 
 func TestEffectsApplied(t *testing.T) {

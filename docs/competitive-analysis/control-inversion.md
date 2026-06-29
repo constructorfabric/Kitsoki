@@ -47,8 +47,11 @@ than either the boss or a dead-end leaf.
 
 ## 2. The agent: LLM on top
 
-```
-[ LLM (plan, reason, decide) ] ──calls──▶ [ tools / runtime (execute) ]
+```mermaid
+flowchart LR
+    llm["LLM<br/>plan, reason, decide"]
+    runtime["tools / runtime<br/>execute"]
+    llm -->|"calls"| runtime
 ```
 
 This is Claude Code, Cursor's agent mode, and the whole AutoGPT lineage. The
@@ -75,10 +78,17 @@ prompt and praying. The control lives in a place you cannot diff.
 
 ## 3. The workflow tool with an LLM node: LLM at a dead end
 
-```
-[ trigger ] ─▶ [ node ] ─▶ [ LLM node: text in, text out ] ─▶ [ switch ] ─▶ [ node ] ─▶ …
-                                     ▲                              │
-                                 (no control)            "did the string match?"
+```mermaid
+flowchart LR
+    trigger["trigger"]
+    node1["node"]
+    llm["LLM node<br/>text in, text out"]
+    switch{"switch<br/>did the string match?"}
+    node2["node"]
+    next["..."]
+
+    trigger --> node1 --> llm --> switch --> node2 --> next
+    llm -. "no control authority" .-> switch
 ```
 
 This is n8n's "AI" node, Airtable's AI field, Zapier's AI step, Make's
@@ -141,12 +151,12 @@ to a state machine you didn't get to declare.
 
 ## 4. Kitsoki: LLM as a callee with return authority over interpretation
 
-```
-[ runtime (state machine: rooms, intents, transitions, effects) ]
-        │                                   ▲
-        │ "resolve this one sub-task"        │ a named intent / typed payload
-        ▼                                   │
-        [ LLM (narrow domain, scoped tools) ]┘
+```mermaid
+flowchart LR
+    runtime["Runtime<br/>rooms, intents, transitions, effects"]
+    llm["LLM<br/>narrow domain, scoped tools"]
+    runtime -->|"resolve this one sub-task"| llm
+    llm -->|"named intent / typed payload"| runtime
 ```
 
 Kitsoki inverts control the way dependency injection inverts construction:

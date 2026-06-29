@@ -22,7 +22,10 @@ these shapes.
     "oracle_status": "pass|fail|noncompile|absent",
     "build_pass": true,             // go build ./... (go bugs) — n/a -> null
     "suite_pass": true,             // affected_test_pkgs green (no regressions)
-    "quality": "solved|partial|failed"   // solved = oracle+build+suite all green
+    "quality": "solved|partial|failed|pending",  // solved = oracle+build+suite all green;
+                                    // MAY be human/LLM-overridden (see adjudicated)
+    "adjudicated": false,           // true => quality was overridden by a human/LLM
+    "adjudication_note": ""         // rationale for the override (empty otherwise)
   },
 
   "compliance": {
@@ -55,7 +58,18 @@ these shapes.
 `quality` rules: `solved` = oracle_pass && build_pass!=false && suite_pass;
 `partial` = oracle_pass but a regression or build issue, OR bug plausibly fixed
 but oracle noncompiles against the candidate's differing implementation (note it);
-`failed` = oracle_fail.
+`failed` = oracle_fail. `pending` means the provider/profile/infrastructure path
+blocked before a real model capability result existed; the oracle did not run and
+the cell must not be counted as failed.
+
+**Adjudication.** Some oracles are wording/implementation-coupled (they assert a
+literal substring or symbol from the canonical fix) and so false-fail a
+behaviorally-correct fix. A human or LLM judge may override `quality` via
+`score.py --adjudication <solved|partial|failed> --adjudication-note "<why>"`.
+The override sets `outcome.quality` to the adjudicated value, `adjudicated=true`,
+and records the rationale — but `oracle_status` ALWAYS keeps the raw automated
+result (e.g. `fail`), so the JSON never lies about what the oracle did. The
+aggregate rollups (solve_rate etc.) key on the possibly-adjudicated `quality`.
 
 ## Aggregate — `results/summary.json`
 
@@ -75,8 +89,9 @@ but oracle noncompiles against the candidate's differing implementation (note it
 }
 ```
 
-Each rollup bucket: `{ "n", "solved", "solve_rate", "avg_cost_usd",
+Each rollup bucket: `{ "n", "solved", "partial", "failed", "pending", "solve_rate", "avg_cost_usd",
 "avg_total_tokens", "avg_wall_time_s", "avg_guidance_turns", "avg_compliance" }`.
+`solve_rate` should be computed over attempted cells only (`n - pending`).
 
 ## eval_pilot_report.py bridge
 

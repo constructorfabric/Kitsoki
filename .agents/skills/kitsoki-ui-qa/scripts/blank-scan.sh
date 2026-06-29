@@ -15,10 +15,10 @@
 #     page BACKGROUND (a themed bg is legitimately monochromatic — a sparse dark
 #     UI is 90%+ background, so it must never self-flag);
 #   • a flood fill finds the largest contiguous blob of a single colour whose
-#     CONTRAST from the background exceeds --contrast (RGB distance) — flagged
-#     when it covers >= --min-coverage. Contrast is the key: a broken render
-#     (white box, grey placeholder, colour fill) stands OUT from the bg, whereas
-#     a dark panel on a dark theme is low-contrast and ignored;
+#     CONTRAST from the background exceeds --contrast (RGB distance). A large
+#     blob is flagged only when its bounding area also lacks visible detail
+#     (--detail-min), because legitimate browser/doc panes often contain a large
+#     white field with text and controls inside it;
 #   • EDGE-GUTTER check (contrast-independent, colour-AGNOSTIC): from each edge
 #     inward, count the contiguous band of rows/columns that are each ~entirely
 #     ONE flat bucket AND share that bucket across the band. A wide such band is
@@ -29,7 +29,9 @@
 #     the frame — most importantly a VIDEO RECORDER letterbox/pad bar that appears
 #     when the captured window is smaller than the recordVideo size (a solid grey
 #     strip down one edge of the .mp4 — invisible in window screenshots). It only
-#     fires when the frame has real content elsewhere, so a sparse screen is quiet;
+#     fires for foreign bars when the frame has real content elsewhere, so a
+#     sparse screen is quiet. Same-background edge bands are measured but do not
+#     warn by themselves; the near-empty check below handles true all-bg renders;
 #   • separately, a frame whose single most-common colour covers >=
 #     --empty-coverage is flagged as near-empty (essentially nothing rendered).
 #
@@ -44,10 +46,11 @@
 # Usage:
 #   blank-scan.sh <frames-dir|image> [--out scan.json] [--grid WxH]
 #                 [--quant N] [--contrast D] [--min-coverage F]
-#                 [--empty-coverage F] [--gutter-min F] [--gutter-uniform F]
-#                 [--fail-on-find]
+#                 [--empty-coverage F] [--detail-min F]
+#                 [--gutter-min F] [--gutter-uniform F] [--fail-on-find]
 # Defaults: --grid 48x27 --quant 24 --contrast 64 --min-coverage 0.10
-#           --empty-coverage 0.985 --gutter-min 0.10 --gutter-uniform 0.94
+#           --empty-coverage 0.985 --detail-min 0.015
+#           --gutter-min 0.10 --gutter-uniform 0.94
 # Exit: 0 = scanned OK (no flags, or flags but advisory);
 #       3 = flags found AND --fail-on-find; 2 = usage/tool error.
 #
@@ -62,7 +65,7 @@ command -v python3 >/dev/null 2>&1 || { echo "python3 not on PATH" >&2; exit 2; 
 src="${1:-}"; shift || true
 [ -n "$src" ] || { echo "usage: blank-scan.sh <frames-dir|image> [opts]" >&2; exit 2; }
 
-out="" grid="48x27" quant=24 contrast=64 min_cov="0.10" empty_cov="0.985" fail_on_find=0 fail_foreign=0
+out="" grid="48x27" quant=24 contrast=64 min_cov="0.10" empty_cov="0.985" detail_min="0.015" fail_on_find=0 fail_foreign=0
 gutter_min="0.10" gutter_uniform="0.94" gutter_foreign="0.02"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -72,6 +75,7 @@ while [ $# -gt 0 ]; do
     --contrast)       contrast="$2"; shift 2 ;;
     --min-coverage)   min_cov="$2"; shift 2 ;;
     --empty-coverage) empty_cov="$2"; shift 2 ;;
+    --detail-min)     detail_min="$2"; shift 2 ;;
     --gutter-min)     gutter_min="$2"; shift 2 ;;
     --gutter-uniform) gutter_uniform="$2"; shift 2 ;;
     --gutter-foreign) gutter_foreign="$2"; shift 2 ;;
@@ -111,18 +115,19 @@ trap cleanup EXIT
 
 GW="${grid%x*}"; GH="${grid#*x}"
 
-python3 - "$GW" "$GH" "$quant" "$contrast" "$min_cov" "$empty_cov" "$gutter_min" "$gutter_uniform" "$gutter_foreign" "$fail_on_find" "$fail_foreign" "$out" "${frames[@]}" <<'PY'
+python3 - "$GW" "$GH" "$quant" "$contrast" "$min_cov" "$empty_cov" "$detail_min" "$gutter_min" "$gutter_uniform" "$gutter_foreign" "$fail_on_find" "$fail_foreign" "$out" "${frames[@]}" <<'PY'
 import sys, json, subprocess
 from collections import Counter
 gw, gh = int(sys.argv[1]), int(sys.argv[2])
 quant = max(1, int(sys.argv[3]))
 contrast = float(sys.argv[4])
 min_cov = float(sys.argv[5]); empty_cov = float(sys.argv[6])
-gutter_min = float(sys.argv[7]); gutter_uniform = float(sys.argv[8])
-gutter_foreign = float(sys.argv[9])
-fail_on_find = sys.argv[10] == "1"
-fail_foreign = sys.argv[11] == "1"
-out = sys.argv[12]; frames = sys.argv[13:]
+detail_min = float(sys.argv[7])
+gutter_min = float(sys.argv[8]); gutter_uniform = float(sys.argv[9])
+gutter_foreign = float(sys.argv[10])
+fail_on_find = sys.argv[11] == "1"
+fail_foreign = sys.argv[12] == "1"
+out = sys.argv[13]; frames = sys.argv[14:]
 total = gw * gh
 
 def dist(a, b):
@@ -176,6 +181,37 @@ def largest_blob(bs, bg):
                    "h": round((max(ys)-min(ys)+1)/gh, 3)}
             best = (len(cells), target, box)
     return best
+
+def bbox_detail(bs, box):
+    if not box:
+        return None
+    x0 = max(0, int(round(box["x"] * gw)))
+    y0 = max(0, int(round(box["y"] * gh)))
+    x1 = min(gw, int(round((box["x"] + box["w"]) * gw)))
+    y1 = min(gh, int(round((box["y"] + box["h"]) * gh)))
+    if x1 <= x0 or y1 <= y0:
+        return None
+    cells = [bs[y * gw + x] for y in range(y0, y1) for x in range(x0, x1)]
+    counts = Counter(cells)
+    dominant, n = counts.most_common(1)[0]
+    non_dominant = 1 - (n / len(cells))
+    edges = 0
+    possible = 0
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            here = bs[y * gw + x]
+            if x + 1 < x1:
+                possible += 1
+                edges += 1 if bs[y * gw + x + 1] != here else 0
+            if y + 1 < y1:
+                possible += 1
+                edges += 1 if bs[(y + 1) * gw + x] != here else 0
+    return {
+        "dominant": hexof(dominant),
+        "non_dominant_coverage": round(non_dominant, 4),
+        "unique_buckets": len(counts),
+        "edge_density": round(edges / possible, 4) if possible else 0,
+    }
 
 def edge_gutters(bs, bg):
     # Contrast-INDEPENDENT, colour-AGNOSTIC edge check. From each edge inward,
@@ -235,17 +271,23 @@ for path in frames:
     area, blob_bucket, box = largest_blob(bs, bg_bucket)
     blob_cov = round(area / total, 4)
     gutters = edge_gutters(bs, bg_bucket)
+    detail = bbox_detail(bs, box)
     rec = {"frame": name,
            "background": {"color": hexof(bg_bucket), "coverage": bg_cov},
            "block": {"color": hexof(blob_bucket) if blob_bucket else None,
                      "coverage": blob_cov, "bbox": box},
+           "detail": detail,
            "gutters": gutters}
     reasons = []
     has_foreign = False
     if blob_cov >= min_cov and blob_bucket is not None:
-        reasons.append(f"a solid {hexof(blob_bucket)} block (high-contrast vs "
-                       f"the {hexof(bg_bucket)} background) covers "
-                       f"{blob_cov*100:.0f}% of the frame")
+        enough_detail = detail and detail["non_dominant_coverage"] >= detail_min
+        if not enough_detail:
+            detail_seen = 0 if detail is None else detail["non_dominant_coverage"]
+            reasons.append(f"a solid {hexof(blob_bucket)} block (high-contrast vs "
+                           f"the {hexof(bg_bucket)} background) covers "
+                           f"{blob_cov*100:.0f}% of the frame, and its bounding "
+                           f"area has only {detail_seen*100:.1f}% non-flat detail")
     # Edge gutter: a wide flat band hugging one edge — either a dead margin the
     # content never reaches, or a foreign bar composited over the UI (e.g. a video
     # recorder padding the frame). Only on a frame that DOES have content (a
@@ -259,17 +301,16 @@ for path in frames:
             foreign = dist(tuple(int(gcol[i:i+2], 16) for i in (1, 3, 5)), bg_bucket) > contrast
             # A FOREIGN flat band (distinct from the UI) is a composited recorder/
             # letterbox bar — wrong at ANY thickness, so a low floor. A band the
-            # SAME colour as the bg is a dead content margin — only matters when
-            # it's a substantial slice (gutter_min).
-            thresh = gutter_foreign if foreign else gutter_min
-            if w_ < thresh:
+            # SAME colour as the bg is normal negative space for centered slides
+            # and framed browser embeds; near-empty frames catch true all-bg
+            # renders more precisely than warning on layout gutters.
+            if not foreign:
                 continue
-            if foreign:
-                has_foreign = True
+            if w_ < gutter_foreign:
+                continue
+            has_foreign = True
             kind = (f"a foreign flat {gcol} bar (distinct from the {hexof(bg_bucket)} "
-                    f"UI — likely a recorder/letterbox bar composited OVER the frame)"
-                    if foreign else
-                    f"a flat {gcol} {side} gutter the content never reaches")
+                    f"UI — likely a recorder/letterbox bar composited OVER the frame)")
             reasons.append(f"{kind} spans {w_*100:.0f}% of the frame at the "
                            f"{side} edge")
     if bg_cov >= empty_cov:
@@ -285,6 +326,7 @@ for path in frames:
 
 report = {"grid": f"{gw}x{gh}", "quant": quant, "contrast": contrast,
           "min_coverage": min_cov, "empty_coverage": empty_cov,
+          "detail_min": detail_min,
           "gutter_min": gutter_min, "gutter_uniform": gutter_uniform,
           "frames_scanned": len(frames), "flagged": flagged, "frames": results}
 text = json.dumps(report, indent=2)

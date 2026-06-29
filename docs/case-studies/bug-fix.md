@@ -90,14 +90,9 @@ The cheapest move was to make the phases *real*. Instead of a single
 agent loop with a prompt that begged it to walk through five steps,
 each phase became a room:
 
-```
-idle → reproducing → proposing → implementing
-                                       │
-                                       ▼
-                            testing → reviewing
-                                       │
-                                       ▼
-                                  validating → done
+```mermaid
+flowchart LR
+    idle --> reproducing --> proposing --> implementing --> testing --> reviewing --> validating --> done
 ```
 
 This is a literal directed graph. The runtime knows which room it is

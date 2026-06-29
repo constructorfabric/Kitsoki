@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title":   "site_fix_artifact",
+  "description": "Artifact produced by the fixing room: a record of the catalog/site edits the site_writer agent applied to the working tree (uncommitted) in response to the gaps listing carried by the verdict.",
+  "type":    "object",
+  "required": ["applied", "summary", "files_changed"],
+  "properties": {
+    "applied": {
+      "type": "boolean",
+      "description": "True if every gaps entry was addressed by at least one edit; false if the agent gave up on one or more entries (blockers[] must then be populated)."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "description": "One-paragraph narrative of what was changed and why — should cite each touched file (new catalog entries + patched site copy)."
+    },
+    "files_changed": {
+      "type": "array",
+      "minItems": 0,
+      "description": "Every file the agent created or edited in the working tree, repo-relative (new features/<id>.yaml entries, patched tools/site/src/** or docs/**). May be empty only when applied=false and blockers explain why.",
+      "items": {
+        "type": "object",
+        "required": ["path", "change"],
+        "properties": {
+          "path":   { "type": "string", "description": "Repo-relative path." },
+          "change": { "type": "string", "description": "One sentence on what was created or changed in this file." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "unresolved": {
+      "type": "array",
+      "description": "gaps entries (by target) that were NOT addressed. Empty when applied=true.",
+      "items": {
+        "type": "object",
+        "required": ["target", "reason"],
+        "properties": {
+          "target": { "type": "string", "description": "The gap's target (feature id or file path)." },
+          "reason": { "type": "string", "description": "Why the agent skipped this entry (ambiguous fix, needs a demo recording it cannot produce, missing source, etc)." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "description": "Populated when applied=false. Each entry describes one reason the run could not complete.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

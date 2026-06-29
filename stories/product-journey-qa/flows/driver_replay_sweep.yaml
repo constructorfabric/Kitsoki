@@ -1,0 +1,60 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      driver_replay_product_journey_sweep:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            sweep_id: sweep-123
+            sweep_dir: .artifacts/product-journey/dogfood/sweep-123
+            report_path: .artifacts/product-journey/dogfood/sweep-123/driver-replay-sweep.json
+            summary_path: .artifacts/product-journey/dogfood/sweep-123/driver-replay-sweep.md
+            deck_path: .artifacts/product-journey/dogfood/sweep-123/driver-replay-sweep.slidey.json
+            persona: hobbyist-contributor
+            persona_label: Hobbyist contributor
+            scenario_count: 6
+            passed: 6
+            failed: 0
+            playback_scenarios: 6
+            validation_errors: 0
+            validation_warnings: 0
+            attached_evidence_count: 30
+            failed_scenarios: []
+            failed_scenario_summary: ""
+
+turns:
+  - intent:
+      name: driver_replay_sweep
+      slots:
+        persona: hobbyist-contributor
+        seed: story-sweep
+    expect_state: dogfood_created
+    expect_world:
+      status: driver_replay_sweep_created
+      seed: story-sweep
+      dogfood_id: sweep-123
+      dogfood_dir: .artifacts/product-journey/dogfood/sweep-123
+      dogfood_report_path: .artifacts/product-journey/dogfood/sweep-123/driver-replay-sweep.json
+      dogfood_deck_path: .artifacts/product-journey/dogfood/sweep-123/driver-replay-sweep.slidey.json
+      deck_path: .artifacts/product-journey/dogfood/sweep-123/driver-replay-sweep.slidey.json
+      driver_replay_scenario: passed
+      driver_replay_persona: hobbyist-contributor
+      driver_replay_scenario_count: 6
+      driver_replay_playback_scenarios: 6
+      driver_replay_attached_evidence_count: 30
+      validation_status: passed
+      validation_errors: 0
+      validation_warnings: 0
+      validation_issue_summary: ""
+    expect_host_calls:
+      - handler: host.run
+        args: { call: driver_replay_product_journey_sweep }
+    expect_view_matches: "DOGFOOD SMOKE CREATED[\\s\\S]*driver-[\\s\\S]*replay-sweep\\.slidey\\.json[\\s\\S]*Driver replay scenario[\\s\\S]*passed[\\s\\S]*Driver replay persona[\\s\\S]*hobbyist-contributor[\\s\\S]*Driver replay evidence[\\s\\S]*30[\\s\\S]*Driver replay coverage[\\s\\S]*6 / 6 playback"
+
+expect_no_errors: true

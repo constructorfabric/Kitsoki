@@ -1,0 +1,35 @@
+# idle — entry room. The bake-off is parked. `start` boots it (advances to
+# configure); `quit` exits via @exit:abandoned. Deterministic, no host calls.
+
+states:
+
+  idle:
+    description: "Matrix bake-off parked. Waiting for start."
+    relevant_world: [manifest_path, harness_dir, tasks, candidates, contenders]
+    view:
+      - heading: "Matrix task bake-off"
+      - kv:
+          pairs:
+            Manifest:   '{{ world.manifest_path }}'
+            Harness:    '{{ world.harness_dir }}'
+            Tasks:      "{{ world.tasks|length }}"
+            Candidates: "{{ world.candidates|length }}"
+            Contenders: "{{ world.contenders|length }}"
+      - prose: "Compare approaches on the same tasks under identical conditions, score each cell, roll up, and deck the report. `start` boots the matrix."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "start"
+              hint:   "echo the matrix and advance to configure"
+              intent: start
+            - label:  "quit"
+              hint:   "abandon"
+              intent: quit
+    on:
+      start:
+        - target: configure
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

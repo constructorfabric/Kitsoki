@@ -1,4 +1,4 @@
-# slidey-edit — author or edit a deck, render it, annotate the frame, refine the scene
+# slidey-edit — author or revise a deck, render it, annotate the frame, refine the scene
 
 A standalone PoC story for the **unified artifact annotation** feature: it
 drives the create/edit → render → review → refine loop for a slidey deck, where the
@@ -21,11 +21,12 @@ kitsoki run stories/slidey-edit/app.yaml
 
 ```
 idle ──start/edit_existing──▶ drafting ──accept──▶ rendering ──(auto)──▶ reviewing
-                              (agent writes/edits deck)          (slidey → static HTML  media(deck) + seed
-                                                                  + .semantic sidecar)  annotation + checkpoint
-                                                                  │
-        ┌─────────────────────────────────────────────────────────┤
-        │ accept→done · rerender→rendering · quit→@exit:abandoned   │ refine
+                              (agent writes/edits deck)          (slidey → static HTML  media(deck)
+                                                                  + .semantic sidecar)    annotation + checkpoint
+                                                                  │                   revise
+        ┌─────────────────────────────────────────────────────────┤                      │
+        │ accept→done · rerender→rendering · quit→@exit:abandoned   │                      ▼
+        │                                                           │             drafting (deck-wide edit)
         │                                                           ▼
         └──────────── rendering ◀──(re-render before/after)──── refining
                                                           (agent edits the scene the
@@ -36,8 +37,8 @@ idle ──start/edit_existing──▶ drafting ──accept──▶ rendering
 |---|---|---|
 | `idle` | deterministic | Choose a fresh draft with `start`, or pass an existing slidey JSON spec with `edit_existing spec_path=...`. |
 | `drafting` | interpretive | ONE `host.agent.task` (`drafter`) authors/edits the deck JSON. Existing input lives in `world.source_deck`; `world.deck` is the output/cache. Workspace-jailed, `once:`. |
-| `rendering` | deterministic | `host.slidey.render` (`format: html`, `slidey bundle`) → a self-contained **static HTML deck** **+ `.semantic.json` sidecar**; both emitted to `host.artifacts_dir` for stable handles (deck kind `slideshow`). Auto-advances. |
-| `reviewing` | deterministic | `media(deck_handle)` inline (poster-frame preview + a link to the interactive deck) + seeds a baked `semantic_element` annotation. Checkpoint: accept / refine / rerender / quit. |
+| `rendering` | deterministic | `host.slidey.render` (`format: html`, `slidey bundle`) → a self-contained **static HTML deck** and, when available, a `.semantic.json` sidecar. `host.artifacts_dir` emits the deck handle and co-locates any sidecar/poster companions. Auto-advances. |
+| `reviewing` | deterministic + interactive | `media(deck_handle)` embeds the static HTML deck inline, links to the direct artifact, and seeds a baked `semantic_element` annotation. Checkpoint: accept / revise / refine / rerender / quit. `revise` reopens `drafting` for whole-deck edits (add/remove/reorder scenes, template/layout swaps, format/theme updates), then re-renders. |
 | `refining` | interpretive | ONE `host.agent.task` (`reviser`) consumes the annotation (`{{ args.visual.anchor }}` + the explicit `annotation` arg) and edits the targeted scene, then re-renders the before/after. |
 | `done` | gallery | Final deck media + the annotations addressed per cycle. |
 
@@ -95,9 +96,9 @@ loop without authoring — the *tour needs a baked world* lesson):
   `slidey bundle stories/slidey-edit/baked/deck.json stories/slidey-edit/baked/deck.html`.
 - `deck.poster.png` — a REAL rendered frame (scene 1, the "One anchor union"
   cards row — where the seeded anchor lives), so overlay bboxes align. The deck
-  is emitted as media kind `slideshow`: the interactive HTML can't run in the
-  review surface's scripts-disabled sandbox iframe, so the inline preview and the
-  annotation overlay both float over this poster still.
+  is emitted as media kind `slideshow`: the room embeds the static HTML deck, and
+  the annotation overlay uses this poster still when a semantic sidecar is
+  available.
 - `deck.semantic.json` — the canonical semantic sidecar, the REAL output of
   rendering `deck.json` through slidey (real `ref`s + real `bbox`es). Paired to
   the artifact by extension-swap (`deck.html` → `deck.semantic.json`), so the
@@ -120,6 +121,7 @@ kitsoki test flows stories/slidey-edit/app.yaml
 | `flows/refine_from_anchor.yaml` | the **location-tied loop**: a baked `semantic_element` anchor flows into refine; asserts the anchor reached the refine task + the addressed record. |
 | `flows/refine_inline_override.yaml` | inline `refine feedback="…"` overrides the instruction, anchor unchanged. |
 | `flows/refine_budget_exhaust.yaml` | refine refused at budget. |
+| `flows/revise_from_review.yaml` | open existing deck in `reviewing`, run `revise`, then assert re-render. |
 | `flows/quit_at_review.yaml` | `@exit:abandoned`. |
 | `flows/demo_web.yaml` | web/tour entry fixture (real baked media, stubbed agent/render). |
 

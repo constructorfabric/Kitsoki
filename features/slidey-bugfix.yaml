@@ -9,7 +9,6 @@ docs:
   - stories/slidey-bugfix/app.yaml
   - stories/bugfix/README.md
 related:
-  - gears-bugfix
   - dev-story-bugfix
 demo:
   spec: tests/playwright/slidey-bugfix-video.spec.ts

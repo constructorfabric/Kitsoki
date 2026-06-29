@@ -1,0 +1,36 @@
+{
+  "_comment": "task-bakeoff baked report deck — a tiny deterministic 3-scene slidey deck standing in for the report eval_pilot_report.py would build from the rollup. Real scene types (title / cards / narrative) so slidey emits a real .semantic.json sidecar. Used by flows so host.slidey.render need not run live (tour-needs-baked-world lesson).",
+  "meta": {
+    "title": "Matrix Bake-off Report",
+    "resolution": { "width": 1920, "height": 1080 },
+    "theme": "rose-pine-moon",
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Matrix task comparison",
+      "title": "Bake-off Report",
+      "subtitle": "Same tasks, identical conditions, scored cells",
+      "narration": "A controlled matrix comparison: the same tasks under identical conditions, every cell scored on outcome, compliance, cost, and time."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Three axes → cells",
+      "narration": "Every cell is a task crossed with a candidate crossed with a contender.",
+      "cards": [
+        { "label": "tasks", "sub": "the cases under test", "style": "primary" },
+        { "label": "candidates", "sub": "the harness / model axis", "style": "secondary" },
+        { "label": "contenders", "sub": "the structure axis", "style": "default" }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Rolled up",
+      "body": "Per-cell results aggregate into a summary — solve rate, cost, tokens, wall time — by treatment and by candidate.",
+      "lede": "Structure isn't automatically cheaper, but it's more thorough.",
+      "narration": "The per-cell results aggregate into a summary by treatment and by candidate: solve rate, cost, tokens, and wall time."
+    }
+  ]
+}

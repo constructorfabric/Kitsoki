@@ -1,0 +1,369 @@
+states:
+
+  orchestrating:
+    description: "Orchestrate loop — planning the iteration"
+    relevant_world: [iteration, goal_text, orchestrator_plan, orchestrator_status, last_gate_failure]
+    on_enter:
+      - increment: { iteration: 1 }
+      # Reset worker completion flags and status for this turn to wait for post-bind
+      - set:
+          slot_a_done: false
+          slot_b_done: false
+          slot_a_summary: ""
+          slot_b_summary: ""
+          slot_a_active: false
+          slot_b_active: false
+          orchestrator_status: ""
+          merge_conflict_detected: false
+          gate_ok: ""
+          script_gate_ok: ""
+          agent_gate_ok: ""
+      # Option 1: Persistent chat-based orchestrator
+      - invoke: host.chat.resolve
+        id: "resolve-chat"
+        when: "world.orchestrator_mode == 'persistent'"
+        with:
+          app: "cherny-loop"
+          room: "orchestrating"
+          scope_key: "{{ world.workspace_id }}"
+          title: "Cherny Loop Orchestrator — {{ world.workspace_id }}"
+        bind:
+          orchestrator_chat_id: chat_id
+      - invoke: host.chat.transcript
+        id: "chat-transcript"
+        when: "world.orchestrator_mode == 'persistent'"
+        with:
+          chat_id: "{{ world.orchestrator_chat_id }}"
+        bind:
+          orchestrator_response: rendered
+      - invoke: host.agent.converse
+        id: "converse-orchestrator"
+        when: "world.orchestrator_mode == 'persistent'"
+        with:
+          agent: orchestrator
+          chat_id: "{{ world.orchestrator_chat_id }}"
+          question: |
+            Here is the current state of the Cherny loop:
+            - Goal: {{ world.goal_text }}
+            - Iteration: {{ world.iteration }}
+            - Last Gate Failure: {{ world.last_gate_failure }}
+            - Last Worker Feedback:
+              - Slot A: {{ world.slot_a_summary }}
+              - Slot B: {{ world.slot_b_summary }}
+
+            Analyze progress, update your master plan, and identify the disjoint sub-tasks to run this iteration.
+            Please explicitly format your final decision at the end of your response using JSON wrapped in a triple backtick ```json block matching this structure:
+            {
+              "plan": "your overall plan description",
+              "slot_a_task": "task for worker slot A, or empty if none",
+              "slot_a_active": true/false,
+              "slot_b_task": "task for worker slot B, or empty if none",
+              "slot_b_active": true/false,
+              "status": "iterating" or "completed"
+            }
+        bind:
+          orchestrator_response: answer
+      - invoke: host.agent.decide
+        id: "parse-converse"
+        when: "world.orchestrator_mode == 'persistent'"
+        with:
+          agent: orchestrator_parser
+          prompt: prompts/orchestrator_parser.md
+          schema: schemas/orchestrator_output.json
+          args:
+            text: "{{ world.orchestrator_response }}"
+        bind:
+          orchestrator_plan:   submitted.plan
+          slot_a_task:         submitted.slot_a_task
+          slot_a_active:       submitted.slot_a_active
+          slot_b_task:         submitted.slot_b_task
+          slot_b_active:       submitted.slot_b_active
+          orchestrator_status: submitted.status
+      # Option 2: Stateless/review orchestrator
+      - invoke: host.agent.decide
+        id: "stateless-decide"
+        when: "world.orchestrator_mode == 'stateless'"
+        with:
+          agent: orchestrator
+          prompt: prompts/orchestrator.md
+          schema: schemas/orchestrator_output.json
+          args:
+            goal:              "{{ world.goal_text }}"
+            goal_artifact:     "{{ world.goal_artifact }}"
+            plan:              "{{ world.orchestrator_plan }}"
+            last_gate_failure: "{{ world.last_gate_failure }}"
+            slot_a_summary:    "{{ world.slot_a_summary }}"
+            slot_b_summary:    "{{ world.slot_b_summary }}"
+        bind:
+          orchestrator_plan:   submitted.plan
+          slot_a_task:         submitted.slot_a_task
+          slot_a_active:       submitted.slot_a_active
+          slot_b_task:         submitted.slot_b_task
+          slot_b_active:       submitted.slot_b_active
+          orchestrator_status: submitted.status
+      # Artifact log
+      - invoke: host.artifacts_dir
+        with:
+          thread: "orchestration-{{ world.iteration }}"
+          title:  "Orchestrator plan {{ world.iteration }}"
+          body:   "**Plan:** {{ world.orchestrator_plan }}\n\n**Slot A:** {{ world.slot_a_task }}\n\n**Slot B:** {{ world.slot_b_task }}"
+          phase_id: "cherny-loop"
+      # Route after binds are applied
+      - when: "world.orchestrator_status == 'completed'"
+        emit_intent: mark_achieved
+      - when: "world.orchestrator_status != '' && world.orchestrator_status != 'completed' && world.slot_a_active == false && world.slot_b_active == false"
+        emit_intent: check
+      - when: "world.orchestrator_status != '' && world.orchestrator_status != 'completed' && (world.slot_a_active == true || world.slot_b_active == true)"
+        emit_intent: start_workers
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - banner:
+              text:     "ORCHESTRATING"
+              subtitle: "Plan and coordinate disjoint worker sub-tasks"
+              color:    "#3B82F6"
+          - kv:
+              pairs:
+                Goal: "{{ world.goal_text }}"
+                Mode: "{{ world.orchestrator_mode }}"
+                Plan: "{{ world.orchestrator_plan }}"
+          - heading: "Delegations this turn"
+          - kv:
+              pairs:
+                Slot A: "{% if world.slot_a_active %}{{ world.slot_a_task }}{% else %}(inactive){% endif %}"
+                Slot B: "{% if world.slot_b_active %}{{ world.slot_b_task }}{% else %}(inactive){% endif %}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "abort"
+                - label: "look"
+    on:
+      start_workers:
+        - target: parallel_workers
+      check:
+        - target: gating
+      mark_achieved:
+        - target: committing
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+      look:
+        - target: .
+
+  parallel_workers:
+    type: parallel
+    states:
+      worker_a:
+        type: compound
+        initial: executing
+        states:
+          executing:
+            on_enter:
+              # Create dedicated workspace branch for slot A
+              - invoke: iface.workspace.create
+                id: "worktree-a"
+                when: "world.slot_a_active == true"
+                with:
+                  id:   "{{ world.workspace_id }}-a"
+                  name: "{{ world.workspace_branch }}-a"
+                  base: "{{ world.workspace_base }}"
+                bind:
+                  worktree_path_a: path
+                on_error: error
+              - invoke: host.agent.task
+                id: "maker-a-{{ world.iteration }}"
+                when: "world.slot_a_active == true"
+                with:
+                  agent: maker
+                  provider: "{{ world.worker_provider_a }}"
+                  working_dir: "{{ world.worktree_path_a }}"
+                  acceptance:
+                    schema: schemas/maker_output.json
+                  context:
+                    prompt: prompts/maker_task.md
+                    args:
+                      goal:              "{{ world.slot_a_task }}"
+                      goal_artifact:     "{{ world.goal_artifact }}"
+                      anchor_files:      "{{ world.anchor_files }}"
+                      iteration:         "{{ world.iteration }}"
+                      last_gate_failure: "{{ world.slot_a_last_error }}"
+                bind:
+                  slot_a_summary: submitted.summary
+                  slot_a_files: submitted.files_changed
+                on_error: error
+              # Set done BEFORE commit invoke so the emitted event sees the true flag
+              - set:
+                  slot_a_done: true
+                when: "world.slot_a_active == true"
+              - invoke: iface.vcs.commit
+                id: "commit-a-{{ world.iteration }}"
+                when: "world.slot_a_active == true"
+                with:
+                  workdir: "{{ world.worktree_path_a }}"
+                  message: "Slot A: {{ world.slot_a_summary }}"
+                  files: "{{ world.slot_a_files }}"
+                  stage_all: true
+                bind:
+                  commit_sha_a: sha
+                on_error: error
+              # Only emit proceed if B is also done or inactive
+              - emit_intent: proceed
+                when: "world.slot_a_active == true && (world.slot_b_active == false || world.slot_b_done == true)"
+          error:
+            on_enter:
+              - set: { slot_a_last_error: "Worker A failed to execute or commit", slot_a_done: true }
+              - emit_intent: proceed
+                when: "world.slot_b_active == false || world.slot_b_done == true"
+      worker_b:
+        type: compound
+        initial: executing
+        states:
+          executing:
+            on_enter:
+              # Create dedicated workspace branch for slot B
+              - invoke: iface.workspace.create
+                id: "worktree-b"
+                when: "world.slot_b_active == true"
+                with:
+                  id:   "{{ world.workspace_id }}-b"
+                  name: "{{ world.workspace_branch }}-b"
+                  base: "{{ world.workspace_base }}"
+                bind:
+                  worktree_path_b: path
+                on_error: error
+              - invoke: host.agent.task
+                id: "maker-b-{{ world.iteration }}"
+                when: "world.slot_b_active == true"
+                with:
+                  agent: maker
+                  provider: "{{ world.worker_provider_b }}"
+                  working_dir: "{{ world.worktree_path_b }}"
+                  acceptance:
+                    schema: schemas/maker_output.json
+                  context:
+                    prompt: prompts/maker_task.md
+                    args:
+                      goal:              "{{ world.slot_b_task }}"
+                      goal_artifact:     "{{ world.goal_artifact }}"
+                      anchor_files:      "{{ world.anchor_files }}"
+                      iteration:         "{{ world.iteration }}"
+                      last_gate_failure: "{{ world.slot_b_last_error }}"
+                bind:
+                  slot_b_summary: submitted.summary
+                  slot_b_files: submitted.files_changed
+                on_error: error
+              # Set done BEFORE commit invoke so the emitted event sees the true flag
+              - set:
+                  slot_b_done: true
+                when: "world.slot_b_active == true"
+              - invoke: iface.vcs.commit
+                id: "commit-b-{{ world.iteration }}"
+                when: "world.slot_b_active == true"
+                with:
+                  workdir: "{{ world.worktree_path_b }}"
+                  message: "Slot B: {{ world.slot_b_summary }}"
+                  files: "{{ world.slot_b_files }}"
+                  stage_all: true
+                bind:
+                  commit_sha_b: sha
+                on_error: error
+              # Only emit proceed if A is also done or inactive
+              - emit_intent: proceed
+                when: "world.slot_b_active == true && (world.slot_a_active == false || world.slot_a_done == true)"
+          error:
+            on_enter:
+              - set: { slot_b_last_error: "Worker B failed to execute or commit", slot_b_done: true }
+              - emit_intent: proceed
+                when: "world.slot_a_active == false || world.slot_a_done == true"
+    on:
+      proceed:
+        - when: "(world.slot_a_active == false || world.slot_a_done == true) && (world.slot_b_active == false || world.slot_b_done == true)"
+          target: merging
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+
+  merging:
+    description: "Merge disjoint slot changes into main worktree"
+    relevant_world: [workspace_branch, worktree_path, slot_a_active, slot_b_active, merge_conflict_detected]
+    on_enter:
+      # Reset gate_ok so that gating room doesn't early-transition on pre-bind stale gate_ok
+      - set:
+          gate_ok: ""
+          script_gate_ok: ""
+          agent_gate_ok: ""
+      # Merge slot A if active and done
+      - invoke: host.run
+        id: "merge-a"
+        when: "world.slot_a_active == true"
+        with:
+          cmd: "git merge --no-edit {{ world.workspace_branch }}-a"
+          cwd: "{{ world.worktree_path }}"
+          fail_on_error: false
+        bind:
+          merge_conflict_detected: error
+      # Merge slot B if active and done
+      - invoke: host.run
+        id: "merge-b"
+        when: "world.slot_b_active == true && world.merge_conflict_detected == false"
+        with:
+          cmd: "git merge --no-edit {{ world.workspace_branch }}-b"
+          cwd: "{{ world.worktree_path }}"
+          fail_on_error: false
+        bind:
+          merge_conflict_detected: error
+      - when: "world.merge_conflict_detected == true"
+        emit_intent: check_merging
+      - when: "world.merge_conflict_detected == false"
+        emit_intent: check
+    on:
+      check_merging:
+        - target: resolving_conflicts
+      check:
+        - target: gating
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }
+
+  resolving_conflicts:
+    description: "Resolve merge conflicts using orchestrator/maker"
+    relevant_world: [worktree_path, goal_text]
+    on_enter:
+      # Run maker task to resolve conflicts
+      - invoke: host.agent.task
+        id: "conflict-resolver-{{ world.iteration }}"
+        with:
+          agent: maker
+          working_dir: "{{ world.worktree_path }}"
+          acceptance:
+            schema: schemas/maker_output.json
+          context:
+            prompt: prompts/maker_task.md
+            args:
+              goal: "Resolve git merge conflicts in the current worktree. Inspect the conflict markers, resolve them correctly so the codebase builds and functions toward the goal."
+              goal_artifact: "{{ world.goal_artifact }}"
+              iteration: "{{ world.iteration }}"
+              last_gate_failure: "Merge conflict occurred while merging slot A and/or slot B."
+        bind:
+          maker_summary: submitted.summary
+        on_error: error
+      - invoke: iface.vcs.commit
+        id: "commit-resolved"
+        with:
+          workdir: "{{ world.worktree_path }}"
+          message: "Orchestrated merge conflict resolution: {{ world.maker_summary }}"
+          files: []
+          stage_all: true
+      - emit_intent: check
+    on:
+      check:
+        - target: gating
+      abort:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { terminal_reason: "aborted" }

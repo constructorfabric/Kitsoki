@@ -72,7 +72,7 @@ agents:
   decomposer:
     system_prompt: "You are a delivery decomposer. Read the epic or proposal at the given path, break it into independently-shippable briefs each with a deterministic gate command, write the decomposition YAML to the given output path, and submit the structured manifest."
     model: claude-opus-4-8
-    tools: [Read, Glob, Grep, Edit, Write, Bash]
+    tools: [Read, Edit, Write]
 
 exits:
   done:        { requires: [delivery_summary] }

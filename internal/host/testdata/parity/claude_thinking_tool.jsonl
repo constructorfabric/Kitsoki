@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","session_id":"sess-claude-parity"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"I will inspect the target file first, then run the narrow validation command so the operator can see why the next step is safe."},{"type":"tool_use","name":"Read","input":{"file_path":"stories/harness-parity-qa/app.yaml"}}]}}
+{"type":"result","subtype":"success","result":"done","session_id":"sess-claude-parity"}

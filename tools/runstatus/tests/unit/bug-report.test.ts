@@ -59,6 +59,135 @@ describe("MetaButton — Report bug", () => {
     ).toBe(true);
   });
 
+  it("Alt+click starts a placed bug report with target context", async () => {
+    const store = useBugReportStore();
+    const trigger = vi.spyOn(store, "trigger").mockImplementation(async () => {
+      store.status = "reviewing";
+    });
+    const host = document.createElement("div");
+    host.innerHTML = `<p data-testid="translated-label">Guardar cambios</p>`;
+    document.body.appendChild(host);
+
+    mount(MetaButton, { attachTo: document.body });
+    host
+      .querySelector('[data-testid="translated-label"]')!
+      .dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          altKey: true,
+          clientX: 42,
+          clientY: 77,
+        })
+      );
+    await flushPromises();
+
+    expect(trigger).toHaveBeenCalledTimes(1);
+    const opts = trigger.mock.calls[0][0];
+    expect(opts.defaultTitle).toBe("Bug report at clicked location");
+    expect(opts.placement).toMatchObject({
+      x: 42,
+      y: 77,
+      selector: '[data-testid="translated-label"]',
+      text: "Guardar cambios",
+    });
+  });
+
+  it("Alt+click reports button text instead of ignoring or activating it", async () => {
+    const store = useBugReportStore();
+    const trigger = vi.spyOn(store, "trigger").mockImplementation(async () => {
+      store.status = "reviewing";
+    });
+    const host = document.createElement("div");
+    host.innerHTML = `<button data-testid="translated-button">Guardar cambios</button>`;
+    document.body.appendChild(host);
+    const button = host.querySelector(
+      '[data-testid="translated-button"]'
+    ) as HTMLButtonElement;
+    const activated = vi.fn();
+    button.addEventListener("click", activated);
+
+    mount(MetaButton, { attachTo: document.body });
+    button.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        altKey: true,
+        clientX: 42,
+        clientY: 77,
+      })
+    );
+    await flushPromises();
+
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(activated).not.toHaveBeenCalled();
+    expect(trigger.mock.calls[0][0].placement).toMatchObject({
+      selector: '[data-testid="translated-button"]',
+      text: "Guardar cambios",
+    });
+  });
+
+  it("Alt+right-click shows a point menu before starting the report", async () => {
+    const store = useBugReportStore();
+    const trigger = vi.spyOn(store, "trigger").mockImplementation(async () => {
+      store.status = "reviewing";
+    });
+    const host = document.createElement("div");
+    host.innerHTML = `<p data-testid="translated-label">Guardar cambios</p>`;
+    document.body.appendChild(host);
+
+    const wrapper = mount(MetaButton, { attachTo: document.body });
+    host
+      .querySelector('[data-testid="translated-label"]')!
+      .dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          altKey: true,
+          clientX: 42,
+          clientY: 77,
+        })
+      );
+    await flushPromises();
+
+    expect(trigger).not.toHaveBeenCalled();
+    const item = document.querySelector('[data-testid="bug-point-menu-report"]');
+    expect(item).not.toBeNull();
+    expect(item?.textContent).toContain("Report bug here");
+
+    await wrapper.get('[data-testid="bug-point-menu-report"]').trigger("click");
+    await flushPromises();
+
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(trigger.mock.calls[0][0].placement).toMatchObject({
+      x: 42,
+      y: 77,
+      selector: '[data-testid="translated-label"]',
+      text: "Guardar cambios",
+    });
+  });
+
+  it("ignores Alt+click inside editable fields", async () => {
+    const store = useBugReportStore();
+    const trigger = vi.spyOn(store, "trigger").mockResolvedValue();
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+
+    mount(MetaButton, { attachTo: document.body });
+    input.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        altKey: true,
+        clientX: 5,
+        clientY: 6,
+      })
+    );
+    await flushPromises();
+
+    expect(trigger).not.toHaveBeenCalled();
+  });
+
   it("shows the filed toast with the path after a successful submit", async () => {
     const store = useBugReportStore();
     vi.spyOn(store, "trigger").mockResolvedValue();
@@ -75,7 +204,31 @@ describe("MetaButton — Report bug", () => {
     expect(wrapper.get('[data-testid="bug-toast-path"]').text()).toContain(
       "issues/bugs/2026-06-12T130405Z-foyer-button-does-nothing.md"
     );
-    expect(wrapper.find('[data-testid="bug-toast-open"]').exists()).toBe(true);
+    const open = wrapper.get('[data-testid="bug-toast-open"]');
+    expect(open.exists()).toBe(true);
+    expect(open.attributes("title")).toBe("Open the issue path");
+  });
+
+  it("opens the filed bug path when the filed toast open action is clicked", async () => {
+    const store = useBugReportStore();
+    vi.spyOn(store, "trigger").mockResolvedValue();
+    store.filed = {
+      id: "2026-06-12T130405Z-foyer-button-does-nothing",
+      path: "issues/bugs/2026-06-12T130405Z-foyer-button-does-nothing.md",
+    };
+    store.status = "filed";
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => null);
+
+    const wrapper = mount(MetaButton);
+    await wrapper.get('[data-testid="bug-toast-open"]').trigger("click");
+    await flushPromises();
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "issues/bugs/2026-06-12T130405Z-foyer-button-does-nothing.md",
+      "_blank"
+    );
   });
 
   it("surfaces an error state in the toast when filing fails", async () => {

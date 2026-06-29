@@ -1,0 +1,585 @@
+states:
+  run_created:
+    description: "A product-journey QA run bundle exists; waiting for captured evidence."
+    relevant_world: [project, persona, seed, run_id, run_dir, deck_path, execution_plan_path, driver_plan_path, driver_journal_path, agent_brief_path, driver_handoff_path, media_manifest_path, scenario_outcomes_path, persona_starting_surface, persona_first_question, persona_evidence_emphasis, persona_escalation_trigger, persona_finding_bias, proof_evidence_count, demo_evidence_count, finding_total_count, strength_count, weakness_count, issue_count, fix_count, blocked_count, missing_evidence_count, missing_proof_evidence_count, proof_minimum_evidence_count, minimum_evidence_count, missing_proof_summary, driver_contract_summary, next_driver_capture, next_driver_attach_command, next_driver_blocker_command, scenario, evidence_kind, evidence_path, evidence_source, finding_kind, finding_title, driver_event_id, dispatch_mode, driver_status, driver_summary, review_status, review_summary, review_passed_count, review_failed_count, review_warning_count, review_total_count, review_backlog_summary, validation_status, validation_errors, validation_warnings, validation_issue_summary, status]
+    view:
+      - banner:
+          text: "RUN CREATED"
+          subtitle: "Attach evidence from visual MCP, studio MCP, oracle checks, or generated artifacts."
+          color: "#2563EB"
+      - kv:
+          pairs:
+            Run: '{{ world.run_id|default:"(pending)" }}'
+            Project: "{{ world.project }}"
+            Persona: "{{ world.persona }}"
+            Run dir: '{{ world.run_dir|default:"(pending)" }}'
+            Deck: '{{ world.deck_path|default:"(pending)" }}'
+            Execution plan: '{{ world.execution_plan_path|default:"(pending)" }}'
+            Driver plan: '{{ world.driver_plan_path|default:"(pending)" }}'
+            Driver journal: '{{ world.driver_journal_path|default:"(pending)" }}'
+            Agent brief: '{{ world.agent_brief_path|default:"(pending)" }}'
+            Driver handoff: '{{ world.driver_handoff_path|default:"(pending)" }}'
+            Media manifest: '{{ world.media_manifest_path|default:"(pending)" }}'
+            Scenario outcomes: '{{ world.scenario_outcomes_path|default:"(pending)" }}'
+            Starting surface: '{{ world.persona_starting_surface|default:"(open agent brief)" }}'
+            First question: '{{ world.persona_first_question|default:"(open agent brief)" }}'
+            Evidence emphasis: '{{ world.persona_evidence_emphasis|default:"(open driver plan)" }}'
+            Escalate when: '{{ world.persona_escalation_trigger|default:"(open driver plan)" }}'
+            Finding bias: '{{ world.persona_finding_bias|default:"(open driver plan)" }}'
+            Proof evidence: "{{ world.proof_evidence_count }} attached; minimum {{ world.proof_minimum_evidence_count }} / {{ world.minimum_evidence_count }}"
+            Demo evidence: "{{ world.demo_evidence_count }}"
+            Finding matrix: "{{ world.finding_total_count }} total; strength {{ world.strength_count }}, weakness {{ world.weakness_count }}, issue {{ world.issue_count }}, fix {{ world.fix_count }}, blocked {{ world.blocked_count }}"
+            Missing evidence: "{{ world.missing_evidence_count }}"
+            Missing proof: "{{ world.missing_proof_evidence_count }}"
+            Last evidence: '{{ world.scenario|default:"(none)" }} / {{ world.evidence_kind|default:"" }}'
+            Last finding: '{{ world.finding_kind|default:"(none)" }} / {{ world.finding_title|default:"" }}'
+            Last driver event: '{{ world.driver_event_id|default:"(none)" }} / {{ world.driver_status|default:"" }}'
+            Review: '{{ world.review_status|default:"(not reviewed)" }}'
+            Review checks: "{{ world.review_passed_count }} / {{ world.review_total_count }} passed; {{ world.review_failed_count }} failed; {{ world.review_warning_count }} warnings"
+            Validation: '{{ world.validation_status|default:"(not validated)" }}'
+            Validation errors: "{{ world.validation_errors }}"
+            Validation warnings: "{{ world.validation_warnings }}"
+            Validation issues: '{{ world.validation_issue_summary|default:"(none)" }}'
+            Status: "{{ world.status }}"
+      - prose: '{{ world.missing_proof_summary|default:"Open driver-handoff.md for the Missing Proof Evidence backlog." }}'
+      - prose: '{{ world.driver_contract_summary|default:"Use driver-plan.md for the scenario contract; loaded runs also expose last_result.driver_scenarios, last_result.missing_proof_evidence, and last_result.driver_final_gates." }}'
+      - prose: '{{ world.next_driver_capture|default:"No next proof capture is queued; run review or open scenario-outcomes.md." }}'
+      - prose: '{{ world.next_driver_attach_command|default:"No next proof attach command is queued." }}'
+      - prose: '{{ world.next_driver_blocker_command|default:"No next proof blocker command is queued." }}'
+      - prose: '{{ world.review_backlog_summary|default:"Run review to see actionable review checks." }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "attach scenario=... evidence_kind=... evidence_path=..."
+              hint: "mark one scenario evidence slot captured and regenerate the deck"
+              intent: attach
+            - label: "record finding_kind=... title=... summary=..."
+              hint: "record a strength, weakness, issue, or fix for the review deck"
+              intent: record
+            - label: "blocker scenario=... title=... summary=..."
+              hint: "mark a scenario attempted but blocked, with optional trace/frame evidence"
+              intent: blocker
+            - label: "driver_event scenario=... summary=..."
+              hint: "append a reusable-driver attempt to driver-journal.md"
+              intent: driver_event
+            - label: "seed_demo"
+              hint: "populate representative evidence and findings for deck review"
+              intent: seed_demo
+            - label: "handoff"
+              hint: "refresh the reusable driver-agent handoff artifact without launching live LLM work"
+              intent: handoff
+            - label: "review"
+              hint: "score whether the bundle is ready for human review"
+              intent: review
+            - label: "validate"
+              hint: "check schema and cross-file consistency without rewriting artifacts"
+              intent: validate
+            - label: "accept"
+              hint: "finish with the current run bundle"
+              intent: accept
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      attach:
+        - target: run_created
+          guard_hint: "create a run before attaching evidence"
+          effects:
+            - set:
+                scenario: "{{ slots.scenario }}"
+                evidence_kind: "{{ slots.evidence_kind }}"
+                evidence_path: "{{ slots.evidence_path }}"
+                evidence_source: "{{ slots.source ?? '' }}"
+                notes: "{{ slots.notes ?? '' }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "attaching"
+            - invoke: host.run
+              id: attach_product_journey_evidence
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --attach-evidence
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --scenario
+                  - "{{ slots.scenario }}"
+                  - --evidence-kind
+                  - "{{ slots.evidence_kind }}"
+                  - --evidence-path
+                  - "{{ slots.evidence_path }}"
+                  - --evidence-source
+                  - "{{ slots.source ?? '' }}"
+                  - --notes
+                  - "{{ slots.notes ?? '' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+                evidence_source: "stdout_json.evidence_source"
+              on_error: run_created
+            - set:
+                status: "evidence_attached"
+      record:
+        - target: run_created
+          effects:
+            - set:
+                finding_kind: "{{ slots.finding_kind }}"
+                finding_title: "{{ slots.title }}"
+                finding_summary: "{{ slots.summary }}"
+                finding_severity: "{{ slots.severity ?? 'medium' }}"
+                scenario: "{{ slots.scenario ?? world.scenario }}"
+                evidence_path: "{{ slots.evidence_path ?? '' }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "recording_finding"
+            - invoke: host.run
+              id: record_product_journey_finding
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --record-finding
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --finding-kind
+                  - "{{ slots.finding_kind }}"
+                  - --title
+                  - "{{ slots.title }}"
+                  - --summary
+                  - "{{ slots.summary }}"
+                  - --scenario
+                  - "{{ slots.scenario ?? '' }}"
+                  - --severity
+                  - "{{ slots.severity ?? 'medium' }}"
+                  - --evidence-path
+                  - "{{ slots.evidence_path ?? '' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "finding_recorded"
+      blocker:
+        - target: run_created
+          effects:
+            - set:
+                finding_kind: "issue"
+                finding_title: "{{ slots.title }}"
+                finding_summary: "{{ slots.summary }}"
+                finding_severity: "high"
+                scenario: "{{ slots.scenario }}"
+                evidence_path: "{{ slots.evidence_path ?? '' }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "recording_blocker"
+            - invoke: host.run
+              id: record_product_journey_blocker
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --record-blocker
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --scenario
+                  - "{{ slots.scenario }}"
+                  - --title
+                  - "{{ slots.title }}"
+                  - --summary
+                  - "{{ slots.summary }}"
+                  - --evidence-path
+                  - "{{ slots.evidence_path ?? '' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "blocker_recorded"
+      driver_event:
+        - target: run_created
+          effects:
+            - set:
+                scenario: "{{ slots.scenario }}"
+                dispatch_mode: "{{ slots.dispatch_mode ?? 'replay' }}"
+                driver_status: "{{ slots.driver_status ?? 'attempted' }}"
+                driver_summary: "{{ slots.summary }}"
+                mcp_tools: "{{ slots.mcp_tools ?? '' }}"
+                evidence_refs: "{{ slots.evidence_refs ?? '' }}"
+                blockers: "{{ slots.blockers ?? '' }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "recording_driver_event"
+            - invoke: host.run
+              id: record_product_journey_driver_event
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --record-driver-event
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --scenario
+                  - "{{ slots.scenario }}"
+                  - --dispatch-mode
+                  - "{{ slots.dispatch_mode ?? 'replay' }}"
+                  - --driver-status
+                  - "{{ slots.driver_status ?? 'attempted' }}"
+                  - --mcp-tools
+                  - "{{ slots.mcp_tools ?? '' }}"
+                  - --evidence-refs
+                  - "{{ slots.evidence_refs ?? '' }}"
+                  - --blockers
+                  - "{{ slots.blockers ?? '' }}"
+                  - --summary
+                  - "{{ slots.summary }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                driver_event_id: "stdout_json.event_id"
+                scenario: "stdout_json.scenario"
+                dispatch_mode: "stdout_json.dispatch_mode"
+                driver_status: "stdout_json.driver_status"
+                deck_path: "stdout_json.deck_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "driver_event_recorded"
+      seed_demo:
+        - target: run_created
+          effects:
+            - set:
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "seeding_demo"
+            - invoke: host.run
+              id: seed_product_journey_demo
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --seed-demo-evidence
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "demo_seeded"
+      review:
+        - target: run_created
+          effects:
+            - set:
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "reviewing"
+            - invoke: host.run
+              id: review_product_journey_run
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --review-run
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                review_status: "stdout_json.review_status"
+                review_summary: "stdout_json.summary"
+                review_passed_count: "stdout_json.review_passed_count"
+                review_failed_count: "stdout_json.review_failed_count"
+                review_warning_count: "stdout_json.review_warning_count"
+                review_total_count: "stdout_json.review_total_count"
+                review_backlog_summary: "stdout_json.review_backlog_summary"
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "reviewed"
+      handoff:
+        - target: run_created
+          effects:
+            - set:
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "preparing_handoff"
+            - invoke: host.run
+              id: prepare_product_journey_driver_handoff
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --driver-handoff
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "handoff_ready"
+      validate:
+        - target: run_created
+          effects:
+            - set:
+                status: "validating"
+            - invoke: host.run
+              id: validate_product_journey_run
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --validate-run
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                validation_status: "stdout_json.status"
+                validation_errors: "stdout_json.errors"
+                validation_warnings: "stdout_json.warnings"
+                validation_issue_summary: "stdout_json.validation_issue_summary"
+              on_error: run_created
+            - set:
+                status: "validated"
+      accept:
+        - when: "world.validation_status == 'valid'"
+          target: done
+          effects:
+            - set: { status: "done" }
+        - target: run_created
+          effects:
+            - set: { status: "accept_needs_validation" }
+      quit:
+        - target: abandoned
+          effects:
+            - set: { status: "abandoned" }
+      look:
+        - target: .

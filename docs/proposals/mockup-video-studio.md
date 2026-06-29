@@ -17,7 +17,7 @@ expedition: hand-write static HTML mockups, hand-write a tour manifest or
 slidey deck, run the recorder, watch the result, notice scene 3's text is
 too small, hand-edit, re-run. There is **no structured, recorded process**
 for it, and once a video exists there is **no surface to improve it**: the
-web UI can play a video (once `visual-outputs` slice 3 lands) but you can't
+web UI can play a video through the shipped media element, but you can't
 point at 0:14, say "this transition is too fast," and have that become an
 instruction the LLM acts on.
 
@@ -35,7 +35,7 @@ Once all three slices ship:
 - `kitsoki run stories/mockup-video/app.yaml` walks you from a scenario
   brief to a rendered walkthrough MP4 — authoring static HTML mockups (or a
   slidey deck; `medium: tour | deck`), assembling a walkthrough over your
-  user scenarios, rendering it through the shipped `visual-outputs`
+  user scenarios, rendering it through the shipped media
   producers, and looping through a **refine** checkpoint until you accept,
   ending in a gallery.
 - Every rendered video carries a **chapter sidecar** mapping each moment to
@@ -60,12 +60,13 @@ the first producer of them.
   panel + three read/capture RPCs (`tools/runstatus/`,
   `internal/runstatus/server/`); one new story (`stories/mockup-video/`).
   No engine state-machine or orchestrator hot-path change.
-- **Hard dependency — `visual-outputs.md`:** this epic *consumes* that one.
-  Slice 1 (media substrate) is **shipped**; **slices 2 (`visual-producers`)
-  and 3 (`web-media-rendering`) are still Draft** and are prerequisites —
-  `host.slidey.render` + the `media` element + the `/artifact/{id}` route
-  must exist before this epic's frame seam, player, and story have anything
-  to stand on. Sequencing below treats them as upstream.
+- **Media dependency:** this epic consumes the shipped media substrate:
+  `host.slidey.render`, `host.contact_sheet`, `host.artifacts_dir` media emit,
+  the `media` view element, and the `/artifact/{id}` route. The authoritative
+  docs are [`hosts.md`](../architecture/hosts.md),
+  [`story-style.md`](../stories/story-style.md#37-media--showing-a-recorded-artifact),
+  [`trace-format.md`](../tracing/trace-format.md#artifact-event-kind), and
+  [`tools/runstatus/README.md`](../../tools/runstatus/README.md#media-view-element).
 - **Docs on ship:** `docs/architecture/hosts.md` (the frame host call),
   `docs/tui/video-review.md` (the feedback mode), `docs/stories/mockup-video.md`
   (the story); cross-links from `docs/tui/web-ui.md` and the
@@ -75,9 +76,9 @@ the first producer of them.
 
 | # | Slice | Kind | Scope (one line) | Depends on | Status | File |
 |---|---|---|---|---|---|---|
-| 1 | Video frame seam | runtime | Producer-agnostic chapter sidecar (scene↔timestamp) + deterministic `host.video.frame` still-grab, shared by a host call and a web RPC | `visual-outputs` #1 (shipped); coordinates with #2 | Shipped | [`docs/architecture/hosts.md`](../architecture/hosts.md) |
-| 2 | Video feedback mode | tui (web) | `/review` panel: player + chapter timeline + flag-scene/range + per-flag PNG + chat → structured feedback notes | 1; `visual-outputs` #3 | Shipped | [`docs/tui/video-review.md`](../tui/video-review.md) |
-| 3 | Mockup video authoring | story | `stories/mockup-video/`: brief → author HTML/deck → render → review → refine-loop → gallery (`medium: tour\|deck`) | 1; `visual-outputs` #2; soft-dep 2 | Shipped | [`docs/stories/mockup-video.md`](../stories/mockup-video.md) |
+| 1 | Video frame seam | runtime | Producer-agnostic chapter sidecar (scene↔timestamp) + deterministic `host.video.frame` still-grab, shared by a host call and a web RPC | shipped media substrate; coordinates with #2 | Shipped | [`docs/architecture/hosts.md`](../architecture/hosts.md) |
+| 2 | Video feedback mode | tui (web) | `/review` panel: player + chapter timeline + flag-scene/range + per-flag PNG + chat → structured feedback notes | 1; shipped web media rendering | Shipped | [`docs/tui/video-review.md`](../tui/video-review.md) |
+| 3 | Mockup video authoring | story | `stories/mockup-video/`: brief → author HTML/deck → render → review → refine-loop → gallery (`medium: tour\|deck`) | 1; shipped visual producers; soft-dep 2 | Shipped | [`docs/stories/mockup-video.md`](../stories/mockup-video.md) |
 
 ## Remaining (post-integration)
 
@@ -97,18 +98,14 @@ recorder (CLAUDE.md no-auto-LLM rule):
 ## Sequencing
 
 ```
-visual-outputs #2 (producers) ─┐
-visual-outputs #3 (web media) ─┤
-                               ▼
-            #1 (runtime: frame seam + chapter sidecar)
-                  ├──────────────▶ #2 (web: feedback mode)
-                  └──────────────▶ #3 (story: authoring) ◀── soft-dep ── #2
+shipped media substrate ──▶ #1 (runtime: frame seam + chapter sidecar)
+                                  ├──────────────▶ #2 (web: feedback mode)
+                                  └──────────────▶ #3 (story: authoring) ◀── soft-dep ── #2
 ```
 
 Slice 1 is the substrate both #2 and #3 build on. #2 and #3 can then proceed
-in parallel: #3 can ship with the video shown inline (`visual-outputs` #3)
-and feedback notes appended to a file, gaining the live web feedback loop
-once #2 lands.
+in parallel: #3 can ship with the video shown inline and feedback notes
+appended to a file, gaining the live web feedback loop once #2 lands.
 
 ## Shared decisions
 

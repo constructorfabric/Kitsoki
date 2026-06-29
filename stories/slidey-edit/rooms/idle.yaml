@@ -30,6 +30,45 @@ states:
             - label: "look"
     on:
       start:
+        # The web compose box dispatches typed text as `start` with the text in
+        # `feedback`. If that text is an "edit <deck>" instruction, divert to the
+        # edit-existing path (resolve_deck strips the verb + resolves the name).
+        # An "edit <deck>" instruction selects an EXISTING deck. It works in the
+        # web viewer, so it must just work when loaded: render the existing spec
+        # IN PLACE (its own dir is the workspace, so sibling assets resolve) and
+        # go straight to the spatial-oracle review. NO authoring agent runs —
+        # there is nothing to author until the operator gives feedback.
+        - when: "hasPrefix(lower(trim(slots.feedback ?? '')), 'edit') || hasPrefix(lower(trim(slots.feedback ?? '')), 'revise ') || hasPrefix(lower(trim(slots.feedback ?? '')), 'open ')"
+          target: rendering
+          effects:
+            - invoke: host.starlark.run
+              id: resolve_deck
+              with:
+                script: scripts/resolve_deck.star
+                inputs:
+                  spec_path: "{{ slots.feedback }}"
+                  decks_dir: "{{ world.decks_dir }}"
+              bind:
+                source_deck: source_deck
+                deck:        deck         # promoted = the existing spec, rendered in place
+                workspace:   workspace
+            - set:
+                draft_feedback: ""   # the verb-laden text was a deck selector, not edit direction
+                render_retries: 0
+        # An existing deck is already loaded (operator ran edit_existing / an
+        # "edit <deck>" instruction earlier). Plain `start` should render that
+        # existing spec directly so review/feedback can begin — NOT re-author it
+        # from scratch through the drafter. Promote source_deck → deck and skip
+        # drafting straight to rendering.
+        - when: "(world.source_deck.spec_path ?? '') != ''"
+          target: rendering
+          effects:
+            - set:
+                deck:
+                  spec_path: "{{ world.source_deck.spec_path }}"
+                  summary:   "{{ world.source_deck.summary }}"
+                draft_feedback: ""
+                render_retries: 0   # fresh render — reset the auto-fix budget
         - target: drafting
           effects:
             - set:
@@ -40,16 +79,31 @@ states:
                 source_deck: {}
                 render_retries: 0   # fresh deck — reset the auto-fix budget
       edit_existing:
-        - target: drafting
+        # An existing deck renders IN PLACE and goes straight to review — no
+        # authoring agent. The deck already exists and works in the web viewer;
+        # loading it must not re-author 36 scenes or strip its assets.
+        - target: rendering
           effects:
-            - set:
-                source_deck:
+            # Resolve the operator's deck reference to a concrete spec_path.
+            # A bare name prefers <decks_dir>/<name>.slidey.json and falls back
+            # to .json only when the .slidey.json variant is absent (checked via
+            # ctx.fs.exists); a reference already ending in .json is verbatim.
+            # resolve_deck also promotes the spec into `deck` and sets the
+            # workspace to the deck's own dir so its sibling assets resolve.
+            - invoke: host.starlark.run
+              id: resolve_deck
+              with:
+                script: scripts/resolve_deck.star
+                inputs:
                   spec_path: "{{ slots.spec_path }}"
-                  summary: "{{ slots.summary ?? 'Existing slidey deck' }}"
+                  summary:   "{{ slots.summary ?? '' }}"
+                  decks_dir: "{{ world.decks_dir }}"
+              bind:
+                source_deck: source_deck
+                deck:        deck
+                workspace:   workspace
+            - set:
                 draft_feedback: "{{ slots.feedback ?? '' }}"
-                # deck is the drafting result/cache. Clear it so once: does
-                # not mistake the existing input deck for completed output.
-                deck: {}
                 render_retries: 0   # fresh deck — reset the auto-fix budget
       quit:
         - target: "@exit:abandoned"

@@ -38,7 +38,8 @@ video="${1:?usage: qa.sh <video> --feature <f> --scenarios <f> [opts]}"
 shift || true
 
 feature="" scenarios="" frames="" outdir="" model="" max=48 chapters="" pacing_min="" scene="" blank_min_cov=""
-adv_flag="" strict_flag="" blank_strict_flag="" pacing_strict_flag=""
+rrweb="" rrweb_min_dwell=""
+adv_flag="" strict_flag="" blank_strict_flag="" pacing_strict_flag="" rrweb_strict_flag="" scroll_strict_flag=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --feature)     feature="$2"; shift 2 ;;
@@ -55,6 +56,10 @@ while [ $# -gt 0 ]; do
     --strict)      strict_flag="--strict"; shift ;;
     --blank-strict) blank_strict_flag="--blank-strict"; shift ;;
     --pacing-strict) pacing_strict_flag="--pacing-strict"; shift ;;
+    --rrweb)         rrweb="$2"; shift 2 ;;
+    --rrweb-min-dwell) rrweb_min_dwell="$2"; shift 2 ;;
+    --rrweb-strict)  rrweb_strict_flag="--rrweb-strict"; shift ;;
+    --scroll-strict) scroll_strict_flag="--scroll-strict"; shift ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -97,6 +102,13 @@ blank_args=( "$frames_dir" --out "$blank_scan" )
 [ -n "$blank_min_cov" ] && blank_args+=( --min-coverage "$blank_min_cov" )
 "$here/blank-scan.sh" "${blank_args[@]}" || true
 
+# 2b-2. Deterministic edge clipping scan (no LLM). This catches text/UI that
+# touches the rendered frame edge, which usually means the MP4 is shifted or
+# content was clipped off-canvas. Blocking by default; it is a visual integrity
+# failure, not a subjective warning.
+edge_scan="$outdir/edge-scan.json"
+"$here/edge-scan.sh" "$frames_dir" --out "$edge_scan" || true
+
 # 2c. Deterministic pacing scan (no LLM) over the chapter sidecar — flags
 #     narrated moments that flash by too fast to read (the WEB_CHAT_PACE=0
 #     fast-validation footgun). Auto-detects <video>.chapters.json beside the MP4
@@ -114,6 +126,31 @@ else
   echo "  (no chapter sidecar — pacing scan skipped; pass --chapters to enable)"
 fi
 
+# 2d. Deterministic rrweb-pacing scan (no LLM) over the embedded tour clip(s) —
+#     flags content reveals crammed below the readable dwell (the "last messages
+#     are super-rushed" defect), which neither the frame sampler nor the vision
+#     review can see. Pass --rrweb <clip.rrweb.json | dir>. Advisory by default;
+#     --rrweb-strict blocks.
+rrweb_scan=""
+if [ -n "$rrweb" ]; then
+  rrweb_scan="$outdir/rrweb-pacing-scan.json"
+  rrweb_args=( "$rrweb" --out "$rrweb_scan" )
+  [ -n "$rrweb_min_dwell" ] && rrweb_args+=( --min-dwell "$rrweb_min_dwell" )
+  node "$here/rrweb-pacing-scan.mjs" "${rrweb_args[@]}" || true
+fi
+
+# 2e. Deterministic rrweb SCROLL-FOLLOWABILITY scan (no LLM) over the embedded
+#     conversation clip(s) — flags a snap-to-bottom capture where the transcript
+#     jumps past each message instead of easing through it (user inputs / the
+#     tops of long replies flash off-camera). This is the SCROLL dimension the
+#     time-only rrweb-pacing scan is structurally blind to. Same --rrweb input;
+#     advisory by default, --scroll-strict blocks.
+scroll_scan=""
+if [ -n "$rrweb" ]; then
+  scroll_scan="$outdir/rrweb-scroll-scan.json"
+  node "$here/rrweb-scroll-scan.mjs" "$rrweb" --out "$scroll_scan" || true
+fi
+
 # 3. Grounded, adversarially-verified vision review → verdict.json
 verdict="$outdir/verdict.json"
 review_args=( --frames "$frames_dir" --feature "$feature" \
@@ -125,8 +162,10 @@ review_args=( --frames "$frames_dir" --feature "$feature" \
 # 4. Gated report — exit code propagates as the QA gate.
 echo
 report_args=( "$verdict" --out "$outdir/qa-report.md" $strict_flag \
-  --blank-scan "$blank_scan" $blank_strict_flag )
+  --blank-scan "$blank_scan" $blank_strict_flag --edge-scan "$edge_scan" )
 [ -n "$pacing_scan" ] && report_args+=( --pacing-scan "$pacing_scan" $pacing_strict_flag )
+[ -n "$rrweb_scan" ] && report_args+=( --rrweb-scan "$rrweb_scan" $rrweb_strict_flag )
+[ -n "$scroll_scan" ] && report_args+=( --scroll-scan "$scroll_scan" $scroll_strict_flag )
 "$here/report.sh" "${report_args[@]}"
 rc=$?
 echo

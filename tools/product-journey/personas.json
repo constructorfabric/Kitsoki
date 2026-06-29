@@ -1,0 +1,39 @@
+{
+  "personas": [
+    {
+      "id": "core-maintainer",
+      "label": "Core maintainer",
+      "description": "Maintains a mature repository and is skeptical of bot-generated churn.",
+      "surface_preference": "terminal-first",
+      "risk_focus": ["reviewability", "house-style", "minimal diffs"]
+    },
+    {
+      "id": "dependency-debugger",
+      "label": "Dependency debugger",
+      "description": "Uses Kitsoki to fix a bug in a dependency blocking their own project.",
+      "surface_preference": "web-first",
+      "risk_focus": ["time-to-repro", "test confidence", "handoff artifacts"]
+    },
+    {
+      "id": "docs-minded-contributor",
+      "label": "Docs-minded contributor",
+      "description": "Values clear onboarding and follows documented paths before improvising.",
+      "surface_preference": "docs-first",
+      "risk_focus": ["stale docs", "missing prerequisites", "broken demos"]
+    },
+    {
+      "id": "ide-first-engineer",
+      "label": "IDE-first engineer",
+      "description": "Expects editor and visual surfaces to explain state without terminal archaeology.",
+      "surface_preference": "vscode-first",
+      "risk_focus": ["visual state", "operator questions", "navigation clarity"]
+    },
+    {
+      "id": "hobbyist-contributor",
+      "label": "Hobbyist contributor",
+      "description": "Contributes in spare time and needs a low-context path from issue selection to a credible small change.",
+      "surface_preference": "docs-and-web-first",
+      "risk_focus": ["time budget", "setup friction", "clear next step"]
+    }
+  ]
+}

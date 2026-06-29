@@ -4,12 +4,22 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"kitsoki/internal/host"
 )
+
+// defaultHostRunTruncate caps host.run's returned stdout by default. Gates are
+// go/no-go on the exit code, so the full multi-megabyte log of a test run only
+// inflates the payload; the tail (where failures print) is kept and the full
+// output is spilled to a sidecar. A caller passes truncate_output<=0 to opt out.
+const defaultHostRunTruncate = 4096
+
+// hostRunArtifactsDir is where host.run spills full output when it truncates.
+const hostRunArtifactsDir = ".artifacts/mcp-host-run"
 
 // host_tools.go — the standalone gate-runner.
 //
@@ -42,8 +52,8 @@ func (srv *Server) registerHostTools() {
 		return
 	}
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
-		Name: "host.run",
-		Description: "Run a command against a worktree directory and return its exit code + combined output, OUTSIDE any live session — the standalone gate-runner. Use it to independently re-confirm a committed tip is GREEN (e.g. cmd:\"go test ./...\" or a story's gate_command) rather than trusting an agent's self-report. {dir (required, the working directory — a worktree path), cmd (required, a shell command unless args is given), args? ([]any → exec cmd directly, no shell), timeout? (seconds as number, or a Go duration string like \"5m\")} → {ok, exit_code, stdout}. A non-zero exit is data (ok:false), not an error. Same semantics as a story's host.run effect.",
+		Name:        "host.run",
+		Description: "Run a command against a worktree directory and return its exit code + combined output, OUTSIDE any live session — the standalone gate-runner. Use it to independently re-confirm a committed tip is GREEN (e.g. cmd:\"go test ./...\" or a story's gate_command) rather than trusting an agent's self-report. {dir (required, the working directory — a worktree path), cmd (required, a shell command unless args is given), args? ([]any → exec cmd directly, no shell), timeout? (seconds as number, or a Go duration string like \"5m\"), truncate_output? (cap stdout bytes; default 4096, tail kept + full output spilled to a sidecar; <=0 for full)} → {ok, exit_code, stdout, truncated?, output_path?}. Stdout is tail-truncated by default since gates are go/no-go on exit_code. A non-zero exit is data (ok:false), not an error. Same semantics as a story's host.run effect.",
 		// HostRunArgs.Timeout is a polymorphic `any` (number-of-seconds OR a Go
 		// duration string), which the jsonschema reflector emits as the bare
 		// boolean schema `true`. Claude Code's tools/list validator rejects a
@@ -86,6 +96,10 @@ type HostRunArgs struct {
 	// Timeout caps the child's wall-clock time. A bare number is seconds; a
 	// string is a Go duration ("90s", "5m"). Off by default (uncapped).
 	Timeout any `json:"timeout,omitempty"`
+	// TruncateOutput caps the returned stdout to this many bytes (the tail is
+	// kept, where failures print, and a marker is appended). Zero defaults to
+	// defaultHostRunTruncate; a negative value returns the full output.
+	TruncateOutput int `json:"truncate_output,omitempty"`
 }
 
 // HostRunOK is the host.run success result: the command ran (whatever its exit
@@ -93,7 +107,11 @@ type HostRunArgs struct {
 type HostRunOK struct {
 	OK       bool   `json:"ok"`        // true iff exit_code == 0
 	ExitCode int    `json:"exit_code"` // the command's exit code (-1 on timeout)
-	Stdout   string `json:"stdout"`    // combined stdout+stderr
+	Stdout   string `json:"stdout"`    // combined stdout+stderr (tail-truncated by default)
+	// Truncated is set when Stdout was capped. OutputPath then points at a sidecar
+	// file holding the full combined output.
+	Truncated  bool   `json:"truncated,omitempty"`
+	OutputPath string `json:"output_path,omitempty"`
 }
 
 // handleHostRun executes a command in a worktree and returns its exit code +
@@ -143,9 +161,46 @@ func (srv *Server) handleHostRun(
 
 	exitCode, _ := res.Data["exit_code"].(int)
 	stdout, _ := res.Data["stdout"].(string)
-	return nil, HostRunOK{
+
+	limit := args.TruncateOutput
+	if limit == 0 {
+		limit = defaultHostRunTruncate
+	}
+	out := HostRunOK{
 		OK:       exitCode == 0,
 		ExitCode: exitCode,
 		Stdout:   stdout,
-	}, nil
+	}
+	if limit > 0 && len(stdout) > limit {
+		out.Truncated = true
+		// Keep the tail — that's where a failing build/test prints. Spill the full
+		// output to a sidecar so nothing is lost.
+		if path, werr := writeHostRunOutput(stdout); werr == nil {
+			out.OutputPath = path
+		}
+		marker := fmt.Sprintf("… output truncated (%d of %d bytes shown; tail kept", limit, len(stdout))
+		if out.OutputPath != "" {
+			marker += "; full: " + out.OutputPath
+		}
+		marker += ") …\n"
+		out.Stdout = marker + stdout[len(stdout)-limit:]
+	}
+	return nil, out, nil
+}
+
+// writeHostRunOutput spills a command's full combined output to a sidecar file
+// under hostRunArtifactsDir so truncating the returned stdout never loses it.
+func writeHostRunOutput(stdout string) (string, error) {
+	if err := os.MkdirAll(hostRunArtifactsDir, 0o755); err != nil {
+		return "", err
+	}
+	f, err := os.CreateTemp(hostRunArtifactsDir, "host-run-*.log")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	if _, err := f.WriteString(stdout); err != nil {
+		return "", err
+	}
+	return filepath.Clean(f.Name()), nil
 }

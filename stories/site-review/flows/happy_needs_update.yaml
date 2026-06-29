@@ -1,0 +1,34 @@
+# happy_needs_update — the agent says the catalog/site is stale. Walks
+# idle → reviewing (auto-fires `done` after the three host calls) →
+# reviewed, where the operator explicitly chooses whether to run the
+# write-capable site_writer.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+
+host_cassette: cassettes/needs_update.cassette.yaml
+
+turns:
+  # start → reviewing → reviewed. The audit writes a verdict artifact
+  # but does not mutate the catalog/site until the operator asks.
+  - intent: { name: start, slots: {} }
+    expect_state: reviewed
+    expect_world:
+      commit_sha:       "deadbeefcafefeed"
+      artifact_path:    "/tmp/.artifacts/site-review-recent-deadbeefcafefeed.json"
+      verdict_decision: "needs_update"
+
+  # The operator explicitly applies the fixes.
+  - intent: { name: fix_gaps, slots: {} }
+    expect_state: fixed
+    expect_world:
+      fix_summary:      "Authored features/github-agent.yaml as a promoted catalog entry with a stubbed demo spec; the demo recording still needs authoring."
+
+  # quit cleanly exits.
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__done
+
+expect_terminal: true
+expect_no_errors: true

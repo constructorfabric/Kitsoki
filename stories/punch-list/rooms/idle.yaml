@@ -1,0 +1,39 @@
+states:
+  idle:
+    description: "Choose a punch-list manifest."
+    relevant_world: [manifest_path]
+    view:
+      - heading: "Punch-list"
+      - prose: "Load a punch-list/v1 YAML manifest, enforce the run policy, drive each item, verify independently, and produce a report."
+      - kv:
+          pairs:
+            Manifest: '{{ world.manifest_path|default:"(not set)" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "start manifest_path=..."
+              hint: "load and lint the YAML manifest"
+              intent: start
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      start:
+        - when: "slots.manifest_path != ''"
+          target: load
+          effects:
+            - set:
+                manifest_path: "{{ slots.manifest_path }}"
+                load_error: ""
+                last_error: ""
+        - target: load
+          effects:
+            - set:
+                load_error: ""
+                last_error: ""
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

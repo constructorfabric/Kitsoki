@@ -40,7 +40,7 @@ export const locales: Record<LocaleCode, LocaleInfo> = {
     description:
       "A conversational workflow engine: deterministic YAML state machines with the LLM confined to narrow, traceable decision points.",
     text: {
-      nav: { features: "Features", guide: "Guide" },
+      nav: { features: "Features", guide: "Docs" },
       labels: {
         demoPosterAlt: "demo poster",
         stepByStep: "Step by step",

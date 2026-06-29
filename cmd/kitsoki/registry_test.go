@@ -55,6 +55,28 @@ states:
     view: "You are in the hall."
 `
 
+const terminalQuitStory = `app:
+  id: quit-story
+  version: 0.1.0
+  title: "Quit Story"
+world: {}
+intents:
+  quit:
+    title: "Quit"
+    description: "End the session."
+    examples: ["quit"]
+root: active
+states:
+  active:
+    view: "Running."
+    on:
+      quit:
+        - target: ended
+  ended:
+    view: "Done."
+    terminal: true
+`
+
 // writeStory writes body to <tempDir>/<name>/app.yaml and returns the stories
 // dir (the temp root) and the absolute app.yaml path. Tests that mutate the
 // story (Reload) own this private copy.
@@ -114,6 +136,36 @@ func TestRegistry_NewSessionRoundTrip(t *testing.T) {
 	assert.Equal(t, appPath, stories[0].Path)
 	assert.Equal(t, "Mini Story", stories[0].Title)
 	assert.Equal(t, []string{sid}, stories[0].ActiveSessions, "the live session must show on its story")
+}
+
+// TestRegistry_TerminalSessionNotListedAsActive reproduces bug 23: after a
+// user quits a session by driving the story into a terminal state, the web home
+// catalogue must stop reporting that session under the story's active_sessions.
+func TestRegistry_TerminalSessionNotListedAsActive(t *testing.T) {
+	storiesDir, appPath := writeStory(t, "quit", []byte(terminalQuitStory))
+	reg := NewRegistry(webconfig.WebConfig{}, []string{storiesDir}, deterministicBase(t))
+	t.Cleanup(reg.Close)
+
+	_, err := reg.Rescan()
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	sid, err := reg.NewSession(ctx, appPath)
+	require.NoError(t, err)
+
+	entry, ok := reg.Get(sid)
+	require.True(t, ok)
+	out, err := entry.Driver.SubmitDirect(ctx, "quit", nil)
+	require.NoError(t, err)
+	require.Equal(t, orchestrator.ModeCompleted, out.Mode, "quit must reach the terminal state")
+
+	snap, err := entry.Source.Snapshot()
+	require.NoError(t, err)
+	require.True(t, snap.Session.Terminal, "session snapshot should be terminal after quit")
+
+	stories := reg.ListStories()
+	require.Len(t, stories, 1)
+	assert.Empty(t, stories[0].ActiveSessions, "terminal sessions must not be reported as active")
 }
 
 // TestRegistry_NewSessionHonorsFlowSeed proves GAP 1: a `kitsoki web --flow`

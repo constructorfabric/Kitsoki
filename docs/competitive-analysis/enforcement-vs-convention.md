@@ -311,10 +311,12 @@ first:
 2. **kitsoki solves only the easy half of live editing.** It handles the
    **author-iteration loop** (you edit your own story while testing it;
    reload re-validates, re-runs `on_enter`, continues) — and even that
-   leaks: `/reload` re-fires `on_enter`, which re-runs `on_enter` LLM calls
-   (the idempotency wart; the `once:` / `on_first_enter` flag is *proposed,
-   not built* — [`../proposals/idempotent-on-enter.md`](../proposals/idempotent-on-enter.md),
-   [`../proposals/auto-advance-states-proposal.md`](../proposals/auto-advance-states-proposal.md)).
+   used to leak: `/reload` re-fires `on_enter`, which could re-run `on_enter`
+   LLM calls. That narrow idempotency wart is now covered by `once: true`
+   (with `/reload --force` for authoring); see
+   [`state-machine.md`](../stories/state-machine.md#on_enter-must-be-idempotent).
+   The broader `on_first_enter` / auto-advance idea is still proposed in
+   [`../proposals/auto-advance-states-proposal.md`](../proposals/auto-advance-states-proposal.md).
    The *hard* half — state migration across structural change in a
    long-lived production session (world schema changed, current room renamed
    three weeks in) — kitsoki has **not** touched. Temporal's whole

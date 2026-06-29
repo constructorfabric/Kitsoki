@@ -165,7 +165,7 @@
     "typecheck": "tsc --noEmit",
     "build": "node esbuild.mjs",
     "package": "pnpm dlx @vscode/vsce@^3 package --no-dependencies",
-    "test": "node --test --import tsx tests/relay.unit.test.ts tests/bridge-relay.integration.test.ts tests/ide-server.unit.test.ts",
+    "test": "node --test --import tsx tests/relay.unit.test.ts tests/bridge-relay.integration.test.ts tests/ide-server.unit.test.ts tests/spa-visual.unit.test.ts",
     "test:bridge": "node --test --import tsx tests/ide-bridge.e2e.test.ts",
     "playwright": "playwright test",
     "e2e": "KITSOKI_VSCODE_PACE=0 playwright test vscode-tour.e2e"

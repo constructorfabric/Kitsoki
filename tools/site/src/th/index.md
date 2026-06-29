@@ -5,6 +5,9 @@ hero:
   name: kitsoki
   text: เวิร์กโฟลว์ LLM แบบ deterministic
   tagline: เอนจินเวิร์กโฟลว์แบบสนทนา เวิร์กโฟลว์ของคุณเป็น YAML state machine ที่ตรวจสอบได้ และ LLM ทำงานเฉพาะจุดตัดสินใจที่แคบ ระบุชื่อได้ และตามรอยได้
+  image:
+    src: /branding/mesa-sun.svg
+    alt: kitsoki mesa sun
   actions:
     - theme: brand
       text: เริ่มต้น

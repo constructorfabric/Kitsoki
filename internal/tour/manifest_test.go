@@ -145,8 +145,8 @@ steps:
 // parses its tour + demo binding. This is the catalog-coupling guard: a rename
 // of a feature field that breaks the Go loader fails here.
 //
-// (The gears-prd-design catalog this guard originally exercised moved out to the
-// gears repo with slice 3 of the kitsoki-as-dependency epic; the self-targeting
+// (The example-prd-design catalog this guard originally exercised moved out to the
+// the external target repo with slice 3 of the kitsoki-as-dependency epic; the self-targeting
 // dev-story catalog is the in-repo equivalent.)
 func TestLoadFeatureManifest_DevStoryCatalog(t *testing.T) {
 	root := repoRootForTest(t)

@@ -1,0 +1,9 @@
+inputs:
+  spec_path: { type: string, required: true }
+  summary:   { type: string, required: false }
+  decks_dir: { type: string, required: false }
+
+outputs:
+  source_deck: { type: object }
+  deck:        { type: object }
+  workspace:   { type: string }

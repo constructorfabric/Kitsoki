@@ -186,6 +186,62 @@ func TestHandleTurnOutcomeAutoFocusSnapshotsDraft(t *testing.T) {
 			"so /input can restore it later")
 }
 
+func TestHandleTurnOutcomeClosesStaleChoiceWhenNextViewHasNoChoice(t *testing.T) {
+	t.Parallel()
+
+	orch, sid := setupCloak(t)
+	m := buildModel(t, orch, sid)
+
+	choiceView := &app.View{
+		Elements: []app.ViewElement{
+			{Kind: "heading", Source: "Pick one"},
+			{
+				Kind:         "choice",
+				ChoiceMode:   "single",
+				ChoicePrompt: "Ready?",
+				ChoiceItems: []app.ChoiceItem{
+					{Label: "Stale action", Intent: "go"},
+				},
+			},
+		},
+	}
+	first := &orchestrator.TurnOutcome{
+		Mode:      orchestrator.ModeTransitioned,
+		View:      "Pick one",
+		TypedView: choiceView,
+		NewState:  app.StatePath("foyer"),
+	}
+	next, _ := tuipkg.TriggerTurnOutcomeMsg(m, first, "begin", nil)
+	rm, ok := tuipkg.ExtractRootModel(next)
+	require.True(t, ok)
+	require.True(t, tuipkg.ChoiceWidgetIsActive(rm))
+
+	noChoiceView := &app.View{
+		Elements: []app.ViewElement{
+			{Kind: "heading", Source: "No picker here"},
+			{Kind: "prose", Source: "Destination body"},
+		},
+	}
+	second := &orchestrator.TurnOutcome{
+		Mode:      orchestrator.ModeTransitioned,
+		View:      "No picker here\n\nDestination body",
+		TypedView: noChoiceView,
+		NewState:  app.StatePath("foyer"),
+	}
+	next, _ = tuipkg.TriggerTurnOutcomeMsg(rm, second, "continue", nil)
+	rm, ok = tuipkg.ExtractRootModel(next)
+	require.True(t, ok)
+
+	require.Equal(t, tuipkg.ModeOnPath, tuipkg.GetMode(rm),
+		"a destination view without a choice must restore normal input mode")
+	require.False(t, tuipkg.ChoiceWidgetIsActive(rm),
+		"previous room's choice widget must not remain active")
+	frame := tuipkg.ComposeFrame(&rm, 100, 30)
+	require.NotContains(t, frame.Text, "Stale action",
+		"old choice rows must not render over the destination frame")
+	require.Contains(t, frame.Text, "Destination body")
+}
+
 // ─── View() suppresses textarea during ModeChoosing ──────────────────────────
 
 // TestViewHidesPromptDuringChoosing locks in the View() suppression:

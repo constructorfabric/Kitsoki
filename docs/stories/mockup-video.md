@@ -14,7 +14,7 @@ flagged moment.
 It is the produce → review → refine cousin of [`ui-fix`](ui-fix.md) and the
 refine-arc cousin of `bugfix`, for video instead of code. It is slice 3 of the
 **Mockup Video Studio** epic; it consumes the slice-1 chapter sidecar and the
-shipped `visual-outputs` producers, and softly depends on the slice-2 web
+shipped media producers, and softly depends on the slice-2 web
 `/review` panel (without it, inline `refine feedback="…"` still drives the
 loop).
 
@@ -45,21 +45,17 @@ refine step dispatches on `source_ref.kind` (epic shared decision 1).
 
 ## Room graph
 
-```
-intake ──(converse: distil brief)──▶ brief-gate ──ok──▶ authoring
-   ▲                                    │clarify          │ accept
-   └────────────────────────────────────┘                ▼
-                                              ┌──── rendering ◀── rerender ──┐
-                                              │  deck → slidey ; tour → run  │
-                                              └──────────────────────────────┘
-                                                          │ (auto-advance once handle bound)
-                                                          ▼
-                                                       review
-                          media(video) + drained feedback.jsonl + checkpoint
-                          accept→done · refine→refining · rerender→rendering · quit→@exit:abandoned
-                                                          │ refine
-                                                          ▼
-                                                      refining ──▶ rendering
+```mermaid
+flowchart LR
+    intake -->|"converse: distil brief"| gate["brief-gate"]
+    gate -->|"clarify"| intake
+    gate -->|"ok"| authoring
+    authoring -->|"accept"| rendering
+    rendering -->|"deck -> slidey<br/>tour -> run"| review
+    review -->|"accept"| done
+    review -->|"refine"| refining --> rendering
+    review -->|"rerender"| rendering
+    review -->|"quit"| abandoned["@exit:abandoned"]
 ```
 
 ## Two media paths, one chapter shape

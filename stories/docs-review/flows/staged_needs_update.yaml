@@ -1,9 +1,7 @@
 # staged_needs_update — same needs_update verdict as happy_needs_update,
-# but run in STAGED execution mode (execution-modes proposal). Instead of
-# collapsing idle → reviewing → reviewed → fixing → fixed in one turn, the
-# engine STOPS at `reviewed` because it is a multi-way decision gate
-# (review_again is an operator-only forward intent). The operator then
-# explicitly picks fix_docs to apply the fixes.
+# but run in STAGED execution mode (execution-modes proposal). The story
+# always stops at `reviewed`; the operator explicitly picks fix_docs to
+# apply the fixes.
 #
 # This is the end-to-end counterpart to the one-shot happy_needs_update
 # flow and the orchestrator-level TestExecutionMode_* unit tests.

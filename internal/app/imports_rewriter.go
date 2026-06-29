@@ -599,10 +599,19 @@ func (rw *childRewriter) rewriteViewElement(el ViewElement) ViewElement {
 		}
 	}
 	if el.Kind == "media" {
-		out.MediaHandle = el.MediaHandle
+		// MediaHandle carries a `world.X` / `{{ world.X }}` reference to the
+		// bound artifact handle (e.g. dev-story's prd_published mockup), so it
+		// MUST be prefixed on import exactly like Source/MediaCaption/MediaPath —
+		// otherwise an imported room's media handle resolves against the
+		// (non-existent) bare key instead of the scoped <alias>__<key> and the
+		// substrate renders empty. AnnotateIntent is an intent ref → prefix it
+		// the same way the choice intents are rewritten.
+		out.MediaHandle = rw.rewriteExpr(el.MediaHandle)
 		out.MediaCaption = rw.rewriteExpr(el.MediaCaption)
 		out.MediaKind = el.MediaKind
 		out.MediaPath = rw.rewriteExpr(el.MediaPath)
+		out.AnnotateIntent = rw.rewriteIntentRef(el.AnnotateIntent)
+		out.AnnotateFeedbackSlot = el.AnnotateFeedbackSlot
 	}
 	return out
 }

@@ -286,6 +286,34 @@ func identifierRootOf(node ast.Node) string {
 	return ""
 }
 
+// lenNilSafeVisitor rewrites every `len(X)` call into `len(X ?? [])` so a nil
+// argument (a world key that was never set, or member access through a nil
+// map) counts as length 0 rather than crashing the evaluation. This matches Go
+// semantics (`len(nil)` on a nil map/slice is 0) and the obvious authoring
+// intent: a guard like `len(world.foo.questions) > 0` should read "no
+// questions yet" when `foo` is absent, not abort the turn. The coalesce is a
+// no-op for any non-nil argument, so it can only turn a crash into 0 — it
+// never changes the value of an expression that already evaluated.
+//
+// The injected nodes (BinaryNode `??`, empty ArrayNode) are allowed node types,
+// so they pass the whitelist unchanged.
+type lenNilSafeVisitor struct{}
+
+func (lenNilSafeVisitor) Visit(node *ast.Node) {
+	n, ok := (*node).(*ast.BuiltinNode)
+	if !ok || n.Name != "len" || len(n.Arguments) != 1 {
+		return
+	}
+	if bn, already := n.Arguments[0].(*ast.BinaryNode); already && bn.Operator == "??" {
+		return // idempotent: don't double-wrap
+	}
+	n.Arguments[0] = &ast.BinaryNode{
+		Operator: "??",
+		Left:     n.Arguments[0],
+		Right:    &ast.ArrayNode{},
+	}
+}
+
 // compileWithOpts compiles using the shared visitor set and optional extra options.
 func compileWithOpts(source string, extra ...exprpkg.Option) (*Program, error) {
 	wl := &whitelistVisitor{}
@@ -296,6 +324,7 @@ func compileWithOpts(source string, extra ...exprpkg.Option) (*Program, error) {
 		exprpkg.AllowUndefinedVariables(),
 		exprpkg.Patch(wl),
 		exprpkg.Patch(mr),
+		exprpkg.Patch(lenNilSafeVisitor{}),
 	}
 	opts = append(opts, extra...)
 

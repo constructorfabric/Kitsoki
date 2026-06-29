@@ -1,0 +1,39 @@
+# product_tour — the deterministic no-LLM product-discovery walk.
+#
+# A newcomer browses the whole overview (overview → how_it_works → use_cases →
+# get_started) and lands with a recorded discovery checkpoint. This is the walk
+# the product-journey `product-discovery` scenario captures as proof.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: overview
+initial_world: {}
+
+host_handlers: {}
+
+turns:
+  - intent: { name: next, slots: {} }
+    expect_state: how_it_works
+    expect_world:
+      section: "how_it_works"
+
+  - intent: { name: next, slots: {} }
+    expect_state: use_cases
+    expect_world:
+      section: "use_cases"
+
+  - intent: { name: next, slots: {} }
+    expect_state: get_started
+    expect_world:
+      section: "get_started"
+      checkpoint_rating: 5
+      status: "discovered"
+    expect_view_matches: "Next action"
+
+  # `restart` returns to the top — the tour is not a dead end.
+  - intent: { name: restart, slots: {} }
+    expect_state: overview
+    expect_world:
+      section: "overview"
+
+expect_no_errors: true

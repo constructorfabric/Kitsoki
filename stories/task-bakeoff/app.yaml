@@ -1,0 +1,138 @@
+# task-bakeoff — orchestrate a matrix task comparison (the
+# `matrix-task-comparison` skill / `tools/bugfix-bakeoff/` reference harness) as a
+# drivable kitsoki workflow, and produce a baked static-HTML slidey report.
+#
+# Workflow:
+#   idle → configure → running → scoring → reporting → slideshow → done
+#
+#   idle        deterministic: park; `start` boots the bake-off with whatever
+#               manifest is loaded in world (defaults to tools/bugfix-bakeoff).
+#   configure   deterministic: declare the MATRIX — the tasks (cases), the
+#               candidates (harness/model axis), and the contenders (structure
+#               axis). The cell list = task × candidate × contender. We do NOT
+#               author the manifest here; the manifest is owned by the harness
+#               (tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml). configure echoes the loaded
+#               matrix and computes the cell roster.
+#   running     ORCHESTRATION STUB. The cost-bearing run_cell.sh step is run
+#               MANUALLY, never in CI/auto (AGENTS.md no-LLM rule + the skill's
+#               "run cells" section). This room TRACKS the cell roster as a
+#               checklist and, where a host run-driver is wired, would call
+#               host.run → tools/bugfix-bakeoff/{prepare,run_cell}.sh per cell.
+#               In flow/no-LLM mode the cell results are supplied pre-computed
+#               (the committed results/cells/*.json the harness already wrote).
+#   scoring     deterministic: aggregate the per-cell results into a summary via
+#               host.run → tools/bugfix-bakeoff/aggregate.py (free, no LLM).
+#   reporting   deterministic: assemble the comparison summary + build the slidey
+#               deck spec from the rollup (host.run → a deck-builder step; the
+#               baked deck.json is the no-LLM stand-in).
+#   slideshow   deterministic: host.slidey.render the deck spec → a self-contained
+#               static-HTML slidey deck + .semantic.json sidecar, emitted to
+#               host.artifacts_dir for a stable media handle — EXACTLY like
+#               slidey-edit's `rendering` room. This is the deliverable report.
+#   done        gallery: the rendered report deck + the headline rollup.
+#
+# Deterministic + NO-LLM: flows/*.yaml stub every host call by invoke id. The
+# slideshow room references a BAKED pre-rendered deck under baked/ so the media
+# resolves without invoking slidey live (the tour-needs-baked-world lesson).
+#
+# Honesty note (stories/AGENTS.md): `running` is a thin orchestration stub — the
+# real cost-bearing cell execution lives in the harness scripts and is run by
+# hand. This story orchestrates the FREE deterministic pieces (configure /
+# aggregate / report / render) end-to-end and tracks the cell roster; it does
+# NOT fake cell results — in no-LLM mode the results come from the harness's
+# already-committed cells/*.json. See README.md "remaining work".
+
+app:
+  id: task-bakeoff
+  version: 0.1.0
+  title: "Matrix task bake-off — compare, score, deck the report"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  # host.run drives the deterministic harness scripts (aggregate / deck-build) and
+  # — where wired — the cost-bearing prepare/run_cell per cell (manual only).
+  - host.run
+  # host.slidey.render + host.artifacts_dir produce the baked static-HTML report,
+  # exactly like stories/slidey-edit/rooms/rendering.yaml.
+  - host.slidey.render
+  - host.artifacts_dir
+
+world:
+  # ── Harness wiring ───────────────────────────────────────────────────────────
+  # The bake-off is a thin orchestrator over tools/bugfix-bakeoff. harness_dir is
+  # the reference implementation; manifest_path is its matrix manifest. We never
+  # reimplement scoring/pricing — we call the scripts.
+  harness_dir:   { type: string, default: "tools/bugfix-bakeoff" }
+  manifest_path: { type: string, default: "tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml" }
+  # generated_at is REQUIRED by aggregate.py / the report builder (the build bans
+  # implicit wall-clock timestamps). An operator/flow supplies a fixed value.
+  generated_at:  { type: string, default: "1970-01-01T00:00:00Z" }
+
+  # ── The matrix (three axes) ──────────────────────────────────────────────────
+  # Echoed from the manifest in `configure`. Each is a provider-neutral list; the
+  # cell roster is their cartesian product. In flow mode these are seeded from
+  # initial_world (mirroring bakeoff.yaml) so configure is deterministic.
+  tasks:       { type: list, default: [] }   # the task/case axis (e.g. [bug9, bug12, bug14])
+  candidates:  { type: list, default: [] }   # the harness/model axis (e.g. [opus-4.8, sonnet-4.6])
+  contenders:  { type: list, default: [] }   # the structure axis (e.g. [kitsoki, single])
+
+  # cells — the computed roster of (task × candidate × contender). Each item is a
+  # tracked checklist entry {key, task, candidate, contender, status, result_path}.
+  # status ∈ {pending, ran, scored}. Populated in configure; tracked in running.
+  cells:       { type: object, default: { items: [] } }
+  cells_total: { type: int,    default: 0 }
+  cells_ran:   { type: int,    default: 0 }
+
+  # ── Scoring / aggregation outputs ────────────────────────────────────────────
+  # summary mirrors results/summary.json's shape (rollup by_treatment / by_candidate
+  # / by_cell_key). Bound from the aggregate.py run in `scoring`.
+  summary:      { type: object, default: {} }
+  summary_path: { type: string, default: "" }
+
+  # ── Report / deck ────────────────────────────────────────────────────────────
+  # deck is the slidey deck source (schemas/deck.json — reused from slidey-edit):
+  # {spec_path, summary}. Built in `reporting` from the rollup; rendered in
+  # `slideshow`. report_markdown is the human comparison summary (audit).
+  deck:           { type: object, default: { spec_path: "stories/task-bakeoff/baked/deck.json", summary: "Matrix bake-off report deck." } }
+  report_markdown: { type: string, default: "" }
+
+  # ── Render outputs (mirrors slidey-edit) ─────────────────────────────────────
+  deck_handle:     { type: string, default: "" }   # rendered HTML deck artifact handle
+  semantic_handle: { type: string, default: "" }   # .semantic.json sidecar handle
+  deck_path:       { type: string, default: "" }
+  semantic_path:   { type: string, default: "" }
+
+  # ── Misc ─────────────────────────────────────────────────────────────────────
+  abandon_reason: { type: string, default: "" }
+  last_error:     { type: string, default: "" }
+
+intents:
+  start:
+    description: "Boot the bake-off from idle: echo the loaded matrix and advance to configure."
+    examples: ["start", "begin", "run the bake-off", "kick off"]
+    priority: 90
+  accept:
+    description: "Accept the current room's output and advance to the next phase."
+    examples: ["accept", "continue", "proceed", "next", "lgtm", "ok"]
+    priority: 85
+  quit:
+    description: "Abandon the bake-off."
+    examples: ["quit", "abort", "bail"]
+    priority: 50
+  look:
+    description: "Re-render the current view."
+    examples: ["look", "refresh", "?"]
+    priority: 10
+
+exits:
+  done:
+    description: "The bake-off produced a rendered slidey report deck."
+    requires: [deck_handle]
+  abandoned:
+    description: "Operator bailed before a report was produced."
+
+root: idle
+
+include:
+  - rooms/*.yaml

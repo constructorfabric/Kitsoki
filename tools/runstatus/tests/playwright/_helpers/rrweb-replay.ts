@@ -89,6 +89,28 @@ export const RRWEB_STYLE = path.join(
   "style.css",
 );
 
+const REPLAY_CURSOR_STYLE = `
+  #replay-host .replayer-wrapper {
+    overflow: visible;
+  }
+  #replay-host .replayer-mouse {
+    z-index: 2147483647;
+    pointer-events: none;
+    width: 24px;
+    height: 24px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='32' viewBox='0 0 28 32'%3E%3Cpath d='M3 3l18 18-8 1.5 4.5 8-4.5 2.5-4.5-8-5.5 6z' fill='%23fff' stroke='%23000' stroke-width='2' stroke-linejoin='round'/%3E%3C/svg%3E");
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.75));
+  }
+  #replay-host .replayer-mouse::after {
+    background: rgba(37, 99, 235, 0.35);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+  }
+  #replay-host .replayer-mouse-tail {
+    z-index: 2147483646;
+    pointer-events: none;
+  }
+`;
+
 /** One rrweb event. Opaque to us — we only ferry the array to the Replayer. */
 export type RrwebEvent = Record<string, unknown>;
 
@@ -347,9 +369,6 @@ export async function renderReplayWithHolds(opts: RenderHoldsOpts): Promise<Rend
   const framesDir = path.join(opts.outDir, "frames");
 
   try {
-    await page.addScriptTag({ path: RRWEB_BUNDLE });
-    await page.addStyleTag({ path: RRWEB_STYLE });
-
     // Same host as renderReplayToMp4 (viewport-match invariant: transform:none
     // is only safe because render viewport/DSF == capture viewport/DSF). A 1px
     // #repaint-nudge marker in the corner is toggled during holds to keep the
@@ -366,6 +385,12 @@ export async function renderReplayWithHolds(opts: RenderHoldsOpts): Promise<Rend
        <body><div id="replay-host"></div><div id="repaint-nudge"></div></body></html>`,
       { waitUntil: "load" },
     );
+    // setContent replaces the document head, so inject the rrweb runtime/styles
+    // after creating the replay host. The player CSS is load-bearing for cursor
+    // size/background and iframe layout.
+    await page.addScriptTag({ path: RRWEB_BUNDLE });
+    await page.addStyleTag({ path: RRWEB_STYLE });
+    await page.addStyleTag({ content: REPLAY_CURSOR_STYLE });
 
     totalTimeMs = await page.evaluate(
       ({ evts, globalName }) => {
@@ -500,11 +525,6 @@ export async function renderReplayToMp4(opts: RenderOpts): Promise<RenderResult>
   const framesDir = path.join(opts.outDir, "frames");
 
   try {
-    // Inject the LOCAL bundle + player CSS. style.css is what makes the iframe
-    // size + paint correctly; skipping it is the classic "blank replay" trap.
-    await page.addScriptTag({ path: RRWEB_BUNDLE });
-    await page.addStyleTag({ path: RRWEB_STYLE });
-
     // Full-viewport dark host. The Replayer mounts a .replayer-wrapper > iframe
     // inside it; we pin top-left so the recorded frame is the reconstructed UI
     // at 1:1, not a centered/scaled thumbnail.
@@ -519,6 +539,12 @@ export async function renderReplayToMp4(opts: RenderOpts): Promise<RenderResult>
        <body><div id="replay-host"></div></body></html>`,
       { waitUntil: "load" },
     );
+    // Inject the LOCAL bundle + player CSS after setContent. style.css is what
+    // makes the iframe and replay cursor paint correctly; injecting it before
+    // setContent silently discards it.
+    await page.addScriptTag({ path: RRWEB_BUNDLE });
+    await page.addStyleTag({ path: RRWEB_STYLE });
+    await page.addStyleTag({ content: REPLAY_CURSOR_STYLE });
 
     // Construct the Replayer with the EVENTS ARRAY (not a JSON string) and the
     // exact options the eval mandates, then play from 0.

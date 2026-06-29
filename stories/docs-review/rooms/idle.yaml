@@ -5,7 +5,7 @@ states:
   idle:
     description: "Docs review parked. Hit start to audit the docs against HEAD."
     view:
-      - prose: "Single-shot docs audit. The opus agent reads the repo's docs against recent commits and decides whether they're up to date."
+      - prose: "Single-shot docs audit. The reviewer reads the repo's docs against recent commits and decides whether they're up to date."
       - kv:
           pairs:
             "Working dir":  '{{ world.cwd|default:"(probing…)" }}'

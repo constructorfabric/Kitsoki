@@ -14,6 +14,9 @@
          walk from the home screen into a live session without losing its place. -->
     <TourButton />
     <TourOverlay />
+    <!-- Global dynamic-workflow surface: one launcher item, one modal, same
+         shared service as the CLI and MCP surfaces. -->
+    <WorkflowModal />
     <!-- Global inbox surface: badge launcher + panel + transient toast. Mounted
          once at the shell so the inbox follows the operator across every route. -->
     <InboxBadge />
@@ -24,6 +27,9 @@
     <OperatorQuestionModal />
     <!-- Global bug-report review surface: capture → review → file. -->
     <BugReportModal />
+    <!-- Global fullscreen artifact viewer: full-screens a produced markdown
+         artifact (PRD, design, summary) so it can be opened and scrolled. -->
+    <ArtifactModal />
   </template>
 </template>
 
@@ -35,11 +41,13 @@ import MetaButton from "./components/meta/MetaButton.vue";
 import MetaOverlay from "./components/meta/MetaOverlay.vue";
 import TourButton from "./components/tour/TourButton.vue";
 import TourOverlay from "./components/tour/TourOverlay.vue";
+import WorkflowModal from "./components/workflow/WorkflowModal.vue";
 import InboxBadge from "./components/InboxBadge.vue";
 import InboxPanel from "./components/InboxPanel.vue";
 import InboxToast from "./components/InboxToast.vue";
 import OperatorQuestionModal from "./components/OperatorQuestionModal.vue";
 import BugReportModal from "./components/BugReportModal.vue";
+import ArtifactModal from "./components/ArtifactModal.vue";
 import PointPage from "./views/PointPage.vue";
 import { useTourStore } from "./stores/tour.js";
 import { useInboxStore } from "./stores/inbox.js";

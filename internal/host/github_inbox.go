@@ -104,7 +104,7 @@ func listGitHubReviewRequests(ctx context.Context, repo, reviewer string, limit 
 	}
 	args = append(args,
 		"--state", "open",
-		"--review-requested", reviewer,
+		"--search", "review-requested:"+reviewer,
 		"--limit", fmt.Sprintf("%d", limit),
 		"--json", "number,title,author,url",
 	)

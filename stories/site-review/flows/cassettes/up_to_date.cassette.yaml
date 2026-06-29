@@ -1,0 +1,60 @@
+# Cassette for happy_up_to_date.yaml — same three-call shape, but the
+# agent returns decision=up_to_date with no gaps.
+
+kind: host_cassette
+app_id: site-review
+generated_at: 2026-06-28T00:00:00Z
+match_on: [handler, call]
+
+episodes:
+  - id: preflight_run
+    match:
+      handler: host.run
+      call: site-preflight
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout: |
+          {"sha":"facefeeddeadbeef","recent_log":"aaa1111 chore: bump deps","recent_changes":" go.sum | 4 ++++"}
+        stdout_json:
+          sha: "facefeeddeadbeef"
+          commit_count: "1"
+          review_mode: "recent"
+          recent_log: "aaa1111 chore: bump deps"
+          recent_changes: " go.sum | 4 ++++"
+          working_tree_diff: ""
+          feature_catalog: "agent-actions\noperator-ask\ntrace-features"
+          site_pages: "tools/site/src/index.md\ntools/site/src/features/index.md"
+    replay: any
+
+  - id: agent_decide
+    match:
+      handler: host.agent.decide
+      call: site-reviewer
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        submitted:
+          decision: "up_to_date"
+          summary:  "Only dependency bumps in the recent diff (aaa1111); no user-visible capability shipped, so the catalog + site need no change."
+          confidence: 0.94
+          commits:
+            - sha: "aaa1111"
+              subject: "chore: bump deps"
+              capability: "go.sum-only update; no surface or behavior change"
+          gaps: []
+          recommended_actions: []
+    replay: any
+
+  - id: artifacts_dir_write
+    match:
+      handler: host.artifacts_dir
+      call: site-verdict-artifact
+    response:
+      data:
+        ok: true
+        path: "/tmp/.artifacts/site-review-recent-facefeeddeadbeef.json"
+        message_id: "site-review-recent-facefeeddeadbeef#0"
+    replay: any

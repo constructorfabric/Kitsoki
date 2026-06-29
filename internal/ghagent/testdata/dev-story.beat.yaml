@@ -1,0 +1,29 @@
+# dev-story.beat.yaml — the per-job beat RunStorySession points RunFlows at for
+# a feature-labelled @kitsoki mention. It proves the GitHub feature route starts
+# the real dev-story implementation pipeline without running a live agent or
+# touching GitHub.
+test_kind: flow
+app: ../../../stories/dev-story/app.yaml
+initial_state: landing
+initial_world:
+  ticket_id: "99"
+  ticket_title: "Draft the GitHub-agent POC direction"
+  ticket_type: "feature"
+  ticket_url: "https://github.com/o/r/issues/99"
+  thread: "github:o/r/issue/99"
+  workdir: ".worktrees/gh-feature-poc"
+  workspace_id: "ws-gh-feature-poc"
+  base_branch: "main"
+  feature_branch: "task/gh-feature-poc"
+  judge_mode: "human"
+  gh_job_id: "job-stub"
+  gh_origin_ref: "github:o/r/issue/99"
+  repo: "o/r"
+
+turns:
+  - intent: { name: drive, slots: {} }
+    expect_state: impl.idle
+    expect_world:
+      impl__ticket_title: "Draft the GitHub-agent POC direction"
+
+expect_no_errors: true

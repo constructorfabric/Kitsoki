@@ -1,0 +1,159 @@
+# repair — DETERMINISTIC, FREE. Re-run the deterministic pre-flight + arming
+# + handoff prep path to clear transient blockers before rerunning completion. This
+# is only for non-cost, auto-repairable gaps (for example stale prepared/hand-off
+# metadata). It does not run any LLM cost-bearing cells.
+states:
+  repair:
+    description: "Attempt deterministic repair steps before rechecking completion."
+    relevant_world: [project, repo_dir, bugs, candidates, preflight_log, verify_log, handoffs_ready, handoff_audit, handoff_audit_markdown, completion_repair_log, completion_requires_drive, completion_repairable, harness_dir, report_dir]
+    view:
+      - heading: "Bake-off · repair"
+      - kv:
+          pairs:
+            Project: "{{ world.project }}"
+            Candidates: "{{ world.candidates|join:', ' }}"
+            Preflight OK: '{% if world.preflight_log != "" %}yes{% else %}no{% endif %}'
+            Oracles armed: '{% if world.verify_log != "" %}yes{% else %}no{% endif %}'
+            Handoffs ready: '{% if world.handoffs_ready %}yes{% else %}no{% endif %}'
+            Repair log: "{{ world.completion_repair_log|default:\"(pending)\" }}"
+      - prose: "Re-running preflight/verify and re-auditing prepared MCP handoffs is free and deterministic. If this pass does not change completion blockers, the flow routes back to scoring and then to running."
+    on_enter:
+      - when: "world.repo_dir == ''"
+        invoke: host.run
+        id: repair_preflight
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "preflight"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: false
+        bind:
+          preflight_log: stdout
+        on_error: scoring
+      - when: "world.repo_dir == ''"
+        invoke: host.run
+        id: repair_verify
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "verify"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: false
+        bind:
+          verify_log: stdout
+        on_error: scoring
+      - when: "world.repo_dir == ''"
+        invoke: host.run
+        id: repair_prepare_handoffs
+        once: true
+        with:
+          cmd: "./prepare_handoffs.sh"
+          args:
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+            - "--results"
+            - "{{ world.results_dir }}"
+            - "--markdown"
+            - "{{ world.handoff_audit_markdown }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: false
+        bind:
+          handoff_audit: stdout_json
+          handoffs_ready: stdout_json.ok
+        on_error: scoring
+      - when: "world.repo_dir != ''"
+        invoke: host.run
+        id: repair_preflight_local
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "preflight"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--repo-dir"
+            - "{{ world.repo_dir }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: false
+        bind:
+          preflight_log: stdout
+        on_error: scoring
+      - when: "world.repo_dir != ''"
+        invoke: host.run
+        id: repair_verify_local
+        once: true
+        with:
+          cmd: python3
+          args:
+            - "bench.py"
+            - "verify"
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--repo-dir"
+            - "{{ world.repo_dir }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: false
+        bind:
+          verify_log: stdout
+        on_error: scoring
+      - when: "world.repo_dir != ''"
+        invoke: host.run
+        id: repair_prepare_handoffs_local
+        once: true
+        with:
+          cmd: "./prepare_handoffs.sh"
+          args:
+            - "--project"
+            - "{{ world.project }}"
+            - "--bug"
+            - "{{ join(world.bugs, ',') }}"
+            - "--candidate"
+            - "{{ join(world.candidates, ',') }}"
+            - "--repo-dir"
+            - "{{ world.repo_dir }}"
+            - "--results"
+            - "{{ world.results_dir }}"
+            - "--markdown"
+            - "{{ world.handoff_audit_markdown }}"
+          cwd: "{{ world.harness_dir }}"
+          fail_on_error: false
+        bind:
+          handoff_audit: stdout_json
+          handoffs_ready: stdout_json.ok
+        on_error: scoring
+      - set:
+          completion_repair_log: "repair pass executed (preflight, verify, handoff prep)"
+          completion_repairable: false
+      - emit_intent: repaired
+    on:
+      repaired:
+        - target: scoring
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

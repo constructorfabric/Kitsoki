@@ -61,8 +61,10 @@
           :transcript="store.chatEntries"
           @rewind="onRewind"
         />
-        <!-- Streaming thinking bubble: visible while a turn is in flight. -->
-        <div v-if="pending" class="surface__thinking" data-testid="thinking-bubble">
+        <!-- Streaming thinking bubble: visible while a turn is in flight —
+             whether it was sent from the input bar (local `pending`) or
+             dispatched from the view (e.g. a media annotation → store.busy). -->
+        <div v-if="pending || store.busy" class="surface__thinking" data-testid="thinking-bubble">
           <div class="surface__thinking-avatar">A</div>
           <div class="surface__thinking-bubble">
             <div class="surface__thinking-role">Agent</div>

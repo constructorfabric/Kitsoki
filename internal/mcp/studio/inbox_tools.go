@@ -21,6 +21,10 @@ type GitHubInboxSyncArgs struct {
 	ReviewRequested string `json:"review_requested,omitempty"`
 	Limit           int    `json:"limit,omitempty"`
 	TeleportState   string `json:"teleport_state,omitempty"`
+	// IncludeSkipped also returns items that were already present (inserted:false).
+	// Off by default: skipped rows duplicate prior syncs and only inflate the
+	// payload; the fetched/inserted/skipped counts still report the full picture.
+	IncludeSkipped bool `json:"include_skipped,omitempty"`
 }
 
 // GitHubInboxSyncResult is the structured result from inbox.sync_github.
@@ -36,21 +40,24 @@ type GitHubInboxSyncResult struct {
 
 // GitHubInboxSyncItem is one imported or skipped GitHub item.
 type GitHubInboxSyncItem struct {
-	NotificationID string         `json:"notification_id"`
-	Kind           string         `json:"kind"`
-	Number         string         `json:"number"`
-	Title          string         `json:"title"`
-	URL            string         `json:"url,omitempty"`
-	Inserted       bool           `json:"inserted"`
-	OriginRef      string         `json:"origin_ref"`
-	TeleportState  string         `json:"teleport_state"`
-	TeleportSlots  map[string]any `json:"teleport_slots,omitempty"`
+	NotificationID string `json:"notification_id"`
+	Kind           string `json:"kind,omitempty"`
+	Number         string `json:"number,omitempty"`
+	Title          string `json:"title"`
+	URL            string `json:"url,omitempty"`
+	// Inserted is omitempty: by default only inserted items are returned, so the
+	// field is implicitly true; it appears (false) only when include_skipped adds
+	// already-present rows.
+	Inserted      bool           `json:"inserted,omitempty"`
+	OriginRef     string         `json:"origin_ref,omitempty"`
+	TeleportState string         `json:"teleport_state,omitempty"`
+	TeleportSlots map[string]any `json:"teleport_slots,omitempty"`
 }
 
 func (srv *Server) registerInboxTools() {
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "inbox.sync_github",
-		Description: "Sync assigned GitHub issues and requested PR reviews into an open driving handle's inbox. Uses gh CLI, inserts each GitHub object once, and returns fetched/inserted/skipped counts.",
+		Description: "Sync assigned GitHub issues and requested PR reviews into an open driving handle's inbox. Uses gh CLI, inserts each GitHub object once, and returns fetched/inserted/skipped counts. Returns only newly-inserted items by default (counts still report the full picture); pass include_skipped to also echo already-present rows.",
 	}, srv.handleGitHubInboxSync)
 }
 
@@ -125,6 +132,10 @@ func (srv *Server) githubInboxSync(ctx context.Context, args GitHubInboxSyncArgs
 			out.Inserted++
 		} else {
 			out.Skipped++
+		}
+		if !inserted && !args.IncludeSkipped {
+			// Skipped rows duplicate prior syncs; the counts already capture them.
+			continue
 		}
 		out.Items = append(out.Items, GitHubInboxSyncItem{
 			NotificationID: n.ID,

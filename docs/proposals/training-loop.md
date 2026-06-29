@@ -48,7 +48,7 @@ never an autonomous one.*
 
 - **Code seams:** new `internal/training/` orchestrator (loop driver + acceptance
   gate, DI over slice-1 reward and slice-2 attribution); a new `train` story under
-  `stories/kitsoki-dev/` (rooms + an `agent.task` candidate-edit author); reuses
+  `.kitsoki/stories/kitsoki-dev/` (rooms + an `agent.task` candidate-edit author); reuses
   the existing flow-fixture runner ([`testing.md`](../tracing/testing.md)) as the
   validation harness.
 - **Vocabulary:** no new effects/host calls in the engine proper — the loop is
@@ -194,7 +194,7 @@ behavior change.
 - [ ] 1.6 Hot-apply replay: per-turn weight-version pinning + `weights.reload` decision marker; replayer loads the version in effect per turn. Gate rejects a hot-apply touching the current room or a populated world key (defer live-state migration)
 
 ## 2. Story
-- [ ] 2.1 `train` process story under stories/kitsoki-dev/: pick-scenario → show-attribution → draft-edit (agent.task) → validate → accept/refine
+- [ ] 2.1 `train` process story under .kitsoki/stories/kitsoki-dev/: pick-scenario → show-attribution → draft-edit (agent.task) → validate → accept/refine
 - [ ] 2.2 The candidate-edit task: scoped by weight_kind to one progressive-determinism conversion
 
 ## 3. Verification

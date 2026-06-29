@@ -108,6 +108,12 @@ pipeline removes that failure mode structurally, not by hoping the model behaves
    panel) unless `--blank-strict`. Together they stop a silently-broken image
    from passing QA — the LLM catches context, the scan catches what a model
    might gloss over.
+   For rrweb-backed Slidey decks, do not stop at producer metadata (`rrweb`
+   markers, chapter events, style signatures). Add or run a replay-pixel gate that
+   opens the actual captured rrweb logs, seeks to the relevant moments, and checks
+   what the deck viewer will render. This is how color/source-surface bugs and
+   label-only readable zooms get caught; helper-only screenshots are a unit test,
+   not evidence sign-off for the deck.
 6. **Annotation-consistency check.** A demo must narrate with ONE mechanism
    throughout — *either* tour popovers (a titled card with a "Step N of M"
    counter and Back/Next/Skip, anchored to a spotlight ring) *or* banner/caption
@@ -140,6 +146,50 @@ pipeline removes that failure mode structurally, not by hoping the model behaves
    which promotes them to a blocking gate — the same advisory/strict shape as
    `blank-scan`. This is the deterministic catch for "the pacing is terrible" that
    no amount of frame-by-frame vision review can see.
+7b. **Embedded-rrweb pacing check (deterministic, no LLM).** A tour can be embedded
+   as a native **rrweb** clip (a slidey `video` scene replaying a `.rrweb.json`
+   log) rather than an MP4 — and then BOTH prior pacing defenses are blind: there
+   is no chapter sidecar for `pacing-scan.sh` to read, and the frame sampler sees
+   each end-state frame looking correct. The defect this misses: a captured
+   conversation plays fine for most of its length, then the **last few messages /
+   the final artifact all flush in under a second** — "the last 3-5 messages are
+   super-rushed." That is invisible to interpretation; it lives only in the rrweb
+   **event timeline**. `rrweb-pacing-scan.mjs` (pure structural parse, no LLM, no
+   ffmpeg) reads the clip directly: a *content reveal* is an incremental DOM
+   mutation whose `adds` introduce a substantial block (clears `--sig-min-adds` /
+   `--sig-min-text`); reveals within `--coalesce` ms are one logical render; each
+   reveal must hold for `--min-dwell` ms (default 1200) before the next, and a
+   burst inside the final `--tail-window` ms is reported as the rushed *tail*. Pass
+   `--rrweb <clip.rrweb.json | dir>` to `qa.sh`; flags are **advisory** (a
+   "rrweb-pacing warnings" table) unless `--rrweb-strict` promotes them to a
+   blocking gate — same advisory/strict shape as `blank-scan`/`pacing-scan`. The
+   fix when it fires: give the capture an end-of-conversation dwell, or re-pace the
+   clip deterministically with `slidey rrweb-repace <in> <out>` (which mirrors this
+   scan's significance definition, so a re-paced clip clears the gate).
+7c. **Embedded-rrweb scroll-followability check (deterministic, no LLM).** The
+   rrweb-pacing scan (7b) measures the TIME between content reveals and is
+   structurally blind to SCROLL. A captured conversation can space its reveals a
+   comfortable 2.8s apart and still be unwatchable: `ChatTranscript.vue` snaps the
+   scroller to the BOTTOM on every new message, so a reply taller than the fold (or
+   the user input that triggered it) renders already scrolled off-camera. The
+   pacing scan green-lights it (the reveals ARE well-spaced); the viewer can read
+   none of it — the #1 recurring "you can't see the user inputs / it's jumpy"
+   defect. rrweb logs don't serialize node geometry, so the structural signal is
+   the **scroll-event stream**: `rrweb-scroll-scan.mjs` (pure parse, no LLM)
+   classifies each scroller node's runs into SNAP jumps (an instant `scrollTop =
+   scrollHeight` reposition — a large downward entry jump that is not a dense
+   easing burst) vs EASED reveal runs (a `revealTurn`-style requestAnimationFrame
+   burst, ≥6 events over ≥600ms, the followable choreography). A clip is flagged
+   **unfollowable** when a scroller is snap-dominated (`snap_runs ≥ --min-snaps`
+   AND `snap_runs > eased_runs`). Calibration (this repo): the live dogfood
+   captures show 3–13 snaps / 0–1 eased; the revealTurn-driven `gears-bugfix`
+   capture shows 14 eased / 1 snap. Pass `--rrweb <clip|dir>` to `qa.sh` (same
+   input as 7b); flags are **advisory** (a "Scroll-followability warnings" table)
+   unless `--scroll-strict` promotes them to a blocking gate — same advisory/strict
+   shape as the other scans. The fix when it fires: re-render the clip through the
+   conversation reveal track (`revealTurn` at capture, or `slidey rrweb-reveal`),
+   never a time-only re-pace — adding time to a snapped capture just holds the
+   *bottom* of each message longer; the top still never shows.
 8. **Stuck-placeholder check.** A panel can sit on a *transient* placeholder
    forever — a "Loading…" spinner whose loading flag is never lowered — and every
    single frame of it still looks "fine," so blank-scan (mostly themed bg) and a
@@ -185,6 +235,14 @@ pipeline removes that failure mode structurally, not by hoping the model behaves
    feature file, not a default. (Runtime side: a self-driving kitsoki run surfaces
    its `say:` breadcrumbs as conversation bubbles so this feedback exists to film —
    see the demo-video-loop story.)
+9. **Interaction-affordance completeness.** A multi-step UI flow is not proven by
+   its final state alone. If the feature or scenarios require an intermediate
+   user-visible affordance — a context menu, dropdown, popover, command palette,
+   confirmation sheet, chooser, inline editor, placement marker, or similar
+   surface — at least one cited frame must show that affordance before the final
+   result. A direct jump from the trigger to the final modal/page/state is
+   incomplete evidence and must be `unsupported` or `fail` depending on whether
+   the frames merely omit or actively contradict the required intermediate UI.
 
 ## Prerequisites
 
@@ -292,17 +350,56 @@ A ready-to-edit feature/scenarios pair for a VS Code embed lives at
 `templates/vscode-feature.md` + `templates/vscode-scenarios.yaml` (the worked
 example behind the `vscode-tour` gate above).
 
+## rrweb-embedded slidey composite deck evidence
+
+A new reusable deliverable shape: a **slidey composite deck** — section/title
+slides + chapters authored in slidey, with one or more **embedded act windows**
+that play a captured rrweb clip of a kitsoki surface (seek-rasterized into the
+deck during render). QA the rendered **deck MP4** exactly like any other demo
+video — the gate is unchanged — but mind these composite-specific points:
+
+- **Sample at ≥2fps** (`qa.sh ... --scene` denser, or hand `extract-frames.sh
+  --interval 0.5`). The embedded act scenes are rrweb **seek-rasterized**, so the
+  deck holds a frame and steps it; a ≤1fps sample can land between rasterized
+  steps and miss the legible window of an act window (same rule the demo skill
+  pins for replay videos). Title/section slides are static and forgiving, but the
+  embedded windows need the higher floor.
+- **Each embedded act window must be non-blank.** The #1 composite failure is an
+  act window that renders as an empty/uniform pane (the rrweb clip failed to load
+  or seek, leaving the embed slot blank) while the surrounding deck chrome looks
+  perfect. Treat a blank where an act surface is expected as `fail` — author a
+  scenario step per act window asserting its real content is visible, and lean on
+  `blank-scan.sh` (advisory; promote with `--blank-strict` for a deck where the
+  act windows are the whole point). A deck-frame background or letterbox bars
+  around the embed are legit (background buckets are ignored by the scan); a flat
+  block **inside** the act slot is the defect.
+- **Section/title slides + chapters must be present.** Write scenarios asserting
+  the deck's title slide, each section/divider slide, and that chapter
+  boundaries exist (the deck MP4 should carry a `<video>.chapters.json` sidecar —
+  `pacing-scan.sh` auto-runs over it; a composite missing its chapters or with a
+  flashed-by act window will surface as a pacing flag).
+- **Capture mechanism is invisible to QA.** An **adapter-captured** clip (an app
+  driving slidey's tour engine through its own ADAPTER — e.g.
+  `tools/runstatus/src/tour/kitsoki-tour-adapter.cjs` +
+  `act2-webviewer.tour.json`, whose output is
+  `act2-webviewer.rrweb.json`) is QA'd **identically** to a harness-captured one.
+  Do not special-case it, do not assert on adapter/capture internals — QA judges
+  the rendered pixels of the deck MP4 against the scenarios, full stop. The same
+  blank/pacing/legibility gates apply regardless of how the clip was produced.
+
 ## The tools (`scripts/`)
 
 | Script | Does | LLM? |
 |---|---|---|
-| `qa.sh <video> --feature F --scenarios S [--frames D] [--out D] [--model M] [--max-frames N] [--scene TH] [--blank-min-coverage F] [--chapters F] [--pacing-min N] [--no-adversary] [--strict] [--blank-strict] [--pacing-strict]` | One-shot wrapper; exit code is the gate. `--scene` / `--blank-min-coverage` pass through to extract-frames / blank-scan (tune for full-editor videos — see above) | via review |
+| `qa.sh <video> --feature F --scenarios S [--frames D] [--out D] [--model M] [--max-frames N] [--scene TH] [--blank-min-coverage F] [--chapters F] [--pacing-min N] [--rrweb CLIP\|DIR] [--rrweb-min-dwell N] [--no-adversary] [--strict] [--blank-strict] [--pacing-strict] [--rrweb-strict] [--scroll-strict]` | One-shot wrapper; exit code is the gate. `--scene` / `--blank-min-coverage` pass through to extract-frames / blank-scan (tune for full-editor videos — see above); `--rrweb` runs BOTH the embedded-tour pacing scan AND the scroll-followability scan on the clip(s) | via review |
 | `extract-frames.sh <video> <out-dir> [--scene TH] [--interval S] [--dedup MS] [--max N] [--width W]` | Deterministic scene-change + periodic-floor frames + `frames.json` | no |
 | `blank-scan.sh <frames-dir\|image> [--out scan.json] [--grid WxH] [--quant N] [--min-coverage F] [--empty-coverage F] [--fail-on-find]` | Deterministic monochrome-region detector → `blank-scan.json` (flags any large flat block of one colour, or a near-empty frame) | no |
 | `pacing-scan.sh <chapters.json> [--out scan.json] [--min-ms N] [--min-total-ms N] [--fail-on-find]` | Deterministic chapter-duration detector → `pacing-scan.json` (flags narrated moments that flash by below the readable-window floor) | no |
+| `rrweb-pacing-scan.mjs <clip.rrweb.json\|dir> [--out scan.json] [--min-dwell N] [--coalesce N] [--sig-min-adds N] [--sig-min-text N] [--tail-window N] [--fail-on-find]` | Deterministic embedded-rrweb timeline scan → `rrweb-pacing-scan.json` (flags content reveals crammed below the readable dwell — the rushed-last-messages defect a frame sampler / chapter scan can't see) | no |
+| `rrweb-scroll-scan.mjs <clip.rrweb.json\|dir> [--out scan.json] [--scroll-id N] [--snap-span N] [--snap-min-dy N] [--ease-min-events N] [--ease-min-ms N] [--min-snaps N] [--fail-on-find]` | Deterministic embedded-rrweb scroll-stream scan → `rrweb-scroll-scan.json` (flags a snap-to-bottom conversation capture where the transcript jumps past each message instead of easing through it — the "can't see the user inputs / it's jumpy" defect the time-only pacing scan and the frame sampler are blind to) | no |
 | `placeholder-scan.sh <frames-dir\|image\|video> [--out scan.json] [--pattern RE] [--min-fraction F] [--min-run N] [--fail-on-find]` | Deterministic OCR stuck-placeholder detector → flags a placeholder (default `\bloading\b`) that persists across a long unbroken run / large fraction of frames — a "Loading…" that never resolves. Skips (advisory) if `tesseract` is absent | no (OCR) |
 | `qa-review.sh --frames D --feature F --scenarios S --out V [--model M] [--no-adversary]` | Read-only vision agent → evidence-cited `verdict.json` + adversarial re-check | **yes** |
-| `report.sh <verdict.json> [--out report.md] [--strict] [--blank-scan scan.json] [--blank-strict] [--pacing-scan scan.json] [--pacing-strict]` | `verdict.json` (+ optional scans) → `qa-report.md`; recomputes the gate exit code | no |
+| `report.sh <verdict.json> [--out report.md] [--strict] [--blank-scan scan.json] [--blank-strict] [--pacing-scan scan.json] [--pacing-strict] [--rrweb-scan scan.json] [--rrweb-strict] [--scroll-scan scan.json] [--scroll-strict]` | `verdict.json` (+ optional scans) → `qa-report.md`; recomputes the gate exit code | no |
 
 Defaults: review model `claude-opus-4-8` (override `--model claude-sonnet-4-6`
 for faster/cheaper); `--max-frames 48`; `--strict` makes every scenario blocking.

@@ -1,0 +1,125 @@
+# bugfix_synthesizes_gate_and_ships — autonomous from a BARE bug report.
+#
+# The reliability fix: a ticket that carries NO `repro_command` (so gate_command
+# is empty) must still reach @exit:shipped autonomously. The reproducing room
+# COMMITS the LLM reproducer's authored RED test as a discrete pre-fix commit and
+# DERIVES gate_command from the artifact's repro_command, so the testing room's
+# HEAD~1 RED gate + the ship-it tail's GREEN-on-merged re-verify work exactly as
+# they do for a ticket-supplied repro_command. Zero LLM.
+#
+# Contrast with bugfix_ships_direct.yaml, which SEEDS gate_command (the ticket
+# carried a repro_command). Here gate_command is ABSENT and must be synthesised.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-NOREPRO-1"
+  ticket_title:     "Converse fails under web replay (ticket carried no repro_command)"
+  thread:           "TKT-NOREPRO-1"
+  workspace_id:     "norepro-fix"
+  workdir:          ".worktrees/norepro-fix"
+  worktree_path:    ".worktrees/norepro-fix"
+  feature_branch:   "norepro-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true        # park idle; the flow drives `start`
+  bugfix_exit:      "direct-ship"
+  # NO gate_command — the ticket had no repro_command. The pipeline SYNTHESISES it.
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/norepro-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  # Shared maker-agent cassette. The reproducer half carries the NEW
+  # repro_command + repro_test_paths (+ bug_verified) the synthesis reads; the
+  # implementer/test_author halves carry files_changed/status (ignored by the
+  # reproducing room). One artifact, every room reads its own fields.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Reproducer authored; fix applied"
+        summary_markdown: "Authored a RED reproducer (the ticket carried no repro_command), committed as the discrete pre-fix test; the fix makes it GREEN. Verified RED-before / GREEN-after."
+        status:           "passed"
+        outcome:          "pass"
+        bug_verified:     true
+        applied:          true
+        repro_command:    "go test ./internal/host/ -run TestRepro -count=1"
+        repro_test_paths: ["internal/host/repro_test.go"]
+        files_changed:    ["internal/host/fix.go"]
+  host.agent.ask:
+    data:
+      ok: true
+      submitted: { summary_title: "Fix proposal", summary_markdown: "Create-on-miss.", fix_description: "x", root_cause: "y", affected_files: ["internal/host/fix.go"] }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      # the synthesis commit (implementing/on_enter): polls + git add -A + commits
+      # the reproducer's RED test as the discrete pre-fix tip.
+      commit_repro_test:
+        data: { ok: true, exit_code: 0, stdout_json: { sha: "t00ba12", committed: true } }
+      # testing's PRE-FIX regression gate, run on HEAD~1 (= the committed test,
+      # no fix) — RED: the bug reproduces.
+      regression_gate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            red:     true
+            checked: true
+            log:     "--- FAIL: TestRepro (0.00s)  chat not found"
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "f00ba12"
+            last_op_ok:     true
+            last_error:     ""
+      # the tail's verify: the SYNTHESISED gate re-run on the MERGED commit — GREEN.
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok  internal/host  0.5s" } }
+      cleanup_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:    cleaned
+            last_op_ok: true
+            last_error: ""
+
+turns:
+  - intent: { name: start,  slots: {} }
+    expect_state: reproducing
+  - intent: { name: accept, slots: {} }
+    expect_state: proposing
+  - intent: { name: accept, slots: {} }
+    expect_state: implementing
+    # implementing/on_enter (after workspace.sync, before the fix) committed the
+    # reproducer's RED test as the discrete pre-fix tip and latched the synthesised
+    # gate from the artifact's repro_command.
+    expect_world:
+      gate_command:    "go test ./internal/host/ -run TestRepro -count=1"
+      landing_gate:    "go test ./internal/host/ -run TestRepro -count=1"
+      repro_committed: true
+  - intent: { name: accept, slots: {} }
+    expect_state: testing
+    expect_world:
+      regression_red_pre_fix:  true
+      regression_gate_checked: true
+  # accept from testing: gate was RED pre-fix → enter the ship-it tail → @exit:shipped.
+  - intent: { name: accept, slots: {} }
+    expect_state: __exit__shipped
+    expect_world:
+      status:                  shipped
+      regression_red_pre_fix:  true
+      shipped_sha:             "f00ba12"
+      tail__verify_ok:         true
+
+expect_terminal: true
+expect_no_errors: true

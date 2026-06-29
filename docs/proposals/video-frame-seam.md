@@ -41,8 +41,8 @@ backed by one `internal/video` extractor that the slice-2 web RPC reuses.**
   its known step dwell windows.
 - `host.video.frame {video: handle|path, t_ms} → {ok, path, mime:
   image/png, kind: image}` — deterministic single-frame grab; returns the PNG
-  path for the substrate (`visual-outputs` slice 1) to register, exactly like
-  the producers hand off their output.
+  path for `host.artifacts_dir` media emit to register, exactly like the
+  producers hand off their output.
 
 ## Impact
 
@@ -54,9 +54,9 @@ backed by one `internal/video` extractor that the slice-2 web RPC reuses.**
     reusing `RunHandler`'s subprocess machinery
     (`internal/host/handlers.go:88-135`) the same way
     `host.slidey.render`/`host.contact_sheet` do
-    (`internal/host/visual_producers.go`, `visual-producers.md`).
-  - `host.slidey.render` (`internal/host/visual_producers.go`,
-    `visual-producers.md` task 1.1) — also emit the sidecar.
+    (`internal/host/visual_producers.go`).
+  - `host.slidey.render` (`internal/host/visual_producers.go`) — also emit the
+    sidecar.
   - Tour recorder (`.agents/skills/kitsoki-ui-demo/` Playwright spec) — also
     emit the sidecar.
 - **Vocabulary:** one host call (table below); one sidecar format.
@@ -71,13 +71,13 @@ backed by one `internal/video` extractor that the slice-2 web RPC reuses.**
 
 | Kind | Name | Shape | Notes |
 |---|---|---|---|
-| host call | `host.video.frame` | `{video: handle \| path, t_ms} → {ok, path, mime: image/png, kind: image}` | Shells `ffmpeg -ss <t> -i <video> -frames:v 1 <out.png>`; deterministic, no LLM. Path hands to slice-1 substrate to register. |
+| host call | `host.video.frame` | `{video: handle \| path, t_ms} → {ok, path, mime: image/png, kind: image}` | Shells `ffmpeg -ss <t> -i <video> -frames:v 1 <out.png>`; deterministic, no LLM. Path hands to `host.artifacts_dir` media emit to register. |
 | sidecar | `chapters.json` | `[{index, id, label, start_ms, end_ms, source_ref:{kind, spec_path, scene_id\|step_id, line?}}]` | Producer-agnostic; one shape for slidey + tour (epic decision 1). |
 
 ## The model
 
 ```
-host.slidey.render {spec, format: mp4}                      (visual-outputs #2)
+host.slidey.render {spec, format: mp4}
    ├▶ render out.mp4                                          deterministic
    └▶ write out.mp4.chapters.json from the scene list         deterministic, NEW
           source_ref = {kind: slidey, spec_path, scene_id, line}
@@ -90,7 +90,7 @@ tour recorder (host.run kitsoki-ui-demo Playwright)          (epic decision 4)
 review flags t_ms = 14_300
    └▶ host.video.frame {video: <handle>, t_ms}               deterministic, NEW
           └▶ ffmpeg single-frame grab ──▶ frame.png
-   └▶ host.artifacts_dir {src_path: frame.png, kind: image}  (substrate, #1)
+   └▶ host.artifacts_dir {src_path: frame.png, kind: image}
 ```
 
 The extractor and the chapter math are pure functions of (video, scene
@@ -107,7 +107,7 @@ bytes — no interpretive step (the moat's deterministic side; memory:
   fixture PNG.
 - **Tool resolution** mirrors the producers: ffmpeg via `PATH` (already
   assumed by `contact-sheet.sh` and slidey), returning a clear "ffmpeg not
-  found" `Result.Error` when absent (`visual-producers.md` Engine seams).
+  found" `Result.Error` when absent.
 - **No LLM, ever.** Frame grab and sidecar emission are subprocess/pure only.
   Tests stub the extractor to return a checked-in 1×1 PNG and feed a canned
   scene list so CI never runs ffmpeg (CLAUDE.md; memory: *no-llm-tests*,
@@ -115,7 +115,7 @@ bytes — no interpretive step (the moat's deterministic side; memory:
 - **Substrate owns the write site.** `host.video.frame` returns a path; the
   `artifact` datapoint is recorded by `host.artifacts_dir`
   (`internal/host/artifacts_dir_transport.go:238`), not by this handler —
-  same discipline as the producers (`visual-producers.md` "The model").
+  same discipline as the shipped visual producers.
 
 ## Decision recording
 
@@ -175,9 +175,9 @@ checked-in tiny mp4 to catch drift (memory: *no-llm-tests*,
 
 ## Non-goals
 
-- **Recording the artifacts** — `visual-outputs` slice 1 owns the single
-  write site for `artifact`.
-- **Producing the video** — `visual-outputs` slice 2 + the tour recorder.
+- **Recording the artifacts** — `host.artifacts_dir` media emit owns the single
+  write site for `artifact.emitted`.
+- **Producing the video** — `host.slidey.render` plus the tour recorder.
 - **Displaying frames or chapters** — slice 2 (`video-feedback-mode.md`).
 - **Re-encoding / trimming / concatenating video** — only single-frame
   extraction; no editing.

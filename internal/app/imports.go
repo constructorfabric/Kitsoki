@@ -57,10 +57,18 @@ var importAliasRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 //     ONLY by the engine on a grant / turn / session boundary; a story `set:`-ing
 //     it is rejected at load time (a story must not be able to self-grant write
 //     mode). See WriteModeScopeWorldKey and docs/proposals/agent-write-mode-opt-in.md.
+//   - session_id: string — the active session's identifier (a UUID). Seeded into
+//     world.Vars by the engine in loadJourney (and re-seeded on host dispatch)
+//     so story templates can derive a SESSION-distinct working folder
+//     (workdir/workspace_id/feature_branch) from it. Without it the folder is
+//     derived from the ticket alone, so two concurrent sessions on one ticket
+//     resolve to the SAME checkout and a destructive git op in one clobbers
+//     the other's WIP (bug9glm2). Engine-owned: a story must not `set:` it.
 var ReservedWorldKeys = map[string]struct{}{
 	"last_error":           {},
 	"host_error":           {},
 	WriteModeScopeWorldKey: {},
+	"session_id":           {},
 }
 
 // ImportResolver is an injected hook that resolves an `@kitsoki/<name>`

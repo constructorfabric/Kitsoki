@@ -50,9 +50,14 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { fmtMs, fmtTokens, fmtCost, prettyJson } from "./lib.js";
+import { isClipBug } from "../../lib/clipBug.js";
 import type { NormalizedEvent, NormalizedKind } from "../../data/transcript.js";
 
 const props = defineProps<{ row: NormalizedEvent }>();
+
+// Demo-only: ?clipBug=1 restores the since-fixed title-overflow regression so the
+// bugfix-deck capture can record a before/after. Inert in every normal session.
+const clipBug = isClipBug();
 
 // Tool/mcp rows expand collapsed by default (the list stays scannable); the
 // terminal result, reasoning, and host rows expand open so the operator sees the
@@ -121,6 +126,7 @@ const outputLabel = computed(() => {
 
 const rowClass = computed(() => ({
   "aar--error": props.row.isError === true,
+  "aar--clip-bug": clipBug,
   [`aar--${props.row.kind}`]: true,
 }));
 
@@ -222,6 +228,22 @@ const costStr = computed(() => fmtCost(props.row.cost));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* A flex item's implicit min-width is its content size, so without this a
+     long title refuses to shrink and the ellipsis never engages — the title
+     overflows the card and shoves the token/cost cluster off the row. */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Demo-only: ?clipBug=1 (see lib/clipBug.ts) restores the pre-fix state by
+   reverting ONLY the fix — the title keeps its content-size minimum
+   (min-width:auto), so as a flex child it can't shrink, the ellipsis never
+   engages, and the over-wide title shoves the token/cost cluster past the card's
+   right edge where .aar { overflow:hidden } clips it. This is exactly HEAD's
+   pre-fix failure mode — no overflow:visible dramatization. The BEFORE half of
+   the bugfix-deck before/after capture. */
+.aar--clip-bug .aar__title {
+  min-width: auto;
 }
 
 .aar__verdict {

@@ -8,6 +8,8 @@
     "summary_title":    { "type": "string", "minLength": 4, "description": "One-line title used in the checkpoint inbox entry." },
     "summary_markdown": { "type": "string", "minLength": 200, "description": "Human-readable markdown summary delivered to the transport." },
     "bug_verified":     { "type": "boolean", "description": "True only if a deterministic reproduction (test, script, or recorded sequence) was produced." },
+    "repro_command":    { "type": "string", "description": "The EXACT shell command that runs the authored RED reproduction (e.g. `go test ./internal/host/ -run TestX`). MUST exit non-zero (RED) on the current unfixed tree and pass (GREEN) after any correct fix. When the ticket carried no repro_command, the pipeline commits the test (see repro_test_paths) and uses THIS as the regression gate — so it must be a deterministic, self-contained command, not a multi-step recipe." },
+    "repro_test_paths": { "type": "array", "items": { "type": "string" }, "description": "Worktree-relative paths of the test file(s) the reproduction authored, committed as the discrete pre-fix RED reproducer. Tests only — not logs/snapshots (those go in evidence_paths)." },
     "steps":            { "type": "array", "items": { "type": "string" }, "description": "Ordered reproduction steps." },
     "expected_outcome": { "type": ["string", "null"] },
     "actual_outcome":   { "type": ["string", "null"] },

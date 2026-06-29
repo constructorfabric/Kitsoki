@@ -1,9 +1,9 @@
 # `issues/bugs/` — dogfood bug fixtures
 
 The files here are real bug reports filed during kitsoki's own dogfood
-loop, kept in-tree because the `stories/kitsoki-dev/` story reads
+loop, kept in-tree because the `.kitsoki/stories/kitsoki-dev/` story reads
 them via `host.local_files.ticket` — they're what makes
-`kitsoki run stories/kitsoki-dev/app.yaml` show a non-empty ticket
+`kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml` show a non-empty ticket
 list out of the box.
 
 **They are not a public issue tracker.** Don't file new bugs by

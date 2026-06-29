@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -125,6 +126,14 @@ func RunHandler(ctx context.Context, args map[string]any) (Result, error) {
 	if cwd, ok := args["cwd"].(string); ok && cwd != "" {
 		execCmd.Dir = cwd
 	}
+
+	// Prepend the kitsoki binary's own directory to PATH so a host.run that
+	// shells out to `kitsoki <subcommand>` (e.g. project onboarding's
+	// `kitsoki project-tools install`) resolves the SAME binary that is
+	// running this session — independent of the operator's login-shell PATH.
+	// Same treatment the agent runner already applies; a no-op when the dir is
+	// already on PATH.
+	execCmd.Env = envWithKitsokiBinOnPath(os.Environ())
 
 	out, err := execCmd.CombinedOutput()
 	exitCode := 0

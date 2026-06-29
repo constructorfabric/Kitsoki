@@ -17,7 +17,11 @@
  * the flat-image and slideshow kinds. Every path funnels into one `anchor` emit
  * carrying the artifact metadata + a discriminated `target`.
  */
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import {
+  installEmbedPickListener,
+  sendAnnotateMode,
+} from "../lib/embedView.js";
 import type { DataSource } from "../data/source.js";
 import type {
   AnnotationAnchor,
@@ -54,6 +58,11 @@ const props = defineProps<{
    * `mediaHandle` (correct when the media itself is an image).
    */
   posterHandle?: string;
+  /** Use the producer's live embedded picker instead of sidecar/poster overlay. */
+  liveEmbed?: boolean;
+  /** Producer-native view state to restore before enabling live annotation. */
+  embedScope?: string;
+  embedStep?: string;
   /** The route the capture happens on (rides on the emitted anchor). */
   route?: string;
   /** Optional recorded rrweb events for the rrweb kind (else fetched lazily). */
@@ -239,9 +248,54 @@ function onSemanticPick(target: SemanticElementTarget): void {
   emit("anchor", { ...meta(), target });
 }
 
+// ── slidey (live embed) — element picking ON the interactive deck ─────────────
+// The flagship path: rather than a static poster + sidecar overlay, the live deck
+// owns spatial feedback. We turn on annotation mode in the embedded deck and
+// receive a precise `embed:pick` ({scope, ref, bbox}) when the operator points at
+// a real element on the slide. The producer is opaque — kitsoki round-trips the
+// ref into the anchor without interpreting it.
+const embedFrame = ref<HTMLIFrameElement | null>(null);
+let _teardownPick: (() => void) | null = null;
+
+/** The live-embed substrate is used for a `slidey` deck — a multi-scene producer
+ *  that speaks the embed protocol on its own live surface. The poster/overlay and
+ *  iframe+picker branches remain for non-embed slidey-mapped artifacts. */
+const useLiveEmbed = computed<boolean>(() => props.mediaKind === "slidey" && props.liveEmbed === true);
+
+function onEmbedLoad(): void {
+  // Ask the deck to enter annotation mode once it has booted.
+  sendAnnotateMode(embedFrame.value?.contentWindow ?? null, true, {
+    ...(props.embedScope ? { scope: props.embedScope } : {}),
+    ...(props.embedStep ? { step: props.embedStep } : {}),
+  });
+}
+
 onMounted(() => {
   if (props.mediaKind === "rrweb") void loadReplay();
-  if (props.mediaKind === "slidey") void loadSemantic();
+  if (props.mediaKind === "slidey" && !useLiveEmbed.value) void loadSemantic();
+  if (useLiveEmbed.value) {
+    _teardownPick = installEmbedPickListener((pick) => {
+      // Build the discriminated semantic_element anchor the refine consumes; the
+      // ref ("<scene>/<field>") + bbox come straight from the producer.
+      emit("anchor", {
+        ...meta(),
+        target: {
+          kind: "semantic_element",
+          plugin: pick.producer ?? "embed",
+          ref: pick.ref,
+          label: pick.label ?? pick.ref,
+          ...(pick.bbox ? { bbox: pick.bbox } : {}),
+        } as SemanticElementTarget,
+      });
+    });
+  }
+});
+
+onBeforeUnmount(() => {
+  // Turn annotation mode back off in the deck and drop the listener.
+  if (useLiveEmbed.value) sendAnnotateMode(embedFrame.value?.contentWindow ?? null, false);
+  _teardownPick?.();
+  _teardownPick = null;
 });
 watch(
   () => [props.mediaHandle, props.mediaKind],
@@ -384,7 +438,24 @@ watch(
          scale). When no sidecar resolves, fall back to the iframe + live-DOM
          picker (dom_node). -->
     <div v-else-if="mediaKind === 'slidey'" class="aa-stage" data-testid="aa-slidey">
-      <template v-if="semanticMap">
+      <!-- live embed: the interactive deck owns spatial feedback. We turn on its
+           annotation mode and receive a precise embed:pick when the operator
+           points at a real element on the slide. allow-scripts lets the deck
+           boot; it posts picks to the parent via postMessage. -->
+      <template v-if="useLiveEmbed">
+        <iframe
+          ref="embedFrame"
+          class="aa-media aa-iframe"
+          data-testid="aa-slidey-embed"
+          sandbox="allow-scripts"
+          :src="imgUrl(mediaHandle)"
+          @load="onEmbedLoad"
+        />
+        <p class="aa-hint" data-testid="aa-slidey-hint">
+          Point at an element on the slide to refine it.
+        </p>
+      </template>
+      <template v-else-if="semanticMap">
         <img
           class="aa-media"
           data-testid="aa-slidey-poster"
@@ -469,5 +540,19 @@ watch(
   font-size: 0.78rem;
   padding: 1rem;
   margin: 0;
+}
+.aa-hint {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 3;
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #e2e8f0;
+  background: rgba(2, 6, 23, 0.72);
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  border-radius: 6px;
+  pointer-events: none;
 }
 </style>

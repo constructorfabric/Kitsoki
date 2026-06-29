@@ -9,9 +9,8 @@
 
 ## Why
 
-Once `visual-outputs` slice 3 lands, the web UI can *play* a produced video
-inline (`media` element → `<video controls>` via `/artifact/{id}`,
-`web-media-rendering.md`). But playing is all it can do. There is no way to
+The web UI can play a produced video inline (`media` element →
+`<video controls>` via `/artifact/{id}`). But playing is all it can do. There is no way to
 pause at 0:14, say "this transition is too fast" or "scene 3's heading is
 too small," and turn that into something the LLM acts on. Improving a video
 today means leaving the browser, finding the slidey scene or the mockup HTML
@@ -50,13 +49,13 @@ a recorded story decision in slice 3.
 - **Code:**
   - Frontend — new route + `ReviewPage.vue`, `ChapterTimeline.vue`,
     `FlagList.vue`, `FlagDetail.vue` in `tools/runstatus/src/`; reuses
-    `ViewElement.vue` (the `media` element from `web-media-rendering.md`) for
+    `ViewElement.vue` (the shipped `media` element) for
     the player and the still, the off-path chat store + `session.offpath`
     pattern (`story-editor-shell.md` left column) for the per-flag chat, and
     `MarkdownModal.vue`'s Teleport pattern for full-frame zoom.
   - Backend — `internal/runstatus/server/server.go` (`Handler()` route
     table): three read/capture RPCs (table below), beside the
-    `/artifact/{id}` route from `web-media-rendering.md`.
+    `/artifact/{id}` route.
 - **Rendering:** data-driven, no hand-rolled HTML strings; the player and
   still are `media` elements, consistent with the existing dispatch.
 - **Input:** mouse-driven (seek / drag-select / flag / dispatch) + the chat
@@ -105,7 +104,7 @@ New Vue components, all data-driven:
 | `FlagDetail.vue` | selected flag | captured still (`media` image), resolved `source_ref` + IDE deep-link, per-flag chat, dispatch buttons |
 
 - The player and the captured still are **`media` elements** rendered by the
-  existing `ViewElement.vue` (`web-media-rendering.md`); `src` comes from the
+  existing `ViewElement.vue`; `src` comes from the
   `DataSource.artifactUrl(handle)` resolver, not a world path.
 - The per-flag chat reuses the off-path chat store + `session.offpath`
   surface already used on the run surface and the editor
@@ -129,7 +128,7 @@ RPCs):
 shells ffmpeg (via the slice-1 extractor) and writes a PNG under
 `.artifacts/`. It is **gated to recorded video handles** (resolve through the
 trace, root-guard the path) exactly as `/artifact/{id}` is
-(`web-media-rendering.md` "What we lose, honestly") — no arbitrary path is
+the shipped media route — no arbitrary path is
 extractable.
 
 ## Input & commands
@@ -149,7 +148,7 @@ No slash commands; the surface is mouse-driven.
 ## Rendering tests
 
 Web surface — Vitest + Playwright, not the Go `CapturedIO` harness
-(`web-media-rendering.md` "Rendering tests"):
+the web media rendering stack:
 
 - **Vitest: `ChapterTimeline.spec.ts`** — given a fixture chapter list,
   markers render at the right positions; click emits a `seek`; drag emits a
@@ -211,4 +210,4 @@ session-scoped.
 - **A general video library / browser** — `/review` reviews one video (by
   handle); discovery is the run surface / story's job.
 - **TUI (terminal) support** — web-only; the terminal renders the `media`
-  pointer (`visual-outputs` slice 1) and is unchanged.
+  pointer and is unchanged.

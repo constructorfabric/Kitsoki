@@ -1,0 +1,141 @@
+{
+  "specPath": "tools/runstatus/src/tour/act2-webviewer.tour.json",
+  "adapter": "./kitsoki-tour-adapter.cjs",
+  "target": {
+    "launch": "go run ./cmd/kitsoki web --stories-dir stories/slidey-dev --addr 127.0.0.1:7765 --db /tmp/act2-webviewer-tour.db --harness replay --recording stories/slidey-dev/assets/pm_idea-recording.yaml --host-cassette stories/slidey-dev/assets/pm_idea-host.cassette.yaml",
+    "addr": "127.0.0.1:7765",
+    "readyPath": "/",
+    "cwd": "/Users/brad/code/Kitsoki/.worktrees/kitsoki-github-agent",
+    "timeoutMs": 120000,
+    "env": { "KITSOKI_REPO": "/Users/brad/code/Kitsoki/.worktrees/kitsoki-github-agent" }
+  },
+  "startPath": "/#/",
+  "readySelector": "[data-testid=home-view]",
+  "viewport": { "width": 1600, "height": 900 },
+  "pace": 1,
+  "specPath": "features/slidey-dev-prd-design.yaml",
+  "steps": [
+    {
+      "id": "spm-intro-home",
+      "label": "PM starts with an idea",
+      "caption": "A product manager has an idea for the slidey deck renderer: export a printable per-scene speaker-notes handout straight from the deck spec. This tour walks that idea into a published PRD on the real slidey repo — no LLM in the loop.",
+      "target": "[data-testid=home-view]",
+      "waitFor": "[data-testid=home-view]",
+      "kind": "explain",
+      "advance": "next",
+      "dwellMs": 5500,
+      "drive": []
+    },
+    {
+      "id": "spm-story-card",
+      "label": "The slidey-dev hub",
+      "caption": "This is slidey-dev: kitsoki's dev-story hub pointed at the real slidey checkout. PRDs land in the slidey tree at docs/prd/<slug>.md.",
+      "target": "[data-testid=story-card]",
+      "waitFor": "[data-testid=story-card]",
+      "kind": "explain",
+      "advance": "next",
+      "dwellMs": 5000,
+      "drive": []
+    },
+    {
+      "id": "spm-new-session",
+      "label": "Spin up a run",
+      "caption": "Click New session to start a fresh run of the hub against slidey. It opens in the chat, on the engineer's-day landing.",
+      "target": "[data-testid=new-session-btn]",
+      "waitFor": "[data-testid=new-session-btn]",
+      "kind": "action",
+      "advance": "route-match",
+      "advanceUrl": "/chat",
+      "dwellMs": 3500,
+      "drive": []
+    },
+    {
+      "id": "spm-prd-discovery",
+      "label": "Talk through the PRD",
+      "caption": "`prd` opens a discovery conversation, not a form. The PM pitches the feature in their own words — a per-scene notes handout exported from the deck spec — and the interviewer sharpens it before any questions or drafting begin.",
+      "target": "[data-testid=chat-transcript]",
+      "waitFor": "[data-testid=chat-transcript]",
+      "kind": "explain",
+      "advance": "next",
+      "dwellMs": 6000,
+      "drive": [
+        { "waitState": { "state": "core.landing" } },
+        { "clickIntent": { "intent": "core__go_prd" } },
+        { "waitState": { "state": "core.prd.idle" } },
+        { "revealTurn": {} },
+        { "composeAndSend": { "text": "I would love a way for slidey to give presenters a printable per-scene speaker-notes handout so they can rehearse a talk without rendering the whole video first" } },
+        { "waitState": { "state": "core.prd.idle" } },
+        { "revealTurn": {} }
+      ]
+    },
+    {
+      "id": "spm-prd-search",
+      "label": "Scan for prior art first",
+      "caption": "Before a single question, kitsoki scouts slidey's existing outputs and proposals for overlap. The scan comes back clean — a net-new spec-derived output alongside video, PDF, and web. `confirm` carries it into the clarification round.",
+      "target": "[data-testid=chat-transcript]",
+      "waitFor": "[data-testid=chat-transcript]",
+      "kind": "explain",
+      "advance": "next",
+      "dwellMs": 6000,
+      "drive": [
+        { "composeAndSend": { "text": "ready" } },
+        { "waitState": { "state": "core.prd.search" } },
+        { "revealTurn": {} }
+      ]
+    },
+    {
+      "id": "spm-prd-clarify",
+      "label": "Clarify the actor and the metric",
+      "caption": "A structured clarification round asks the questions that most change the PRD — who's the actor (presenters rehearsing a talk), and the success metric (decks exported to notes without rendering a full video). The PM answers in the chat.",
+      "target": "[data-testid=chat-transcript]",
+      "waitFor": "[data-testid=chat-transcript]",
+      "kind": "explain",
+      "advance": "next",
+      "dwellMs": 6500,
+      "drive": [
+        { "composeAndSend": { "text": "confirm" } },
+        { "waitState": { "state": "core.prd.clarifying" } },
+        { "revealTurn": {} },
+        { "composeAndSend": { "text": "presenters rehearsing a talk; the metric is decks-exported-to-notes-without-rendering-video" } },
+        { "waitState": { "state": "core.prd.clarifying" } },
+        { "revealTurn": {} },
+        { "composeAndSend": { "text": "submit" } },
+        { "waitState": { "state": "core.prd.brief" } },
+        { "revealTurn": {} }
+      ]
+    },
+    {
+      "id": "spm-prd-draft",
+      "label": "Review the drafted PRD",
+      "caption": "With clarification settled and the prior-art scan done, the author writes the speaker-notes-export PRD into a per-session workspace and surfaces it right here — problem, target users, goals, requirements, and the open question. Accept publishes it.",
+      "target": "[data-testid=chat-transcript]",
+      "waitFor": "[data-testid=chat-transcript]",
+      "kind": "explain",
+      "advance": "next",
+      "dwellMs": 6500,
+      "drive": [
+        { "clickIntent": { "intent": "core__prd__confirm" } },
+        { "waitState": { "state": "core.prd.references" } },
+        { "revealTurn": {} },
+        { "clickIntent": { "intent": "core__prd__confirm" } },
+        { "waitState": { "state": "core.prd.drafting" } },
+        { "revealTurn": {} }
+      ]
+    },
+    {
+      "id": "spm-prd-published",
+      "label": "Published to slidey's docs/prd/",
+      "caption": "The PRD is published to the real slidey tree at docs/prd/speaker-notes-export.md — a validated output the architect can pick up next. That's phase 1: a PM's one-line idea, talked into a grounded PRD on the slidey repo, with no LLM in the render loop.",
+      "target": "[data-testid=chat-transcript]",
+      "waitFor": "[data-testid=chat-transcript]",
+      "kind": "explain",
+      "advance": "next",
+      "dwellMs": 6500,
+      "drive": [
+        { "clickIntent": { "intent": "core__prd__accept" } },
+        { "waitState": { "state": "core.prd_published" } },
+        { "revealTurn": {} }
+      ]
+    }
+  ]
+}

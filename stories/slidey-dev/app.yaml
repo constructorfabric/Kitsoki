@@ -65,6 +65,7 @@ imports:
       judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
       publish_durable_path:       "{{ world.publish_durable_path }}"
       prd_doc_filename:           "{{ world.prd_doc_filename }}"
+      prd_mockup_path:            "{{ world.prd_mockup_path }}"
       design_template_dir:        "{{ world.design_template_dir }}"
       design_durable_path:        "{{ world.design_durable_path }}"
       design_doc_filename:        "{{ world.design_doc_filename }}"
@@ -80,6 +81,11 @@ world:
 
   publish_durable_path:       { type: string, default: "docs/prd" }
   prd_doc_filename:           { type: string, default: "" }
+  # The PRD-phase feature mockup: a self-contained HTML handout mockup of the
+  # speaker-notes-export feature, embedded inline in prd_published as the PRD's
+  # mockup (host.artifacts_dir kind: slideshow → media slideshow iframe). Other
+  # dev-story instances leave this "" and render no mockup.
+  prd_mockup_path:            { type: string, default: "stories/slidey-dev/assets/pm_idea-mockup.html" }
   design_template_dir:        { type: string, default: "docs/proposals/templates" }
   design_durable_path:        { type: string, default: "docs/proposals" }
   design_doc_filename:        { type: string, default: "" }

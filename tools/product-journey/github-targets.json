@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "selection_contract": {
+    "host": "github.com",
+    "license": "open-source",
+    "popularity": "heavily used public project",
+    "stargazer_floor": 10000,
+    "open_bug_floor": 100,
+    "refresh_note": "Before a live scored sweep, refresh open_bug_count and repository popularity metadata with the GitHub API."
+  },
+  "targets": [
+    {
+      "id": "vscode",
+      "label": "microsoft/vscode",
+      "repo": "https://github.com/microsoft/vscode",
+      "stack": "typescript",
+      "license_spdx": "MIT",
+      "bug_query": "https://github.com/microsoft/vscode/issues?q=is%3Aissue+state%3Aopen+label%3Abug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "Large editor project with active issue triage and extension-heavy contributor paths."
+    },
+    {
+      "id": "kubernetes",
+      "label": "kubernetes/kubernetes",
+      "repo": "https://github.com/kubernetes/kubernetes",
+      "stack": "go",
+      "license_spdx": "Apache-2.0",
+      "bug_query": "https://github.com/kubernetes/kubernetes/issues?q=is%3Aissue+state%3Aopen+label%3Akind%2Fbug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "Large Go monorepo with operational personas, heavy test surfaces, and issue labels."
+    },
+    {
+      "id": "nextjs",
+      "label": "vercel/next.js",
+      "repo": "https://github.com/vercel/next.js",
+      "stack": "typescript",
+      "license_spdx": "MIT",
+      "bug_query": "https://github.com/vercel/next.js/issues?q=is%3Aissue+state%3Aopen+label%3Abug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "Large web framework with a visible bug-labeled issue queue, frontend workflows, and broad contributor usage."
+    },
+    {
+      "id": "tensorflow",
+      "label": "tensorflow/tensorflow",
+      "repo": "https://github.com/tensorflow/tensorflow",
+      "stack": "python/c++",
+      "license_spdx": "Apache-2.0",
+      "bug_query": "https://github.com/tensorflow/tensorflow/issues?q=is%3Aissue+state%3Aopen+label%3Atype%3Abug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "ML framework with mixed Python/C++ workflows and heavy dependency-debugger value."
+    },
+    {
+      "id": "pytorch",
+      "label": "pytorch/pytorch",
+      "repo": "https://github.com/pytorch/pytorch",
+      "stack": "python/c++",
+      "license_spdx": "BSD-3-Clause",
+      "bug_query": "https://github.com/pytorch/pytorch/issues?q=is%3Aissue+state%3Aopen+bug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "Large ML framework with complex test selection and contributor onboarding needs."
+    },
+    {
+      "id": "rust",
+      "label": "rust-lang/rust",
+      "repo": "https://github.com/rust-lang/rust",
+      "stack": "rust",
+      "license_spdx": "Apache-2.0",
+      "bug_query": "https://github.com/rust-lang/rust/issues?q=is%3Aissue+state%3Aopen+label%3AC-bug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "Compiler project with strict review culture and rich diagnostics/regression tests."
+    },
+    {
+      "id": "cpython",
+      "label": "python/cpython",
+      "repo": "https://github.com/python/cpython",
+      "stack": "python/c",
+      "license_spdx": "Python-2.0",
+      "bug_query": "https://github.com/python/cpython/issues?q=is%3Aissue+state%3Aopen+label%3Atype-bug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "Interpreter project with mature contribution docs and high review expectations."
+    },
+    {
+      "id": "ansible",
+      "label": "ansible/ansible",
+      "repo": "https://github.com/ansible/ansible",
+      "stack": "python",
+      "license_spdx": "GPL-3.0",
+      "bug_query": "https://github.com/ansible/ansible/issues?q=is%3Aissue+state%3Aopen+label%3Abug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "Automation project with operator personas, modules, docs, and integration tests."
+    },
+    {
+      "id": "grafana",
+      "label": "grafana/grafana",
+      "repo": "https://github.com/grafana/grafana",
+      "stack": "go/typescript",
+      "license_spdx": "AGPL-3.0",
+      "bug_query": "https://github.com/grafana/grafana/issues?q=is%3Aissue+state%3Aopen+label%3Atype%2Fbug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "Full-stack app with UI evidence, backend tests, and product-journey relevance."
+    },
+    {
+      "id": "typescript",
+      "label": "microsoft/TypeScript",
+      "repo": "https://github.com/microsoft/TypeScript",
+      "stack": "typescript",
+      "license_spdx": "Apache-2.0",
+      "bug_query": "https://github.com/microsoft/TypeScript/issues?q=is%3Aissue+state%3Aopen+label%3ABug",
+      "open_bug_floor": 100,
+      "status": "candidate",
+      "notes": "Large compiler/tooling project with an active bug queue, strict design discussions, and broad dependency-debugger relevance."
+    }
+  ]
+}

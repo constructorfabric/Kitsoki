@@ -317,17 +317,27 @@ So the gate escalates. A room whose entry begins such a loop is marked
 the binding is multi-turn-capable and a match is driven **synchronously to rest**
 on a real, persisted session instead of one-shotted:
 
-```
-match ─▶ HasInterceptDriveRoom?
-          │ no  ─▶ OneShot (stateless, ≤5s, no-LLM)                 [§1.2, unchanged]
-          │ yes ─▶ DriveToRest (persisted session, real harness, ≤15m, synchronous)
-                      │   boot hub ─▶ SubmitDirect(intent) ─settle loop─▶ rest
-                      ├─ rests at a NON-flagged room ─▶ RESOLVED (command completed)
-                      ├─ rests AT the flagged room   ─▶ ESCALATION ─┐
-                      ├─ rejected (not allowed)       ─▶ fail open   │
-                      └─ budget / error / panic       ─────────────┤
-                                                                    ▼
-                                       SAFE-ABORT (abort arc, FRESH ctx) ─▶ clean tree
+```mermaid
+flowchart TD
+    match["match"]
+    has{"HasInterceptDriveRoom?"}
+    oneshot["OneShot<br/>stateless, <=5s, no-LLM"]
+    drive["DriveToRest<br/>persisted session, real harness, <=15m"]
+    settle["boot hub -> SubmitDirect(intent)<br/>settle loop -> rest"]
+    resolved["RESOLVED<br/>command completed"]
+    escalation["ESCALATION"]
+    failOpen["fail open"]
+    abort["SAFE-ABORT<br/>abort arc, fresh ctx"]
+    clean["clean tree"]
+
+    match --> has
+    has -->|"no"| oneshot
+    has -->|"yes"| drive --> settle
+    settle -->|"rests at non-flagged room"| resolved
+    settle -->|"rests at flagged room"| escalation --> abort
+    settle -->|"rejected"| failOpen --> abort
+    settle -->|"budget / error / panic"| abort
+    abort --> clean
 ```
 
 [`Orchestrator.DriveToRest`](../../internal/orchestrator/intercept_drive.go) adds

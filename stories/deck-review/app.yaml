@@ -1,0 +1,149 @@
+# deck-review — a tiny, reusable "view a slidey deck full-screen in kitsoki" story.
+#
+# Its whole job: take a slidey deck JSON spec, render it to a self-contained HTML
+# deck (host.slidey.render → host.artifacts_dir kind: slideshow), and present it
+# as a slideshow media artifact the operator can open full-screen in the web UI.
+# This is the "every validated artifact IS a slidey deck, viewed full-screen in
+# kitsoki" beat from the demo target — reused per phase (PRD, design,
+# decomposition, bug report, bug-fix report, feature demo) by passing a different
+# `deck.spec_path`.
+#
+# Mechanism mirrors stories/slidey-edit's rendering→reviewing rooms, trimmed to
+# read-only viewing (no annotate/refine). Deterministic + no-LLM: render is a
+# pure spec→html bundle; flows stub it, the live web capture renders for real.
+
+app:
+  id: deck-review
+  version: 0.1.0
+  title: "Deck review — view a slidey deck artifact full-screen in kitsoki"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.slidey.render
+  - host.artifacts_dir
+
+intents:
+  begin:
+    description: "Begin: render the deck and show it."
+    examples: ["begin", "view", "show the deck"]
+    priority: 85
+  rendered:
+    description: "Synthetic: the deck rendered and the slideshow handle is bound."
+    examples: ["rendered"]
+    priority: 90
+  done:
+    description: "Finished reviewing this artifact deck."
+    examples: ["done", "continue", "next"]
+    priority: 80
+  look:
+    description: "Refresh the current view."
+    examples: ["look", "refresh"]
+    priority: 10
+
+world:
+  # The deck to show. spec_path is a slidey deck JSON; summary is the caption.
+  deck:          { type: object, default: { spec_path: "", summary: "" } }
+  phase_label:   { type: string, default: "Artifact" }
+  ticket_url:    { type: string, default: "" }
+
+  deck_handle:   { type: string, default: "" }
+  deck_path:     { type: string, default: "" }
+  semantic_path: { type: string, default: "" }
+  last_error:    { type: string, default: "" }
+
+root: idle
+
+states:
+
+  # Entry room — exists so a standalone session/flow transitions INTO rendering
+  # (firing its on_enter render). Importers may enter at `rendering` directly.
+  idle:
+    description: "Ready to render the artifact deck."
+    relevant_world: [deck, phase_label]
+    view:
+      - heading: "{{ world.phase_label }} · artifact"
+      - prose: "Render the validated artifact as a slidey deck and review it full-screen."
+      - list:
+          items:
+            - label: "begin"
+              hint:  "render and show the deck"
+    on:
+      begin:
+        - target: rendering
+      look:
+        - target: .
+
+  rendering:
+    description: "Rendering the deck to a self-contained HTML deck (deterministic)."
+    relevant_world: [deck, deck_handle, deck_path]
+    view:
+      - heading: "{{ world.phase_label }} · rendering deck"
+      - kv:
+          pairs:
+            Deck: '{{ world.deck.spec_path|default:"(pending)" }}'
+            HTML: '{{ world.deck_handle|default:"(rendering…)" }}'
+      - prose: "Rendering the validated artifact to a slidey deck…"
+    on_enter:
+      - invoke: host.slidey.render
+        id: render_deck
+        once: true
+        with:
+          spec_path: "{{ world.deck.spec_path }}"
+          format:    html
+        bind:
+          deck_path:     path
+          semantic_path: semantic_path
+        on_error: viewing
+      - invoke: host.artifacts_dir
+        id: emit_deck
+        once: true
+        with:
+          thread:   "deck-review"
+          src_path: "{{ world.deck_path }}"
+          kind:     slideshow
+          mime:     text/html
+          label:    "{{ world.deck.summary }}"
+        bind:
+          deck_handle: handle.id
+        on_error: viewing
+      - when: "world.deck_handle != ''"
+        emit_intent: rendered
+    on:
+      rendered:
+        - target: viewing
+      look:
+        - target: .
+
+  viewing:
+    description: "The rendered deck — open it full-screen to read the whole artifact."
+    relevant_world: [deck, deck_handle, phase_label, ticket_url]
+    view:
+      - heading: "{{ world.phase_label }} · slidey deck"
+      - kv:
+          pairs:
+            Summary: '{{ world.deck.summary|default:"—" }}'
+            Issue:   '{{ world.ticket_url|default:"(not filed)" }}'
+      - media:
+          handle:  "{{ world.deck_handle }}"
+          kind:    slideshow
+          caption: "{{ world.deck.summary }}"
+        when: "world.deck_handle != ''"
+      - prose: "⚠️ The deck failed to render:\n\n    {{ world.last_error }}"
+        when: "world.deck_handle == '' && world.last_error != ''"
+      - prose: "Open the deck above full-screen to review the whole artifact, then continue."
+        when: "world.deck_handle != ''"
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "done"
+              hint:  "finished reviewing this artifact"
+    on:
+      done:
+        - target: "@exit:viewed"
+      look:
+        - target: .
+
+exits:
+  viewed:
+    description: "The operator finished reviewing the deck artifact."

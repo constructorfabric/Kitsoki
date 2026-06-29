@@ -158,7 +158,7 @@ world:
   prd_workspace:        { type: string, default: "" }   # per-PRD workspace, relative to workdir: .artifacts/prd/<slug> (empty until the gate mints it)
   prd_file:             { type: string, default: "" }   # durable published path bound on accept (prd_publish.py) — the real deliverable, out of .artifacts/
   publish_durable_path: { type: string, default: "docs/prd" }  # configurable durable home the accepted PRD is published into (relative to workdir)
-  prd_doc_filename:     { type: string, default: "" }   # external-target override: a FIXED published filename (e.g. "PRD" → <durable>/PRD.md) instead of <slug>.md; "" keeps the slug-named default. Set by an instance (gears-rust) via the dev-story prd import world_in.
+  prd_doc_filename:     { type: string, default: "" }   # external-target override: a FIXED published filename (e.g. "PRD" -> <durable>/PRD.md) instead of <slug>.md; "" keeps the slug-named default. Set by an importing instance via the dev-story prd import world_in.
 
   # ── discovery chat (idle room) ───────────────────────────────────────
   idea_chat_id:    { type: string, default: "" }   # persistent chat thread for the discovery conversation

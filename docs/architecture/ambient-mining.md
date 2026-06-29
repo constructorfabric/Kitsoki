@@ -16,46 +16,35 @@ proposal surface that renders the result or the rung-ladder targets it writes to
 
 ## The loop
 
-```
- scored recipe (priority ≥ threshold)        instance inventory (regenerated:
-   from the ambient miner                       grep host.agent.* + intents:)
-            │                                          │
-            └──────────────┬───────────────────────────┘
-                           ▼
-              mapper dedup: ALREADY-MODELED | ENRICH | GAP   ◀ deterministic
-                  (ALREADY-MODELED → drop, never surface)
-                           │  ENRICH / GAP
-                           ▼
-              author drafts a DELTA, STAGED under              ◀ interpretive
-              .artifacts/mining/<recipe_id>/  (never live)        (recorded)
-                  kind = binding | world | intent | stub-wire | gate
-                  rung = lightest that fits (see Rung ladder)
-                           │
-                           ▼  validate: author_artifact schema + dry app.Load
-                           ▼
-              mining.proposal_raised ──▶ proposal card (surface slice)
-                                          │
-            ┌─────────────────────────────┼──────────────────────────────┐
-        accept                          refine                          reject
-            │                             │                               │
-            ▼                             ▼                               ▼
-   write delta → Reload          story.edit meta mode            mining.proposal_decided
-   + RerunOnEnter (world          draft preloaded                 {verdict: reject}
-    preserved)                   (normal reload applies)          recorded negative
-            │                             │
-            ▼                             ▼
-   testrunner.RunFlows  ◀ deterministic   mining.proposal_decided
-            │           validation GATE   {verdict: refine}
-      ┌─────┴─────┐
-   green        red
-      │           │
-      ▼           ▼
-   KEEP        REVERT (restore pre-edit snapshot byte-for-byte + re-Reload)
-   live        + HOLD proposal with the failure attached
-      │           │
-      └─────┬─────┘
-            ▼
-   mining.proposal_decided {verdict: accept, flows_green, reverted}  ◀ the moat datapoint
+```mermaid
+flowchart TD
+    recipe["Scored recipe<br/>priority >= threshold"]
+    inventory["Instance inventory<br/>regenerated from host.agent.* + intents"]
+    dedup{"Mapper dedup<br/>ALREADY-MODELED / ENRICH / GAP"}
+    drop["Drop<br/>never surface"]
+    draft["Author drafts DELTA<br/>staged under .artifacts/mining/&lt;recipe_id&gt;/"]
+    validate["Validate<br/>artifact schema + dry app.Load"]
+    raised["mining.proposal_raised<br/>proposal card"]
+    decision{"Operator verdict"}
+    reject["mining.proposal_decided<br/>verdict: reject"]
+    refine["story.edit meta mode<br/>draft preloaded"]
+    refined["mining.proposal_decided<br/>verdict: refine"]
+    apply["Write delta + reload<br/>RerunOnEnter with world preserved"]
+    flows{"testrunner.RunFlows<br/>deterministic validation gate"}
+    keep["KEEP live"]
+    revert["REVERT byte-for-byte<br/>hold proposal with failure"]
+    accepted["mining.proposal_decided<br/>accept + flows_green + reverted"]
+
+    recipe --> dedup
+    inventory --> dedup
+    dedup -->|"ALREADY-MODELED"| drop
+    dedup -->|"ENRICH / GAP"| draft
+    draft --> validate --> raised --> decision
+    decision -->|"reject"| reject
+    decision -->|"refine"| refine --> refined
+    decision -->|"accept"| apply --> flows
+    flows -->|"green"| keep --> accepted
+    flows -->|"red"| revert --> accepted
 ```
 
 The loop is **deterministic in everything except two recorded interpretive
@@ -155,31 +144,29 @@ the existing stateless pipeline (`tools/session-mining/`) and the background-job
 runner (`internal/jobs`) — it adds orchestration (a resolver, a watermark, a job
 wrapper, a config block), never a new analyzer.
 
-```
- kitsoki run / kitsoki web
-        │  (mining.enabled + a real harness)
-        ▼
- orchestrator.NewSession ──▶ Miner.Start(ctx, sid, repoPath)
-        │                          │
-        │                          ├─ first launch for this slug? (watermark absent)
-        │                          │     ├─ yes → SEED pass over EXISTING history
-        │                          │     │        (prep.py --sample recency --max N,
-        │                          │     │         drops dispatched agent sessions)
-        │                          │     └─ no  → skip seed
-        │                          │
- a landed background job ──▶ Miner.Notify(ctx) ──▶ debounce(cadence)
- (dispatched host.agent.task)                          │
-                                                        ▼  LIVE pass over NEW transcripts
-                                                           (prep.py --keep-agent-sessions)
-        ┌───────────────────────────────────────────────┴──────────────┐
-        │  one Scheduler.Submit per pass  (Kind:"mine", detached ctx)    │
-        │  PipelineRunner: prep.py → intents.workflow.js (THE ONE        │
-        │  AGENT PASS, cassette-backed) → ground/tag_score/emit         │
-        └───────────────────────────────────────────────┬──────────────┘
-                                                         │ COMPLETED pass only:
-                                                         ▼  advance mined_through[slug]
-                                                            emit mining.pass_ran
-                                                            recipes → RecipeHandler (→ proposer)
+```mermaid
+flowchart TD
+    launch["kitsoki run / kitsoki web<br/>mining.enabled + real harness"]
+    session["orchestrator.NewSession"]
+    start["Miner.Start(ctx, sid, repoPath)"]
+    first{"First launch for slug?<br/>watermark absent"}
+    seed["SEED pass over existing history<br/>prep.py --sample recency --max N<br/>drops dispatched agent sessions"]
+    skip["Skip seed"]
+    bg["Landed background job<br/>dispatched host.agent.task"]
+    notify["Miner.Notify(ctx)"]
+    debounce["debounce(cadence)"]
+    live["LIVE pass over new transcripts<br/>prep.py --keep-agent-sessions"]
+    submit["Scheduler.Submit<br/>Kind: mine, detached ctx"]
+    pipeline["PipelineRunner<br/>prep.py -> intents.workflow.js -> ground/tag_score/emit"]
+    complete["Completed pass only"]
+    watermark["advance mined_through[slug]<br/>emit mining.pass_ran"]
+    recipes["recipes -> RecipeHandler -> proposer"]
+
+    launch --> session --> start --> first
+    first -->|"yes"| seed --> submit
+    first -->|"no"| skip
+    bg --> notify --> debounce --> live --> submit
+    submit --> pipeline --> complete --> watermark --> recipes
 ```
 
 Three deterministic, no-LLM pieces, each a DI seam:

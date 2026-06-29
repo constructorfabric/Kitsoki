@@ -1,0 +1,65 @@
+# bugfix_leave_worktree - the parent can stop after a validated bugfix and
+# preserve the local worktree instead of opening a PR or merging locally.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bf.done
+initial_world:
+  ticket_id:             "TKT-WT-1"
+  ticket_title:          "Leave the completed worktree"
+  thread:                "TKT-WT-1"
+  workspace_id:          "wt-1"
+  workdir:               ".worktrees/wt-1"
+  base_branch:           "main"
+  feature_branch:        "fix/wt-1"
+  bugfix_destination:    "leave-worktree"
+  bugfix_mode:           "full"
+  judge_mode:            "human"
+  bf__ticket_id:         "TKT-WT-1"
+  bf__ticket_title:      "Leave the completed worktree"
+  bf__thread:            "TKT-WT-1"
+  bf__workspace_id:      "wt-1"
+  bf__workdir:           ".worktrees/wt-1"
+  bf__base_branch:       "main"
+  bf__feature_branch:    "fix/wt-1"
+  bf__bugfix_exit:       "open-PR"
+  bf__judge_mode:        "human"
+  bf__validate_artifact:
+    summary_title: "Validated"
+    summary_markdown: "Regression passes in the worktree."
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.local_files.ticket.comment:
+    data: { ok: true, comment_id: "c-1" }
+  host.local_files.ticket.transition:
+    data: { ok: true }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title: "Fix complete"
+        summary_markdown: "Fix is committed in .worktrees/wt-1 and ready for manual review."
+  host.run:
+    by_call:
+      done_clean_tree_check:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { dirty: false, files: "" }
+      done_fixed_in_commit:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json: { commit: "abc123def456" }
+
+turns:
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: landing
+    expect_world:
+      status: "worktree-ready"
+      workdir: ".worktrees/wt-1"
+    expect_no_host_calls: [host.git.open_pr]
+
+expect_no_errors: true

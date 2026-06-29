@@ -6,8 +6,8 @@ The ui-fix story reviews a `kitsoki-ui-review` audit into root-cause patterns,
 applies a minimal scoped fix per group, proves each fix cleared with a
 deterministic re-audit, and records a before/after media artifact.
 
-It is the first consumer of the [`visual-outputs`](../architecture/hosts.md#hostcontact_sheet)
-media substrate (`host.contact_sheet`, `host.slidey.render`, `host.artifacts_dir`).
+It is the first consumer of the recorded media substrate
+(`host.contact_sheet`, `host.slidey.render`, `host.artifacts_dir`).
 
 ## Design: interpretive/deterministic split
 

@@ -1,0 +1,104 @@
+# refine_resolves_viewed_scene — the REGRESSION GUARD for the "edits never show"
+# bug: refining.yaml passed its host.starlark.run `inputs:` as BARE expr
+# (`world.deck.spec_path`, `world.scene_index`) instead of `{{ }}` templates.
+# host.starlark.run does NOT expr-evaluate inputs — the machine resolves them
+# first, and ONLY a `{{ }}`-wrapped string is evaluated (a sole `{{ expr }}`
+# preserves the typed value). So a bare expr reached the script as the LITERAL
+# string, which (a) made resolve_scene look up a deck named "world.deck.spec_path"
+# (not found → scene_index=-1 → reviser told "make no change") and (b) made the
+# gate receive scene_index="world.scene_index" → "expected int, got string" →
+# on_error:reviewing → the rerender NEVER fired → the deck never re-rendered.
+#
+# Every other slidey-edit flow stubs host.starlark.run by_call, so resolve_scene +
+# gate return empty and the real input-resolution path is never exercised — the
+# flow-vs-live gap that let this ship. This flow instead leaves host.starlark.run
+# UNSTUBBED and wires a `starlark_inspect_cassette:`, so the real resolve_scene +
+# gate_edited_scene + accumulate_addressed scripts run against the REAL
+# machine-resolved inputs. With the bare-expr regression the cassette would MISS
+# (target "world.deck.spec_path") and/or the gate would type-error — the flow
+# fails. With the `{{ }}` fix the viewed scene resolves, the gate passes, and the
+# rerender fires (cycle → 1, the reviser's summary surfaced).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reviewing
+initial_world:
+  workspace: "stories/slidey-edit/baked"
+  deck: { spec_path: "stories/slidey-edit/baked/deck.json", summary: "Spatial-annotation explainer deck (3 scenes)." }
+  deck_handle: "slidey-edit#1"
+  # Seed the annotation so reviewing's seed_annotation `once:` skips on entry; the
+  # refine targets the VIEWED scene (current_scene), not this anchor's ref.
+  annotation:
+    anchor:
+      kind: "semantic_element"
+      semantic_element: { plugin: "slidey", ref: "1/card_0", bbox: [140, 518, 535, 114] }
+      label: "Scene 1 · card 0"
+    instruction: "seed"
+    frame_handle: "slidey-edit#1"
+  addressed: { items: [] }
+  cycle: 0
+  scene_index: -1
+  refine_budget: 6
+
+# host.starlark.run is deliberately ABSENT here — it runs REAL, wrapped with the
+# ReplayInspector built from the inspect cassette below.
+starlark_inspect_cassette: ../cassettes/refine_resolves_scene.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      refine_deck:
+        data:
+          ok: true
+          submitted:
+            spec_path: "stories/slidey-edit/baked/deck.json"
+            summary: "Emphasized the One-anchor-union card (scene 1, card 0) and added an example line."
+            edited: ["1/card_0"]
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "stories/slidey-edit/baked/deck.html"
+          semantic_path: "stories/slidey-edit/baked/deck.semantic.json"
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "slidey-edit#2", kind: "slideshow", mime: "text/html" }, path: "stories/slidey-edit/baked/deck.html", kind: "slideshow", mime: "text/html" }
+
+turns:
+  # refine the VIEWED scene (current_scene=1, the "One anchor union" cards slide).
+  # The real resolve_scene reads the deck (cassette) and resolves scene 1; the real
+  # gate validates the reviser's edit ref "1/card_0" is on scene 1 → ok; the
+  # rerender fires → re-render → back to reviewing with cycle bumped and the
+  # reviser's summary surfaced as the agent's reply.
+  - intent:
+      name: refine
+      slots:
+        feedback: "Make the One-anchor-union card pop and add a one-line example."
+        current_scene: "1"
+    expect_state: reviewing
+    expect_world:
+      cycle: 1
+      # The re-render produced a fresh deck handle (proves the rerender path ran).
+      deck_handle: "slidey-edit#2"
+      # The gate passed and composed the reviser's own summary (NOT a wrong-slide /
+      # no-op note) — proof scene_index reached the gate as a typed int.
+      last_refine_summary: "Emphasized the One-anchor-union card (scene 1, card 0) and added an example line."
+      # accumulate_addressed (real, pure) recorded the addressed anchor + the refs
+      # the reviser touched (edited rides as a resolved input, not stale ctx.world).
+      addressed:
+        items:
+          - deck_handle: "slidey-edit#1"
+            anchor_label: "Scene 1 · card 0"
+            instruction: "Make the One-anchor-union card pop and add a one-line example."
+            edited: ["1/card_0"]
+    expect_host_calls:
+      - handler: host.agent.task
+        args: { call: "refine_deck" }
+      - handler: host.slidey.render
+        args: { call: "render_deck" }
+
+expect_no_errors: true

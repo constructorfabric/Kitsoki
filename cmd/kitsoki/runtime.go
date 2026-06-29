@@ -466,6 +466,7 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 		orchestrator.WithJournalWriter(jw),
 		orchestrator.WithJournalReader(jr),
 		orchestrator.WithExecutionMode(cfg.ExecMode),
+		semanticRoutingOption(),
 	}
 	if agentPluginReg != nil {
 		runOpts = append(runOpts, orchestrator.WithAgentRegistry(agentPluginReg))

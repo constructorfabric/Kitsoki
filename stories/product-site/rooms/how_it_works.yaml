@@ -1,0 +1,34 @@
+states:
+  how_it_works:
+    description: "How does it work?"
+    relevant_world: [section]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "A story is rooms (states) plus intents (transitions). The runtime renders each room's view, accepts a chosen intent or free text, and applies effects to a typed world. Hosts let a room call out — run a command, open a file, ask an agent — behind interfaces an instance rebinds per project."
+          - list:
+              items:
+                - label: "Deterministic core"
+                  hint: "structured intents + effects need no model"
+                - label: "Model at the seams"
+                  hint: "free-text routing and agent rooms, gated and recordable"
+        choices:
+          - heading: "Tour"
+          - list:
+              items:
+                - label: "next"
+                  hint: "use cases"
+                - label: "restart"
+                - label: "look"
+    on:
+      next:
+        - target: use_cases
+          effects:
+            - set: { section: "use_cases" }
+      restart:
+        - target: overview
+          effects:
+            - set: { section: "overview" }
+      look:
+        - target: how_it_works

@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"sess-codex-parity"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"I will inspect the target file first, then run the narrow validation command so the operator can see why the next step is safe."}}
+{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","tool":"Read","arguments":{"file_path":"stories/harness-parity-qa/app.yaml"}}}
+{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","tool":"Read","arguments":{"file_path":"stories/harness-parity-qa/app.yaml"},"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"done"}}
+{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5}}

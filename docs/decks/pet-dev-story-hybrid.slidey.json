@@ -1,0 +1,1052 @@
+{
+  "meta": {
+    "title": "Kitsoki — adding a pet to the trace column, end to end",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": {
+      "name": "rose-pine-moon",
+      "background": "#1c140d",
+      "fontFamily": "'Inter', 'Avenir Next', 'Segoe UI', sans-serif",
+      "colors": {
+        "base": "#1c140d",
+        "surface": "#2a1a10",
+        "overlay": "#3d2419",
+        "muted": "#7b5f4d",
+        "subtle": "#c1a188",
+        "text": "#f3ead8",
+        "love": "#e0a23a",
+        "gold": "#f4cf95",
+        "rose": "#a8492b",
+        "pine": "#c97b4a",
+        "foam": "#e8d6b3",
+        "iris": "#3aa3a0",
+        "highlightLow": "#2f1f16",
+        "highlightMuted": "#412518",
+        "highlightHigh": "#7d2e1c"
+      },
+      "css": "#title-card{gap:24px !important;}#title-card-subtitle{display:flex;flex-direction:column;align-items:center;gap:16px;color:#f3ead8;}#title-card-subtitle img{display:block;height:auto;max-width:640px;width:640px;}#title-card-subtitle div.deck-subtitle{max-width:1500px;line-height:1.45;font-size:36px;color:#d9c9ad;}#title-card-subtitle .deck-subtitle-note{display:block;max-width:1300px;line-height:1.35;font-size:28px;color:#b29b7a;}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon .spinner-bar,\n#root.theme-rose-pine-moon #stat-value,\n#root.theme-rose-pine-moon #trace-title,\n#root.theme-rose-pine-moon #book-title,\n#root.theme-rose-pine-moon #diagramsvg-title,\n#root.theme-rose-pine-moon #diagram-title,\n#root.theme-rose-pine-moon #narrative-eyebrow,\n#root.theme-rose-pine-moon #thread-title,\n#root.theme-rose-pine-moon #diagramsvg-panel-label,\n#root.theme-rose-pine-moon .cards-title,\n#root.theme-rose-pine-moon .image-title,\n#root.theme-rose-pine-moon .imagecompare-title,\n#root.theme-rose-pine-moon .mermaid-title,\n#root.theme-rose-pine-moon .table-title,\n#root.theme-rose-pine-moon .code-call,\n#root.theme-rose-pine-moon .code-dot-call,\n#root.theme-rose-pine-moon .table-crown,\n#root.theme-rose-pine-moon .table-row-hi,\n#root.theme-rose-pine-moon a {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon .code-line-hl,\n#root.theme-rose-pine-moon #stat-value,\n#root.theme-rose-pine-moon .dsvg-arrow path,\n#root.theme-rose-pine-moon .dsvg-edge path,\n#root.theme-rose-pine-moon .dsvg-edge line {\n  border-color: var(--slidey-rose);\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #title-card-rule,\n#root.theme-rose-pine-moon #narrative-rule,\n#root.theme-rose-pine-moon .slidey-bar-fill,\n#root.theme-rose-pine-moon #stat-value {\n  background: linear-gradient(90deg, var(--slidey-gold), var(--slidey-rose));\n}\n\n#root.theme-rose-pine-moon .dsvg-edge line:not(.dsvg-gate-bar),\n#root.theme-rose-pine-moon .dsvg-edge path,\n#root.theme-rose-pine-moon .dsvg-arrow path,\n#root.theme-rose-pine-moon .dsvg-arrow-back path,\n#root.theme-rose-pine-moon .dsvg-edge-back path,\n#root.theme-rose-pine-moon .dsvg-edge-gate.dsvg-gate-oracle,\n#root.theme-rose-pine-moon .dsvg-gate-bar.dsvg-gate-oracle,\n#root.theme-rose-pine-moon .dsvg-edge-recycle,\n#root.theme-rose-pine-moon .dsvg-arrow-recycle path {\n  stroke: var(--slidey-gold);\n  fill: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow-back path,\n#root.theme-rose-pine-moon .dsvg-edge-back path {\n  stroke: var(--slidey-highlight-high);\n  fill: var(--slidey-background);\n}\n\n#root.theme-rose-pine-moon .dsvg-edge-recycle path {\n  fill: var(--slidey-background) !important;\n  stroke: var(--slidey-background) !important;\n}\n\n#root.theme-rose-pine-moon .dsvg-arrow-recycle path {\n  fill: var(--slidey-background) !important;\n  stroke: var(--slidey-background) !important;\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary rect,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary rect,\n#root.theme-rose-pine-moon .dsvg-node rect {\n  stroke: var(--slidey-rose);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary rect {\n  fill: var(--slidey-highlight-muted);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary rect {\n  fill: var(--slidey-highlight-low);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-label,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-label {\n  fill: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-sub,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-sub,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-primary .dsvg-line,\n#root.theme-rose-pine-moon .dsvg-node.dsvg-style-secondary .dsvg-line {\n  fill: var(--slidey-text);\n}\n\n#root.theme-rose-pine-moon .trace-turn-user::before,\n#root.theme-rose-pine-moon .thread-system.thread-system-jira,\n#root.theme-rose-pine-moon .thread-system.thread-system-bitbucket {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon .json-key,\n#root.theme-rose-pine-moon .code-key,\n#root.theme-rose-pine-moon .cards-bullet,\n#root.theme-rose-pine-moon .cards-card.cards-style-primary,\n#root.theme-rose-pine-moon .cards-col.accent-blue,\n#root.theme-rose-pine-moon .cards-col.accent-purple,\n#root.theme-rose-pine-moon .cards-qa-question,\n#root.theme-rose-pine-moon .cards-qa-answer,\n#root.theme-rose-pine-moon .mockup-blue,\n#root.theme-rose-pine-moon .tx-hud-app,\n#root.theme-rose-pine-moon .tx-card-turn {\n  color: var(--slidey-gold);\n  border-color: var(--slidey-rose);\n}\n\n\n#root.theme-rose-pine-moon #table-title,\n#root.theme-rose-pine-moon [id$=\"-title\"],\n#root.theme-rose-pine-moon #cta-wordmark,\n#root.theme-rose-pine-moon #cta-tagline,\n#root.theme-rose-pine-moon #cta-url {\n  color: var(--slidey-gold);\n}\n\n#root.theme-rose-pine-moon #cta-wordmark {\n  background: linear-gradient(180deg, var(--slidey-gold), var(--slidey-rose));\n  -webkit-background-clip: text;\n  background-clip: text;\n  color: transparent !important;\n}\n\n#root.theme-rose-pine-moon #cta-url {\n  background: var(--slidey-overlay);\n  border-color: var(--slidey-highlight-high);\n}\n\n#root.theme-rose-pine-moon .spinner-bar,\n#root.theme-rose-pine-moon #spinner-bar {\n  background: linear-gradient(90deg, var(--slidey-gold), var(--slidey-rose)) !important;\n}\n\n#book-region .book-takeaway {\n  font-size: 24px;\n  line-height: 1.35;\n}\n\n#book-region .book-count-1 .book-takeaway {\n  font-size: 32px;\n  line-height: 1.3;\n}\n\n#book-region .book-caption {\n  font-size: 32px;\n  line-height: 1.4;\n  max-width: 1500px;\n}\n\n#narrative-region {\n  max-width: 1600px;\n}\n\n#narrative-body {\n  font-size: 68px;\n  line-height: 1.18;\n  max-width: 1380px;\n}\n\n#narrative-lede {\n  font-size: 36px;\n  line-height: 1.42;\n  max-width: 1360px;\n}\n#root.theme-rose-pine-moon .usecase-row,\n#root.theme-rose-pine-moon .persona-card {\n  background: var(--slidey-surface);\n  border-color: var(--slidey-highlight-muted);\n}\n#root.theme-rose-pine-moon .usecase-text {\n  border-left-color: var(--slidey-highlight-muted);\n}\n#root.theme-rose-pine-moon .usecase-action {\n  color: var(--slidey-text);\n}\n#root.theme-rose-pine-moon .usecase-detail,\n#root.theme-rose-pine-moon .persona-role,\n#root.theme-rose-pine-moon .persona-intro {\n  color: var(--slidey-subtle);\n}\n#root.theme-rose-pine-moon .personas-caption {\n  color: var(--slidey-subtle);\n}"
+    },
+    "narration": {
+      "voice": "en-AU-NatashaNeural"
+    },
+    "mode": "pitch",
+    "personas": [
+      {
+        "id": "pm",
+        "name": "Priya",
+        "role": "Product manager",
+        "intro": "Turns a one-line idea into a validated PRD and a mockup deck.",
+        "color": "#f4cf95",
+        "glyph": "🧭"
+      },
+      {
+        "id": "architect",
+        "name": "Arden",
+        "role": "Architect",
+        "intro": "Shapes requirements into a design epic, slices, and ADRs.",
+        "color": "#3aa3a0",
+        "glyph": "📐"
+      },
+      {
+        "id": "dev",
+        "name": "Andy",
+        "role": "Developer",
+        "intro": "Decomposes, fixes a mid-stream bug, refines, and ships — every step traceable.",
+        "color": "#c97b4a",
+        "glyph": "🛠️"
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Kitsoki · dev story",
+      "title": "Adding a pet to the trace column",
+      "subtitle": "A dev story, end to end — idea to merged PR, every artifact a deck",
+      "narration": "This is one dev story end to end: adding a small pet to the trace column — from a product idea to a merged pull request, where every phase produces a validated, replayable artifact."
+    },
+    {
+      "type": "title",
+      "eyebrow": "Product Requirements · validated output",
+      "title": "A little pet for the trace column",
+      "subtitle": "Give the long agent-loop wait some life — without taking screen space",
+      "narration": "The product manager's validated output: a PRD for a small companion that lives in the trace column."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Problem",
+      "lede": "Watching a long run is a lonely wait.",
+      "body": "The trace column just ticks rows by while the agent thinks, tests run, and a fix lands. Nothing on the screen is alive. A small ambient companion can add warmth to that wait — and cost nothing.",
+      "narration": "Watching a long session is a lonely wait at the trace column. Nothing on screen is alive. A small ambient companion adds warmth to that wait, and costs nothing."
+    },
+    {
+      "type": "personas",
+      "variant": "cast",
+      "title": "The cast",
+      "personas": [
+        "pm",
+        "architect",
+        "dev"
+      ],
+      "caption": "Three roles, one shared, traceable pipeline — every hand-off a notification, every artifact a validated, replayable output.",
+      "narration": "A product manager, an architect, and a developer share one traceable pipeline. Every hand-off is a notification, and every artifact is a validated, replayable output."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "Who does what",
+      "cases": [
+        {
+          "who": "pm",
+          "action": "Frames the pet idea into a PRD + mockup",
+          "detail": "conversation-driven intake"
+        },
+        {
+          "who": "architect",
+          "action": "Turns the requirements into a design",
+          "detail": "slices, ADRs, data flow"
+        },
+        {
+          "who": "dev",
+          "action": "Decomposes the design into a work plan",
+          "detail": "sequenced, agent-sized tasks"
+        },
+        {
+          "who": "dev",
+          "action": "Fixes a bug that lands mid-stream",
+          "detail": "one-shot, unsupervised, PR-ready"
+        },
+        {
+          "who": "dev",
+          "action": "Fixes, validates, and ships the feature",
+          "detail": "every step on the record"
+        },
+        {
+          "who": "dev",
+          "action": "Opens the PR with a demo of the live pet",
+          "detail": "a real rrweb capture"
+        }
+      ],
+      "caption": "Three roles, one shared, traceable pipeline — every hand-off a notification, every artifact a validated deck.",
+      "narration": "Across the story, the product manager frames the pet idea, the architect designs it, and the developer decomposes it, fixes a bug, ships the feature, and opens the pull request with a demo of the live pet."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "1 · Idea → PRD + mockup",
+      "cases": [
+        {
+          "who": "pm",
+          "action": "Types a one-line idea: a pet for the trace column",
+          "detail": "conversation-driven intake begins"
+        },
+        {
+          "who": "pm",
+          "action": "Answers clarifying questions; a PRD is drafted",
+          "detail": "plus an HTML mockup deck"
+        },
+        {
+          "who": "pm",
+          "action": "Publishes the validated PRD + mockup",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "The PRD and mockup are the validated output of the product-manager phase.",
+      "narration": "The product manager starts with a one-line idea: a little pet for the trace column. Kitsoki runs a conversation-driven intake — clarifying questions, a drafted PRD, and a mockup — and the PRD is the validated output."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "1 · Idea → PRD",
+      "title": "Talking the idea into a PRD",
+      "rrweb": "clips/pet-prd-dev.rrweb.json",
+      "start": 0,
+      "chapters": "auto",
+      "caption": "Conversation-driven intake: a one-line idea → discovery → clarifying questions → a drafted, published PRD.",
+      "narration": "Watch the PRD take shape. The product manager starts from a one-line idea — a tiny pet at the bottom of the trace column — kitsoki asks clarifying questions, the manager answers, and a validated PRD is drafted and published, every step in order."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "What it is",
+      "narration": "One small animated S-V-G pet, anchored at the bottom of the trace column. It idles, blinks, wanders, and now and then a snack appears and it wanders over to eat it.",
+      "cards": [
+        {
+          "label": "Lives at the column bottom",
+          "sub": "anchored to .iv__trace, never displaces a row",
+          "style": "primary"
+        },
+        {
+          "label": "Idles & plays",
+          "sub": "bobs, blinks, wanders, the occasional snack & poop",
+          "style": "secondary"
+        },
+        {
+          "label": "Opt-in",
+          "sub": "off by default; one toggle turns it on",
+          "style": "secondary"
+        },
+        {
+          "label": "Zero weight",
+          "sub": "inline SVG + CSS keyframes — no images, no deps, no network",
+          "style": "secondary"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Goals & guardrails",
+      "narration": "The goals are simple and the guardrails are strict: opt-in, ambient, and weightless.",
+      "columns": [
+        "Goal",
+        "Guardrail"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "A small animated SVG pet at the trace-column bottom",
+            "Absolutely positioned — never blocks or displaces trace rows"
+          ]
+        },
+        {
+          "cells": [
+            "Ambient idle + play behaviours",
+            "Pure inline SVG + CSS — no images, deps, or network"
+          ]
+        },
+        {
+          "cells": [
+            "Opt-in, never in the way",
+            "Off by default; respects reduced-motion"
+          ]
+        },
+        {
+          "cells": [
+            "Headline metric",
+            "opt-in-pet-enabled-sessions"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Validated output",
+      "lede": "PRD + mockup, published.",
+      "body": "A published PRD and an HTML mockup of the pet in the real drive layout — the validated product output that the architect picks up next.",
+      "narration": "The validated output: a published PRD and an HTML mockup of the pet in the real drive layout, ready for the architect to pick up."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "1 · Artifact · PRD",
+      "title": "The PRD, as published",
+      "rrweb": "clips/pet-prd-doc.rrweb.json",
+      "start": 0,
+      "chapters": "auto",
+      "caption": "The produced PRD — a published markdown document: problem & context, target users, goals, requirements, open questions.",
+      "narration": "And here is the artifact itself: the published PRD, a markdown document the architect picks up — the problem, the target users, the goals, and the requirements that keep the pet weightless."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "1 · Artifact deck · PRD",
+      "title": "The PRD, as a deck",
+      "rrweb": "clips/pet-prd-deck.rrweb.json",
+      "start": 0,
+      "chapters": "auto",
+      "caption": "The same requirements, published as a self-contained slidey deck (HTML) — rendered and played slide by slide.",
+      "narration": "And the same PRD as a shareable deck: a self-contained slidey deck the team can flip through — the product output, packaged."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "1 · Artifact mockup · PRD",
+      "title": "The pet, mocked up",
+      "rrweb": "clips/pet-prd-mockup.rrweb.json",
+      "start": 0,
+      "chapters": false,
+      "caption": "The PRD ships with an HTML mockup: Kit docked at the bottom of the real drive layout (chat | trace), idling while a run works.",
+      "narration": "And the mockup the PRD ships with — a self-contained HTML preview of the pet in the real drive layout. Kit idles at the bottom of the trace column while the run works, taking no space from the trace itself."
+    },
+    {
+      "type": "title",
+      "eyebrow": "1 · Where work lives",
+      "title": "It runs from GitHub",
+      "subtitle": "A real @kitsoki mention on the labelled issue claimed the job — and kitsoki reports back on the same thread with the validated PRD",
+      "narration": "All of this runs where the work already lives: a labelled GitHub issue. A real at-kitsoki mention claimed the job, kitsoki ran the matching story, and it reports back on the same thread — with the PRD we just watched it produce attached. The same pattern repeats at every phase."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "1 · GitHub thread",
+      "title": "@kitsoki claims it → reports back with the PRD",
+      "rrweb": "clips/pet-github-feature-kickoff.rrweb.json",
+      "start": 0,
+      "chapters": "auto",
+      "caption": "An @kitsoki mention on the labelled issue claimed the job; kitsoki replies with the validated PRD. Live: github.com/bsacrobatix/Kitsoki/issues/52",
+      "narration": "On the labelled issue, a real at-kitsoki mention claimed the job — one mention, one claimed run — and kitsoki reports back on the same thread with the validated PRD attached. The artifacts land back where the work lives, at every step."
+    },
+    {
+      "type": "thread",
+      "title": "Hand-off → Arden",
+      "panels": [
+        {
+          "system": "github",
+          "ref": "bsacrobatix/Kitsoki#52",
+          "stage": "handoff",
+          "messages": [
+            {
+              "author": "github",
+              "role": "bot",
+              "body": "Design issue assigned to Arden — requirements ready ✅\nhttps://github.com/bsacrobatix/Kitsoki/issues/52"
+            },
+            {
+              "author": "arden",
+              "role": "bot",
+              "body": "On it."
+            }
+          ]
+        }
+      ],
+      "caption": "Every hand-off is a notification where the work lives — mocked here for the story.",
+      "hold": 260,
+      "narration": "The PRD is published, and a design issue is assigned to the architect: requirements ready."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "2 · Requirements → design",
+      "cases": [
+        {
+          "who": "architect",
+          "action": "Reviews the new PRD and asks questions",
+          "detail": "notified: requirements ready"
+        },
+        {
+          "who": "architect",
+          "action": "Produces slices, a data flow, and ADRs",
+          "detail": "zero new state, zero deps"
+        },
+        {
+          "who": "architect",
+          "action": "Publishes the design as a slidey deck",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "The design — three additive slices, a leaf data flow, and ADRs — is the architect phase's validated output.",
+      "narration": "The architect is notified that requirements are ready, reviews them, and produces the design — three additive slices, a leaf data flow, and decisions that keep the feature weightless."
+    },
+    {
+      "type": "title",
+      "eyebrow": "Architecture · validated output",
+      "title": "Designing the trace-column pet",
+      "subtitle": "A self-contained sprite, a dock seam, and an opt-in toggle — zero new state, zero deps",
+      "narration": "The architect's validated output: a design for the trace-column pet — a self-contained sprite, a dock seam, and an opt-in toggle, with zero new state and zero dependencies."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Approach",
+      "lede": "Derive nothing new — dock at the column bottom.",
+      "body": "The pet introduces no new application state and reads no trace data. It is a purely decorative component, absolutely positioned at the bottom of the existing trace column, so it overlays the footer instead of joining the row flow. Three small, additive pieces: a sprite component, a dock seam, and an opt-in setting.",
+      "narration": "The design derives nothing from new state and reads no trace data. The pet is purely decorative, absolutely positioned at the bottom of the existing trace column so it overlays the footer instead of joining the row flow. Three small additive pieces: a sprite component, a dock seam, and an opt-in setting."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "The three slices",
+      "narration": "Slice one is the sprite component: TracePet dot vue, inline S-V-G with a C-S-S idle loop. Slice two is the dock seam, anchoring it at the bottom of the trace column without displacing rows. Slice three is the opt-in setting, off by default, that gates whether the pet mounts.",
+      "cards": [
+        {
+          "label": "Slice 1 · Sprite",
+          "sub": "TracePet.vue — inline SVG + CSS idle loop (bob, blink, wander, poop, eat); no props, no deps",
+          "style": "primary"
+        },
+        {
+          "label": "Slice 2 · Dock seam",
+          "sub": "anchor in InteractiveView.vue .iv__trace; absolutely positioned over the footer, never displaces rows",
+          "style": "secondary"
+        },
+        {
+          "label": "Slice 3 · Opt-in",
+          "sub": "persisted boolean, default false; 🐾 toggle in the State Diagram header mounts the pet",
+          "style": "secondary"
+        }
+      ]
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Data flow",
+      "narration": "The data flow is a straight line: the trace-column layout hosts the TracePet, anchored at its bottom, and TracePet renders an inline S-V-G sprite. Nothing flows the other way — the pet is a leaf.",
+      "cards": [
+        {
+          "label": "Trace column layout",
+          "sub": ".iv__trace — position: relative host",
+          "style": "primary"
+        },
+        {
+          "label": "→ TracePet anchored bottom",
+          "sub": "absolute, overlays the column footer",
+          "style": "secondary"
+        },
+        {
+          "label": "→ inline SVG sprite",
+          "sub": "CSS keyframes; decorative leaf, no data in or out",
+          "style": "secondary"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Decisions (ADRs)",
+      "narration": "Two anchoring decisions. First: inline S-V-G plus C-S-S keyframes only, so the feature ships zero assets and cannot slow the U-I. Second: opt-in and absolutely positioned at the column bottom, so it can never push, clip, or block a trace row. Reduced-motion is honored throughout.",
+      "columns": [
+        "ADR",
+        "Decision",
+        "Why"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "ADR-1 · Zero deps",
+            "Inline SVG + CSS keyframes only",
+            "No images, sprite sheets, libraries, or network — ships zero assets, can't slow the UI"
+          ]
+        },
+        {
+          "cells": [
+            "ADR-2 · Opt-in anchor",
+            "Opt-in + absolute bottom anchor",
+            "Off by default; overlays the footer so it never pushes, clips, or blocks a trace row"
+          ]
+        },
+        {
+          "cells": [
+            "ADR-3 · Accessible",
+            "Honor prefers-reduced-motion",
+            "Dampen/pause the bob & blink; pet is decorative (aria-hidden)"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Validated output",
+      "lede": "Design published — decomposition next.",
+      "body": "A published design: three additive slices, a leaf data flow, and decisions that keep the feature deterministic and weightless — true to kitsoki's no-deps spirit. The validated output the developer decomposes into a sequenced work plan next.",
+      "narration": "The validated output: a published design with three additive slices, a leaf data flow, and decisions that keep the feature deterministic and weightless — true to kitsoki's no-dependencies spirit. The developer decomposes this into a sequenced work plan next."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "2 · Artifact · Design",
+      "title": "The design, as published",
+      "rrweb": "clips/pet-design-doc.rrweb.json",
+      "start": 0,
+      "chapters": "auto",
+      "caption": "The produced design — a published markdown document: the sprite, the dock seam, the opt-in toggle, and the ADRs.",
+      "narration": "The architect's artifact, the same way: a published design document — three additive slices, a leaf data flow, and the decisions that keep the feature deterministic and weightless."
+    },
+    {
+      "type": "thread",
+      "title": "Hand-off → Andy",
+      "panels": [
+        {
+          "system": "github",
+          "ref": "bsacrobatix/Kitsoki#53",
+          "stage": "handoff",
+          "messages": [
+            {
+              "author": "github",
+              "role": "bot",
+              "body": "Decomposition issue assigned to Andy — design ready ✅\nhttps://github.com/bsacrobatix/Kitsoki/issues/53"
+            },
+            {
+              "author": "andy",
+              "role": "bot",
+              "body": "On it."
+            }
+          ]
+        }
+      ],
+      "caption": "Every hand-off is a notification where the work lives — mocked here for the story.",
+      "hold": 260,
+      "narration": "The design is published, and a decomposition issue is assigned to the developer: design ready."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "3 · Decomposition issue",
+      "title": "GitHub · Decomposition Ticket #53",
+      "rrweb": "clips/pet-github-decomp-thread.rrweb.json",
+      "chapters": "auto",
+      "caption": "@kitsoki on the decomposition issue → kitsoki replies with the work-plan deck. Live: issues/53",
+      "narration": "The decomposition is tracked the same way: kitsoki replies on issue 53 with the validated work-plan deck, attached as a GitHub release download."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "3 · Design → work plan",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Reviews the published design",
+          "detail": "notified: design ready"
+        },
+        {
+          "who": "dev",
+          "action": "Decomposes the slices into right-sized tasks",
+          "detail": "dependency-ordered briefs"
+        },
+        {
+          "who": "dev",
+          "action": "Validates the work plan",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "The decomposed, dependency-ordered work plan is the output.",
+      "narration": "The developer reviews the new design and decomposes its slices into right-sized, dependency-ordered tasks. The validated work plan is the output."
+    },
+    {
+      "type": "title",
+      "eyebrow": "Engineering · validated output",
+      "title": "Decomposing the pet into a work plan",
+      "subtitle": "Three design slices, sequenced into concrete, shippable tasks",
+      "narration": "The developer's validated output: the trace-column pet design turned into a sequenced work plan — three slices broken into concrete, shippable tasks."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Plan",
+      "lede": "Turn the design into a sequence.",
+      "body": "Each design slice becomes one or two concrete tasks, ordered so every step is independently verifiable. Build the sprite first, dock it second, gate it behind the opt-in third — then typecheck, document, and changelog. Purely additive, no migration.",
+      "narration": "Each design slice becomes one or two concrete tasks, ordered so every step is independently verifiable. Build the sprite first, dock it second, gate it behind the opt-in third — then typecheck, document, and changelog. Purely additive, no migration."
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Tasks",
+      "narration": "Slice one: author TracePet dot vue with the idle, wander, poop, and eat behaviour loop, plus a reduced-motion gate. Slice two: dock it in InteractiveView dot vue's trace column, made position-relative, never displacing rows. Slice three: a localStorage opt-in pref and the paw toggle in the panel header. Then typecheck and build, document the setting, and add a changelog entry.",
+      "columns": [
+        "Task",
+        "Slice",
+        "Est"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "Author TracePet.vue sprite + idle/wander/poop/eat loop",
+            "Slice 1",
+            "M"
+          ]
+        },
+        {
+          "cells": [
+            "Add prefers-reduced-motion gate to the sprite",
+            "Slice 1",
+            "S"
+          ]
+        },
+        {
+          "cells": [
+            "Dock in InteractiveView.vue .iv__trace (position:relative, never displace rows)",
+            "Slice 2",
+            "S"
+          ]
+        },
+        {
+          "cells": [
+            "Opt-in localStorage pref, default off",
+            "Slice 3",
+            "S"
+          ]
+        },
+        {
+          "cells": [
+            "🐾 toggle in the State Diagram panel header",
+            "Slice 3",
+            "S"
+          ]
+        },
+        {
+          "cells": [
+            "Typecheck + build (vue-tsc, vite)",
+            "Verify",
+            "S"
+          ]
+        },
+        {
+          "cells": [
+            "Document the setting in the web UI reference",
+            "Docs",
+            "S"
+          ]
+        },
+        {
+          "cells": [
+            "Changelog entry (additive, opt-in)",
+            "Docs",
+            "XS"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "Sequencing & dependencies",
+      "narration": "The order is gated by dependencies. The sprite must exist before it can be docked; the dock must exist before the toggle can mount it. Verification, docs, and changelog ride on top once the three slices land.",
+      "cards": [
+        {
+          "label": "1 · Sprite (standalone)",
+          "sub": "no dependencies — author & unit-render first",
+          "style": "primary"
+        },
+        {
+          "label": "2 · Dock (needs Sprite)",
+          "sub": "mount point depends on TracePet existing",
+          "style": "secondary"
+        },
+        {
+          "label": "3 · Opt-in (needs Dock)",
+          "sub": "toggle gates the mounted dock",
+          "style": "secondary"
+        },
+        {
+          "label": "4 · Verify · Docs · Changelog",
+          "sub": "typecheck/build, reference, changelog after slices land",
+          "style": "secondary"
+        }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Validated output",
+      "lede": "Work plan validated — ready to implement.",
+      "body": "A sequenced, dependency-ordered plan where every task is small, additive, and independently verifiable. The validated output, ready to implement in the background.",
+      "narration": "The validated output: a sequenced, dependency-ordered plan where every task is small, additive, and independently verifiable — ready to implement in the background."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "4 · Report a bug",
+      "title": "Filing the bug from the web UI",
+      "rrweb": "clips/pet-report-bug.rrweb.json",
+      "start": 0,
+      "chapters": "auto",
+      "caption": "Before it reaches GitHub: an operator opens Meta → Report a bug, reviews the auto-captured replay, describes the redundant Observe link, and files it.",
+      "narration": "Before the bug ever reaches GitHub, this is where it starts: a real operator opens the Meta menu, picks Report a bug, reviews the automatically-captured session replay, describes the confusable Observe link, and files it — capture, review, then file."
+    },
+    {
+      "type": "thread",
+      "title": "A bug lands",
+      "panels": [
+        {
+          "system": "github",
+          "ref": "bsacrobatix/Kitsoki#54",
+          "stage": "handoff",
+          "messages": [
+            {
+              "author": "github",
+              "role": "bot",
+              "body": "Bug filed & assigned to Andy — redundant Observe ↗ link 🐞\nhttps://github.com/bsacrobatix/Kitsoki/issues/54"
+            },
+            {
+              "author": "andy",
+              "role": "bot",
+              "body": "On it."
+            }
+          ]
+        }
+      ],
+      "caption": "Every hand-off is a notification where the work lives — mocked here for the story.",
+      "hold": 260,
+      "narration": "Mid-stream, a bug is filed and assigned to the developer: a redundant Observe link cluttering the topbar."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "4 · Bug report",
+      "title": "GitHub · Bug Ticket #54",
+      "rrweb": "clips/pet-github-bug-thread.rrweb.json",
+      "chapters": "auto",
+      "caption": "@kitsoki on the bug issue → kitsoki replies with the bug report and fix report. Live: issues/54",
+      "narration": "And here is the bug, filed mid-stream: a real at-kitsoki mention claims it, and kitsoki replies with the bug report and the fix report — again, artifacts available directly from GitHub."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "4 · A bug lands mid-stream",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Reviews the bug report and its rrweb repro",
+          "detail": "confusable topbar controls"
+        },
+        {
+          "who": "dev",
+          "action": "Triage recommends a one-shot, unsupervised fix",
+          "detail": "self-contained deletion"
+        },
+        {
+          "who": "dev",
+          "action": "Confirms scope before the fix runs",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "While the work plan runs, a real kitsoki bug is reported with a captured repro.",
+      "narration": "Mid-stream, a real bug is reported against the kitsoki web UI — a redundant Observe link that gets confused with the trace toggle. The report carries an rrweb repro."
+    },
+    {
+      "type": "title",
+      "eyebrow": "Bug report · kitsoki / runstatus",
+      "title": "A redundant Observe ↗ link",
+      "subtitle": "It sits beside the trace toggle and gets confused with it",
+      "narration": "A small clutter bug: a redundant Observe link in the topbar, sitting right next to the trace toggle and easily mistaken for it."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "What's wrong",
+      "lede": "Two controls that look like one job.",
+      "body": "The InteractiveView topbar carries an 'Observe ↗' router-link directly next to the Hide / show-trace toggle. The toggle controls the trace column you're already looking at; the link navigates away to the read-only observer for the very same run. Same neighbourhood, near-identical affordance — so people reach for one expecting the other, click out of their live session, and have to navigate back. It's pure clutter against a control it's easily confused with.",
+      "narration": "The topbar puts an Observe link right next to the trace toggle. The toggle shows or hides the trace you're already on; the link jumps to the read-only observer for the same run. They look alike, they sit together, and people click the wrong one — leaving their live session for no reason. It's clutter."
+    },
+    {
+      "type": "code",
+      "variant": "source",
+      "title": "InteractiveView.vue · the offending markup",
+      "lang": "html",
+      "code": "<router-link\n  :to=\"{ name: 'observe', params: { runId } }\"\n  class=\"iv__observe-link\"\n  data-testid=\"observe-link\"\n>Observe ↗</router-link>",
+      "highlight": [
+        3
+      ],
+      "annotations": [
+        {
+          "line": 3,
+          "text": "Lives in the topbar at InteractiveView.vue:85, beside the trace toggle"
+        },
+        {
+          "line": 5,
+          "text": "Navigates to the read-only observer for the same run — a dead-end relative to the live view"
+        }
+      ],
+      "caption": "tools/runstatus/src/views/InteractiveView.vue:85 — plus its CSS at ~937–946.",
+      "narration": "Here it is: a single router-link at InteractiveView line 85, with its own CSS just below. It points at the observer route for the run you're already watching live."
+    },
+    {
+      "type": "cards",
+      "variant": "numbered",
+      "title": "Reproduce & impact",
+      "cards": [
+        {
+          "label": "Open any kitsoki web run",
+          "sub": "the live InteractiveView with its trace column"
+        },
+        {
+          "label": "Look at the topbar",
+          "sub": "the Observe ↗ link sits right next to the trace toggle"
+        },
+        {
+          "label": "Reach for the toggle, hit the link",
+          "sub": "you're navigated out to the read-only observer of the same run"
+        }
+      ],
+      "caption": "Impact: confusable controls, an accidental trip out of the live session, zero added value.",
+      "narration": "To see it: open any web run, glance at the topbar, and reach for the trace toggle — the look-alike Observe link is right there to catch the misclick, sending you out to a read-only view of the run you're already on."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Evidence & triage",
+      "lede": "Repro captured; safe to one-shot.",
+      "body": "The report ships an rrweb repro — a deterministic browser replay showing the two confusable controls in the live topbar. The recommended fix is trivial and self-contained: delete the link at InteractiveView.vue:85 and its CSS rule (~937–946). No behaviour depends on it; the observer route stays reachable elsewhere. Triage recommendation: one-shot, unsupervised.",
+      "narration": "The report carries an rrweb repro that replays the confusable topbar. Because the fix is a self-contained deletion with nothing depending on it, this is a clean one-shot, unsupervised candidate."
+    },
+    {
+      "type": "thread",
+      "title": "Triaged → go",
+      "panels": [
+        {
+          "system": "github",
+          "ref": "bsacrobatix/Kitsoki#54",
+          "stage": "handoff",
+          "messages": [
+            {
+              "author": "github",
+              "role": "bot",
+              "body": "Triaged: one-shot unsupervised — go ✅\nhttps://github.com/bsacrobatix/Kitsoki/issues/54"
+            },
+            {
+              "author": "andy",
+              "role": "bot",
+              "body": "Go."
+            }
+          ]
+        }
+      ],
+      "caption": "Every hand-off is a notification where the work lives — mocked here for the story.",
+      "hold": 260,
+      "narration": "Triage clears it as a clean one-shot, unsupervised fix. The developer says go."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "5 · Fix & validate",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Kitsoki reproduces, fixes, and self-reviews",
+          "detail": "isolated worktree"
+        },
+        {
+          "who": "dev",
+          "action": "Runs the real checks — typecheck + build",
+          "detail": "green after the fix"
+        },
+        {
+          "who": "dev",
+          "action": "Validates the fix — PR-ready",
+          "detail": "this phase's output"
+        }
+      ],
+      "caption": "The bug-fix room reproduces, fixes, tests, and validates — closing out PR-ready.",
+      "narration": "Kitsoki reproduces the bug, makes a minimal deletion, runs the real typecheck and build, and the rrweb replay confirms the clutter is gone — closing out ready for a pull request."
+    },
+    {
+      "type": "title",
+      "eyebrow": "Bugfix · kitsoki / runstatus",
+      "title": "Remove the redundant Observe link",
+      "subtitle": "One control, one job — just the trace toggle remains",
+      "narration": "The fix: remove the redundant Observe link so the topbar keeps a single, unambiguous control — the trace toggle."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The fix",
+      "lede": "A one-line deletion.",
+      "body": "The whole change is a removal: delete the 'Observe ↗' router-link at InteractiveView.vue:85, then delete its now-orphaned CSS rule (.iv__observe-link, lines ~937–946). Nothing else references the element, and the observer route stays reachable from elsewhere — so no markup or routing needs to move. The confusable second affordance simply disappears.",
+      "narration": "It's a deletion. Remove the Observe link at line 85, and its orphaned CSS just below. Nothing depends on the element and the observer route stays reachable, so nothing else has to change."
+    },
+    {
+      "type": "cards",
+      "variant": "versus",
+      "title": "Before vs after",
+      "left": {
+        "label": "Before",
+        "lines": [
+          "Two controls crowd the topbar",
+          "trace toggle + look-alike Observe link",
+          "misclicks leave the live session"
+        ]
+      },
+      "right": {
+        "label": "After",
+        "lines": [
+          "Just the trace toggle",
+          "one control, one clear job",
+          "no accidental trips to the observer"
+        ]
+      },
+      "caption": "From two confusable controls to one unambiguous toggle.",
+      "narration": "Before: two confusable controls sharing the topbar. After: just the trace toggle — one control with one clear job, and no accidental trips out of the live view."
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Validation — green after the fix",
+      "columns": [
+        "Check",
+        "Result"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "vue-tsc typecheck",
+            "clean — no dangling references to iv__observe-link"
+          ]
+        },
+        {
+          "cells": [
+            "vite build",
+            "green — bundle builds with the element and CSS removed"
+          ]
+        },
+        {
+          "cells": [
+            "rrweb repro replay",
+            "the Observe link is gone; the trace toggle stands alone"
+          ]
+        }
+      ],
+      "hold": 320,
+      "caption": "Typecheck and build pass, and the captured rrweb replay confirms the link no longer renders in the topbar."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Outcome",
+      "lede": "PR-ready.",
+      "body": "The redundant control is gone, the typechecker and build are green, and the rrweb replay shows the topbar with the trace toggle alone — no stray Observe link to misclick. A clean, minimal diff: ready to open the PR.",
+      "narration": "The clutter is gone, typecheck and build are green, and the replay shows a clean topbar. Minimal diff, ready to open the pull request."
+    },
+    {
+      "type": "personas",
+      "variant": "use-cases",
+      "title": "6 · Ship the feature",
+      "cases": [
+        {
+          "who": "dev",
+          "action": "Implements the three slices in the background",
+          "detail": "sprite, dock, opt-in toggle"
+        },
+        {
+          "who": "dev",
+          "action": "Reviews the demo of the shipped pet",
+          "detail": "wanders, blinks, snacks"
+        },
+        {
+          "who": "dev",
+          "action": "Opens the PR with the demo deck",
+          "detail": "every step on the record"
+        }
+      ],
+      "caption": "The pet ships in three slices — then the real, live pet closes the story.",
+      "narration": "The work plan moves into background development, and the three slices land: the sprite, the dock, and the opt-in toggle. Then the real pet, captured live, closes the story."
+    },
+    {
+      "type": "title",
+      "eyebrow": "Feature · kitsoki / runstatus",
+      "title": "Meet Kit — the trace-column pet",
+      "subtitle": "A little life at the bottom of the trace, opt-in and never in the way",
+      "narration": "Meet Kit: a small animated companion that lives at the bottom of the trace column — opt-in, and never in your way."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "What shipped",
+      "lede": "A tiny companion for the long wait.",
+      "body": "Watching a long agent loop is a lonely wait — rows tick by while the agent thinks, tests run, and a fix lands. Kit is a small decorative SVG pet anchored at the bottom of the trace column that idles and plays through that wait. It's a single inline-SVG component, absolutely positioned, so it adds warmth without ever displacing a trace row.",
+      "narration": "Watching a long run is a lonely wait. Kit fills it with a little life — a small SVG pet at the bottom of the trace column that idles and plays while the agent works, without ever pushing a row out of the way."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "What Kit does",
+      "narration": "Kit wanders along the floor of the column, blinks, leaves the occasional poop, and now and then a snack appears and it strolls over to eat it. It lives at the bottom of the trace, you opt in with a single paw-print toggle, and it costs nothing — pure inline S-V-G and C-S-S.",
+      "cards": [
+        {
+          "label": "Wanders & blinks",
+          "sub": "bobs along the column floor, blinks now and then",
+          "style": "primary"
+        },
+        {
+          "label": "Poops & snacks",
+          "sub": "leaves the occasional poop; walks over to eat a snack",
+          "style": "secondary"
+        },
+        {
+          "label": "Lives at the trace bottom",
+          "sub": "docked in .iv__trace, absolutely positioned, never displaces a row",
+          "style": "secondary"
+        },
+        {
+          "label": "Opt-in 🐾 toggle",
+          "sub": "off by default; one paw-print toggle in the State Diagram header",
+          "style": "secondary"
+        },
+        {
+          "label": "Zero weight",
+          "sub": "pure inline SVG + CSS keyframes — no images, no deps, no network",
+          "style": "default"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Delivered in three slices",
+      "columns": [
+        "Slice",
+        "What landed"
+      ],
+      "rows": [
+        {
+          "cells": [
+            "1 · The pet component",
+            "TracePet.vue — inline SVG + CSS keyframes for idle, wander, blink, poop, and snack"
+          ]
+        },
+        {
+          "cells": [
+            "2 · The dock",
+            "Docked at the bottom of .iv__trace in InteractiveView.vue, absolutely positioned over the column floor"
+          ]
+        },
+        {
+          "cells": [
+            "3 · The opt-in toggle",
+            "A 🐾 toggle in the State Diagram header — off by default, persists the choice"
+          ]
+        }
+      ],
+      "hold": 340,
+      "caption": "Three small slices: the component, where it lives, and how you turn it on."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "The shape of it",
+      "lede": "Charming, but disciplined.",
+      "body": "Kit is deliberately weightless: no images, no dependencies, no network — just inline SVG and CSS keyframes. It's absolutely positioned so it can never block or shift a trace row, it's off by default, and it respects reduced-motion. A little personality, held to strict guardrails.",
+      "narration": "Kit is charming but disciplined — no images, no dependencies, no network, just inline S-V-G and C-S-S. It can't block a trace row, it's off by default, and it respects reduced-motion."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Try it",
+      "lede": "A little life in the trace column.",
+      "body": "Flip the 🐾 toggle in the State Diagram header and Kit wakes up at the bottom of your trace — wandering, blinking, and snacking through the wait. Opt-in, weightless, and never in the way.",
+      "narration": "Flip the paw-print toggle and Kit wakes up at the bottom of your trace. A little life in the trace column — opt-in, weightless, and never in the way."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "eyebrow": "6 · The live pet",
+      "title": "Kit, wandering in the trace column",
+      "rrweb": "clips/pet-trace.rrweb.json",
+      "chapters": "auto",
+      "caption": "A real rrweb capture of the shipped pet docked at the bottom of .iv__trace — opt-in via the 🐾 toggle",
+      "narration": "And here is the real, shipped pet — captured live from the kitsoki web UI. Flip the paw-print toggle and Kit wakes up at the bottom of the trace column, wandering through the wait."
+    },
+    {
+      "type": "thread",
+      "title": "PR opened",
+      "panels": [
+        {
+          "system": "github",
+          "ref": "kitsoki#feature",
+          "stage": "handoff",
+          "messages": [
+            {
+              "author": "github",
+              "role": "bot",
+              "body": "PR opened with the demo deck — trace-column pet 🐾"
+            },
+            {
+              "author": "andy",
+              "role": "bot",
+              "body": "Shipped."
+            }
+          ]
+        }
+      ],
+      "caption": "Every hand-off is a notification where the work lives — mocked here for the story.",
+      "hold": 260,
+      "narration": "The pull request goes up with the demo deck and the live capture. The story closes where it started — the repo, one feature and one fix richer."
+    },
+    {
+      "type": "cta",
+      "narration": "And the whole story is a no-LLM, byte-deterministic replay: every phase a validated artifact, every hand-off a notification, the live pet a real capture.",
+      "wordmark": "Kitsoki",
+      "tagline": "Idea to merged PR — every artifact a deck",
+      "url": "the runtime is a state machine; the model is a traceable callee"
+    }
+  ]
+}

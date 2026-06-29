@@ -74,7 +74,7 @@ Two amplifying factors:
 
 ### Repro
 
-1. `kitsoki run stories/kitsoki-dev/app.yaml`
+1. `kitsoki run .kitsoki/stories/kitsoki-dev/app.yaml`
 2. Open metamode (Tab) and start an `edit` session.
 3. Ask the story-author about `core.ticket_search`. In its reply it
    will quote view template fragments containing `{{ world.… }}`

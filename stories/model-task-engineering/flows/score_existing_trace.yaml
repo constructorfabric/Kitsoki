@@ -1,0 +1,35 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  bench_manifest: stories/deliver/agent-bench/decompose_glm.yaml
+  case_id: deliver-decompose-glm52
+  trace_path: .artifacts/agent-bench/deliver-decompose-glm52/proposal-only-success.trace.jsonl
+  output_dir: .artifacts/model-task-engineering/glm52
+host_handlers:
+  host.run:
+    by_call:
+      model_task_score:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            summary: PASS deliver-decompose-glm52
+            error: ""
+            stdout: "PASS deliver-decompose-glm52\n"
+            report_json: .artifacts/model-task-engineering/glm52/deliver-decompose-glm52-report.json
+            report_markdown: .artifacts/model-task-engineering/glm52/deliver-decompose-glm52-report.md
+            report_deck: .artifacts/model-task-engineering/glm52/deliver-decompose-glm52-deck.slidey.json
+turns:
+  - intent:
+      name: score
+    expect_state: scoring
+    expect_world:
+      score_status: passed
+      report_json: .artifacts/model-task-engineering/glm52/deliver-decompose-glm52-report.json
+      report_markdown: .artifacts/model-task-engineering/glm52/deliver-decompose-glm52-report.md
+      report_deck: .artifacts/model-task-engineering/glm52/deliver-decompose-glm52-deck.slidey.json
+  - intent:
+      name: done
+    expect_state: "__exit__done"

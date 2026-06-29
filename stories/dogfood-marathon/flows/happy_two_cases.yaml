@@ -1,0 +1,135 @@
+# happy_two_cases — idle → intake → (per-case loop ×2) → aggregating → reporting
+# → slideshow → done. No LLM (Mode-2).
+#
+# The DETERMINISTIC starlark scripts (load_backlog / pick_case / record_case /
+# aggregate_run / build_deck) RUN FOR REAL — they carry no LLM and no cost, so the
+# loop, the rollup, and the deck spec are exercised genuinely (the slidey-edit
+# posture: deterministic host calls run; only the LLM-bearing host.agent.task is
+# stubbed). The backlog is seeded via initial_world; load_backlog is idempotent
+# and passes a pre-seeded backlog through. host.slidey.render + host.artifacts_dir
+# are stubbed by id (point at the baked report deck — no slidey runs).
+#
+# Case 1 triages STILL-LIVE → driven (shipped, deliverable present, oracle pass)
+#        → independently verified solved.
+# Case 2 triages STILL-LIVE → driven (needs-human, deliverable present, no oracle
+#        signal) → verified partial.
+# The dispatcher re-enters once per case, then drains → aggregate → report → render.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  inner_pipeline: "bugfix"
+  backlog_source: "issues/bugs"
+  case_budget: 25
+  drop_already_fixed: true
+  backlog:
+    items:
+      - { id: "case-1", title: "First case", baseline: "abc123^", repro_command: "go test ./pkg/a" }
+      - { id: "case-2", title: "Second case", baseline: "def456^", repro_command: "" }
+
+host_handlers:
+  # host.test flows stub EVERY host call (deterministic scripts don't run for
+  # real here), so each host.starlark.run id gets a fixed envelope. pick_case
+  # returns a generic case (display/context only — the loop terminates via the
+  # processing room's committed case_index guard, not this bind); record_case /
+  # aggregate_run / build_deck return fixed shapes. (A real drive runs the
+  # scripts; this just exercises the workflow shape no-LLM.)
+  host.starlark.run:
+    by_call:
+      load_backlog:
+        data:
+          backlog:
+            items:
+              - { id: "case-1", title: "First case", baseline: "abc123^", repro_command: "go test ./pkg/a" }
+              - { id: "case-2", title: "Second case", baseline: "def456^", repro_command: "" }
+      pick_case:
+        data:
+          current_case:    { id: "case-x", title: "A case", baseline: "abc^", repro_command: "" }
+          current_case_id: "case-x"
+      record_case:
+        data:
+          results:  { items: [ { case_id: "case-x", exit: "shipped", verify_status: "solved" } ] }
+          findings: { items: [] }
+      aggregate_run:
+        data:
+          rollup:
+            counts: { processed: 2, solved: 2, partial: 0, failed: 0, skipped: 0, shipped: 2, needs_human: 0 }
+            totals: { cost_usd: 15.4, tokens: 7000000, wall_s: 2112 }
+            worked: ["2 cases independently verified solved", "2 fixes shipped"]
+            didnt:  []
+            headline: "Processed 2 cases: 2 solved, 0 failed, 0 needs-human."
+      verify_case:
+        data:
+          verify_result: { status: "solved", how: "independent oracle passed on the produced worktree" }
+      build_deck:
+        data:
+          deck_spec:
+            spec_path: "stories/dogfood-marathon/baked/report.deck.json"
+            summary: "Dogfood marathon report — 2 cases, 2 solved."
+
+  host.agent.task:
+    by_call:
+      triage_case:
+        data:
+          ok: true
+          submitted: { verdict: "STILL-LIVE", evidence: "pkg/a/foo.go:42", note: "bug reproduces at baseline" }
+      drive_case:
+        data:
+          ok: true
+          submitted:
+            exit: "shipped"
+            worktree: ".worktrees/case-1"
+            branch: "fix/case-1"
+            deliverable_present: true
+            oracle_pass: true
+            trace: "/tmp/dogfood/case-1.jsonl"
+            cost_usd: 7.7
+            tokens: 3500000
+            wall_s: 1056
+            findings: []
+
+  host.slidey.render:
+    by_call:
+      render_report:
+        data:
+          ok: true
+          path: "stories/dogfood-marathon/baked/report.deck.json"
+
+  host.artifacts_dir:
+    by_call:
+      emit_report:
+        data:
+          ok: true
+          handle: { id: "dogfood-marathon#1", kind: "slideshow", mime: "text/html" }
+          path: "stories/dogfood-marathon/baked/report.deck.json"
+
+turns:
+  # `start` loads the (seeded) backlog and auto-advances the FIRST case through
+  # triage → drive → verify → record, pausing at the processing checkpoint.
+  # (One case per turn keeps each turn's internal emit chain under the engine's
+  # emit-depth cap — a whole backlog can't auto-run in a single turn.)
+  - intent: { name: start, slots: {} }
+    expect_state: processing
+    expect_world:
+      cases_processed: 1
+
+  # `next_case` processes the SECOND case, then pauses again at the checkpoint.
+  - intent: { name: next_case, slots: {} }
+    expect_state: processing
+    expect_world:
+      cases_processed: 2
+
+  # `next_case` with the backlog drained rolls up the run, builds the deck spec,
+  # and renders the baked slidey report → done.
+  - intent: { name: next_case, slots: {} }
+    expect_state: done
+    expect_world:
+      report_handle: "dogfood-marathon#1"
+      cases_processed: 2
+      deck_spec:
+        spec_path: "stories/dogfood-marathon/baked/report.deck.json"
+        summary: "Dogfood marathon report — 2 cases, 2 solved."
+
+expect_terminal: false
+expect_no_errors: true

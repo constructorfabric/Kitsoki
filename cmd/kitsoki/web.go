@@ -264,6 +264,7 @@ authentication.`,
 			srv := server.NewMulti(registry,
 				server.WithDefaultActor(actor),
 				server.WithBugRoot(resolveWebBugRoot(dirs)),
+				server.WithWorkflowRoot(resolveWebBugRoot(dirs)),
 				server.WithTicketRepo(ticketRepo),
 			)
 			// Attach the cross-session notification relay sink so each new
@@ -313,7 +314,7 @@ authentication.`,
 	cmd.Flags().StringVar(&flowPath, "flow", "", "drive every session deterministically from a flow fixture (no LLM; host_handlers stub host.* calls, intents are submitted explicitly)")
 	cmd.Flags().StringVar(&hostCassette, "host-cassette", "", "host cassette file backing host.* calls (deterministic, no LLM); combinable with --flow")
 	cmd.Flags().StringVar(&actor, "actor", "", "operator identity recorded on browser-driven turns as slots.author (default: git config user.name; the X-Kitsoki-Actor header and an explicit actor RPC param override it)")
-	cmd.Flags().StringVar(&ticketRepo, "ticket-repo", "constructorfabric/kitsoki", "file Report-bug reports as GitHub issues on this owner/repo (evidence saved under .artifacts/bug-reports for developer review) instead of a local issues/bugs/*.md file; requires gh auth. Pass an empty string to write local issues/bugs/*.md files instead")
+	cmd.Flags().StringVar(&ticketRepo, "ticket-repo", "constructorfabric/Kitsoki", "file Report-bug reports as GitHub issues on this owner/repo (evidence saved under .artifacts/bug-reports for developer review) instead of a local issues/bugs/*.md file; requires gh auth. Pass an empty string to write local issues/bugs/*.md files instead")
 
 	return cmd
 }

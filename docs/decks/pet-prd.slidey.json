@@ -1,0 +1,57 @@
+{
+  "_comment": "Phase-1 artifact deck — the published PRD for the trace-column pet, shown full-screen in kitsoki via deck-review. Authored as the validated PM output.",
+  "meta": {
+    "title": "PRD — Trace-Column Pet",
+    "resolution": { "width": 1920, "height": 1080 },
+    "theme": "rose-pine-moon",
+    "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Product Requirements · validated output",
+      "title": "A little pet for the trace column",
+      "subtitle": "Give the long agent-loop wait some life — without taking screen space",
+      "narration": "The product manager's validated output: a PRD for a small companion that lives in the trace column."
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Problem",
+      "lede": "Watching a long run is a lonely wait.",
+      "body": "The trace column just ticks rows by while the agent thinks, tests run, and a fix lands. Nothing on the screen is alive. A small ambient companion can add warmth to that wait — and cost nothing.",
+      "narration": "Watching a long session is a lonely wait at the trace column. Nothing on screen is alive. A small ambient companion adds warmth to that wait, and costs nothing."
+    },
+    {
+      "type": "cards",
+      "variant": "grid",
+      "title": "What it is",
+      "narration": "One small animated S-V-G pet, anchored at the bottom of the trace column. It idles, blinks, wanders, and now and then a snack appears and it wanders over to eat it.",
+      "cards": [
+        { "label": "Lives at the column bottom", "sub": "anchored to .iv__trace, never displaces a row", "style": "primary" },
+        { "label": "Idles & plays", "sub": "bobs, blinks, wanders, the occasional snack & poop", "style": "secondary" },
+        { "label": "Opt-in", "sub": "off by default; one toggle turns it on", "style": "secondary" },
+        { "label": "Zero weight", "sub": "inline SVG + CSS keyframes — no images, no deps, no network", "style": "secondary" }
+      ]
+    },
+    {
+      "type": "table",
+      "variant": "data",
+      "title": "Goals & guardrails",
+      "narration": "The goals are simple and the guardrails are strict: opt-in, ambient, and weightless.",
+      "columns": ["Goal", "Guardrail"],
+      "rows": [
+        { "cells": ["A small animated SVG pet at the trace-column bottom", "Absolutely positioned — never blocks or displaces trace rows"] },
+        { "cells": ["Ambient idle + play behaviours", "Pure inline SVG + CSS — no images, deps, or network"] },
+        { "cells": ["Opt-in, never in the way", "Off by default; respects reduced-motion"] },
+        { "cells": ["Headline metric", "opt-in-pet-enabled-sessions"] }
+      ]
+    },
+    {
+      "type": "narrative",
+      "eyebrow": "Validated output",
+      "lede": "PRD + mockup, published.",
+      "body": "A published PRD and an HTML mockup of the pet in the real drive layout — the validated product output that the architect picks up next.",
+      "narration": "The validated output: a published PRD and an HTML mockup of the pet in the real drive layout, ready for the architect to pick up."
+    }
+  ]
+}

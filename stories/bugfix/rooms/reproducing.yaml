@@ -96,7 +96,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, reproduction_artifact, llm_verdict, refine_feedback, cycle, gate_command, repro_checked, regression_red_pre_fix, regression_pre_fix_log]
+    relevant_world: [judge_mode, judge_confidence_threshold, ticket_id, ticket_title, thread, workdir, test_cmd, reproduction_artifact, llm_verdict, refine_feedback, cycle, gate_command, repro_checked, regression_red_pre_fix, regression_pre_fix_log, repro_gate_ran, repro_gate_ok, repro_baseline_green, repro_test_red, repro_gate_summary, repro_gate_log]
     on_enter:
       # 0. Deterministic RED-gate (bugfix-repro-gate slice). When the ticket
       #    carried a `repro_command:` (projected into world.gate_command at
@@ -177,9 +177,103 @@ states:
           reproduction_artifact: submitted
         on_error: idle
 
-      # 2. Conditionally: run the LLM judge against the artifact.
-      #    Skipped in human mode (operator IS the judge).
-      - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
+      # 1b. DETERMINISTIC GREEN→RED gate — runs FIRST (before the LLM judge),
+      #     entirely off the project `test_cmd` + the reproducer's authored test,
+      #     which is provably ON DISK here (host.agent.task carries a durability
+      #     barrier, so the reproducer's file writes have synced back to the dirty
+      #     worktree before this step). It deliberately does NOT read the artifact's
+      #     repro_command from world — a host.agent.task bind isn't visible to a
+      #     later on_enter guard in the same turn — and it doesn't need to: the
+      #     failing test is on disk. No pre-supplied oracle ⇒ leak-safe in a
+      #     bake-off. Two legs in one legible event:
+      #       RED   : run test_cmd on the DIRTY tree (the new, uncommitted test
+      #               present) → must exit non-zero (the new test fails ⇒ the bug
+      #               reproduces).
+      #       GREEN : stash the reproducer's dirty changes, run test_cmd → must exit
+      #               0 (the branch was clean before the test ⇒ the failure is NEW),
+      #               then restore.
+      #     repro_gate_ok = baseline_green && test_red. Only when it passes does the
+      #     LLM judge run — and it then assesses TEST QUALITY/APPLICABILITY only, the
+      #     GREEN→RED legs being mechanically proven. The GREEN(fix) leg is proven in
+      #     `testing`. Scoped to the synthesis path (gate_command == ''); a
+      #     ticket-supplied repro_command keeps the pre-agent RED gate (step 0).
+      #     Empty test_cmd ⇒ skipped (LLM-only fallback). Latched by repro_gate_ran.
+      #     See .context/green-red-green-repro-gate.md + flows/bugfix_green_red_green_gate.yaml.
+      - when: "world.gate_command == '' && world.test_cmd != '' && world.workdir != '' && !world.repro_gate_ran"
+        invoke: host.run
+        id: repro_det_gate
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set +e
+              export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
+              WT="{{ world.workdir }}"
+              cd "$WT" || { jq -n '{ran:false,baseline_green:false,test_red:false,ok:false,summary:"gate skipped: workdir unavailable",log:""}'; exit 0; }
+              TESTCMD='{{ world.test_cmd }}'
+              # RED leg: the suite on the DIRTY tree (reproducer's new failing test
+              # present, no fix) must FAIL.
+              RED_EXIT=0; RED_OUT=$( bash -c "$TESTCMD" 2>&1 ) || RED_EXIT=$?
+              # GREEN baseline: stash the reproducer's dirty changes (everything but
+              # the ownership sentinel), run the suite, restore. Must pass — the
+              # branch was clean before the reproducer's test.
+              STASHED=0
+              if [ -n "$(git status --porcelain 2>/dev/null | grep -v '\.kitsoki-owner')" ]; then
+                git stash push -u -m repro-gate-baseline >/dev/null 2>&1 && STASHED=1
+              fi
+              BASE_EXIT=0; BASE_OUT=$( bash -c "$TESTCMD" 2>&1 ) || BASE_EXIT=$?
+              [ "$STASHED" = 1 ] && git stash pop >/dev/null 2>&1 || true
+              RED=false;   [ "$RED_EXIT"  -ne 0 ] && RED=true
+              GREEN=false; [ "$BASE_EXIT" -eq 0 ] && GREEN=true
+              OK=false; { [ "$RED" = true ] && [ "$GREEN" = true ]; } && OK=true
+              if   [ "$OK" = true ];     then SUM="✅ GREEN→RED proven · baseline GREEN (test_cmd exit 0) → reproducer test RED (test_cmd exit $RED_EXIT)"
+              elif [ "$GREEN" != true ]; then SUM="❌ baseline NOT green — branch already failing (test_cmd exit $BASE_EXIT) without the reproducer test; gate cannot trust this branch"
+              else                            SUM="❌ reproducer test did NOT fail (test_cmd exit 0) — bug not reproduced"
+              fi
+              RED_TAIL=$( printf '%s' "$RED_OUT"  | tail -c 1500 )
+              BASE_TAIL=$( printf '%s' "$BASE_OUT" | tail -c 1500 )
+              LOG=$( printf 'baseline(GREEN) test_cmd exit=%s | reproducer(RED) test_cmd exit=%s\n[reproducer/RED tail]\n%s\n[baseline/GREEN tail]\n%s' "$BASE_EXIT" "$RED_EXIT" "$RED_TAIL" "$BASE_TAIL" )
+              jq -n --arg sum "$SUM" --arg log "$LOG" --argjson green $GREEN --argjson red $RED --argjson ok $OK \
+                '{ran:true,baseline_green:$green,test_red:$red,ok:$ok,summary:$sum,log:$log}'
+          cwd: "{{ world.workdir }}"
+        bind:
+          repro_gate_ran:       "stdout_json.ran"
+          repro_baseline_green: "stdout_json.baseline_green"
+          repro_test_red:       "stdout_json.test_red"
+          repro_gate_ok:        "stdout_json.ok"
+          repro_gate_summary:   "stdout_json.summary"
+          repro_gate_log:       "stdout_json.log"
+        on_error: idle
+
+      # 1c. Post the deterministic verdict so it is legible in the trace + thread.
+      - when: "world.repro_gate_ran && world.repro_gate_summary != ''"
+        invoke: iface.transport.post
+        with:
+          thread:   "{{ world.thread }}"
+          title:    "Repro gate (GREEN→RED): {{ world.ticket_id }}"
+          body:     "{{ world.repro_gate_summary }}\n\n{{ world.repro_gate_log }}"
+          phase_id: "repro_gate_{{ world.ticket_id }}_{{ world.cycle }}"
+
+      # 1d. Deterministic refine: the GREEN→RED proof FAILED (baseline not green, or
+      #     the reproducer's test didn't fail). Bounce back to the reproducer with
+      #     the verdict as feedback BEFORE spending the LLM judge / maker budget.
+      #     With escalate_low_value on, the refine budget-exhaust handler turns the
+      #     terminal bounce into a needs-human escalation (a mis-scoped repro that
+      #     never arms the gate quits to a human instead of silently abandoning).
+      - when: "world.repro_gate_ran && !world.repro_gate_ok"
+        emit_intent: refine
+        slots:
+          feedback: "{{ world.repro_gate_summary }}"
+
+      # 2. Conditionally: run the LLM judge against the artifact. It assesses TEST
+      #    QUALITY/APPLICABILITY only — the GREEN→RED legs are PROVEN deterministically
+      #    above. Guarded so it runs only when the deterministic gate passed
+      #    (repro_gate_ok) OR was skipped (no test_cmd / ticket-supplied gate_command
+      #    ⇒ LLM-only fallback). Skipped in human mode (operator IS the judge).
+      - when: |
+          (world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human') &&
+          (world.test_cmd == '' || world.gate_command != '' || world.repro_gate_ok)
         invoke: host.agent.decide
         with:
           agent: judge
@@ -211,6 +305,12 @@ states:
       # operator decides, the artifact gets durably recorded, the
       # session advances. One arc, one keystroke.
       accept:
+        # Advance to proposing. The SYNTHESISED-GATE work (commit the reproducer's
+        # RED test as the discrete pre-fix reproducer + derive gate_command) runs
+        # in PROPOSING's on_enter, not here: the reproducer is an async agent whose
+        # file write + artifact bind are only durable a TURN LATER, so committing on
+        # this same-turn accept (the llm auto-accept path) raced the file flush and
+        # silently committed nothing. proposing/on_enter runs after the dust settles.
         - target: proposing
           effects:
             - invoke: iface.transport.post
@@ -227,33 +327,58 @@ states:
       # L2 cycle-budget gate. Refining past the budget routes to
       # @exit:abandoned with a structured reason instead of looping.
       refine:
+        # Active escalation: a reproduction that keeps failing the GREEN→RED gate
+        # (never behaviorally arms — the #47 mis-scope signal) quits to a human
+        # with the gate output instead of silently abandoning.
+        - when: "world.escalate_low_value && world.reproducing_cycle >= world.reproducing_budget"
+          target: "@exit:needs-human"
+          effects:
+            - set:
+                needs_human_reason: "Reproduction never cleanly armed the GREEN→RED gate for {{ world.ticket_id }} after {{ world.reproducing_cycle }} cycles — likely mis-scoped / not behaviorally reproducing the reported symptom. {{ world.repro_gate_summary }}"
+                last_error:         "NEEDS HUMAN (reproducing): repro gate never armed after {{ world.reproducing_cycle }} cycles."
+                status:             "needs-human"
         - when: "world.reproducing_cycle >= world.reproducing_budget"
           target: "@exit:abandoned"
           effects:
             - set:
                 abandon_reason: "reproducing_cycle_budget_exhausted"
                 status:         "abandoned"
-        - target: reproducing
+        - target: idle
           effects:
             - set:
                 refine_feedback:        "{{ slots.feedback ?? world.llm_verdict.reason }}"
                 reproducing_cycle:      "{{ world.reproducing_cycle + 1 }}"
                 cycle:                  "{{ world.cycle + 1 }}"
+                # Leave and re-enter via idle so reproducing.on_enter fires again.
+                # A same-state reproducing -> reproducing transition only applied
+                # these effects and left the artifact pending with no agent job.
+                bf_autostart_attempted: false
                 # Clear the once: bind so on_enter re-runs the agent.
                 reproduction_artifact:  {}
+                # Re-arm the deterministic GREEN→RED gate for the fresh artifact.
+                repro_gate_ran:         false
+                repro_gate_ok:          false
+                repro_gate_summary:     ""
 
       # restart_from re-enters this phase fresh; nothing earlier to
       # rewind to from reproducing.
       restart_from:
-        - target: reproducing
+        - target: idle
           effects:
             - set:
                 restart_from_stage:    "{{ slots.stage ?? 'reproducing' }}"
                 refine_feedback:       ""
                 reproducing_cycle:     0
                 cycle:                 0
+                # Re-arm idle's auto-start so the fresh reproducing room is
+                # actually entered and its on_enter agent call re-runs.
+                bf_autostart_attempted: false
                 # Clear the once: bind so on_enter re-runs the agent fresh.
                 reproduction_artifact: {}
+                # Re-arm the deterministic GREEN→RED gate.
+                repro_gate_ran:        false
+                repro_gate_ok:         false
+                repro_gate_summary:    ""
 
       # jump_to skips ahead. Audited via world.unsafe_jumps_made.
       jump_to:

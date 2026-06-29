@@ -1,0 +1,27 @@
+version: punch-list/v1
+defaults:
+  harness: live
+  profile: codex-native
+  model: gpt-5.5
+  trace_root: .artifacts/punch-list/traces
+items:
+  - id: validate-punch-list
+    title: Validate the punch-list story
+    priority: 1
+    story: stories/punch-list/app.yaml
+    mode: drive
+    prompt: "Open the punch-list story and confirm the manifest loads."
+    verify:
+      - kind: story_validate
+        story: stories/punch-list/app.yaml
+  - id: policy-demo
+    title: Exercise the policy check
+    priority: 2
+    story: stories/punch-list/app.yaml
+    mode: drive
+    prompt: "Check the current item policy and continue."
+    implementation_story: stories/cherny-loop/app.yaml
+    gate_command: "true"
+    verify:
+      - kind: command
+        cmd: "true"

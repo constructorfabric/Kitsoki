@@ -43,7 +43,7 @@ func startTour(ctx context.Context, steps []TourStep) error {
 	return chromedp.Run(tctx, chromedp.WaitVisible(`[data-testid="tour-overlay"]`, chromedp.ByQuery))
 }
 
-// walkSteps drives the tour step-by-step, the Go port of the gears/agent-actions
+// walkSteps drives the tour step-by-step, the Go port of the the agent-actions
 // spec loop: per step it (1) honors the route guard, (2) executes the step's
 // drive[] actions (the self-driving data), (3) waits for waitForTarget, (4)
 // asserts the popover title, (5) opens the chapter + holds + captures a PNG, then
@@ -64,7 +64,7 @@ func walkSteps(ctx context.Context, cfg Config, exec *executor, chapters *chapte
 		}
 
 		// Interactive beats drive + reveal their whole conversation, so open the
-		// chapter NOW so its window spans the conversation (gears spec pattern).
+		// chapter NOW so its window spans the conversation (the tour spec pattern).
 		if step.Route == "interactive" {
 			chapters.open(step.ID, step.Title)
 		}

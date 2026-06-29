@@ -293,12 +293,24 @@ transport decides *where artifacts go*; driving decides *who advances
 the FSM*. The same session can be driven from several sources at once
 while its artifacts mirror to a write-only transport:
 
-```
-DRIVE (inbound, advances the FSM)          TRANSPORT (outbound, output-only)
-  loop.py  ── session continue ──┐           host.transport.post ──▶ jira
-  browser  ── session.submit  ───┼─▶ intent                      ──▶ bitbucket
-  inbound  ── poll→intent     ───┘   (+author)                   ──▶ tui
-  bridge
+```mermaid
+flowchart LR
+    loop["loop.py<br/>session continue"]
+    browser["browser<br/>session.submit"]
+    inbound["inbound bridge<br/>poll -> intent"]
+    intent["intent<br/>+ author"]
+    post["host.transport.post"]
+    jira["jira"]
+    bitbucket["bitbucket"]
+    tui["tui"]
+
+    loop --> intent
+    browser --> intent
+    inbound --> intent
+    intent --> post
+    post --> jira
+    post --> bitbucket
+    post --> tui
 ```
 
 Every drive source resolves an **operator identity** and records it as

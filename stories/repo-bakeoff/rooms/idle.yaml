@@ -1,0 +1,31 @@
+# idle — entry room. The external-repo bake-off is parked. `start` boots it.
+states:
+  idle:
+    description: "External-repo bake-off parked. Waiting for start."
+    relevant_world: [project, harness_dir, bugs, candidates]
+    view:
+      - heading: "External-repo bug-fix bake-off"
+      - kv:
+          pairs:
+            Project:    '{{ world.project }}'
+            Harness:    '{{ world.harness_dir }}'
+            Bugs:       "{{ world.bugs|length }}"
+            Candidates: "{{ world.candidates|length }}"
+      - prose: "Onboard a real repo, fix real filed-issue bugs through the kitsoki pipeline, grade each fix against the PR's own hidden oracle, and deck the report. `start` boots the matrix."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "start"
+              hint:   "echo the project + matrix and advance to configure"
+              intent: start
+            - label:  "quit"
+              hint:   "abandon"
+              intent: quit
+    on:
+      start:
+        - target: configure
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

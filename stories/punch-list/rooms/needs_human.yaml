@@ -1,0 +1,28 @@
+states:
+  needs_human:
+    description: "The run needs operator input."
+    relevant_world: [last_error, current_item]
+    view:
+      - heading: "Punch-list · needs human"
+      - prose: "{{ world.last_error }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - { label: "retry", intent: retry }
+            - { label: "skip", intent: skip_current }
+            - { label: "quit", intent: quit }
+            - { label: "look", intent: look }
+    on:
+      retry:
+        - target: board
+      skip_current:
+        - target: record
+          effects:
+            - set:
+                verify_result: { status: "skipped", summary: "{{ world.last_error }}" }
+                verify_status: "skipped"
+      quit:
+        - target: "@exit:needs-human"
+      look:
+        - target: .

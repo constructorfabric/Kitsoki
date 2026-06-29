@@ -233,7 +233,7 @@ ultimately resolves to.
 
 ## The blank root that grows — the implicit project root
 
-`kitsoki-dev` (`stories/kitsoki-dev/app.yaml`) is a paragon: ~20 lines of
+`kitsoki-dev` (`.kitsoki/stories/kitsoki-dev/app.yaml`) is a paragon: ~20 lines of
 `imports:` + `host_bindings:` + `world:` that import dev-story under one alias,
 rebind its five `host_interfaces:` to local-files/git handlers, and pin a couple
 of world knobs. Most projects' first root is *exactly* "dev-story with a couple
@@ -264,11 +264,11 @@ along three rungs:
         judge_mode: llm_then_human
   ```
 
-- **Rung 2 — a real `stories/<slug>/app.yaml`.** `kitsoki materialize` writes
+- **Rung 2 — a real `.kitsoki/stories/<slug>/app.yaml`.** `kitsoki materialize` writes
   the synthesized importer to disk (slug = `--name` or the repo dir basename),
   emitting a normal dev-story instance exactly like `kitsoki-dev` with a
   provenance header. From then on it is hand-edited like any instance and run by
-  path (`kitsoki run stories/<slug>/app.yaml`).
+  path (`kitsoki run .kitsoki/stories/<slug>/app.yaml`).
 
 **One synthesis path, the same fold pipeline.** `app.SynthesizeRoot` builds the
 in-memory importer and runs the **identical** `resolveImports → expandPhases →

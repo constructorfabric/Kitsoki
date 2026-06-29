@@ -7,8 +7,8 @@ Usage:
     python3 publish_design.py <workspace> <slug> [change_target] [title] [idea] \
         [workdir] [durable] [doc_filename] [ticket_dir]
 
-  workspace      docs/proposals/.workspace/<slug> — holds 005-proposal.md
-                 (the draft) plus the numbered check artifacts 001..004.
+  workspace      docs/proposals/.workspace/<slug> — holds 004-proposal.md
+                 (the draft) plus the numbered check artifacts 001..003.
   slug           the meaningful slug minted at intake; the final filename
                  prefers the draft's own title heading, falling back to this.
   change_target  when set, the author AMENDED this existing proposal in
@@ -206,7 +206,7 @@ def main() -> None:
         design_rel = os.path.relpath(change_target.strip(), workdir)
         title = title_in.strip() or slug_in
     else:
-        src = os.path.join(workspace, "005-proposal.md")
+        src = os.path.join(workspace, "004-proposal.md")
         if not os.path.isfile(src):
             print(f"publish_design: no draft at {src}", file=sys.stderr)
             sys.exit(1)

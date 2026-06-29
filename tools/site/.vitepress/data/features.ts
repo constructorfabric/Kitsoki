@@ -191,12 +191,15 @@ export function featuresSidebar(locale: LocaleCode = "en") {
 /** Sidebar for /guide/: the docs-manifest sections, titled by first heading. */
 export function guideSidebar() {
   const { sections } = expandManifest(siteDir, repoRoot);
-  return sections.map((s) => ({
-    text: s.title,
-    collapsed: false,
-    items: s.entries.map((e) => ({
-      text: firstHeading(path.join(repoRoot, e.from)) ?? path.basename(e.from, ".md"),
-      link: "/" + e.to.replace(/\.md$/, "").replace(/\/index$/, "/"),
+  return [
+    { text: "Docs", link: "/guide/" },
+    ...sections.map((s) => ({
+      text: s.title,
+      collapsed: false,
+      items: s.entries.map((e) => ({
+        text: firstHeading(path.join(repoRoot, e.from)) ?? path.basename(e.from, ".md"),
+        link: "/" + e.to.replace(/\.md$/, "").replace(/\/index$/, "/"),
+      })),
     })),
-  }));
+  ];
 }

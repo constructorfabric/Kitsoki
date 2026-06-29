@@ -64,7 +64,7 @@ func TestClassify_GitOpsInterceptRoom(t *testing.T) {
 func TestClassify_DogfoodWorkspaceCleanupNaturalLanguage(t *testing.T) {
 	t.Parallel()
 
-	def, err := app.Load("../../stories/kitsoki-dev/app.yaml")
+	def, err := app.Load("../../.kitsoki/stories/kitsoki-dev/app.yaml")
 	require.NoError(t, err)
 	m, err := machine.New(def)
 	require.NoError(t, err)

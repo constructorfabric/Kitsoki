@@ -3,7 +3,7 @@
 A standalone story that drives the design-mockup-video loop end to end: a
 discovery conversation distils a **scenario brief**, an agent authors the
 source (static HTML mockups + a tour manifest, *or* a slidey deck;
-`medium: tour | deck`), the shipped `visual-outputs` producers render a
+`medium: tour | deck`), the shipped media producers render a
 walkthrough MP4 (carrying the slice-1 **chapter sidecar**), the operator
 reviews it inline, and a **refine** checkpoint edits the *exact* source that
 produced each flagged moment — fed by inline feedback or by the structured

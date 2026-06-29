@@ -220,7 +220,7 @@ func TestInboxSlashSyncGitHubImportsNotifications(t *testing.T) {
 			return "gh version 2.x\n", "", 0, nil
 		case "gh issue list --repo acme/repo --state open --assignee @me --limit 100 --json number,title,assignees,url":
 			return `[{"number":7,"title":"Assigned issue","url":"https://github.com/acme/repo/issues/7","assignees":[{"login":"brad"}]}]`, "", 0, nil
-		case "gh pr list --repo acme/repo --state open --review-requested @me --limit 100 --json number,title,author,url":
+		case "gh pr list --repo acme/repo --state open --search review-requested:@me --limit 100 --json number,title,author,url":
 			return `[{"number":42,"title":"Review this","url":"https://github.com/acme/repo/pull/42","author":{"login":"alice"}}]`, "", 0, nil
 		default:
 			return "", "unexpected command: " + key, 1, nil

@@ -1,0 +1,94 @@
+# happy_path — idle → configure(accept) → running(accept) → scoring → reporting
+#   → slideshow → done. Then accept at done → @exit:done.
+#
+# All host calls stubbed (Mode-2, intent-only, no LLM), keyed by per-invoke id
+# (memory: stub-by-id). The render + report stubs point at the BAKED report deck
+# under baked/, so neither slidey nor the harness scripts run live. The matrix
+# axes + cell roster are seeded from initial_world (mirroring bakeoff.yaml).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  harness_dir: "tools/bugfix-bakeoff"
+  manifest_path: "tools/bugfix-bakeoff/external/projects/kitsoki/manifest.yaml"
+  generated_at: "2026-06-24T00:00:00Z"
+  tasks: [bug9, bug12, bug14]
+  candidates: [opus-4.8, sonnet-4.6]
+  contenders: [kitsoki, single]
+  cells:
+    items:
+      - { key: "bug9-opus-4.8-kitsoki",   task: bug9,  candidate: opus-4.8,   contender: kitsoki, status: scored }
+      - { key: "bug9-opus-4.8-single",    task: bug9,  candidate: opus-4.8,   contender: single,  status: scored }
+      - { key: "bug9-sonnet-4.6-single",  task: bug9,  candidate: sonnet-4.6, contender: single,  status: scored }
+  deck: { spec_path: "stories/task-bakeoff/baked/deck.json", summary: "Matrix bake-off report deck." }
+
+host_handlers:
+  host.run:
+    by_call:
+      # scoring: aggregate.py → summary. The stub returns a summary-shaped object.
+      aggregate:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            summary_path: "tools/bugfix-bakeoff/results/summary.json"
+            generated_at: "2026-06-24T00:00:00Z"
+            cells: [{ key: "bug9-opus-4.8-kitsoki" }, { key: "bug9-opus-4.8-single" }, { key: "bug9-sonnet-4.6-single" }]
+            rollup: { by_treatment: {}, by_candidate: {}, by_cell_key: {} }
+      # reporting: eval_pilot_report.py → report markdown + deck spec.
+      build_report:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            markdown: "# Bake-off report\n\nsolve rate, cost, tokens, wall time by treatment."
+            deck: { spec_path: "stories/task-bakeoff/baked/deck.json", summary: "Matrix bake-off report deck (bug9 grid)." }
+
+  host.slidey.render:
+    by_call:
+      render_deck:
+        data:
+          ok: true
+          path: "stories/task-bakeoff/baked/deck.html"
+          semantic_path: "stories/task-bakeoff/baked/deck.semantic.json"
+
+  host.artifacts_dir:
+    by_call:
+      emit_deck:
+        data: { ok: true, handle: { id: "task-bakeoff#1", kind: "slideshow", mime: "text/html" }, path: "stories/task-bakeoff/baked/deck.html" }
+      emit_semantic:
+        data: { ok: true, handle: { id: "task-bakeoff-semantic#1", kind: "data", mime: "application/json" }, path: "stories/task-bakeoff/baked/deck.semantic.json" }
+
+turns:
+  # idle: start → configure.
+  - intent: { name: start, slots: {} }
+    expect_state: configure
+    expect_world:
+      cells_total: 3
+
+  # configure: accept → running.
+  - intent: { name: accept, slots: {} }
+    expect_state: running
+    expect_world:
+      cells_ran: 3
+
+  # running: accept → scoring (aggregate) → reporting (auto-emit accept).
+  - intent: { name: accept, slots: {} }
+    expect_state: reporting
+    expect_world:
+      summary_path: "tools/bugfix-bakeoff/results/summary.json"
+
+  # reporting: accept → slideshow → (auto-render + auto-accept) → done.
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      deck_handle: "task-bakeoff#1"
+      semantic_handle: "task-bakeoff-semantic#1"
+
+  # done: accept → @exit:done.
+  - intent: { name: accept, slots: {} }
+    expect_state: "__exit__done"
+
+expect_terminal: true
+expect_no_errors: true

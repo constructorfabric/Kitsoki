@@ -1,0 +1,78 @@
+# bugfix_green_red_green_gate_refine — the deterministic gate's FAILURE bounce.
+#
+# Same synthesis setup as bugfix_green_red_green_gate.yaml, but the deterministic
+# gate's host.run reports !ok (baseline NOT green — the branch was already failing
+# without the reproducer's test, so the gate cannot trust it). implementing/on_enter
+# must restart_from reproducing with the verdict as feedback BEFORE the implementer
+# spends any maker budget — never fix on top of an untrustworthy reproducer.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  ticket_id:        "TKT-GRG-2"
+  ticket_title:     "Dashed gear env override is dropped"
+  thread:           "TKT-GRG-2"
+  workspace_id:     "grg2-fix"
+  workdir:          ".worktrees/grg2-fix"
+  feature_branch:   "grg2-fix"
+  base_branch:      "main"
+  bugfix_mode:      "full"
+  judge_mode:       "human"
+  bf_autostart_attempted: true
+  bugfix_exit:      "open-PR"
+  gate_command:     ""
+  test_cmd:         "cargo test -p demo --lib"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true } }
+  host.inbox.add:      { data: { ok: true } }
+  host.git_worktree:   { data: { ok: true, log: "", path: ".worktrees/grg2-fix" } }
+  host.git:            { data: { ok: true, sha: "abc", diff: "" } }
+  host.local:          { data: { ok: true, log: "PASS", passed: 1, failed: 0 } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Dashed gear env override reproduced"
+        summary_markdown: "The reproducer authors a unit test asserting that an underscore env var override applies to the dashed gear key. The test fails on the unfixed tree. This markdown is intentionally padded to satisfy the reproducing_artifact schema minimum length so the flow exercises the deterministic gate's failure bounce rather than a schema bounce in the harness path."
+        bug_verified:     true
+        involved_components: [{ name: "config", reason: "the dashed gear key lives here" }]
+        repro_command:    "cargo test -p demo --lib dashed_gear_env_override"
+        repro_test_paths: ["src/config.rs"]
+        status:           "passed"
+        outcome:          "pass"
+        applied:          true
+        files_changed:    []
+  host.agent.ask:
+    data: { ok: true, submitted: { summary_title: "p", summary_markdown: "proposal padded to two hundred chars so the proposing artifact schema is satisfied and the flow advances through proposing into implementing where the deterministic GREEN to RED gate runs and bounces on a non-green baseline.", fix_description: "remap the gear-name segment", root_cause: "dashed key never matched", affected_files: ["src/config.rs"] } }
+  host.agent.decide:
+    data: { ok: true, submitted: { summary_title: "ok", summary_markdown: "ok", outcome: "pass", status: "passed", verdict: "accept", intent: "accept", confidence: 0.9 } }
+  host.run:
+    by_call:
+      commit_repro_test:
+        data: { ok: true, exit_code: 0, stdout_json: { sha: "deadbeef", committed: true } }
+      # The gate FAILS: baseline NOT green ⇒ ok=false ⇒ restart_from reproducing.
+      repro_det_gate:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            ran:            true
+            baseline_green: false
+            test_red:       true
+            ok:             false
+            summary:        "❌ baseline NOT green — branch already failing (test_cmd exit 2 on HEAD~1) without the reproducer test; gate cannot trust this branch"
+            log:            "baseline(GREEN) test_cmd exit=2 on HEAD~1 | reproducer(RED) repro_command exit=101"
+
+turns:
+  # start → reproducing on_enter: reproducer authors a test, then the DETERMINISTIC
+  # gate runs FIRST and FAILS (baseline not green) → emit refine → re-author →
+  # gate fails again → … until the reproducing budget is exhausted → abandon. The
+  # deterministic gate NEVER lets an untrustworthy reproducer reach proposing/maker.
+  - intent: { name: start, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      abandon_reason: "reproducing_cycle_budget_exhausted"
+
+expect_no_errors: true

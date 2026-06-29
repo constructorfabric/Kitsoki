@@ -197,18 +197,19 @@ Three pain points appear in every published 2026 comparison and align directly w
 
 The competitive map has three quadrants kitsoki can claim:
 
-```
-                    Author-declared intent alphabet
-                    ────────────────────────────────
-                              YES               NO
-                          ┌──────────┐    ┌──────────┐
-   Deterministic    YES   │  kitsoki │    │  Akka,   │
-   replay built-in        │ ◀── HERE │    │ Temporal │
-                          └──────────┘    └──────────┘
-                          ┌──────────┐    ┌──────────┐
-                    NO    │  Rasa,   │    │ LangGraph│
-                          │ Dialogflow│   │ CrewAI   │
-                          └──────────┘    └──────────┘
+```mermaid
+quadrantChart
+    title Competitive positioning
+    x-axis No author-declared intent alphabet --> Author-declared intent alphabet
+    y-axis No deterministic replay built in --> Deterministic replay built in
+    quadrant-1 Kitsoki
+    quadrant-2 Durable workflow engines
+    quadrant-3 Agent frameworks
+    quadrant-4 Dialog platforms
+    "kitsoki": [0.82, 0.86]
+    "Akka / Temporal": [0.25, 0.82]
+    "Rasa / Dialogflow": [0.78, 0.25]
+    "LangGraph / CrewAI": [0.24, 0.25]
 ```
 
 Kitsoki is alone in the upper-left quadrant *for a working implementation at the same architectural scope* — running PoC, validated internally on real bugs across teams. Academic and OSS systems (StateFlow, CompileAgent, R-LAM) validate that the quadrant is real and important, but none of them ships an authoring DSL, a CI-grade flow-test runner, and a multi-surface transport layer in one binary today.

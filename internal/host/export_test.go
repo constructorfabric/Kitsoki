@@ -84,6 +84,22 @@ func (noopStreamSink) OnStreamEvent(_ context.Context, _ StreamEvent) {}
 // NoopStreamSinkExport returns a no-op StreamSink for use in tests.
 func NoopStreamSinkExport() StreamSink { return noopStreamSink{} }
 
+// AgentBackendForTest is the test-visible alias for the backend seam.
+type AgentBackendForTest = agentBackend
+
+// NewClaudeBackendForTest returns the production Claude backend for black-box
+// tests in package host_test.
+func NewClaudeBackendForTest() AgentBackendForTest { return claudeBackend{} }
+
+// NewCodexBackendForTest returns the production Codex backend for black-box
+// tests in package host_test.
+func NewCodexBackendForTest() AgentBackendForTest { return codexBackend{} }
+
+// WithAgentBackendForTest installs a production backend seam in tests.
+func WithAgentBackendForTest(ctx context.Context, b AgentBackendForTest) context.Context {
+	return WithAgentBackend(ctx, b)
+}
+
 // TarballDirectoryExport is the test-visible wrapper for tarballDirectory.
 func TarballDirectoryExport(dir string) ([]byte, error) {
 	return tarballDirectory(dir)

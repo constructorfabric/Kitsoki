@@ -75,10 +75,27 @@ def command_from_scripts(package: dict, name: str) -> str:
     return ""
 
 
+def make_targets(path: Path) -> set[str]:
+    makefile = path / "Makefile"
+    if not makefile.exists():
+        return set()
+    targets: set[str] = set()
+    try:
+        text = makefile.read_text(encoding="utf-8")
+    except OSError:
+        return targets
+    for line in text.splitlines():
+        match = re.match(r"^([A-Za-z0-9_.-]+)\s*:", line)
+        if match:
+            targets.add(match.group(1))
+    return targets
+
+
 def discover(path: Path) -> dict:
     package = read_package(path)
     package_name = package.get("name") if isinstance(package.get("name"), str) else ""
     project_id = slug(package_name or path.name)
+    targets = make_targets(path)
     deps = {}
     for key in ("dependencies", "devDependencies"):
         value = package.get(key)
@@ -104,6 +121,8 @@ def discover(path: Path) -> dict:
         stack = "local project"
 
     dev_command = command_from_scripts(package, "dev")
+    test_command = command_from_scripts(package, "test")
+    build_command = command_from_scripts(package, "build")
     if project_id == "slidey" and (path / "src" / "index.js").exists():
         examples = list((path / "examples").glob("*.slidey.json")) if (path / "examples").exists() else []
         example = "examples/hello.slidey.json" if (path / "examples" / "hello.slidey.json").exists() else ""
@@ -111,6 +130,13 @@ def discover(path: Path) -> dict:
             example = str(examples[0].relative_to(path))
         if example:
             dev_command = f"node src/index.js {example} --port 5000 --no-open"
+    elif (path / "Cargo.toml").exists():
+        build_command = "make build" if "build" in targets else "cargo build"
+        test_command = "make test" if "test" in targets else "cargo test"
+        if "dev" in targets:
+            dev_command = "make dev"
+        elif "example" in targets:
+            dev_command = "make example"
 
     return {
         "target_path": str(path),
@@ -118,8 +144,8 @@ def discover(path: Path) -> dict:
         "project_title": title_from_slug(project_id),
         "stack": stack,
         "dev_command": dev_command,
-        "test_command": command_from_scripts(package, "test"),
-        "build_command": command_from_scripts(package, "build"),
+        "test_command": test_command,
+        "build_command": build_command,
         "conventions": "hybrid" if project_id == "slidey" or (path / "AGENTS.md").exists() or (path / "CLAUDE.md").exists() else "local defaults",
         "tracker": "none",
     }

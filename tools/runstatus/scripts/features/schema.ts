@@ -213,10 +213,65 @@ export const FeatureSchema = FeatureObjectSchema.superRefine((f, ctx) => {
         message: `feature "${f.id}" posterStep "${f.demo.posterStep}" is not a declared step id`,
       });
     }
+    // Completeness: a promoted feature's grid card renders its demo recording —
+    // a promo entry with no demo binding ships an empty card.
+    if (f.promo && !f.demo) {
+      ctx.addIssue({
+        code: "custom",
+        message: `feature "${f.id}" is promoted (promo:) but has no demo binding — the promo card needs a recording`,
+      });
+    }
+    // Completeness: a recordable, tour-bearing demo must name a deterministic
+    // poster frame (a step id, validated above). Without one the feature page
+    // and grid card fall back to a black first frame. Tourless demos
+    // (harness-picker, meta-mode) and stitched product-tours are exempt.
+    const recordable = f.demo && f.demo.spec && !f.demo.external && !f.sections;
+    if (recordable && f.tour && !f.demo!.posterStep) {
+      ctx.addIssue({
+        code: "custom",
+        message: `feature "${f.id}" has a recordable tour demo but no demo.posterStep — pick a step id for the poster frame`,
+      });
+    }
 });
 
 export type Feature = z.infer<typeof FeatureSchema>;
 export type TourStepData = z.infer<typeof TourStepSchema>;
+
+/**
+ * Match a docs-manifest `from` pattern against a repo-relative path. The
+ * manifest globs are deliberately simple — an exact path or a single `*`
+ * standing in for one path segment (e.g. `docs/architecture/*.md`). We model
+ * `*` as "no slash" so a glob never reaches into a subdirectory.
+ */
+function manifestMatch(glob: string, p: string): boolean {
+  if (!glob.includes("*")) return glob === p;
+  const rx = new RegExp(
+    "^" + glob.split("*").map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*") + "$",
+  );
+  return rx.test(p);
+}
+
+/**
+ * Build the site's published-docs predicate from tools/site/docs-manifest.json
+ * (the allowlist of repo docs copied into the site). Returns null when the
+ * manifest is absent so the check is skipped rather than failing spuriously.
+ * A `docs:` link under `docs/` that this predicate rejects renders on the site
+ * as an external GitHub blob link, not an in-site page.
+ */
+function siteDocAllowlist(repoRoot: string): ((rel: string) => boolean) | null {
+  const mp = path.join(repoRoot, "tools", "site", "docs-manifest.json");
+  if (!fs.existsSync(mp)) return null;
+  let froms: string[];
+  try {
+    const m = JSON.parse(fs.readFileSync(mp, "utf8")) as {
+      sections?: Array<{ items?: Array<{ from?: string }> }>;
+    };
+    froms = (m.sections ?? []).flatMap((s) => (s.items ?? []).map((it) => it.from).filter(Boolean) as string[]);
+  } catch {
+    return null;
+  }
+  return (rel: string) => froms.some((g) => manifestMatch(g, rel));
+}
 
 /**
  * Cross-file catalog checks that one feature alone cannot express. Returns
@@ -268,6 +323,21 @@ export function validateCatalog(
       }
     }
     if (opts.skipPaths) continue;
+    // A `docs:` link under docs/ must be published by the site allowlist, else
+    // it silently degrades to an external GitHub blob link instead of an in-site
+    // page. Paths outside docs/ (e.g. stories/<name>/app.yaml) are deliberate
+    // source links and are exempt.
+    const allow = siteDocAllowlist(repoRoot);
+    if (allow) {
+      for (const d of f.docs ?? []) {
+        if (d.startsWith("docs/") && !allow(d)) {
+          problems.push(
+            `${file}: docs link "${d}" is not in the site allowlist (tools/site/docs-manifest.json) — ` +
+              `it would render as an external GitHub link, not an in-site page`,
+          );
+        }
+      }
+    }
     const mustExist: Array<[string, string]> = [];
     for (const d of f.docs ?? []) mustExist.push(["docs", d]);
     if (f.demo) {

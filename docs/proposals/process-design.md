@@ -28,7 +28,7 @@ the work?** That decision is where the moat lives or dies — get it wrong and
 you've rebuilt an agentic loop with extra steps. This document is that
 missing layer: the design discipline above the YAML.
 
-The idea room in `stories/kitsoki-dev` is a poor first attempt because it
+The idea room in `.kitsoki/stories/kitsoki-dev` is a poor first attempt because it
 jumps straight to YAML without this discipline. We fix that by writing the
 discipline down, then building a story that *applies* it to produce other
 stories.

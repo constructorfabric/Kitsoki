@@ -32,7 +32,7 @@ hosts: [host.starlark.run]            # MUST be in the app-level allow-list
   with:
     script: scripts/derive.star       # relative to the app root; resolved at load time
     inputs:
-      widget_id: "{{ world.selected }}"   # templated like any with: arg
+      widget_id: "{{ world.selected }}"   # MUST be {{ }}-templated — a bare `world.selected` is passed as a literal string
   bind:
     name: widget_name                 # script output `name` → world.widget_name
   on_error: lookup_failed             # fail() / bad shape routes here
@@ -43,6 +43,16 @@ The sidecar — **not** the script — is what the engine enforces. A missing
 `required` input, a forgotten output, an undeclared returned key, or a type
 mismatch is a domain error that fires `on_error:`. The full type list and
 validation rules live in [hosts.md §The sidecar contract](../../../architecture/hosts.md#the-sidecar-contract).
+
+> **Wire every `inputs:` value as a `{{ }}` template.** `host.starlark.run` does
+> not expr-evaluate inputs — the machine resolves them first, and only a string
+> wrapping the whole value in `{{ }}` is evaluated (a *sole* `{{ expr }}` keeps the
+> typed value, so a declared `int` stays an `int`). A **bare** `world.foo` reaches
+> the script as the literal string `"world.foo"` — the silent footgun that looks
+> like the script "ignored" the value. The loader now rejects this at load;
+> `kitsoki validate <app.yaml>` surfaces it without a session. Likewise, when a
+> *transition-effect* script needs a world value, pass it as a templated input,
+> not via `ctx.world` (a stale snapshot mid-transition).
 
 ## Writing `main(ctx)` — the things that bite
 

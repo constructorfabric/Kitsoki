@@ -1,0 +1,73 @@
+{
+ "_comment": "Feature narrative deck for the slidey-edit spatial-annotation capability. Paths, semantic refs, bbox, and the edited-element ref are replayed verbatim from stories/slidey-edit/cassettes/deck_review.cassette.yaml (host.agent.task author_deck, host.slidey.render, host.starlark.run seed_annotation). The embed:view/annotate/pick protocol is documented in docs/architecture (kitsoki host ⟷ slidey producer).",
+ "meta": {
+  "title": "Feature: spatial annotation on decks",
+  "resolution": { "width": 1920, "height": 1080 },
+  "theme": "rose-pine-moon",
+  "narration": { "voice": "en-AU-NatashaNeural", "rate": "+0%" }
+ },
+ "scenes": [
+  {
+   "type": "title",
+   "eyebrow": "Kitsoki feature · slidey-edit",
+   "title": "Point at a slide, ask for a change",
+   "subtitle": "Author a deck, then refine a single element by spatial reference",
+   "narration": "Slidey-edit lets you author a deck and then refine one element of it — not by editing JSON by hand, but by pointing at the rendered slide and describing the change you want."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "The problem",
+   "lede": "Decks are JSON; feedback is spatial.",
+   "body": "A rendered deck is a wall of scenes, but the change you want is local: 'make that card stand out.' Mapping a visual intent back to the right scene and element in the source by hand is slow and error-prone. The feature closes that loop — the rendered slide carries machine-addressable handles, so a spatial pick becomes a precise edit.",
+   "narration": "A deck is JSON, but feedback is spatial — make that card stand out. The feature maps a visual pick back to the exact element in the source."
+  },
+  {
+   "type": "cards",
+   "variant": "grid",
+   "title": "How it works",
+   "narration": "Three host calls compose the loop: an agent authors the deck, the renderer emits a semantic map alongside the HTML, and a glue script seeds an annotation anchored to a real element.",
+   "cards": [
+    { "label": "host.agent.task", "sub": "authors deck → stories/slidey-edit/baked/deck.json", "style": "primary" },
+    { "label": "host.slidey.render", "sub": "emits deck.html + deck.semantic.json", "style": "secondary" },
+    { "label": "host.starlark.run", "sub": "seeds annotation on semantic ref 1/card_0", "style": "default" },
+    { "label": "embed protocol", "sub": "view / annotate / pick over postMessage", "style": "default" }
+   ]
+  },
+  {
+   "type": "table",
+   "title": "The semantic anchor — addressable by ref + bbox",
+   "columns": ["Field", "Value"],
+   "rows": [
+    { "cells": ["plugin", "slidey"] },
+    { "cells": ["ref", "1/card_0  (scene 1, card 0)"] },
+    { "cells": ["bbox", "[140, 518, 535, 114]"] },
+    { "cells": ["label", "Scene 1 · card 0"] }
+   ],
+   "hold": 300,
+   "variant": "data",
+   "caption": "The renderer's deck.semantic.json gives every element an opaque ref and a bounding box, so a click on the slide resolves to a precise edit target — no JSON spelunking."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "The refine pass",
+   "lede": "One instruction, one element edited.",
+   "body": "With the element picked, the refine instruction — 'make the semantic_element card stand out and add a one-line example' — flows to the authoring agent. It returns the edited spec and reports exactly which refs it touched: edited = ['1/card_0']. Nothing else in the deck moves.",
+   "narration": "With the card picked, the instruction flows to the agent. It returns the edited deck and reports exactly one ref touched — card zero on scene one. Nothing else moves."
+  },
+  {
+   "type": "narrative",
+   "eyebrow": "Why it's clean",
+   "lede": "Kitsoki knows nothing about slidey.",
+   "body": "The host speaks a generic embed protocol — view, annotate, pick — over postMessage. Slidey is the producer on the other side; kitsoki never learns slidey's scene vocabulary, and the story owns the scene gate. New producers plug in behind the same protocol without touching the runtime.",
+   "narration": "The host speaks a generic embed protocol — view, annotate, pick. Slidey is just the producer behind it. Kitsoki never learns slidey's vocabulary, so new producers plug in unchanged."
+  },
+  {
+   "type": "cta",
+   "title": "Try it",
+   "subtitle": "kitsoki web → drive the slidey-edit story → author, pick, refine",
+   "wordmark": "kitsoki",
+   "tagline": "Spatial refine for declarative decks",
+   "narration": "See it live — drive the slidey-edit story, author a deck, point at a card, and refine it."
+  }
+ ]
+}

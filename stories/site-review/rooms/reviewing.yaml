@@ -1,0 +1,177 @@
+# reviewing — does all the work on_enter, then auto-advances via
+# emit_intent: done.
+#
+# on_enter chain (order matters; each effect sees the world snapshot
+# built by the preceding ones):
+#
+#   1. host.run preflight: emit a JSON envelope with the current HEAD
+#      sha, last 20 commit subjects, a `git diff --stat HEAD~20..HEAD`
+#      summary, AND the current feature-catalog ids + site page
+#      inventory. The handler's stdout_json parser binds these into
+#      world.
+#
+#   2. host.agent.decide: hand the metadata to an Opus agent with
+#      read-only tools (Read/Grep/Glob/Bash[read-only]). Schema-pinned
+#      verdict with `decision` ∈ {needs_update, up_to_date}.
+#
+#   3. host.artifacts_dir: write the verdict map (auto-pretty-printed
+#      as JSON because the handler coerces map bodies) to
+#      .artifacts/site-review-<mode>-<sha>.json.
+#
+#   4. emit_intent: done — bounces into the `reviewed` state.
+
+states:
+
+  reviewing:
+    description: "Capturing the diff + catalog and asking the site reviewer."
+    view:
+      - prose: "Running the audit. The reviewer is reading features/*.yaml and tools/site/ against the selected scope."
+      - kv:
+          pairs:
+            "Commit":   '{{ world.commit_sha|default:"(probing…)" }}'
+            "Verdict":  '{{ world.verdict.decision|default:"(pending — agent has not returned)" }}'
+      - heading: "Recent log"
+      - code: '{{ world.recent_log|default:"(pending)" }}'
+      # Action menu is unconditional (skill §6). The state usually
+      # transits in one turn via emit_intent:done, but if the agent
+      # is slow the user still needs an escape.
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label:  "quit"
+              hint:   "abandon the run"
+              intent: quit
+            - label:  "look"
+              hint:   "re-render"
+              intent: look
+    relevant_world: [commit_sha, recent_log, feature_catalog, verdict]
+    on_enter:
+      # 1. Capture HEAD + recent activity + catalog/site inventory in a
+      # single JSON envelope so stdout_json binds them in one shot.
+      - invoke: host.run
+        id: site-preflight
+        with:
+          cmd: bash
+          args:
+            - "-c"
+            - |
+              set -e
+              sha=$(git rev-parse HEAD)
+              count=$(git rev-list --count HEAD 2>/dev/null || echo 1)
+              mode="{{ world.review_mode }}"
+              # Catalog + site inventory are captured in BOTH modes — the
+              # reviewer needs to know what is already cataloged/published
+              # to find what is missing.
+              catalog=$(ls features/*.yaml 2>/dev/null | xargs -n1 basename 2>/dev/null | sed 's/\.ya\?ml$//' | sort | head -200)
+              site_pages=$(find tools/site/src -name "*.md" 2>/dev/null | sort | head -200)
+              if [ "$mode" = "baseline" ]; then
+                # Baseline mode: ignore commit range. Leave the delta
+                # fields empty as a signal that this is the full-sweep
+                # path; the agent audits the whole catalog + site.
+                recent=""
+                diff=""
+                wt=""
+              else
+                # Recent mode: delta-focused capture.
+                if [ "$count" -gt 1 ]; then
+                  n=$count
+                  if [ "$n" -gt 21 ]; then n=21; fi
+                  base="HEAD~$((n - 1))"
+                  recent=$(git log --oneline -n "$n" 2>/dev/null || true)
+                  diff=$(git diff --stat "$base..HEAD" 2>/dev/null || true)
+                else
+                  recent=$(git log --oneline -n 1 2>/dev/null || true)
+                  diff=$(git show --stat --format= HEAD 2>/dev/null || true)
+                fi
+                wt=$(git diff --stat HEAD 2>/dev/null || true)
+              fi
+              jq -nc \
+                --arg sha     "$sha" \
+                --arg count   "$count" \
+                --arg mode    "$mode" \
+                --arg recent  "$recent" \
+                --arg diff    "$diff" \
+                --arg wt      "$wt" \
+                --arg catalog "$catalog" \
+                --arg pages   "$site_pages" \
+                '{sha:$sha, commit_count:$count, review_mode:$mode, recent_log:$recent, recent_changes:$diff, working_tree_diff:$wt, feature_catalog:$catalog, site_pages:$pages}'
+        bind:
+          commit_sha:        "stdout_json.sha"
+          commit_count:      "stdout_json.commit_count"
+          recent_log:        "stdout_json.recent_log"
+          recent_changes:    "stdout_json.recent_changes"
+          working_tree_diff: "stdout_json.working_tree_diff"
+          feature_catalog:   "stdout_json.feature_catalog"
+          site_pages:        "stdout_json.site_pages"
+        on_error: review_failed
+
+      # 2. Ask Opus.
+      - invoke: host.agent.decide
+        id: site-reviewer
+        with:
+          prompt: prompts/decide.md
+          schema: schemas/site_review_verdict.json
+          agent:  site_reviewer
+          args:
+            commit_sha:        "{{ world.commit_sha }}"
+            commit_count:      "{{ world.commit_count }}"
+            review_mode:       "{{ world.review_mode }}"
+            recent_log:        "{{ world.recent_log }}"
+            recent_changes:    "{{ world.recent_changes }}"
+            working_tree_diff: "{{ world.working_tree_diff }}"
+            feature_catalog:   "{{ world.feature_catalog }}"
+            site_pages:        "{{ world.site_pages }}"
+        bind:
+          # Bind both the full verdict and a scalar sentinel so the
+          # transition guard below can detect "submit succeeded" without
+          # walking into world.verdict.decision (which expr-lang reads
+          # through differently depending on how the value lands in the
+          # world map). The sentinel is an explicit promise the schema
+          # makes: decision must be set on every successful submit.
+          verdict:          submitted
+          verdict_decision: submitted.decision
+        on_error: review_failed
+
+      # 3. Drop the verdict into .artifacts/ as a **pure JSON file**.
+      # Giving the thread a `.json` extension and omitting title/phase_id
+      # bypasses host.artifacts_dir's markdown wrapper, so we get just
+      # the body bytes (json.MarshalIndent of the typed verdict map) on
+      # disk — a valid, schema-conforming JSON file readable by jq /
+      # Python / downstream pipelines. The thread name carries the mode
+      # so baseline and recent runs at the same SHA don't clobber each
+      # other.
+      - invoke: host.artifacts_dir
+        id: site-verdict-artifact
+        with:
+          thread:    "site-review-{{ world.review_mode }}-{{ world.commit_sha }}.json"
+          mode:      "replace"
+          body:      "{{ world.verdict }}"
+        bind:
+          artifact_path: path
+        on_error: review_failed
+
+      # 4. Hand off. Two conditional emits, guarded against world keys
+      #    that only become non-empty AFTER the preceding host calls'
+      #    binds have settled (see docs-review/rooms/reviewing.yaml for
+      #    the full pre-bind/post-bind explanation). `verdict_decision`
+      #    is set iff agent.decide successfully submitted a
+      #    schema-conforming verdict.
+      - emit_intent: done
+        when: "world.verdict_decision != ''"
+      - emit_intent: no_submit
+        when: "world.commit_sha != '' && world.verdict_decision == ''"
+    on:
+      # Defensive guard: agent.decide can technically return ok with an
+      # empty `submitted`. Bounce to review_failed in that case rather
+      # than rendering a fake-good verdict in `reviewed`. The `decision`
+      # field is required by the schema, so its presence is a sufficient
+      # signature for "real submit".
+      done:
+        - target: reviewed
+      no_submit:
+        - target: review_failed
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

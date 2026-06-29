@@ -14,12 +14,18 @@
 #
 #   cp .kitsoki.local.yaml.example .kitsoki.local.yaml
 #   export SYNTHETIC_API_KEY=sk-...      # in your shell / profile / .envrc
-#   kitsoki web --stories-dir stories    # then pick the provider in the header
+#   kitsoki web                          # then pick the provider in the header
 #   # …or in the TUI:  /provider synthetic-claude  ·  /model 2
 #
 # See docs/architecture/harness-profiles.md for the full reference.
 
 default_profile: claude-native
+
+# Project-specific instances live under .kitsoki/stories; reusable/exported
+# story templates live under stories.
+story_dirs:
+  - ./.kitsoki/stories
+  - ./stories
 
 harness_profiles:
   # Your native Anthropic Claude Code subscription (ambient auth — nothing to

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"kitsoki/internal/host"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/webconfig"
 )
@@ -16,7 +17,7 @@ func harnessProfilesFromConfig(cfg webconfig.WebConfig) (map[string]orchestrator
 	}
 	out := make(map[string]orchestrator.HarnessProfile, len(cfg.HarnessProfiles))
 	for name, p := range cfg.HarnessProfiles {
-		out[name] = orchestrator.HarnessProfile{
+		profile := orchestrator.HarnessProfile{
 			Name:           name,
 			Backend:        p.Backend,
 			Model:          p.Model,
@@ -27,6 +28,21 @@ func harnessProfilesFromConfig(cfg webconfig.WebConfig) (map[string]orchestrator
 			Env:            p.Env,
 			Plugin:         p.Plugin,
 		}
+		if p.Quota != nil {
+			profile.Quota = hostQuotaFromConfig(*p.Quota)
+		}
+		out[name] = profile
 	}
 	return out, cfg.DefaultProfile
+}
+
+func hostQuotaFromConfig(q webconfig.QuotaControl) host.QuotaControl {
+	return host.QuotaControl{
+		Window:          q.Window,
+		TokensPerWindow: q.TokensPerWindow,
+		MaxConcurrent:   q.MaxConcurrent,
+		ReserveTokens:   q.ReserveTokens,
+		StatePath:       q.StatePath,
+		LeaseTimeout:    q.LeaseTimeout,
+	}
 }

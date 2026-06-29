@@ -1,13 +1,51 @@
 # Semantic routing
 
-Kitsoki resolves every user turn through a four-tier routing stack
-before the LLM gets to look at the input. This doc covers the tiers,
-how to grow the synonym library, and how the turncache works.
+Kitsoki resolves every user turn through a routing stack before the
+LLM gets to look at the input. This doc covers the tiers, how to grow
+the synonym library, and how the turncache works.
 
 This page is the user-facing reference for what shipped; the
 implementation lives in [`internal/semroute/`](../../internal/semroute)
 (matcher, template compiler, Aho-Corasick wiring) and
 [`internal/slotparse/`](../../internal/slotparse) (typed slot parsers).
+
+## 0. The default is LLM-only routing
+
+Routing is always a **distinct, isolated decision** — separate from
+the agent conversation (`host.agent.converse`, the workbench) and from
+the deterministic state-machine control that runs once an intent is
+chosen. **By default that decision is made by the main model**
+(`harness.RunTurn`): a free-text turn is classified into one of the
+allowed intents by a single, schema-bounded model call, and the
+deterministic semantic-routing stack below is **off**.
+
+The deterministic stack (semroute synonym/template matching, the
+turn-cache, the `default_intent` sink, and the app-level free-form
+fallback) is a performance/precision optimisation that needs more
+tuning before it carries production traffic, so it is opt-in:
+
+| How                                | Effect                                                                  |
+|------------------------------------|-------------------------------------------------------------------------|
+| `--semantic-routing` (global flag) | Force the full stack **on** for the invocation.                         |
+| `KITSOKI_SEMANTIC_ROUTING` (env)   | `1/true/on` forces it on; `0/false/off` forces it off.                  |
+| neither set (CLI default)          | Stack **off** — LLM-only routing.                                       |
+| per-app `routing.enabled:` (YAML)  | Honoured only when no global override is wired (tests, the flow runner). |
+
+The flag/env override wins over per-app `routing.enabled`. The CLI
+surfaces (`kitsoki run`/`web`, `kitsoki turn`, `kitsoki mcp`) resolve
+the toggle once and pass it to the orchestrator via
+`WithSemanticRouting`; the MCP studio reads `KITSOKI_SEMANTIC_ROUTING`,
+which `kitsoki mcp` exports from the resolved flag. Orchestrators built
+without the option (unit tests, `internal/testrunner` flow fixtures)
+fall back to per-app `routing.enabled`, so the existing deterministic
+test fixtures keep matching.
+
+**Even with the stack off, the zero-cost exact match still runs**: an
+input that exactly equals a menu display string or a unique intent
+example resolves deterministically (one map lookup, no LLM hop) via
+`TryDeterministic`. Everything else falls straight through to the main
+model. The tiers documented below describe the stack as it behaves
+when it is enabled.
 
 ## 1. The four tiers
 
@@ -32,14 +70,14 @@ The TUI route badge next to the user's input names the tier that
 resolved the turn. `ctrl+r` toggles the full route trace overlay
 which shows every tier that ran and what each said.
 
-> Note: the deterministic tier (exact menu-display or example-string
-> match) is currently only applied by the TUI before submission. CLI
-> invocations (`kitsoki run --raw …`, programmatic callers) enter
-> `Orchestrator.Turn` directly and start from the semantic tier. The
-> match outcome is identical for inputs that any tier resolves — but
-> a CLI invocation with an exact menu string will pay the lex+matcher
-> cost the TUI avoids. Future versions may move the deterministic
-> prepass into `Turn` itself.
+> Note: when the semantic stack is **enabled**, the deterministic
+> tier's exact match is provided by the semroute synonym index inside
+> `TrySemantic` (the TUI additionally runs `MatchDeterministic` before
+> submission as a fast path). When the stack is **disabled** (the
+> LLM-only default, see §0), `Orchestrator.Turn` runs `TryDeterministic`
+> itself so an exact menu-display or example-string match still resolves
+> without an LLM hop on every surface — then falls straight through to
+> `harness.RunTurn`.
 
 ### 1.1 Deterministic
 
@@ -237,6 +275,35 @@ to the LLM as before. The intent name is import-rewritten like any other
 arc, so a bare `discuss` keeps working when the room is folded under an
 alias (`core__discuss`). Trace event: `turn.default_routed`
 (`routed_by: "default"`).
+
+### 1.6 App-level free-form fallback
+
+Workbench stories can declare one canonical work-intake room and let strict
+menu rooms fall back to it when no command-like tier matches. This is the
+`dev-story` / `kitsoki-dev` behavior: a broad engineering request typed from a
+ticket picker, bugfix checkpoint, imported pipeline room, or any other
+non-conversational room is routed to the landing workbench agent before the
+main-turn LLM can guess a nearby command such as `quit`.
+
+```yaml
+routing:
+  free_form_fallback:
+    state: landing
+    intent: work
+```
+
+The fallback intent has the same shape as `default_intent`: exactly one
+required string slot receives the whole utterance. At load time the fallback
+transition is copied onto every non-terminal state that does not already
+declare `default_intent` or `agent_off_ramp`, including states folded in from
+imports. The copied transition targets the canonical fallback state, so an
+imported child room such as `core.bf.idle` lands on `core.landing`, not a
+relative sibling.
+
+If `routing.free_form_fallback` is omitted, the loader auto-detects a
+`landing.work` transition when present. This keeps dev-story-style apps working
+without repeating the same fallback arc in every room. Trace provenance is
+recorded as `routed_by: "fallback"` with `match_type: "free_text"`.
 
 ## 2. Per-app routing config
 

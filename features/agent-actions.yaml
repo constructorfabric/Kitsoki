@@ -5,7 +5,7 @@ title: Agent action transcripts
 tagline: Every agent call's full tool-use stream — captured once, replayed byte-identically.
 summary: "Every agent call — task, decide, ask, converse — runs a rich native execution stream of tool calls, reasoning, and MCP submissions. kitsoki captures that stream byte-verbatim to a per-call sidecar and renders it in the observer: typed rows with full tool I/O, a latency waterfall, running token/cost accrual, the decide guardrail arc, an honest cassette-vs-live diff, and a run-wide rollup."
 promo:
-  order: 20
+  order: 0
   highlight: true
 docs:
   - docs/tracing/run-status-ui.md
