@@ -197,9 +197,24 @@ func (l *quotaLimiter) tryReserve(key, reservationID string, tokens int64) (time
 			return nil
 		}
 		if l.tokensPerWindow > 0 && profile.WindowTokens+effective > l.tokensPerWindow {
-			wait = profile.WindowStart.Add(l.window).Sub(now)
-			reason = "tokens"
-			return nil
+			// A single call larger than the entire window must still make
+			// progress. `effective` is the running average of observed calls
+			// (effectiveTokens); once ANY observed call exceeds tokensPerWindow
+			// that average permanently exceeds the cap, so a plain throttle
+			// loops forever — the limiter waits a window, rolls it (WindowTokens
+			// → 0), re-checks the same too-large estimate, and blocks again
+			// until ctx is cancelled (a silent multi-minute hang). When the
+			// estimate ALONE exceeds the window it can never fit any window, so
+			// admit it and absorb the overshoot rather than deadlock. A call
+			// that merely doesn't fit the CURRENT window (estimate ≤ window, but
+			// prior usage fills it) is left to throttle — that resolves on the
+			// next window roll and is not a deadlock. Concurrency pressure is
+			// still bounded by the maxConcurrent check above.
+			if effective <= l.tokensPerWindow {
+				wait = profile.WindowStart.Add(l.window).Sub(now)
+				reason = "tokens"
+				return nil
+			}
 		}
 		profile.WindowTokens += effective
 		if profile.Reservations == nil {

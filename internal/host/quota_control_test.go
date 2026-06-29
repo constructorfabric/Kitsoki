@@ -219,6 +219,48 @@ func TestProviderQuotaFinishOnceReleasesInterruptedReservation(t *testing.T) {
 	}
 }
 
+// TestProviderQuotaAdmitsCallLargerThanWindow guards the deadlock where a single
+// observed call larger than tokens_per_window poisons the running-average
+// effectiveTokens so every later reservation throttles forever. The first
+// (huge) call must be admitted, and a subsequent call must still make progress
+// rather than hang until ctx cancellation.
+func TestProviderQuotaAdmitsCallLargerThanWindow(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "quota.json")
+	ctx := quotaTestContext(statePath, QuotaControl{
+		Window:          "1m",
+		TokensPerWindow: 120000,
+		MaxConcurrent:   1,
+		ReserveTokens:   1,
+	})
+
+	// A reproducer-style turn that autonomously read the repo: 1.4M tokens,
+	// >10x the window. It must be admitted, not throttled.
+	first, err := reserveProviderQuota(ctx, claudeBackend{}, "huge-turn")
+	if err != nil {
+		t.Fatalf("first reserve: %v", err)
+	}
+	first.finish(map[string]any{"total_tokens": float64(1400000)}, "")
+
+	// The next reservation now inherits a 1.4M running average. Pre-fix this
+	// deadlocks (1.4M > 120k forever); it must instead be admitted promptly.
+	done := make(chan error, 1)
+	go func() {
+		second, err := reserveProviderQuota(ctx, claudeBackend{}, "judge-turn")
+		if second != nil {
+			second.finish(nil, "")
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("second reserve after a window-exceeding call: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("second reservation deadlocked behind a window-exceeding running average")
+	}
+}
+
 func quotaTestContext(statePath string, q QuotaControl) context.Context {
 	q.StatePath = statePath
 	return WithActiveProfile(context.Background(), ActiveProfile{
