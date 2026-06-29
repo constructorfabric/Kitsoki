@@ -2,6 +2,7 @@ package scripts_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,10 +12,41 @@ import (
 )
 
 // These tests pin the slidey-edit story's scene-targeting + gate scripts against
-// the REAL kitsoki-pitch deck (35 scenes; the "Cat Wrangling" image is scene 9).
+// the REAL kitsoki-pitch deck. Expectations (scene count + the targeted scene's
+// content) are DERIVED from the deck here rather than hardcoded, so the test
+// tracks the living artifact instead of rotting on every editorial deck change —
+// while still cross-checking resolve_scene's output against an independent parse.
 // All slidey-specific knowledge lives in the story scripts — kitsoki core stays
 // producer-agnostic — so the regression for "the edit landed on the wrong slide"
 // is anchored here, where that logic actually lives. No LLM, no render.
+
+const kitsokiPitchDeck = "docs/decks/kitsoki-pitch.slidey.json"
+
+// deckScenes parses the deck's scene array. sceneLabel mirrors resolve_scene's
+// label fallback (title → eyebrow → lede), the same precedence the script uses.
+func deckScenes(t *testing.T, root string) []map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(root, kitsokiPitchDeck))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec struct {
+		Scenes []map[string]any `json:"scenes"`
+	}
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		t.Fatalf("parse %s: %v", kitsokiPitchDeck, err)
+	}
+	return spec.Scenes
+}
+
+func sceneLabel(s map[string]any) string {
+	for _, k := range []string{"title", "eyebrow", "lede"} {
+		if v, ok := s[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
+}
 
 func repoRoot(t *testing.T) string {
 	t.Helper()
@@ -50,38 +82,47 @@ func runScript(t *testing.T, name string, inputs map[string]any) map[string]any 
 }
 
 func TestResolveScene_ViewedSceneWins(t *testing.T) {
+	const idx = 9
+	scenes := deckScenes(t, repoRoot(t))
+	if idx >= len(scenes) {
+		t.Fatalf("deck has %d scenes; targeted index %d is out of range", len(scenes), idx)
+	}
+	wantCount := int64(len(scenes))
+	wantLabel := sceneLabel(scenes[idx]) // title → eyebrow → lede, mirroring resolve_scene
+
 	out := runScript(t, "resolve_scene.star", map[string]any{
 		"spec_path":     "docs/decks/kitsoki-pitch.slidey.json",
 		"current_scene": "9",
 	})
-	if got := out["scene_index"]; got != int64(9) {
-		t.Fatalf("scene_index = %v, want 9", got)
+	if got := out["scene_index"]; got != int64(idx) {
+		t.Fatalf("scene_index = %v, want %d", got, idx)
 	}
-	if got := out["scene_count"]; got != int64(35) {
-		t.Fatalf("scene_count = %v, want 35 (real kitsoki-pitch)", got)
+	if got := out["scene_count"]; got != wantCount {
+		t.Fatalf("scene_count = %v, want %d (real kitsoki-pitch, deck-derived)", got, wantCount)
 	}
 	scene, _ := out["scene"].(map[string]any)
 	if scene == nil {
-		t.Fatalf("scene is nil; want the resolved scene 9 object")
+		t.Fatalf("scene is nil; want the resolved scene %d object", idx)
 	}
-	// Scene 9 is the "Cat Wrangling" narrative slide — the exact slide the user
-	// wants to edit. Proves the reviser would receive THIS slide's content. The
-	// deck carries that label on the scene's `eyebrow` (narrative scenes have no
-	// `title`), which is exactly why resolve_scene's label falls back through
-	// title → eyebrow → lede.
+	// resolve_scene must hand back THIS slide's content — cross-checked against an
+	// independent parse of the deck so the test tracks editorial deck changes
+	// instead of pinning a specific slide's title. The label falls back through
+	// title → eyebrow → lede, which is exactly why resolve_scene does the same.
 	label, _ := scene["title"].(string)
 	if label == "" {
 		label, _ = scene["eyebrow"].(string)
 	}
-	if label != "Cat Wrangling" {
-		t.Fatalf("scene 9 label = %q, want \"Cat Wrangling\"", label)
+	if label == "" {
+		label, _ = scene["lede"].(string)
 	}
-	if sl, _ := out["scene_label"].(string); !strings.Contains(sl, "Cat Wrangling") {
-		t.Fatalf("scene_label = %q, want it to contain \"Cat Wrangling\"", sl)
+	if label != wantLabel {
+		t.Fatalf("scene %d label = %q, want %q (deck-derived)", idx, label, wantLabel)
 	}
-	sceneJSON, _ := out["scene_json"].(string)
-	if sceneJSON == "" || !strings.Contains(sceneJSON, `"Cat Wrangling"`) {
-		t.Fatalf("scene_json = %q, want serialized scene content", sceneJSON)
+	if sl, _ := out["scene_label"].(string); wantLabel != "" && !strings.Contains(sl, wantLabel) {
+		t.Fatalf("scene_label = %q, want it to contain %q", sl, wantLabel)
+	}
+	if sceneJSON, _ := out["scene_json"].(string); sceneJSON == "" {
+		t.Fatalf("scene_json is empty; want serialized scene content")
 	}
 }
 
