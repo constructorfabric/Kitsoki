@@ -1,10 +1,11 @@
 # prd_overlap_proposes_change — the gate's overlap handling.
 #
-# When the scout finds an overlapping PRD, `confirm` is GUARDED on an empty
-# overlap list — a free-typed "confirm" bounces back (default arm). The
-# operator is steered to `change_existing` (amend) or `override_new`. Here
-# we test that the guard fires and that `change_existing` advances to
-# clarifying with the correct prd_change_target captured.
+# When the scout finds an overlapping PRD, `confirm` is not advertised and is
+# guarded on an empty overlap list — a typed "confirm" bounces back with
+# visible feedback instead of a silent no-op. The operator is steered to
+# `change_existing` (amend) or `override_new`. Here we test that the guard
+# fires visibly and that `change_existing` advances to clarifying with the
+# correct prd_change_target captured.
 
 test_kind: flow
 app: ../app.yaml
@@ -12,12 +13,15 @@ initial_state: search
 initial_world:
   workdir:    "."
   judge_mode: "human"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
   idea:       "Add a local model agent sidecar."
   # Pre-populate the scout result so the confirm guard sees the overlap.
   prd_existing_state:
     overlaps:
       - { path: "docs/prd-local-model-agent.md", kind: "accepted", summary: "Already specifies a llama.cpp sidecar for routing / small-decide.", recommendation: "amend" }
     roadmap_fit: "Duplicates the accepted local-model-agent PRD."
+
+starlark_inspect_cassette: ../cassettes/slug_add_a_local_model_agent_sidecar.inspect.yaml
 
 host_handlers:
   # Stubs for clarifying's on_enter analyst decide (advanced to by both arcs).
@@ -32,24 +36,19 @@ host_handlers:
           - { id: "q1", question: "Who is the primary user?", why: "scopes the persona" }
   # change_existing mints a workspace too (holds the check artifacts; publish
   # reuses the amend target in place).
-  host.run:
-    by_call:
-      mint_workspace:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { slug: "local-model-agent", workspace: ".artifacts/prd/local-model-agent" }
 
 turns:
   # confirm is guarded on an empty overlap list — with an overlap present it
-  # bounces back (default arm) rather than skipping the overlap.
+  # bounces back with visible feedback rather than skipping the overlap or
+  # re-rendering an indistinguishable screen.
   - intent: { name: confirm, slots: {} }
     expect_state: search
     expect_world:
-      prd_overlap_decision: ""
+      prd_overlap_decision: "blocked_confirm"
+      prd_overlap_feedback: "An overlapping PRD was found. Choose an existing document to amend, or use override_new if you intentionally want a separate PRD."
     # The overlap is surfaced as a discrete "Overlap 1" kv so the operator
     # can see the matching doc's path at a glance.
-    expect_view_matches: "Overlap 1.*prd-local-model-agent\\.md"
+    expect_view_matches: "Overlap 1.*prd-local-model-agent\\.md[\\s\\S]*Overlap gate still active"
 
   # Amend the existing PRD instead — records the decision + target, advances
   # to clarifying.
@@ -57,7 +56,8 @@ turns:
     expect_state: clarifying
     expect_world:
       prd_overlap_decision: "change_existing"
+      prd_overlap_feedback: ""
       prd_change_target:    "docs/prd-local-model-agent.md"
-      prd_workspace:        ".artifacts/prd/local-model-agent"
+      prd_workspace:        ".artifacts/prd/add-a-local-model-agent-sidecar"
 
 expect_no_errors: true

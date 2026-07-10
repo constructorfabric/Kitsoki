@@ -122,3 +122,41 @@ func TestMetaStream_ThinkVsDeltaFrames(t *testing.T) {
 	require.Equal(t, "done", last.Type, "stream must end with done")
 	assert.Equal(t, "the final reply", last.Assistant)
 }
+
+func TestMetaStream_BackendNeutralActivityFrames(t *testing.T) {
+	t.Parallel()
+	p := newStubProvider()
+	driver := &streamingMetaDriver{
+		events: []host.StreamEvent{
+			{Type: "assistant.message", Text: "I will run the command first."},
+			{Type: "tool.execution_start", Tool: "shell", Preview: "echo hi", Tools: []host.StreamToolUse{{Name: "shell", Preview: "echo hi"}}},
+			{Type: "assistant.reasoning", Thinking: "The probe output is enough to answer."},
+			{Type: "assistant.message", Text: "final reply"},
+		},
+		reply: "final reply",
+	}
+	p.putMeta("s1", driver)
+	ts := httptest.NewServer(server.NewMulti(p).Handler())
+	defer ts.Close()
+
+	frames := readMetaStreamFrames(t, ts, map[string]any{
+		"session_id": "s1", "mode": "story.ask", "chat_id": "chat-1", "input": "hi",
+	})
+
+	type tf struct{ typ, text string }
+	var got []tf
+	for _, f := range frames {
+		switch f.Type {
+		case "think", "delta":
+			got = append(got, tf{f.Type, f.Text})
+		case "tool":
+			got = append(got, tf{"tool", f.Tool + ":" + f.Preview})
+		}
+	}
+	assert.Equal(t, []tf{
+		{"delta", "I will run the command first."},
+		{"tool", "shell:echo hi"},
+		{"think", "The probe output is enough to answer."},
+		{"delta", "final reply"},
+	}, got, "backend-neutral assistant activity must reach the web stream")
+}

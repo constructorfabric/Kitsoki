@@ -31,6 +31,9 @@ import (
 // renderer (node) but incurs NO LLM cost, so it's safe under `make test` where
 // slidey is present and skips cleanly where it isn't.
 func TestSlideyRefineChangesHandleAndBytes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("real slidey render e2e is skipped under -short")
+	}
 	if !slideyAvailable() {
 		t.Skip("slidey not on PATH and SLIDEY_HOME unset — skipping real-render e2e")
 	}

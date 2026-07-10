@@ -357,6 +357,9 @@ func (s *rpcStreamSink) OnStreamEvent(ctx context.Context, ev host.StreamEvent) 
 	if ev.Subtype != "" {
 		params["subtype"] = ev.Subtype
 	}
+	if ev.Severity != "" {
+		params["severity"] = ev.Severity
+	}
 	if ev.Tool != "" {
 		params["tool"] = ev.Tool
 	}

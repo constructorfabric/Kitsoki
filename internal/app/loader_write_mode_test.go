@@ -167,6 +167,31 @@ states:
 	require.Contains(t, err.Error(), "engine-reserved")
 }
 
+func TestWriteMode_RejectsStorySetOfOperationRunKey(t *testing.T) {
+	yaml := `app:
+  id: op-run-forge
+  version: 0.1.0
+intents:
+  go:
+    title: Go
+root: chat
+states:
+  chat:
+    mode: conversational
+    on:
+      go:
+        - target: chat
+          effects:
+            - set:
+                operation_run:
+                  status: completed
+`
+	_, err := LoadBytes([]byte(yaml))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), OperationRunWorldKey)
+	require.Contains(t, err.Error(), "engine-reserved")
+}
+
 // Absent write_mode is the default-off path: a plain room loads with WriteMode "".
 func TestWriteMode_AbsentIsDefaultOff(t *testing.T) {
 	yaml := `app:
@@ -194,4 +219,8 @@ func TestWriteMode_ScopeKeyIsReserved(t *testing.T) {
 	_, ok := ReservedWorldKeys[WriteModeScopeWorldKey]
 	require.True(t, ok, "write_mode_scope must be an engine-reserved world key")
 	require.False(t, strings.Contains(WriteModeScopeWorldKey, " "))
+
+	_, ok = ReservedWorldKeys[OperationRunWorldKey]
+	require.True(t, ok, "operation_run must be an engine-reserved world key")
+	require.False(t, strings.Contains(OperationRunWorldKey, " "))
 }

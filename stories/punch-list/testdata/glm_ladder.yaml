@@ -1,0 +1,24 @@
+version: punch-list/v1
+defaults:
+  harness: ladder
+  profile: synthetic-claude
+  model: hf:zai-org/GLM-5.2
+  trace_root: .artifacts/punch-list/traces
+  require_trace_model: false
+  harness_ladder:
+    models:
+      - { backend: claude, provider: synthetic-claude, model: hf:zai-org/GLM-5.2 }
+      - { backend: codex, provider: codex-native, model: gpt-5.5 }
+    efforts: [low, medium, high, xhigh, max]
+items:
+  - id: measure-coverage
+    title: Measure current coverage
+    priority: 1
+    story: stories/punch-list/app.yaml
+    mode: drive
+    prompt: "Measure current coverage and save the baseline under .context/."
+    implementation_story: stories/punch-list/app.yaml
+    implementation_prompt: "Add deterministic coverage proof without live LLM calls."
+    verify:
+      - kind: story_validate
+        story: stories/punch-list/app.yaml

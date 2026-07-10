@@ -18,7 +18,7 @@ import (
 //
 // The raw-axis form (`/provider backend=codex`) is recognised and answered with
 // a pointer to named profiles — synthesising anonymous selections is deferred
-// (see docs/architecture/harness-profiles.md, "raw-axis override").
+// (see docs/guide/agents/harness-profiles.md, "raw-axis override").
 type ProviderCommand struct{}
 
 func (ProviderCommand) Name() string { return "/provider" }

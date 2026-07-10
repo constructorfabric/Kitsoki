@@ -1,0 +1,53 @@
+# fix_tests_autonomous — kitsoki-dev exposes the dev-story test-fix loop under
+# the core import. The instance projects test_cmd=make test plus a faster
+# quick gate into core.
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world:
+  # Direct core.landing start skips the import wrapper OnEnter, so seed the
+  # projected dev-story keys this fixture needs.
+  core__test_cmd: "make test"
+  core__quick_test_cmd: "go test -short -count=1 ./cmd/kitsoki ./internal/mcp/studio ./internal/host ./internal/app"
+  core__quick_test_timeout_seconds: 180
+  core__full_test_timeout_seconds: 1200
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 0, ok: true, stdout: "ok\n" }
+        delay: "10ms"
+      full_verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\tfull suite\n" }
+        delay: "10ms"
+  host.agent.decide:
+    by_call:
+      review-0:
+        data:
+          submitted:
+            pass: true
+            reason: "No diff to review and the command is green."
+            functionality_preserved: true
+            tests_not_weakened: true
+            findings: []
+            fixes: []
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: core__go_fix_tests, slots: {} }
+    advance_clock: "1s"
+    expect_state: core.landing
+    expect_world:
+      core__status: "tests-green"
+      core__fix_tests_report_path: ".artifacts/fix-tests/report-clean.md"
+      core__tests__test_cmd: "make test"
+      core__tests__quick_test_cmd: "go test -short -count=1 ./cmd/kitsoki ./internal/mcp/studio ./internal/host ./internal/app"
+      core__tests__quick_test_timeout_seconds: 180
+      core__tests__full_test_timeout_seconds: 1200
+
+expect_no_errors: true
+expect_operation_policy: core__tests__fix_tests
+expect_operation_status: completed
+expect_terminal_artifact: core__tests__report_path

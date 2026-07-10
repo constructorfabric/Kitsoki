@@ -122,6 +122,38 @@ describe("ChatTranscript", () => {
     expect(wrapper.find("[data-testid='chat-activity']").exists()).toBe(false);
   });
 
+  it("replaces a pinned media embed with a named workbench receipt", () => {
+    const wrapper = mount(ChatTranscript, {
+      props: {
+        suppressedMediaHandles: ["mockup.html"],
+        suppressedMediaLabels: { "mockup.html": "Checkout mockup" },
+        transcript: [
+          {
+            role: "agent",
+            text: "Rendered mockup.",
+            typedView: {
+              Source: "",
+              Elements: [
+                {
+                  Kind: "media",
+                  MediaHandle: "mockup.html",
+                  MediaKind: "html",
+                  MediaCaption: "Checkout mockup",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const receipt = wrapper.find("[data-testid='chat-media-receipt']");
+    expect(receipt.exists()).toBe(true);
+    expect(receipt.text()).toContain("Checkout mockup");
+    expect(receipt.text()).toContain("Pinned in the workbench");
+    expect(wrapper.find("[data-testid='media-element']").exists()).toBe(false);
+  });
+
   it("marks an off-ramp agent bubble distinctly (chip + data-mode), but renders the answer verbatim", () => {
     const wrapper = mount(ChatTranscript, {
       props: {
@@ -291,6 +323,44 @@ describe("ChatTranscript", () => {
     expect(chip.find(".chat-route-receipt__target").text()).toBe("help");
     // The off-path chip and the route receipt coexist on the same role row.
     expect(wrapper.find("[data-testid='offramp-chip']").exists()).toBe(true);
+  });
+
+  // ---- routing-feedback control (WS-C C4) ----
+  it("emits 'feedback' with the entry + verdict when a thumbs control is clicked", async () => {
+    const entry = {
+      role: "user" as const,
+      text: "fix the crash on login",
+      routing: { routedBy: "semantic", intent: "go_bugfix", statePath: "hub" },
+    };
+    const wrapper = mount(ChatTranscript, { props: { transcript: [entry] } });
+    const up = wrapper.find("[data-testid='routing-feedback-up']");
+    const down = wrapper.find("[data-testid='routing-feedback-down']");
+    expect(up.exists()).toBe(true);
+    expect(down.exists()).toBe(true);
+    await down.trigger("click");
+    const ev = wrapper.emitted("feedback");
+    expect(ev).toBeTruthy();
+    expect(ev![0]).toEqual([entry, "down"]);
+    wrapper.unmount();
+  });
+
+  it("hides the thumbs control and shows a recorded chip once feedbackGiven is set", () => {
+    const wrapper = mount(ChatTranscript, {
+      props: {
+        transcript: [
+          {
+            role: "user",
+            text: "fix the crash on login",
+            routing: { routedBy: "semantic", intent: "go_bugfix", statePath: "hub" },
+            feedbackGiven: "up",
+          },
+        ],
+      },
+    });
+    expect(wrapper.find("[data-testid='routing-feedback']").exists()).toBe(false);
+    const given = wrapper.find("[data-testid='routing-feedback-given']");
+    expect(given.exists()).toBe(true);
+    expect(given.text()).toContain("recorded");
   });
 
   it("emits 'rewind' with the decision_id when the rewind control is clicked on a lane-class receipt", async () => {

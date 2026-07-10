@@ -1,0 +1,280 @@
+# dev-workflow-matrix manifest — the hand-maintained truth behind the
+# GENERATED matrix at docs/testing/dev-workflow-matrix.md (WS-F F1 of
+# .context/dev-workflows-surface-matrix-plan.md).
+#
+# Edit THIS file (statuses, reasons, verdict pointers), then regenerate:
+#   make dev-workflow-matrix
+#
+# Every {workflow, surface, repo} cell must appear exactly once. Statuses:
+#   works        (✅  works + no-LLM proven)
+#   proof-thin   (🟡  works but proof thin or reliability suspect)
+#   gap          (🔴  gap)
+#   out-of-scope (⬜  intentionally out of scope for the surface)
+#
+# Each cell may point at standing completion-state verdict files
+# (schemas/completion-state.schema.json), one per proof class:
+#   verdicts.mechanical  — check_type: replay (no-LLM, per-commit)
+#   verdicts.experience  — check_type: docs-fidelity | ux-heuristic |
+#                          journey-verdict (persona-judged, budgeted — WS-G)
+# A cell without a pointer (or whose pointed file is absent) renders as
+# "no standing verdict" — that is honest, not an error.
+
+schema_version: "1.0.0"
+plan: .context/dev-workflows-surface-matrix-plan.md
+
+workflows:
+  - id: onboard
+    title: Onboard
+  - id: prd-proposal
+    title: PRD / proposal
+  - id: decompose-implement
+    title: "Decompose → implement"
+  - id: file-bug
+    title: File a bug
+  - id: fix-bug
+    title: Fix a bug
+
+surfaces:
+  - id: tui
+    title: TUI
+  - id: web
+    title: Web
+  - id: vscode
+    title: VS Code
+  - id: gh-agent
+    title: gh-agent
+
+repos:
+  - id: kitsoki-dev
+    title: "kitsoki self-instance (.kitsoki/stories/kitsoki-dev/)"
+  - id: gears-rust
+    title: "gears-rust thin instance (imports @kitsoki/dev-story)"
+
+cells:
+  # ── kitsoki-dev — transcribed from plan §1 (today's mechanical truth) ──
+  - workflow: onboard
+    surface: tui
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "works (init rooms flow-tested) but two divergent paths"
+  - workflow: onboard
+    surface: web
+    repo: kitsoki-dev
+    status: gap
+    reason: "no web onboarding entry"
+  - workflow: onboard
+    surface: vscode
+    repo: kitsoki-dev
+    status: gap
+    reason: "extension assumes an already-onboarded repo"
+  - workflow: onboard
+    surface: gh-agent
+    repo: kitsoki-dev
+    status: out-of-scope
+    reason: "App install ≠ repo onboarding; needs a doc'd handoff"
+
+  - workflow: prd-proposal
+    surface: tui
+    repo: kitsoki-dev
+    status: works
+    reason: "prd story (33 flows) + design rooms (~20 flows). Canonical doc: docs/workflows/prd-and-design.md"
+  - workflow: prd-proposal
+    surface: web
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "drivable (PRD demo exists); typed free-text routing fixed (semanticRoutingOptions no longer forces semantic routing off) but no standing web walk of the prd chain. Canonical doc: docs/workflows/prd-and-design.md"
+  - workflow: prd-proposal
+    surface: vscode
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "PRD demo spec exists (vscode-prd-demo.e2e.spec.ts); v0.1.0 extension. Canonical doc: docs/workflows/prd-and-design.md"
+  - workflow: prd-proposal
+    surface: gh-agent
+    repo: kitsoki-dev
+    status: gap
+    reason: "no label→prd/design route. Canonical doc: docs/workflows/prd-and-design.md"
+
+  - workflow: decompose-implement
+    surface: tui
+    repo: kitsoki-dev
+    status: works
+    reason: "deliver is the canonical chain (schema+lint absorption, budgeted refine loop, adversarial review, managed re-decompose; 11 flows) wired into dev-story (go_deliver on landing/design_done + design_to_decompose_to_impl e2e flow); fleet still thin (1 flow). Canonical doc: docs/workflows/decompose-and-implement.md"
+  - workflow: decompose-implement
+    surface: web
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "Playwright walk of the dev-story decompose fixture via kitsoki web --flow (deliver-decompose-walk.spec.ts) — one happy-path proof; red paths unproven on web. Canonical doc: docs/workflows/decompose-and-implement.md"
+  - workflow: decompose-implement
+    surface: vscode
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "extension e2e spec of the same walk (vscode-deliver-decompose-walk.e2e.spec.ts, real VS Code via kitsoki.flow settings) — one happy-path proof. Canonical doc: docs/workflows/decompose-and-implement.md"
+  - workflow: decompose-implement
+    surface: gh-agent
+    repo: kitsoki-dev
+    status: gap
+    reason: "no route. Canonical doc: docs/workflows/decompose-and-implement.md"
+
+  - workflow: file-bug
+    surface: tui
+    repo: kitsoki-dev
+    status: works
+    reason: "/bug meta modes + CLI, host tests. Canonical doc: docs/workflows/file-a-bug.md"
+  - workflow: file-bug
+    surface: web
+    repo: kitsoki-dev
+    status: works
+    reason: "Report Bug modal shipped (proposal doc stale). Canonical doc: docs/workflows/file-a-bug.md"
+  - workflow: file-bug
+    surface: vscode
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "dedicated extension e2e spec (vscode-file-a-bug-walk.e2e.spec.ts, real VS Code): Meta → Report a bug → capture/review modal → describe → File bug → filed-path toast — one happy-path proof, local filing only. Canonical doc: docs/workflows/file-a-bug.md"
+  - workflow: file-bug
+    surface: gh-agent
+    repo: kitsoki-dev
+    status: works
+    reason: "bug-report deck auto-trigger shipped. Canonical doc: docs/workflows/file-a-bug.md"
+
+  - workflow: fix-bug
+    surface: tui
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "bugfix mature (80+ flows, triage mode) but silent-bounce reliability warranted its own debugging skill. Canonical doc: docs/workflows/fix-a-bug.md"
+    verdicts:
+      experience:
+        check_type: docs-fidelity
+        path: tools/dev-workflow-matrix/verdicts/fix-bug__tui__kitsoki-dev__docs-fidelity.json
+  - workflow: fix-bug
+    surface: web
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "drivable; staged-gate & pace issues historically. Canonical doc: docs/workflows/fix-a-bug.md"
+  - workflow: fix-bug
+    surface: vscode
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "dedicated extension e2e spec (vscode-bugfix-walk.e2e.spec.ts, real VS Code via kitsoki.flow): full bugfix pipeline idle → @exit:done — one happy-path proof; also the real-socket capture that pinned host.ide.get_diagnostics' wire shape (ide-integration.md follow-up 1). Canonical doc: docs/workflows/fix-a-bug.md"
+  - workflow: fix-bug
+    surface: gh-agent
+    repo: kitsoki-dev
+    status: proof-thin
+    reason: "real dispatch of stories/bugfix landed (realDispatchPlan, per-job worktree, APP_DIR races scoped to the load span); no triage-only label route yet and end-to-end proof is thin. Canonical doc: docs/workflows/fix-a-bug.md"
+
+  # ── gears-rust — the acid test; nothing exercised there yet (plan §1
+  #    table is kitsoki-dev truth; every WS exit requires a gears-rust run) ──
+  - workflow: onboard
+    surface: tui
+    repo: gears-rust
+    status: works
+    reason: "WS-A A3: a real onboard of a fresh gears-rust clone recorded through the dev-story onboard path (kitsoki session create/continue, live harness) and converted to a committed no-LLM flow+cassette (stories/dev-story/flows/onboard_gears_rust.yaml); replays green via `kitsoki test flows`. A2 external-ticket passthrough proven: discovery auto-binds tracker=github/ticket_repo=bsacrobatix/gears-rust from the real remote. See .context/dwf3-a3-recording-notes.md."
+    verdicts:
+      mechanical:
+        check_type: replay
+        path: tools/dev-workflow-matrix/verdicts/onboard-tui-gears-rust.replay.json
+      experience:
+        check_type: docs-fidelity
+        path: tools/dev-workflow-matrix/verdicts/onboard__tui__gears-rust__docs-fidelity.json
+  - workflow: onboard
+    surface: web
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust; also no web onboarding entry at all"
+  - workflow: onboard
+    surface: vscode
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust; extension assumes an already-onboarded repo"
+  - workflow: onboard
+    surface: gh-agent
+    repo: gears-rust
+    status: out-of-scope
+    reason: "App install ≠ repo onboarding; needs a doc'd handoff"
+
+  - workflow: prd-proposal
+    surface: tui
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust (thin @kitsoki/dev-story instance run pending). Canonical doc: docs/workflows/prd-and-design.md"
+  - workflow: prd-proposal
+    surface: web
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust. Canonical doc: docs/workflows/prd-and-design.md"
+  - workflow: prd-proposal
+    surface: vscode
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust. Canonical doc: docs/workflows/prd-and-design.md"
+  - workflow: prd-proposal
+    surface: gh-agent
+    repo: gears-rust
+    status: gap
+    reason: "no label→prd/design route; nothing exercised on gears-rust. Canonical doc: docs/workflows/prd-and-design.md"
+
+  - workflow: decompose-implement
+    surface: tui
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust (WS-B exit: epic → briefs → branches with no-LLM replay). Canonical doc: docs/workflows/decompose-and-implement.md"
+  - workflow: decompose-implement
+    surface: web
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust. Canonical doc: docs/workflows/decompose-and-implement.md"
+  - workflow: decompose-implement
+    surface: vscode
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust. Canonical doc: docs/workflows/decompose-and-implement.md"
+  - workflow: decompose-implement
+    surface: gh-agent
+    repo: gears-rust
+    status: gap
+    reason: "no route; nothing exercised on gears-rust. Canonical doc: docs/workflows/decompose-and-implement.md"
+
+  - workflow: file-bug
+    surface: tui
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust (needs WS-A A2 external ticket-repo passthrough). Canonical doc: docs/workflows/file-a-bug.md"
+  - workflow: file-bug
+    surface: web
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust. Canonical doc: docs/workflows/file-a-bug.md"
+  - workflow: file-bug
+    surface: vscode
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust. Canonical doc: docs/workflows/file-a-bug.md"
+  - workflow: file-bug
+    surface: gh-agent
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust (WS-E E3: labeled gears-rust issue → honest triage verdict). Canonical doc: docs/workflows/file-a-bug.md"
+
+  - workflow: fix-bug
+    surface: tui
+    repo: gears-rust
+    status: proof-thin
+    reason: "a real GitHub-issue-sourced gears-rust bug (constructorfabric/gears-rust#4115) triaged read-only through the bugfix `triage` intent (kitsoki session new/submit, live harness) and converted to a committed no-LLM flow+cassette (stories/bugfix/flows/triage_gears_rust.yaml); replays green via `kitsoki test flows`. Proves the A2 external ticket-repo passthrough again on a real GitHub issue (ticket_source_mode=remote, ticket_repo=constructorfabric/gears-rust). Proof is THIN: this is the TRIAGE leg only (read-only, no worktree) — no end-to-end fix/PR has been exercised on gears-rust; the maker/implementer/reviewer/validator rooms remain untouched. Canonical doc: docs/workflows/fix-a-bug.md"
+    verdicts:
+      mechanical:
+        check_type: replay
+        path: tools/dev-workflow-matrix/verdicts/fixbug-tui-gears-rust.replay.json
+  - workflow: fix-bug
+    surface: web
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust. Canonical doc: docs/workflows/fix-a-bug.md"
+  - workflow: fix-bug
+    surface: vscode
+    repo: gears-rust
+    status: gap
+    reason: "not yet exercised on gears-rust. Canonical doc: docs/workflows/fix-a-bug.md"
+  - workflow: fix-bug
+    surface: gh-agent
+    repo: gears-rust
+    status: gap
+    reason: "real dispatch exists but nothing exercised on gears-rust (WS-E exit: real triage/fix on a gears-rust issue). Canonical doc: docs/workflows/fix-a-bug.md"

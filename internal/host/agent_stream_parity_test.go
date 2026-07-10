@@ -96,6 +96,9 @@ func normalizedActivityForBackend(t *testing.T, c streamParityCase) []string {
 	var out []string
 	seenTools := map[string]bool{}
 	for _, ev := range stream.all() {
+		if ev.Type == "assistant" && ev.Thinking != "" {
+			out = append(out, "thinking:"+ev.Thinking)
+		}
 		if ev.Type == "assistant" && ev.Text != "" {
 			out = append(out, "thinking:"+ev.Text)
 		}

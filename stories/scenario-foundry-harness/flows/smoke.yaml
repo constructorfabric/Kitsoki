@@ -1,0 +1,18 @@
+# Hand-authored smoke fixture proving the harness app itself (independent of
+# the compiler) replays deterministically: two `ask` turns, each stubbed by a
+# sequential host_cassette episode.
+test_kind: flow
+app: ../app.yaml
+host_cassette: smoke.cassette.yaml
+initial_state: desk
+initial_world: {}
+turns:
+  - intent: { name: ask, slots: { text: "hello there" } }
+    display_input: "hello there"
+    expect_state: desk
+    expect_world: { last_answer: "smoke answer 1" }
+  - intent: { name: ask, slots: { text: "and again" } }
+    display_input: "and again"
+    expect_state: desk
+    expect_world: { last_answer: "smoke answer 2" }
+expect_no_errors: true

@@ -1,0 +1,14 @@
+{% comment %}
+goal-seeker base view. Shared block contract (docs/stories/story-style.md §2):
+status / heading / body / choices / footer. The status line is the goal dashboard —
+slug + the ledger counts + the current verdict — so the operator can watch the outer
+loop converge (ready → in flight → integrated) toward a done verdict.
+{% endcomment %}
+{% block status %}goal {{ world.goal_slug|default:"(none)" }}  ·  {{ world.counts.integrated|default:0 }} integrated / {{ world.counts.ready|default:0 }} ready / {{ world.counts.blocked|default:0 }} blocked  ·  verdict {{ world.verdict|default:"(pending)" }}{% endblock %}
+
+{% block heading %}{{ state.description }}{% endblock %}
+
+{% block body %}{% endblock %}
+
+{% block choices %}{% endblock %}
+{% block footer %}{% endblock %}

@@ -3,6 +3,8 @@
 How to write a kitsoki application. The companion documents:
 
 - [`state-machine.md`](state-machine.md) — the conceptual model.
+- [`story-style.md`](story-style.md) — typed views, action menus, and user
+  messaging standards.
 - `kitsoki docs app-schema` — the authoritative YAML reference.
 - [`testing.md`](../tracing/testing.md) — flow and intent fixtures.
 - [`hosts.md`](../architecture/hosts.md) — every built-in host handler.
@@ -80,8 +82,10 @@ kitsoki viz tiny.yaml                    # writes tiny-viz.dot
 
 The loop most authors settle into:
 
-1. **Sketch the graph in YAML.** Start with rooms and intents. Use
-   placeholder views.
+1. **Sketch the graph in YAML.** Start with rooms and intents. Define the
+   first visible user messaging for captures, routers, handoffs, and long host
+   calls while the graph is still small; see
+   [`story-style.md` §3.4](story-style.md#34-user-messaging).
 2. **`kitsoki inspect`** or **`kitsoki turn`** to probe. `kitsoki turn` is
    especially useful — one stateless turn, no DB, JSON output.
 3. **Add a flow fixture** under `flows/`. Use `intent:` blocks (no LLM
@@ -130,6 +134,16 @@ Genuine multi-choice checkpoints are **not** ceremony — an `accept` / `refine`
 `abandon` review gate, a router hub with many actions, or a deliberate
 review-before-a-costly-action pause all earn their turn. The standard `look`
 re-render and `quit`/`abort` escape hatches are exempt.
+
+### 3.2 Start with the user-visible contract
+
+Before wiring a free-form capture, contextual router, import handoff, or
+long-running `invoke:`, decide what the operator will see before work starts.
+At minimum, the view or `say:` acknowledgement should name the interpreted
+request, selected path, mode/consequence, and next action. Do not ask for
+confirmation unless the operator must choose, supply missing data, or approve a
+real side effect. The canonical rules and examples live in
+[`story-style.md` §3.4](story-style.md#34-user-messaging).
 
 ---
 
@@ -224,7 +238,124 @@ states:
                 ```
 ```
 
-### 5.4 LLM-backed effect
+### 5.4 Deterministic Starlark glue
+
+For ad hoc procedural logic, prefer `host.starlark.run` before shell. It gives
+you a real language with a typed sidecar, a narrow capability sandbox,
+deterministic replay, and flow-test coverage that executes the real script.
+
+Use it for:
+
+- shaping JSON/YAML into world fields;
+- branching on structured HTTP responses;
+- inspecting a small part of the working tree;
+- writing bounded review artifacts;
+- replacing dense Pongo or inline shell data munging.
+
+```yaml
+hosts:
+  - host.starlark.run
+
+states:
+  enriching:
+    on_enter:
+      - invoke: host.starlark.run
+        id: derive_widget
+        with:
+          script: scripts/derive_widget.star
+          capabilities:
+            http:
+              methods: [GET]
+              cassette_required: true
+          inputs:
+            widget_id: "{{ world.widget_id }}"
+        bind:
+          widget_name: name
+        on_error: enrich_failed
+        once: true
+```
+
+The script must define `def main(ctx): ...` and return a dict. The same-path
+sidecar, not the script comments, declares the enforced contract:
+
+```yaml
+# scripts/derive_widget.star.yaml
+inputs:
+  widget_id: { type: string, required: true }
+outputs:
+  name: { type: string }
+```
+
+The default Starlark surface is intentionally tiny: `ctx.inputs`, read-only
+`ctx.world.get(key)`, and deterministic `json`, `math`, and decode-only `yaml`.
+External surfaces are opt-in with `with.capabilities`: grant `http`, `fs`,
+`vcs`/`probe`/`github`, or exact `host.verbs` only when the script needs them.
+Ungranting is real enforcement: an ungranted `ctx.fs` or `ctx.http` attribute is
+absent before any filesystem/network adapter can run.
+
+Flow fixtures should run the real script. If the script uses HTTP, add
+`starlark_http_cassette:` so the test replays the network boundary without a
+socket. If it uses `ctx.fs` or `ctx.probe`, use the inspection replay support
+(`starlark_inspect_cassette:`) instead of replacing the whole handler with a
+canned result. A whole-handler stub proves only the room wiring, not the script
+logic. Add at least one negative capability check for any new capability family:
+the test should still fail when a harmless mock/replay adapter is present but
+the script tries an ungranted `ctx` surface.
+
+Full reference: [`../architecture/starlark.md`](../architecture/starlark.md)
+and [`../architecture/hosts.md#hoststarlarkrun`](../architecture/hosts.md#hoststarlarkrun).
+
+### 5.5 Bounded CodeAct loops
+
+Use `host.agent.codeact` when the step is still exploratory, but the agent
+should act only by emitting Starlark snippets over an explicit capability map.
+This is narrower than `host.agent.task`: no open tool loop, no `sandbox:` block,
+and no shell unless a granted Starlark host/probe surface provides a specific
+read-only operation.
+
+```yaml
+hosts:
+  - host.agent.codeact
+
+agents:
+  triager:
+    system_prompt: "Inspect with scoped Starlark snippets and submit a verdict."
+
+states:
+  triaging:
+    on_enter:
+      - invoke: host.agent.codeact
+        once: true
+        with:
+          agent: triager
+          goal: "Triage {{ world.ticket_id }} and return a verdict with evidence."
+          budget: 6
+          capabilities:
+            world: read
+            vcs: read
+          schema: schemas/triage_verdict.json
+        bind:
+          triage: payload
+          codeact_steps: steps
+        on_error: triage_failed
+```
+
+The runtime runs each emitted snippet through the same Starlark evaluator as
+`host.starlark.run`. If the agent tries `ctx.fs` without an `fs` grant, the step
+fails early and the error is fed back to the next step; it does not fall through
+to a mock or touch the live filesystem. That is the point of CodeAct: exploratory
+agent reasoning with deterministic, reviewable actions.
+
+Flow tests usually replay or stub the whole `host.agent.codeact` result with a
+`host_cassette`, because the live loop would spend LLM tokens. Once the loop
+stabilizes into deterministic logic, promote the final snippet to
+`host.starlark.run` with a sidecar and prove the promoted flow has no
+`host.agent.codeact` dispatch.
+
+Full reference: [`../architecture/starlark.md`](../architecture/starlark.md)
+and [`../architecture/hosts.md#hostagentcodeact`](../architecture/hosts.md#hostagentcodeact).
+
+### 5.6 LLM-backed effect
 
 `host.agent.ask` runs `claude -p` against a prompt template file with
 templated `{{ args.X }}` placeholders; bind `stdout` back into world.
@@ -242,7 +373,49 @@ conventions, domain rubric, house tone); see
 [`prompts.md`](prompts.md) for the search path, the `spec_` convention,
 `--prompt-overlay`, and `kitsoki prompts spec`.
 
-### 5.5 Background job
+### 5.7 Operator clarification gates
+
+When a story needs fresh human input mid-flow, prefer the **story-visible
+operator-aware path** whenever the runtime provides one. The ask belongs in the
+state machine as an `invoke:`/transition that can be rendered, traced, stubbed,
+and replayed; it should not be hidden inside an agent prompt as
+`AskUserQuestion` or a live-only branch.
+
+The standard shape is:
+
+- The agent or deterministic step produces the questions as data and binds them
+  into `world`.
+- A story effect invokes the operator-aware ask handler (for example
+  `host.operator.ask`, once available) from the same room, guarded on there
+  being unanswered questions.
+- If a live operator surface is attached, the handler forwards through the
+  shared `OperatorPrompter` seam. That means web, TUI, and MCP Studio use the
+  same runtime path; Studio can route the prompt through MCP elicitation or its
+  `session.answer` fallback.
+- If no operator is attached (flow tests, cassettes, headless replay), the
+  handler returns a stable "not answered" result instead of blocking. The room
+  then falls back to its ordinary typed-answer UI, skip/regenerate verbs, or a
+  needs-human exit.
+- Flow fixtures stub the ask handler by invoke `id:` for both outcomes:
+  answered-by-operator and no-operator/fallback. Cassettes record the same host
+  call shape, not a separate prompt-only behavior.
+
+This keeps "real" and headless behavior close enough to test. The surface may
+change how the operator answers, but the story graph, world binds, trace events,
+and fallback room stay the same.
+
+Do not:
+
+- Re-enable or depend on `AskUserQuestion` inside dispatched agents. It is
+  headless-unsafe and hard-denied.
+- Add an agent-only MCP instruction that changes the story outcome when the
+  tool happens to be present. If MCP-aware asking is useful, expose it as a
+  story host call/effect so flows and cassettes can exercise it.
+- Replace an existing free-text clarification room with a live-only modal. The
+  modal is an acceleration path; the room remains the durable fallback and review
+  surface.
+
+### 5.8 Background job
 
 ```yaml
 hosts:
@@ -269,7 +442,7 @@ When the job finishes, the orchestrator fires the `on_complete:`
 effects in a synthetic turn and posts an inbox notification. Full
 lifecycle in [`background-jobs/`](background-jobs/README.md).
 
-### 5.6 Posting to a transport
+### 5.9 Posting to a transport
 
 ```yaml
 hosts:
@@ -288,7 +461,7 @@ effects:
 The transport handles markup conversion (Markdown → Jira wiki for
 Jira, etc.). See [`transports.md`](../architecture/transports.md) for the registry.
 
-### 5.7 Template interpolation: how complex values render
+### 5.10 Template interpolation: how complex values render
 
 `{{ ... }}` expressions inside YAML strings are evaluated by the
 `expr-lang` engine against `world` and `slots`. How the result is
@@ -552,7 +725,7 @@ tier. Add it to your synonyms file to shrink the LLM dependency.
 | In-TUI `/warp` | Slash command equivalent. `/warp <state> world.X=Y` for inline; `/warp file:<path>` to load a basis. |
 | `kitsoki docs apply-proposal` | LLM-facing guide for "implement this prose proposal against `app.yaml`". |
 | `kitsoki extract suggest-synonym <session-id> <call-id>` | Propose a synonym entry from a recorded LLM-tier `host.agent.extract` call. |
-| In-TUI `Edit mode` | Hot-reload editing — see [`developer-guide.md` §8](../architecture/developer-guide.md#8-hot-reload-edit-mode). |
+| In-TUI `Edit mode` | Hot-reload editing — see [`developer-guide.md` §8](../guide/development/developer-guide.md#8-hot-reload-edit-mode). |
 
 `kitsoki render` is one-way: the Markdown never feeds back into the
 engine. Re-run after every change to keep `APP.md` in sync.
@@ -635,9 +808,28 @@ agents:
 ```
 
 For `host.agent.task` and `host.agent.converse`, `bash_profile` is
-not consulted — those verbs allow unrestricted Bash by design; the
-blast-radius contract comes from the explicit `agent:` declaration and
-the `external_side_effect:` field.
+not consulted — those verbs allow unrestricted Bash by design. Use the
+effect-level `sandbox:` block when the subprocess itself needs runtime
+supervision:
+
+```yaml
+- invoke: host.agent.task
+  with:
+    agent: implementer
+    sandbox:
+      min_strength: supervised
+      repo: read_only
+      rw: [".artifacts/my-run", ".worktrees"]
+      hidden: [".env", ".git/config"]
+      degrade: warn
+    acceptance: { schema: schemas/result.json }
+```
+
+The shippable `supervised` backend gives process-group cleanup, timeout/cancel,
+temporary HOME/XDG dirs, provider/Kitsoki env allowlisting, and trace-visible
+policy. It records filesystem/network policy as degraded when it cannot enforce
+it; stronger `fs_confined`/`os_confined`/`vm_confined` backends are future
+runtime implementations.
 
 ---
 

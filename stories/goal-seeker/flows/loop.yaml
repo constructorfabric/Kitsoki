@@ -1,0 +1,71 @@
+# loop — the outer-loop backbone + the punch-list ENTRY seam, no LLM.
+#
+# Proves the deterministic spine end to end into the composition:
+#   bootstrap (gs_lint ok + gs_init, REAL) → evaluate (gs_ledger fold, REAL;
+#   remaining>0 → advisory) → deciding (gs_preamble REAL + decide STUBBED not_done)
+#   → dispatch (gs_manifest REAL + RED-first gate check STUBBED red) → punch-list
+#   entry (punch_load REAL loads the 1-item manifest gs_manifest wrote).
+#
+# Every gs_*.star runs for REAL against .artifacts/goal/flow-loop; only the decide
+# gate and the RED-first host.run are stubbed. reset_log makes it re-runnable.
+#
+# NOTE: driving punch-list's INTERNAL board→drive→verify→record loop to its `done`
+# exit inside this flow is a documented limitation (see README "Limitations" — real
+# punch-list host.starlark.run scripts can't be stubbed while gs_* run real, and real
+# punch-list drive trips punch-list's own async-bind marking). The ship-it half +
+# deterministic done + retrospective are proved in ship_and_close.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  goal_slug: goal-seeker-test
+  goal_dir:  stories/goal-seeker/testdata/goal
+  work_dir:  .artifacts/goal/flow-loop
+  reset_log: true
+
+host_handlers:
+  # The evaluate decide-gate is ADVISORY only: it names the next ready change. done is
+  # never taken from here (it's deterministic from gs_ledger.remaining).
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: not_done
+            summary: "C1 is ready; dispatch it."
+            next_instruction:
+              change_id: "C1"
+              action: "implement C1"
+              pipeline: "implementation"
+              gate: { class: "G-FLOW", cmd: "true" }
+  # RED-first pre-check: the change's gate is RED (exit 1 — bug present) so dispatch
+  # proceeds. (The already-green refusal is proved in red_first_refuses.yaml.)
+  host.run:
+    by_call:
+      redcheck: { data: { ok: false, exit_code: 1, stdout: "FAIL: not implemented" } }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok → evaluate (fold the ledger)
+    expect_state: evaluate
+    expect_world: { remaining: 1, ready_id: "C1" }
+  - intent: { name: advance, slots: {} }        # evaluate → deciding
+    expect_state: deciding
+  - intent: { name: advance, slots: {} }        # decide (advisory not_done) → dispatch
+    expect_state: dispatch
+    expect_world: { next_change_id: "C1", verdict: "not_done" }
+  - intent: { name: advance, slots: {} }        # gs_manifest → RED-first check
+    expect_state: redcheck
+  - intent: { name: advance, slots: {} }        # gate is RED → enter punch-list
+    expect_state: punchlist.load
+    expect_world:
+      red_exit: 1
+      punchlist__item_count: "1"
+      punchlist__load_error: ""
+
+expect_no_errors: true

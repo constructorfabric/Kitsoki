@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=feature.schema.json
+id: stranger-install
+kind: feature
+title: The stranger install — download, run, onboarded
+tagline: A released binary, dropped into a foreign repo, profiles it and installs the toolkit without a checkout.
+summary: The release pipeline embeds stories and skills into the cross-compiled binary and smokes it in a scratch git repo before shipping. A stranger downloads the release binary, runs `kitsoki` inside their own repo, and onboarding profiles the project, installs the agent toolkit, and registers the MCP server automatically — no source checkout, no manual setup step.

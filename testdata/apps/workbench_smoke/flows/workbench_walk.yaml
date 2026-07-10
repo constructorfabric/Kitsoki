@@ -1,0 +1,97 @@
+# workbench_walk — end-to-end, no-LLM regression for `workbench:` desugaring
+# (docs/proposals/room-workbench.md, Task 2.2). Mirrors the equivalent
+# hand-authored dev-story fixtures turn for turn:
+#   - stories/dev-story/flows/landing_write_mode_opt_in.yaml (capture +
+#     stubbed on_enter dispatch, room stays put)
+#   - stories/dev-story/flows/landing_off_ramp.yaml (unmapped utterance
+#     rejected, no state advance, no world mutation)
+#   - stories/dev-story/flows/landing_take_route.yaml (route-out ordering)
+#
+# Per the authoring gotcha the flow harness bypasses the INITIAL state's
+# on_enter — initial_state: bench does NOT fire bench's on_enter at flow
+# start. Turn 1 below drives the synthesized `bench_capture` intent, which
+# self-targets bench (workbench.go's synthesized capture arc), which is
+# what actually fires on_enter for the first time.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bench
+initial_world: {}
+
+host_handlers:
+  # The synthesized on_enter host.agent.task dispatch — stubbed, never a
+  # real LLM. acceptance.schema/context.prompt are validated at load time
+  # only for non-empty strings (internal/app/loader.go's M6b check); the
+  # actual file paths are never read because this whole call is stubbed.
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary: "Picked up the free-form request and got it done."
+        details: "Would have edited a file; stayed read-only pending a write-mode grant."
+
+turns:
+  # 1. Free-text capture. `bench_capture` (workbench.go's synthesized
+  #    default_intent) is the ONLY intent bench's default_intent resolution
+  #    can route unmatched prose to — proving the macro wired up the capture
+  #    arc itself, with no hand-authored `on:` entry for it in app.yaml.
+  #    The transition sets bench_request and self-targets bench, which is
+  #    what fires on_enter for the first time (the initial-state bypass
+  #    above), dispatching the stubbed host.agent.task and binding
+  #    bench_note.
+  - intent: { name: bench_capture, slots: { request: "fix the flaky test" } }
+    expect_state: bench
+    expect_world:
+      bench_request: "fix the flaky test"
+      bench_note:
+        summary: "Picked up the free-form request and got it done."
+        details: "Would have edited a file; stayed read-only pending a write-mode grant."
+
+  # 2. Write-mode hold, observed indirectly. workbench: sets write_mode:
+  #    read_only on bench (internal/app/workbench.go). A flow fixture can't
+  #    drive the in-process write-mode gate itself (host.agent.task is
+  #    stubbed whole — the same limitation
+  #    stories/dev-story/flows/landing_write_mode_opt_in.yaml documents; the
+  #    gate's actual grant/deny mechanics are internal/host/write_mode_gate_test.go's
+  #    job). What IS observable here: the room stays put as the read-only
+  #    floor across a repeated dispatch — a second bench_capture clears
+  #    bench_note (re-arming the Once guard, mirroring landing's `work` arc)
+  #    and re-dispatches the same stubbed agent, but bench never leaves the
+  #    read_only floor to do it.
+  - intent: { name: bench_capture, slots: { request: "fix the flaky test" } }
+    expect_state: bench
+    expect_world:
+      bench_request: "fix the flaky test"
+      bench_note:
+        summary: "Picked up the free-form request and got it done."
+        details: "Would have edited a file; stayed read-only pending a write-mode grant."
+
+  # 3. Off-ramp residual path. workbench: also synthesizes
+  #    agent_off_ramp: { agent: agent_qa } (the app.yaml off_ramp_agent
+  #    override — omitting it would default to bench_agent itself). An
+  #    utterance that maps to no declared intent at all is rejected by the
+  #    machine WITHOUT advancing state or mutating world — the same
+  #    invariant stories/dev-story/flows/landing_off_ramp.yaml pins for
+  #    landing. (The live off-ramp's voiced converse answer on top of this
+  #    rejection is an LLM step, out of scope for a flow fixture, exercised
+  #    instead by internal/orchestrator/offramp_test.go.)
+  - intent: { name: __unmapped_free_text__, slots: {} }
+    expect_error:
+      code: INTENT_NOT_ALLOWED_IN_STATE
+    expect_state: bench
+    expect_world_unchanged: true
+
+  # 4. Route-out ordering. take_route's own set: (ticket_id/ticket_type)
+  #    commits to world BEFORE its emit_intent dispatches go_second — proven
+  #    by second's on_enter reading those exact values into second_note.
+  #    This is the deterministic seam room-workbench.md's Engine-seams
+  #    section requires: a route-out's set:/emit_intent effects order, NOT
+  #    an LLM-constructed initial_world.
+  - intent: { name: take_route, slots: {} }
+    expect_state: second
+    expect_world:
+      ticket_id:   "TKT-900"
+      ticket_type: "task"
+      second_note: "handling TKT-900 (task)"
+
+expect_no_errors: false

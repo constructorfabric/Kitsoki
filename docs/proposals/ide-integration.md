@@ -40,14 +40,31 @@ Verified wire contract: `.context/claude-code-ide-interface.md`.
 
 ## Remaining follow-ups
 
-1. **Pin the unverified wire keys (one-time manual capture).** `openDiff`'s
-   argument shape and `getDiagnostics`' `path→uri` key are `TODO(schema)` in
-   `internal/host/ide_handlers.go` — implemented best-effort against the
-   documented tool names but not captured from a live editor. Run a single
-   real-socket round-trip (`tools/list` + a real `getDiagnostics` / `openDiff`)
-   in the VS Code integrated terminal, then update the handlers and the stub
-   server to mirror the captured shapes. Everything else is tested; this is the
-   only gap between "passes against the stub" and "matches real VS Code."
+1. ~~**Pin the unverified wire keys.**~~ Done (WS-D D2): a real-socket round
+   trip against the vscode-kitsoki extension's own `IdeServer`/`IdeTools`
+   (driven by `tools/vscode-kitsoki/tests/vscode-bugfix-walk.e2e.spec.ts`,
+   a real VS Code window) confirmed `getDiagnostics`' arg key — the handler
+   was sending `uri`, but `IdeTools.getDiagnostics` reads `args.path`, so the
+   narrowing arg was silently dropped on every call; fixed in
+   `IDEGetDiagnosticsHandler` (`internal/host/ide_handlers.go`). `openDiff`'s
+   `{path, new_text, new_text_path, title}` argument shape and `{ok, verdict}`
+   return shape were already exercised by
+   `tools/vscode-kitsoki/tests/ide-bridge.e2e.test.ts`; both handlers' doc
+   comments now say CONFIRMED instead of carrying a stale `TODO(schema)`.
+   ~~One real gap the same capture surfaced: `reviewing_external`'s Mode A
+   (`{paths, base}`, reviewing already-applied working-tree edits) is sent by
+   `diff_open.go` but the real `DiffController.open()` only implements Mode B
+   (`{path, new_text}`).~~ Closed (dwf4-ide-mode-a): `DiffController` now
+   implements Mode A too — one diff tab per changed file (left = the file's
+   content at `base` via `git show`, right = the on-disk working-tree file),
+   sharing one collective accept/reject verdict across the whole set. See
+   `tools/vscode-kitsoki/src/diff-mode-a.ts` (the unit-tested git-show +
+   arg-normalisation seam), `tools/vscode-kitsoki/src/ide-diff.ts`, and the
+   Mode A round-trip case in `ide-bridge.e2e.test.ts`. The extension's
+   `IdeTools.openDiff` also stopped fabricating `{verdict:'accepted'}` when no
+   `DiffController` is registered — it now throws, which routes
+   `reviewing_external` back to its own choice screen via `on_error`
+   (`Result.Error`) instead of a silent false accept.
 
 2. **`open_diff` verdict capture.** v1 opens the diff tab and returns `{ok}`
    without capturing the operator's accept/reject — that needs a *turn-suspend*
@@ -55,12 +72,13 @@ Verified wire contract: `.context/claude-code-ide-interface.md`.
    are synchronous). Follow-up: add a post-effect suspend/resume gate and route
    the verdict through the decider machinery as a recorded decision.
 
-3. **Adopt in the production `bugfix` story.** The `ide_awareness` demo proves
-   the diagnostics-behind-an-availability-gate pattern end to end. Migrating
-   `bugfix` to pull `host.ide.get_diagnostics` (falling back to its real linter
-   when no editor is attached) was intentionally deferred — `bugfix` validates
-   via its agent rather than a discrete lint call, so the seam wants design
-   work, not a shoehorn (`stories/CLAUDE.md`).
+3. ~~**Adopt in the production `bugfix` story.**~~ Done (WS-C C3): the
+   `validating` room pulls `host.ide.get_diagnostics` on entry and threads the
+   result into the validator agent's prompt args (`ide_connected`,
+   `ide_diagnostics_count`, `ide_diagnostics`) alongside the build log — no
+   editor attached degrades honestly (`connected:false`), matching the
+   `ide_awareness` demo's pattern. See `stories/bugfix/README.md` ("Editor
+   awareness") and `stories/bugfix/flows/validating_surfaces_ide_diagnostics.yaml`.
 
 4. **JetBrains parity.** The lock-file/token/ws contract is shared; the client
    is transport- and tool-agnostic, so JetBrains is a capability-probe away.

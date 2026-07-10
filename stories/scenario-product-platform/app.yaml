@@ -1,0 +1,82 @@
+# Scenario Product Platform — first story-backed vertical slice.
+#
+# This story implements the proposal's first acceptance path in a deliberately
+# narrow, no-LLM form: import an existing feature catalog entry plus one
+# product-journey scenario into a normalized scenario pack, synthesize a
+# replayable multi-target run bundle, and emit the report/site artifacts the
+# proposal names (readiness, product-learning, Slidey deck, completion-state).
+# The general live runner remains stories/scenario-qa; this story proves the
+# platform layer above it as deterministic Kitsoki story glue.
+
+app:
+  id: scenario-product-platform
+  version: 0.1.0
+  title: "Scenario Product Platform"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.starlark.run
+
+world:
+  feature_path: { type: string, default: "features/complete-product-tour.yaml" }
+  scenario_id:  { type: string, default: "product-discovery" }
+  persona_id:   { type: string, default: "core-maintainer" }
+  target_arg:   { type: string, default: "all" }
+  run_id:       { type: string, default: "complete-product-tour-acceptance" }
+  output_root:  { type: string, default: ".artifacts/scenario-product-platform" }
+
+  pack_summary: { type: object, default: {} }
+  run_bundle:   { type: object, default: {} }
+  report_paths: { type: object, default: {} }
+  site_path:    { type: string, default: "" }
+  status:       { type: string, default: "idle" }
+  last_error:   { type: string, default: "" }
+
+intents:
+  build:
+    title: "Build scenario-platform proof"
+    description: "Import a feature and product-journey scenario into a scenario pack and emit no-LLM evidence/report/site artifacts."
+    examples:
+      - "build"
+      - "build feature=features/complete-product-tour.yaml scenario=product-discovery targets=all"
+      - "scenario platform build"
+    slots:
+      feature:
+        type: string
+        required: false
+        description: "Feature YAML to import."
+      scenario:
+        type: string
+        required: false
+        description: "Product-journey scenario id to import."
+      persona:
+        type: string
+        required: false
+        description: "Persona id to bind to the acceptance run."
+      targets:
+        type: string
+        required: false
+        description: "Comma-separated targets or all."
+      run_id:
+        type: string
+        required: false
+        description: "Stable artifact run id."
+      output_root:
+        type: string
+        required: false
+        description: "Artifact root under .artifacts."
+  reset:
+    title: "Reset"
+    examples: ["reset", "start over"]
+  look:
+    title: "Refresh"
+    examples: ["look", "refresh", "?"]
+  quit:
+    title: "Quit"
+    examples: ["quit", "exit", "done"]
+
+root: ready
+
+include:
+  - rooms/*.yaml

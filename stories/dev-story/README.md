@@ -9,9 +9,14 @@ free-form workbench [`landing`](#the-free-form-workbench-landing), which
 replaced the former `main` catalog.
 
 This app does **not** bind providers. Concrete bindings happen at the
-INSTANCE level: `.kitsoki/stories/kitsoki-dev/` (Wave 3) for local-file
-providers; `cyber-repo/stories/devstory/` (Phase 7) for Jira /
-Bitbucket / Jenkins.
+instance level: a generated `.kitsoki/` wrapper or an importing project app
+selects ticket, git/workspace, CI, and transport providers for the target
+repository. The canonical shape is a small project-owned wrapper that
+imports `@kitsoki/dev-story` under `core`, declares the full strict host
+allow-list, binds `ticket` / `vcs` / `ci` / `workspace` / `transport`, and
+projects project defaults through `world_in`. Project onboarding writes that
+wrapper under `.kitsoki/stories/<project>-dev/`; `.kitsoki/stories/kitsoki-dev/`
+is the self-hosted golden example of the same contract.
 
 Standalone:
 
@@ -51,6 +56,14 @@ dev-story
         exits:
           done      → prd_published    # landing room; carries the PRD into design
           abandoned → landing (status: "abandoned")
+
+  └── imports tests (../fix-tests)      # make-test-green loop
+        entry: starting
+        world_in: test_cmd, quick_test_cmd, quick/full timeouts, workdir, max_cycles
+        exits:
+          achieved    → landing (status: "tests-green")
+          exhausted   → landing (status: "tests-exhausted")
+          needs-human → human_review_report
 ```
 
 The bf → pr handoff is one import edge. When bf fires `@exit:done` the
@@ -60,6 +73,14 @@ transitions into `pr` — whose compound OnEnter runs the pr `world_in:`
 setters in parent scope to project those keys into `pr__<key>` (which
 pr's own rooms then reference). The full chain is exercised by
 `flows/bugfix_to_pr.yaml`.
+
+The `tests` import is a self-driving command repair loop. `go_fix_tests` enters
+it from landing through the child's reset entry, runs a bounded quick gate
+(`quick_test_cmd`, falling back to `test_cmd`) for repair cycles, proves the full
+`test_cmd` gate (falling back to `make test`), then loops fixer -> quick gate ->
+full gate -> review until both gates pass. It rejects green diffs that weaken
+tests or lose functionality. It is exercised by
+[`flows/fix_tests_autonomous.yaml`](./flows/fix_tests_autonomous.yaml).
 
 ## PRD → Design walk
 
@@ -77,7 +98,7 @@ which confirms the published path and offers two arcs:
 - **`go_main`** → back to the hub.
 
 `prd_file` is a host **bind** in prd's drafting accept arc (it comes from
-`prd_publish.py` stdout), so it commits post-dispatch — too late for a
+`prd_publish.star`), so it commits post-dispatch — too late for a
 synchronous exit `set:` projection to carry it (contrast bf → pr, whose
 carried `done_artifact` is a synchronous `set:`). The flat world keeps
 `prd__prd_file` once the turn settles, so `prd_published` reads
@@ -88,33 +109,40 @@ dev-story's composition. The walk is exercised by
 
 ## Doc profile — targeting an external project
 
-The PRD → Design walk above publishes into kitsoki's own `docs/` by
-default, but the *document shape* and *placement* are a **profile** an
-instance app can override — no engine or room change needed. An instance
+The PRD -> Design walk above publishes into the default project docs paths,
+but the *document shape* and *placement* are a **profile** an instance app can
+override - no engine or room change needed. An instance
 points the same hub at another repository or at a project-specific docs tree
 purely by setting world keys: different templates, fixed filenames, local file
 tickets, GitHub issues, or no follow-up ticket at all. External targets live in
 their **own** repo as a zero-config `stories/<name>/` instance, discovered by
 the default `./stories` walk, importing this base via `@kitsoki/dev-story` from
-the binary's embedded story library — see
-[`kitsoki-as-dependency.md`](../../docs/proposals/kitsoki-as-dependency.md)
-for the broader dependency story.
+the binary's embedded story library - see
+[`docs/web/tour.md`](../../docs/web/tour.md) for the broader
+kitsoki-as-a-dependency story (shipped; the design proposal was retired).
 
 The profile is the "External-target profile" world block in
 [`app.yaml`](./app.yaml) (search `External-target profile`). Every key has
-a default that reproduces kitsoki's own behaviour — **overriding them is
-the profile**:
+a shared default - **overriding them is the profile**:
+
+Project-onboarding generated instances override these shared defaults for
+generic repositories: PRDs go to `.context/prd`, design documents go to
+`.context/designs`, `design_template_dir` is empty, and no feature ticket is
+minted unless the local profile opts in. Project profiles can still keep
+repo-native docs paths such as `docs/prd` and `docs/proposals`.
 
 | World key | Default | Effect |
 |---|---|---|
-| `repo_root` | `""` | external checkout root (forward-compat; ticket passthrough is the deferred gh-adapter slice) |
+| `repo_root` | `""` | external checkout root; threaded into every `iface.ticket.*` call as the `root` arg, so `host.local_files.ticket` scans `<repo_root>/issues/...` (`""` ⇒ cwd). `host.gh.ticket` ignores it (its source is `ticket_repo`). |
 | `publish_durable_path` | `docs/prd` | PRD publish home (relative to `workdir`); projected into the `prd` import via `world_in`. |
 | `prd_doc_filename` | `""` | fixed PRD filename (e.g. `PRD` → `PRD.md`); `""` ⇒ slug-named (`<slug>.md`) |
+| `prd_mockup_path` | `""` | optional project-local HTML mockup embedded into the PRD published read-out; project demos set this, ordinary repos leave it empty. |
 | `design_template_dir` | `docs/proposals/templates` | dir the design author reads its doc templates from |
 | `design_durable_path` | `docs/proposals` | DESIGN publish home (relative to `workdir`). |
 | `design_doc_filename` | `""` | fixed DESIGN filename (e.g. `DESIGN` → `DESIGN.md`); `""` ⇒ slug-named |
 | `design_ticket_dir` | `issues/features` | where the linking feature ticket is minted; `""` ⇒ **skip** minting (an external target tracks work elsewhere, e.g. GitHub issues) |
-| `ticket_repo` | `""` | `owner/repo` for GitHub-issue tickets; **non-empty ⇒ the feature publish mints a GitHub feature issue** (labels `target:kitsoki` + `comp:proposal`, body links the proposal) instead of a local file — takes precedence over `design_ticket_dir`. `kitsoki-dev` pins `constructorfabric/Kitsoki`. See [hosts.md → host.gh.ticket](../../docs/architecture/hosts.md#hostghticket--github-issues-backed-tracker). |
+| `ticket_repo` | `""` | active selected GitHub issue repo. Generated wrappers keep this empty at rest so local/pasted reports stay local; `ticket_search` fills it after a GitHub row is picked. Non-empty during design publish mints a GitHub feature issue instead of a local file. |
+| `ticket_github_repo` | `""` | GitHub issue source shown beside local artifact tickets when the wrapper binds `ticket` to `host.local_github.ticket`; usually an `owner/repo` slug or a resolvable remote name. |
 
 How the keys reach the glue: the `prd` import's `world_in` projects
 `publish_durable_path` + `prd_doc_filename` into the prd child;
@@ -126,11 +154,10 @@ into the author prompt (`prompts/design_draft.md` reads
 The placement seam is the two publish scripts, which take optional
 positional args:
 
-- [`stories/prd/scripts/prd_publish.py`](../prd/scripts/prd_publish.py)
-  `… [workdir] [durable] [change_target] [doc_filename]` — `durable` is
-  the publish home relative to `workdir`; a non-empty `doc_filename`
-  overwrites a **fixed** `<durable>/<doc_filename>.md` instead of
-  `<durable>/<slug>.md`.
+- [`stories/prd/scripts/prd_publish.star`](../prd/scripts/prd_publish.star)
+  publishes to the `durable` home relative to `workdir`; a non-empty
+  `doc_filename` overwrites a **fixed** `<durable>/<doc_filename>.md`
+  instead of `<durable>/<slug>.md`.
 - [`stories/dev-story/scripts/publish_design.py`](./scripts/publish_design.py)
   `… [workdir] [durable] [doc_filename] [ticket_dir]` — same `workdir` /
   `durable` / `doc_filename` contract, plus `ticket_dir`: a non-empty
@@ -143,7 +170,36 @@ layering is: community/shared patterns live in dev-story, organization or
 project conventions live in the importing instance's profile, and local
 exceptions are explicit world defaults in that instance.
 
-## Provider neutrality
+## Import Wrapper Contract
+
+Generated project wrappers and the self-hosted `kitsoki-dev` wrapper use this
+shape:
+
+- `routing.free_form_fallback` points `core.*` rooms back to
+  `core.landing` through `core__landing_capture`, so free text works from
+  menu-shaped rooms after import aliasing.
+- `hosts:` declares the full strict surface used by dev-story and its child
+  imports, including ticket providers, agent verbs, IDE/diff helpers, chat,
+  Starlark, and local command hosts. Strict parents should prefer this superset
+  over hand-pruning; unused entries are harmless, missing entries break loads.
+- `host_bindings.ticket` is `host.local_files.ticket` for good local capability
+  and `host.local_github.ticket` when a GitHub source is configured. The latter
+  searches local artifacts and GitHub issues side by side while routing selected
+  close-out by source.
+- `world_in` always projects `workdir`, `repo_root`, judge settings, document
+  placement, `prd_mockup_path`, `ticket_repo`, `ticket_github_repo`,
+  `bugfix_destination`, and project build/test commands.
+- At rest, `ticket_repo` is empty and `ticket_github_repo` carries the configured
+  GitHub source. This is the key distinction that lets a project have full
+  GitHub search/fetch/close-out for remote issues without making pasted or local
+  bug reports mutate GitHub.
+
+The renderer for onboarding-generated wrappers lives in
+[`scripts/init_apply.py`](./scripts/init_apply.py). Keep new import-surface
+requirements there first, then mirror only deliberate project-specific defaults
+in examples such as `stories/slidey-dev/`.
+
+## Provider Neutrality
 
 The legacy `testdata/apps/dev-story/` stub had Jira-flavoured world
 keys (`jira_query`, `jira_results`) and called `host.run` with hard-
@@ -155,14 +211,70 @@ coded `echo` commands. dev-story (this app) strips those:
 | `world.jira_results` | `world.ticket_results` |
 | `host.run` (echo) | `iface.ticket.search` / `iface.ticket.list_mine` |
 
-The cyber-repo flavour rebinds `iface.ticket` to `host.jira`; kitsoki-
-dev rebinds to `host.local_files.ticket`. Same YAML, two providers.
+An importing project can bind `iface.ticket` to local files, a composite
+local+GitHub provider, or another provider that implements the same interface.
+Same room YAML, different provider.
+
+### Parent meta-repo ticket providers
+
+Project onboarding supports the common meta-repo / monorepo layout where a
+parent checkout owns shared auth and MCP setup while child projects live under
+`projects/` or `src/`. If the child has no GitHub `ticket_repo`, discovery
+walks ancestor directories for `.kitsoki/project-profile.yaml` and inherits a
+non-GitHub `tracker.provider` plus `kitsoki.instance.bindings.ticket`.
+
+Example parent profile shape:
+
+```yaml
+tracker:
+  provider: meta-jira
+  repo: PLATFORM
+  setup_command: ./scripts/dev-env jira
+  readiness_command: ./scripts/dev-env jira --check
+  required_env: [JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN]
+kitsoki:
+  instance:
+    bindings:
+      ticket: .kitsoki/providers/meta_jira_ticket.star
+```
+
+The provider script is a `ticket_provider/v1` module: it defines pure Starlark
+functions named after the ticket interface operations (`search(ctx)`, `get(ctx)`,
+`comment(ctx)`, `transition(ctx)`, `list_mine(ctx)`, plus optional extended
+ops). It does **not** define `main(ctx)`. The sidecar beside the script owns HTTP
+capability and symbolic auth policy:
+
+```yaml
+kind: ticket_provider/v1
+http:
+  methods: [GET, POST]
+  hosts: [tickets.example.internal]
+auth:
+  jira:
+    env: JIRA_API_TOKEN
+    header: Authorization
+    prefix: "Bearer "
+    missing_code: missing_jira_token
+```
+
+The script calls `ctx.http.get/post(..., auth="jira")`; the Go HTTP transport
+reads the env/secret source and injects the request header after Starlark has
+built the request, so token values are never Starlark values. Provider functions
+may return structured failures with `{"ok": False, "error": {"code": "...",
+"message": "..."}}`, which lets an instance distinguish cases such as an
+expired access token versus a missing forge PAT.
+
+The generated child profile stores the inherited provider metadata, rebases
+the `.star` binding path relative to the child checkout, and adds the readiness
+command to `.kitsoki/check-readiness.py` when declared. `ticket_repo` remains
+GitHub-only; private providers bind through `iface.ticket` and keep
+`ticket_repo: ""` so GitHub-specific publish/closeout paths do not run.
 
 ## Rooms
 
 | Room | Status | Notes |
 |---|---|---|
-| `landing` | **root** | The **free-form workbench** — dev-story's root, replacing the former `main` catalog ([freeform-landing](#the-free-form-workbench-landing) below). A full-tool, Claude-Code-like agent (`landing_agent`) is the resting surface: the operator describes work in their own words (the `work` intent → on_enter `host.agent.task`), read-only by default and gated to a write-mode opt-in (`write_mode: read_only`). Carries `main`'s highest-value navigation forward as quick actions + intents. Declares the [agent off-ramp](../../docs/stories/state-machine.md#11-off-path-the-global-escape-hatch) (`agent_off_ramp.agent: agent_qa`) as its read-only Q&A floor. Every pipeline returns here (`go_main`/`go_back` self-loop). |
+| `landing` | **root** | The **free-form workbench** — dev-story's root, replacing the former `main` catalog ([freeform-landing](#the-free-form-workbench-landing) below). A full-tool, Claude-Code-like agent (`landing_agent`) is the resting surface: the operator describes work in their own words (the `landing_capture` intent → on_enter `host.agent.task`, via the [`workbench:`](../../docs/architecture/room-workbench.md) primitive), read-only by default and gated to a write-mode opt-in (`write_mode: read_only`). Carries `main`'s highest-value navigation forward as quick actions + intents. Declares the [agent off-ramp](../../docs/stories/state-machine.md#11-off-path-the-global-escape-hatch) (`workbench.off_ramp_agent: agent_qa`) as its read-only Q&A floor. Every pipeline returns here (`go_main`/`go_back` self-loop). |
 | `applying` | — | The deterministic executor for an accepted ad-hoc [plan](#ad-hoc-structured-plan-proposeacceptrefineapplyverify): re-prompts the `landing_agent` with the **accepted plan as instruction** (`prompts/apply.md`) and binds a **distinct `apply_note`** (binding `landing_note` would let `once:` skip the dispatch), then emits `run_verify`. |
 | `verifying` | — | Runs the accepted plan's **verify gate** (`host.starlark.run` script and/or `gate_reviewer` agent), binds tri-state `verify_ok`, and routes on the post-bind verdict: PASS → `plan_done`, FAIL → `landing` (`last_error` = the gate's reason). Pinned `decider: llm` so the deterministic verdict auto-fires in STAGED mode. |
 | `plan_done` | — | The plan completion read-out (`captured++`); `go_main`/`go_back` return to the workbench. |
@@ -171,7 +283,7 @@ dev rebinds to `host.local_files.ticket`. Same YAML, two providers.
 | `inbox` | Wave 2 | Navigation surface; the runtime's inbox subsystem manages items. |
 | `agent` | Wave 2 | One-shot ask_question via `host.agent.ask` (agent: `agent_qa`). |
 | `standup` | Wave 2 | Aggregates iface.ticket.list_mine. |
-| `design*` | — | **Design pipeline** (formerly the "proposal" pipeline): discovery+brief (one room: the first message mints the workspace + scaffolds an editable brief, then every turn converses + distils it; `ready` runs the quality judge and a passing brief auto-advances) → existing-state → completeness → references → draft → publish (to `docs/proposals/<slug>.md`). **Publish also files a feature ticket** (`issues/features/`) linking back to the design doc, and `design_done`'s `implement` action (the `go_implementation` intent) drives that ticket straight into the impl pipeline (`flows/design_to_implementation.yaml`) — no detour through `ticket_search`. The design pipeline does not create a worktree; `impl.idle.on_enter` self-provisions it on entry (mirroring `bf.idle`), so the impl run gets a real `feature/<ticket>` branch regardless of entry path. Reached ad-hoc via `idea`, or as the back half of the [PRD → Design walk](#prd--design-walk). |
+| `design*` | — | **Design pipeline** (formerly the "proposal" pipeline): discovery+brief (one room: the first message mints the workspace + scaffolds an editable brief, then every turn converses + distils it; `ready` runs the quality judge and a passing brief auto-advances) → existing-state → completeness → references → draft → publish (to `docs/proposals/<slug>.md`). **Publish also files a feature ticket** (`issues/features/`) linking back to the design doc, and `design_done` offers a **decompose-vs-direct** choice on it (never a size heuristic — an operator pick): `implement` (the `go_implementation` intent) drives that ticket straight into the impl pipeline (`flows/design_to_implementation.yaml`) — no detour through `ticket_search`; `decompose` (the `go_deliver` intent) instead drives the just-published proposal into [`stories/deliver`](../../docs/stories/deliver.md), the canonical decomposition story, which fans `stories/fleet` over the resulting briefs (`flows/design_to_decompose_to_impl.yaml`). Both arcs land back on `landing` (`status="delivered"` or `"merged"`) or `@exit:needs-human`. The design pipeline does not create a worktree; `impl.idle.on_enter` self-provisions it on entry (mirroring `bf.idle`), so the impl run gets a real `feature/<ticket>` branch regardless of entry path. Reached ad-hoc via `idea`, or as the back half of the [PRD → Design walk](#prd--design-walk). |
 | `prd_published` | — | PRD → Design landing room (see [PRD → Design walk](#prd--design-walk)). |
 | `ideas` | — | Ideas-backlog reviewer (see below). |
 | `code_review` | Wave 3 stub | Reserves the room; imports `stories/code-review/` in Wave 3. |
@@ -353,26 +465,51 @@ design) are the **grown structure reached from** the floor, carried forward as
 quick-action buttons and intents so nothing `main` offered is lost; every
 pipeline's exit returns here, and `go_main` / `go_back` self-loop the workbench.
 
-**Read-only by default → opt into write.** The room carries
-`write_mode: read_only` and the persona declares `bash_profile: read-only` +
-`external_side_effect: false` (the static and runtime postures the loader
-requires to agree). The agent boots with its full toolbox but every *mutating*
-tool call (`Edit` / `Write` / side-effecting `Bash`) holds for an operator
+**Built on the `workbench:` primitive**
+([`docs/architecture/room-workbench.md`](../../docs/architecture/room-workbench.md);
+landing is its reference consumer). The room declares one `workbench:` block
+instead of hand-rolling `write_mode` + `agent_off_ramp` + an `on_enter
+host.agent.task` + a free-text capture arc; the loader desugars it at load time
+into exactly those four primitives, wired to `landing_agent`'s WS `toolbox:` +
+`effect:` declaration (`app.yaml agents.landing_agent`, `toolboxes.landing_toolbox`
+— `effect: write`, not the legacy `tools:`/`bash_profile:`/`external_side_effect:`
+triplet).
+
+**Read-only by default → opt into write.** `workbench:` sets `write_mode:
+read_only`; the agent boots with its full toolbox but every *mutating* tool
+call (`Edit` / `Write` / side-effecting `Bash`) holds for an operator
 write-mode grant before the effect lands, recorded as a
 `machine.write_mode_granted` event; headless (cassettes / flows / no operator)
 the gate denies and the agent stays read-only. The gate is
 [`internal/host/write_mode_gate.go`](../../internal/host/write_mode_gate.go);
 the landing is its first real client (the `agent-write-mode-opt-in` slice).
+`landing_agent`'s WS `effect: write` (not `external`) mirrors
+`ExternalSideEffect=false`, which is what keeps the static and runtime
+postures in agreement.
 
-The agent turn fires on the **`work`** intent (slot `request`), which captures
-the operator's utterance, clears the prior note to re-arm, and self-targets so
-`on_enter` dispatches `host.agent.task` (`agent: landing_agent`,
-`acceptance.schema: schemas/landing-note.json` — a minimal, permissive
-close-out note: the engine requires *a* schema on `task`, so "free output" is
-expressed as a one-field `summary` with `additionalProperties` open). Free text
-the router can't map to an action is answered in place by the read-only
-**agent off-ramp** (`agent_off_ramp.agent: agent_qa`) — the same floor `main`
-declared. The `world.captured` counter (rendered read-only here) is the
+The agent turn fires on the **`landing_capture`** intent (slot `request`) -
+named to match `workbench:`'s fixed `<room>_capture` synthesis, not the macro's
+plain synthesized arc: `landing_capture`'s `on:` transition is hand-authored so
+it can carry the onboarding-command escape hatch and thread continuity
+(preserving the prior note/plan across the re-dispatch) that the macro does not
+(and should not) auto-generate. It captures the operator's utterance, clears
+the prior note to re-arm, and loops back so `on_enter` dispatches
+`host.agent.task` (`agent: landing_agent`, `acceptance.schema:
+schemas/landing-note.json` — a minimal, permissive close-out note: the engine
+requires *a* schema on `task`, so "free output" is expressed as a one-field
+`summary` with `additionalProperties` open, plus `workbench.context_args` to
+thread `prior_summary`/`prior_details`/`prior_plan` into the prompt). Because
+the app declares no explicit `routing:` block naming `landing`/`landing_capture`,
+every other non-conversational room falls back to it via
+`routing.free_form_fallback` auto-detection
+([`semantic-routing.md` §1.6](../../docs/architecture/semantic-routing.md)) — an
+instance importing dev-story under an alias (e.g. `core`) must declare that
+block explicitly instead, since the auto-detect's own heuristic only ever
+matches the un-aliased bare name (see `stories/pets-dev/app.yaml` and
+`stories/slidey-dev/app.yaml`). Free
+text the router can't map to an action is answered in place by the read-only
+**agent off-ramp** (`workbench.off_ramp_agent: agent_qa`) — the same floor
+`main` declared. The `world.captured` counter (rendered read-only here) is the
 progressive-determinism read-out, incremented by the mining apply path.
 
 #### Ad-hoc structured plan (propose→accept/refine→apply→verify)
@@ -381,8 +518,8 @@ When the request is concrete, actionable work, the `landing_agent` proposes a
 **validated, executable `plan`** (one goal, one run-then-verify step, a Starlark
 verify gate) in its close-out note instead of prose. The workbench renders a
 reviewable **plan card**; the operator **Accepts** it (or types an adjustment to
-**refine** it — the `work` sink re-dispatches the planner with the prior plan as
-context), `apply` runs the step under the write-mode grant, then the verify gate
+**refine** it — the `landing_capture` sink re-dispatches the planner with the
+prior plan as context), `apply` runs the step under the write-mode grant, then the verify gate
 proves it landed and routes on a **real pass/fail verdict**. The full narrative —
 the rooms (`applying` / `verifying` / `plan_done`), the plan schema (a strict
 subset of cherny-loop's `gate_plan`), the Starlark read-only inspection
@@ -400,7 +537,7 @@ root — it reads the backlog, the commit history (`git log`), and the docs
 concrete evidence, plus a few high-value **candidates** worth proposing next.
 
 The decide is interpretation; the mutation is deterministic. `apply` is a
-confirm gate: it hands the persisted report to `scripts/ideas_reconcile.py`,
+confirm gate: it hands the persisted report to `scripts/ideas_reconcile.star`,
 which rewrites the backlog file (the same decide→script discipline as the
 design slug step). `pick N` seeds `world.design_seed_idea` from candidate N
 and jumps into the `design` intake — so a blocked author flows straight into
@@ -421,11 +558,13 @@ intents in Wave 2:
 | `pr` | `open`, `monitor`, `retry`, `resolve`, `merge_now` |
 
 The parent declares additional navigation / pipeline-launching
-intents at the bare name: `work` (the free-form workbench request —
+intents at the bare name: `landing_capture` (the free-form workbench request —
 slot `request`), `go_main` / `go_back` (now self-loop the `landing`
 floor), `go_inbox`, `go_agent`, `go_ticket_search`,
 `go_workspace_manager`, `go_standup`, `go_code_review`, `go_deploy`,
 `go_observability`, `go_incident`, `go_docs`, `go_bugfix`,
+`bugfix_report` (inline free-text bug complaint), `bugfix_ref` (local/remote
+ticket id lookup), `bugfix_link` (explicit issue-link lookup),
 `go_pr_refinement`, `search_tickets`, `pick_ticket`, `ask_question`,
 `summarize_day`, `proceed`, `quit`, `look`. The incident loop adds
 `report_incident` (slot `alert`), `mitigate`, `escalate`, `watch`, and
@@ -444,14 +583,25 @@ rooms; the post-bind guarded emit auto-routes on the agent's verdict).
 | `landing_smoke.yaml` | Boot, land in the free-form workbench (`root: landing`), render view, `go_main` self-loops the floor. Smallest possible smoke (replaces `main_smoke`). |
 | `landing_quick_action.yaml` | From `landing` a quick action (`go_ticket_search`) reaches ticket_search → search → pick → `drive` routes into the bugfix pipeline. Proves the re-homed navigation is intact (replaces `ticket_search_smoke`). |
 | `landing_off_ramp.yaml` | The read-only Q&A floor: an unmapped utterance never advances the workbench and never mutates world (the invariant the live off-ramp converse rests on; the converse answer itself is the LLM step, exercised by the web posture + `offramp_test.go`, never CI). |
-| `landing_write_mode_opt_in.yaml` | The `work` intent captures a (mutating) request and re-arms the on_enter `landing_agent` task (stubbed); the workbench stays put as the read-only floor. The gate's decision spine (mutating-step classify, grant scopes, headless deny, recorded event) is unit-tested end-to-end in `internal/host/write_mode_gate_test.go` (a flow stub bypasses the in-subprocess gate, per AGENTS.md). |
+| `landing_write_mode_opt_in.yaml` | The `landing_capture` intent captures a (mutating) request and re-arms the on_enter `landing_agent` task (stubbed); the workbench stays put as the read-only floor. The gate's decision spine (mutating-step classify, grant scopes, headless deny, recorded event) is unit-tested end-to-end in `internal/host/write_mode_gate_test.go` (a flow stub bypasses the in-subprocess gate, per AGENTS.md). |
 | `pickup_to_bugfix.yaml` | landing → ticket_search → pick → dispatch into the bf import (lands in bf.idle with world_in: projections firing). |
 | `github_ticket_drive_routes.yaml` | `iface.ticket` rebound to `host.gh.ticket`: a GitHub-Issue-sourced bug carries a provider-classified `ticket_type` (from its `bug` label), so a row pick (`n=`) lands `ticket_type=bug` and the headline `drive` routes into bf — no silent self-loop. The get also surfaces `source=github` + the lifted `legacy_id`, so the local↔issue identity shows in the ticket view. Regression for the two `host.gh.ticket` provider bugs. |
+| `bugfix_pasted_report_intake.yaml` | `bugfix_report` starts the bugfix child from an inline complaint, projecting it as `ticket_body` with `ticket_source_mode=freeform`. |
+| `bugfix_bare_command_pick_ticket_guard.yaml` | Bare `fix bug` is handled by `landing_capture` at runtime and prompts for a picked ticket, avoiding a broad semantic example that would steal inline reports. |
+| `bugfix_ref_local_intake.yaml` | `bugfix_ref` resolves a local ticket id through `iface.ticket.get` before entering the bugfix child, preserving the local artifact path as `thread`. |
+| `bugfix_ref_raw_capture_intake.yaml` | `landing_capture` preserves a raw `fix bug <id>` phrase and resolves the exact local id before entering the bugfix child. |
+| `bugfix_ref_remote_intake.yaml` | `bugfix_ref` resolves a remote issue number through the configured ticket provider before entering the bugfix child, so triage sees the provider body/title/url. |
+| `bugfix_link_provider_intake.yaml` | `bugfix_link` resolves an explicit issue URL through the configured ticket provider before entering the bugfix child. |
+| `bugfix_link_raw_capture_intake.yaml` | `landing_capture` preserves a raw `fix issue link <url>` phrase and resolves the exact issue URL before entering the bugfix child. |
 | `bugfix_to_pr.yaml` | The full closed-loop walk: landing → bf.idle → walk every bf room to @exit:done → handoff into pr → walk pr to @exit:merged → land back in `landing` with status="merged" and last_pr_url populated. |
+| `fix_tests_autonomous.yaml` | `go_fix_tests` enters the imported make-test-green loop, drains quick/full deterministic gates plus review, and projects the report/review back to landing. |
+| `fix_tests_resets_stale_child_world.yaml` | Seeds stale `tests__*` child state before `go_fix_tests`; proves the quick action starts a fresh cycle-0 review instead of inheriting old failure/review state. |
 | `design_to_implementation.yaml` | The publish → implement bridge: design_done → `go_implementation` → impl.idle (on_enter self-provisions the worktree — the fixture seeds NO workspace) → walk the impl pipeline to @exit:done → `landing` with status="merged". |
+| `design_to_decompose_to_impl.yaml` | The publish → decompose bridge, sibling to `design_to_implementation.yaml`: design_done → `go_deliver` → `deliver.configure` → `deliver__start` → decompose (agent mocked) → lint (Starlark) → review (agent mocked, accept) → fleet fan-out over a 2-brief fixture (reuses deliver's own `rich_schema_happy` manifest) → `@exit:done` → `landing` with status="delivered". Also proven live (no LLM) on the web (`tools/runstatus/tests/playwright/deliver-decompose-walk.spec.ts`) and VS Code (`tools/vscode-kitsoki/tests/vscode-deliver-decompose-walk.e2e.spec.ts`) surfaces — see [`docs/stories/deliver.md`](../../docs/stories/deliver.md). |
+| `deliver_router_picks_arc.yaml` | decompose-vs-direct is an OPERATOR CHOICE, never a size heuristic: four sub-fixtures prove the SAME published proposal routes to `impl` on `go_implementation` and to `deliver` on `go_deliver`, from both `design_done` and `landing`, plus the `landing` guard when no proposal is published yet. |
 | `prd_to_design.yaml` | The PRD → Design walk: landing → `go_prd` → walk the imported prd pipeline to @exit:done → land in `prd_published` (prd__prd_file lifted) → `continue` → the `design` intake, seeded with a pointer to the published PRD. |
 | `plan_propose_render.yaml` | A stubbed planner returns a note *with* a plan → the [ad-hoc plan](#ad-hoc-structured-plan-proposeacceptrefineapplyverify) card + Accept & apply quick action render; `look` re-renders without re-dispatching. |
-| `plan_refine.yaml` | A free-text adjustment re-uses the `work` sink: the prior plan is preserved into `landing_plan_prior` (fed into the re-dispatched prompt) and a revised plan binds — asserts the *dispatched prompt* carries the prior plan. |
+| `plan_refine.yaml` | A free-text adjustment re-uses the `landing_capture` sink: the prior plan is preserved into `landing_plan_prior` (fed into the re-dispatched prompt) and a revised plan binds — asserts the *dispatched prompt* carries the prior plan. |
 | `plan_apply_verify_green.yaml` | accept → apply → the **real** verify script runs against an inspect cassette (3 ≥ 3) → `{ok:true}` → `plan_done`, `captured++`. Exercises `ctx.probe` on the happy path. |
 | `plan_apply_verify_red.yaml` | Same path, cassette yields 1 (< 3) → real `{ok:false}` → back to `landing`, `last_error` = the script's reason, `captured` unchanged, plan kept for refine. The don't-false-pass case. |
 | `plan_mutation_gate.yaml` | Mutation test: breaking the `verify_ok: ok` bind in `verifying.yaml` makes it fail — proves the verify gate is load-bearing, not decorative. |
@@ -468,12 +618,15 @@ rooms; the post-bind guarded emit auto-routes on the agent's verdict).
 | `docs_publish.yaml` | The documentation happy path: target → draft (`host.agent.task`, write-mode opt-in) → review → publish (`iface.transport.post`) → published → landing. |
 | `docs_revise.yaml` | The revise edge: draft → `revise_doc` parks back at intake (`status=revising`, draft retained) → a fresh `draft_doc` re-arms the writer. |
 
-These are a sample; the full suite (61 / 61) passes under `kitsoki test flows stories/dev-story/app.yaml`.
+These are a sample; the full suite passes under `kitsoki test flows stories/dev-story/app.yaml`.
 
 ## Manual TUI walkthrough
 
 The same chain `bugfix_to_pr.yaml` exercises is replayable by hand.
-With `judge_mode=human` and the standalone defaults:
+Choose the oversight posture before launch with `oversight_gated`,
+`oversight_llm_review`, or `oversight_no_gate`. Gated is the human-checkpoint
+default (`judge_mode=human`); LLM review sets `judge_mode=llm_then_human`; no
+gate keeps LLM judges off and leaves the operation policy drivable.
 
 ```
 $ kitsoki run stories/dev-story/app.yaml
@@ -500,9 +653,8 @@ $ kitsoki run stories/dev-story/app.yaml
 > pr__accept               # pr @exit:merged → landing (status="merged")
 ```
 
-In Wave 3 the kitsoki-dev instance rebinds the providers and the same
-20-turn walk-through writes real diffs / opens a real PR / merges
-on github.com.
+With provider bindings configured, the same 20-turn walk-through writes real
+diffs, opens a real PR, and merges on the configured forge.
 
 The walkthrough above picks a **bug** and types `go_bugfix`. For a
 **feature** ticket (e.g. one filed by the design pipeline), type
@@ -515,12 +667,13 @@ straight into impl.
 
 ## Demo video: PRD → Design (conversation-driven development)
 
-The dev-story hub's PRD → Design walk is recorded as a **deterministic, no-LLM
-tour video** — the golden example for conversation-driven development (the
+The dev-story hub's PRD -> Design walk is recorded as a **deterministic, no-LLM
+tour video** - the golden example for conversation-driven development (the
 [`conversation-driven-development`](../../docs/proposals/conversation-driven-development.md)
 epic). The same walk can be retargeted by an importing project instance — see
-the [Doc profile](#doc-profile--targeting-an-external-project) section above;
-this one is kitsoki's self-targeting parallel — **"kitsoki on kitsoki"**.
+the [Doc profile](#doc-profile--targeting-an-external-project) section above.
+The default fixture uses neutral project-local docs and local feature-ticket
+files so it can run without a real ticket provider.
 
 - **Flow fixture (no-LLM):**
   [`flows/prd_to_design_full.yaml`](./flows/prd_to_design_full.yaml) — the
@@ -529,8 +682,8 @@ this one is kitsoki's self-targeting parallel — **"kitsoki on kitsoki"**.
   → `design_refine` (conversational brief refinement) → `design_draft`
   (publish + mint feature ticket) → `main`. Importing instances can reuse the
   same structure with a different doc tree, template directory, fixed filenames,
-  or ticket policy. This one uses the dev-story **defaults** — slug-named docs
-  in kitsoki's own tree and a feature ticket on publish.
+  or ticket policy. This one uses the dev-story **defaults** - slug-named docs
+  and a local feature ticket on publish.
 
 - **IDE-driven variant (VS Code extension demo):**
   [`flows/prd_to_design_demo.yaml`](./flows/prd_to_design_demo.yaml) — the PRD
@@ -544,15 +697,17 @@ this one is kitsoki's self-targeting parallel — **"kitsoki on kitsoki"**.
   valid no-LLM flow. Driven by
   [`tools/vscode-kitsoki/tests/vscode-prd-demo.e2e.spec.ts`](../../tools/vscode-kitsoki/tests/vscode-prd-demo.e2e.spec.ts).
 
-- **Tour manifest + catalog:**
-  [`features/dev-story-prd-design.yaml`](../../features/dev-story-prd-design.yaml)
-  — 11 narrated steps that walk every beat of the loop: discovery chat,
+- **Tour manifest + catalog:** the `dev-story-prd-design` catalog entry — 11
+  narrated steps that walked every beat of the loop (discovery chat,
   clarification rounds, PRD draft review and publish, design intake handoff,
-  design brief refinement, design publish, feature-ticket auto-mint. With
-  slice 2 of the [kitsoki-as-dependency](../../docs/proposals/kitsoki-as-dependency.md)
-  epic, this renders via `kitsoki tour --feature dev-story-prd-design`
-  (binary-native MP4, no Playwright). Pre-slice-2 the bound spec is a skipped
-  stub; the flow fixture's *content* is already verified no-LLM under
+  design brief refinement, design publish, feature-ticket auto-mint) — was
+  **de-listed** from `features/`: the binary `kitsoki tour` renderer it needed
+  (shipped; see [`docs/web/tour.md`](../../docs/web/tour.md)) can advance the
+  imported PRD state but doesn't remount the chat surface reliably enough for
+  Pages CI, so the page shipped as a permanent placeholder. The stub spec
+  [`dev-story-prd-design-video.spec.ts`](../../tools/runstatus/tests/playwright/dev-story-prd-design-video.spec.ts)
+  is kept for reviving it once that renderer gap closes; the flow fixture's
+  *content* is already verified no-LLM under
   `kitsoki test flows stories/dev-story/app.yaml`.
 
 **The canonical conversation-driven-development loop:**
@@ -575,18 +730,18 @@ this one is kitsoki's self-targeting parallel — **"kitsoki on kitsoki"**.
    proposal. The ticket can be picked up by the impl pipeline immediately (the
    [`design_to_implementation.yaml`](./flows/design_to_implementation.yaml) bridge).
 
-This single-session closure — from idea to PRD to design to a filed ticket, all
-driven by conversation — is kitsoki's own development model. It proves the system
-can improve itself using its own machinery.
+This single-session closure - from idea to PRD to design to a filed ticket, all
+driven by conversation - is the reusable development model that project
+wrappers inherit.
 
 See [`docs/skills/kitsoki-ui-demo/SKILL.md`](../../docs/skills/kitsoki-ui-demo/SKILL.md)
 for the golden-example pointer and binary-render instructions (slice 2 on).
 
 ## Demo: PRD → Design (judge_mode=human)
 
-The [PRD → Design walk](#prd--design-walk) replayed by hand. With the
-standalone defaults (or via the `kitsoki-dev` instance, which rebinds
-providers to local files):
+The [PRD -> Design walk](#prd--design-walk) replayed by hand. With the
+standalone defaults or a generated project wrapper that binds providers to
+local files:
 
 ```
 $ kitsoki run stories/dev-story/app.yaml
@@ -629,7 +784,7 @@ Flow fixtures that exercise those imports carry `host.agent.decide:` and
 
 ## See also
 
-- [`docs/project-onboarding.md`](../../docs/project-onboarding.md) /
+- [`docs/getting-started.md`](../../docs/getting-started.md) /
   [`docs/stories/dev-story-onboarding.md`](../../docs/stories/dev-story-onboarding.md)
   — the project onboarding pipeline (the `init` rooms) that installs a runnable
   instance + studio MCP + skill/agent toolkit into a target repo.

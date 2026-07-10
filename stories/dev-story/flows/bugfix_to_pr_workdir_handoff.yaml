@@ -1,0 +1,179 @@
+# bugfix_to_pr_workdir_handoff — REPRODUCTION for bug 51:
+#   "dev-story's bf→pr exits.done handoff never lifts workdir/feature_branch,
+#    breaking every open-PR bugfix run".
+#
+# Unlike flows/bugfix_to_pr.yaml, this fixture DOES NOT pre-seed the parent's
+# workdir / feature_branch / workspace_id. That mirrors a REAL open-PR bugfix
+# run: the operator picks a ticket and the bugfix child's idle.on_enter
+# SELF-PROVISIONS the worktree (setting bf__workspace_id / bf__feature_branch /
+# bf__workdir in the CHILD scope, keyed on session_id). The parent world.workdir
+# / world.feature_branch stay "" the whole time.
+#
+# When bf fires @exit:done, dev-story's imports.bf.exits.done projection sets
+# pr_title / pr_body / status but NEVER lifts the child's workdir /
+# feature_branch back into the parent. So the pr import's world_in — which reads
+# world.workdir / world.feature_branch in PARENT scope — projects EMPTY strings
+# into pr__workdir / pr__feature_branch, and the PR opens against nothing.
+#
+# session_id is seeded deterministically so the self-provisioned workspace path
+# is stable and assertable ( ".capsules/workspaces/bf-TKT-200-S1" / "fix/TKT-200-S1" ).
+#
+# CORRECT behaviour (this fixture's assertion): the pr child receives the real
+# self-provisioned worktree/branch. It is RED on the unfixed tree
+# (pr__workdir == "" / pr__feature_branch == "") and GREEN for any fix that
+# carries the child's workdir/feature_branch across the bf→pr boundary.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): this fixture tests
+  # the downstream bugfix walk, not triage. Parent-level key — the import
+  # wrapper re-seeds bf__auto_triage on entry; only the world_in projection
+  # sticks. The pre-flight contract lives in
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  auto_triage: false
+  ticket_id:      "TKT-200"
+  ticket_title:   "TUI hangs on ESC"
+  thread:         "TKT-200"
+  session_id:     "S1"          # deterministic -> stable self-provisioned workspace path
+  base_branch:    "main"
+  judge_mode:     "human"
+  judge_confidence_threshold: 0.8
+  merge_strategy: "squash"
+  # NOTE: workdir / feature_branch / workspace_id intentionally OMITTED —
+  # the bugfix child provisions them itself, exactly like a real run.
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git:
+    data:
+      ok:     true
+      sha:    "deadbeef"
+      diff:   ""
+      url:    "https://example/pr/200"
+      pr_id:  "200"
+      state:  "success"
+      checks: ""
+      comments: ""
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.local:
+    data: { ok: true, state: "success", log: "PASS", passed: 4, failed: 0 }
+  host.local_files.ticket:
+    data: { ok: true, tickets: "" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "A stub artifact body; deterministic across rooms."
+        bug_verified:     true
+        steps:            ["s1", "s2"]
+        involved_components:
+          - { name: "internal/tui", reason: "ESC handler" }
+        fix_description:  "Drain the input queue in the ESC handler."
+        root_cause:       "The ESC handler blocks on a closed channel."
+        affected_files:   ["internal/tui/tui.go"]
+        confidence:       0.85
+        reasoning:        "Trace shows the deadlock; same shape as the foyer fix."
+        status:           "passed"
+        tests_added:      ["internal/tui/esc_test.go"]
+        tests_run:        { passed: 4, failed: 0, log: "PASS 4 tests" }
+        outcome:          "pass"
+        evidence:         { build: "ok", api: "n/a", ui: "n/a" }
+        lessons:
+          - { category: "channels", description: "Always unregister producers before closing channels; deadlock pattern.", severity: "high" }
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Stub artifact passes the schema; accept advances."
+  host.agent.ask:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "A stub artifact body; deterministic across rooms."
+        bug_verified:     true
+        steps:            ["s1", "s2"]
+        involved_components:
+          - { name: "internal/tui", reason: "ESC handler" }
+        fix_description:  "Drain the input queue in the ESC handler."
+        root_cause:       "The ESC handler blocks on a closed channel."
+        affected_files:   ["internal/tui/tui.go"]
+        confidence:       0.85
+        reasoning:        "Trace shows the deadlock; same shape as the foyer fix."
+        status:           "passed"
+        tests_added:      ["internal/tui/esc_test.go"]
+        tests_run:        { passed: 4, failed: 0, log: "PASS 4 tests" }
+        outcome:          "pass"
+        evidence:         { build: "ok", api: "n/a", ui: "n/a" }
+        lessons:
+          - { category: "channels", description: "Always unregister producers before closing channels; deadlock pattern.", severity: "high" }
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Stub artifact passes the schema; accept advances."
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub"
+        summary_markdown: "A stub artifact body; deterministic across rooms."
+        bug_verified:     true
+        steps:            ["s1", "s2"]
+        involved_components:
+          - { name: "internal/tui", reason: "ESC handler" }
+        fix_description:  "Drain the input queue in the ESC handler."
+        root_cause:       "The ESC handler blocks on a closed channel."
+        affected_files:   ["internal/tui/tui.go"]
+        confidence:       0.85
+        reasoning:        "Trace shows the deadlock; same shape as the foyer fix."
+        status:           "passed"
+        tests_added:      ["internal/tui/esc_test.go"]
+        tests_run:        { passed: 4, failed: 0, log: "PASS 4 tests" }
+        outcome:          "pass"
+        evidence:         { build: "ok", api: "n/a", ui: "n/a" }
+        lessons:
+          - { category: "channels", description: "Always unregister producers before closing channels; deadlock pattern.", severity: "high" }
+        verdict:    "pass"
+        intent:     "accept"
+        reason:     "Stub artifact passes the schema; accept advances."
+
+turns:
+  # go_bugfix -> bf.idle.on_enter self-provisions the workspace (no parent seeds),
+  # then auto-fires `start` → bf.reproducing. Assert the child provisioned its
+  # OWN workdir/feature_branch (the values that must survive the handoff).
+  - intent: { name: go_bugfix, slots: {} }
+    expect_state: bf.reproducing
+    expect_world:
+      bf__ticket_id:      "TKT-200"
+      bf__workdir:        ".capsules/workspaces/bf-TKT-200-S1"
+      bf__feature_branch: "fix/TKT-200-S1"
+
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.proposing
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.implementing
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.testing
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.reviewing
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.validating
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: bf.done
+
+  # @exit:done → bugfix_done_router → pr.open_pr, all in one turn.
+  # THE BUG: the far side of the bf→pr boundary (what the pr child actually
+  # receives) must carry the self-provisioned workspace/branch. On the unfixed
+  # tree these are "" and this assertion FAILS (RED).
+  - intent: { name: bf__accept, slots: {} }
+    expect_state: pr.open_pr
+    expect_world:
+      pr__ticket_id:      "TKT-200"
+      pr__workdir:        ".capsules/workspaces/bf-TKT-200-S1"
+      pr__feature_branch: "fix/TKT-200-S1"
+
+expect_no_errors: true

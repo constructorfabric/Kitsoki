@@ -28,6 +28,20 @@ func deterministicBase(t *testing.T) runtimeBase {
 	}
 }
 
+func repoRootForRegistryTest(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	require.NoError(t, err)
+	for {
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		require.NotEqual(t, dir, parent, "could not find repo root")
+		dir = parent
+	}
+}
+
 // minimalStory is a self-contained, host-free, template-free story: string
 // views (no `extends`), no intent includes, no host calls. It loads and renders
 // from any temp dir, so tests can mutate it on disk and exercise Reload's
@@ -218,6 +232,42 @@ func TestRegistry_NewSessionNoFlowSeedStartsAtRoot(t *testing.T) {
 	snap, err := entry.Source.Snapshot()
 	require.NoError(t, err)
 	assert.Equal(t, "foyer", snap.Session.CurrentState, "no-flow session starts at root")
+}
+
+func TestRegistry_RescanFallsBackToImplicitRootForPlainProject(t *testing.T) {
+	repoRoot := repoRootForRegistryTest(t)
+	t.Setenv("KITSOKI_REPO", repoRoot)
+	plain := t.TempDir()
+	t.Chdir(plain)
+
+	reg := NewRegistry(webconfig.WebConfig{}, []string{"./stories"}, deterministicBase(t))
+	t.Cleanup(reg.Close)
+
+	stories, err := reg.Rescan()
+	require.NoError(t, err)
+	require.Len(t, stories, 1)
+	assert.Equal(t, filepath.Join(plain, ".kitsoki", "implicit-root.app.yaml"), stories[0].Path)
+	assert.Equal(t, filepath.Base(plain), stories[0].AppID)
+	assert.Contains(t, stories[0].Title, "implicit root")
+}
+
+func TestRegistry_RescanExplicitMissingStoryDirStillFails(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	reg := NewRegistry(webconfig.WebConfig{}, []string{missing}, deterministicBase(t))
+	t.Cleanup(reg.Close)
+
+	_, err := reg.Rescan()
+	require.Error(t, err)
+}
+
+func TestRegistry_RescanExplicitEmptyStoryDirStaysEmpty(t *testing.T) {
+	empty := t.TempDir()
+	reg := NewRegistry(webconfig.WebConfig{}, []string{empty}, deterministicBase(t))
+	t.Cleanup(reg.Close)
+
+	stories, err := reg.Rescan()
+	require.NoError(t, err)
+	assert.Empty(t, stories)
 }
 
 // TestRegistry_GetUnknown proves an unknown id resolves to ok=false (the server

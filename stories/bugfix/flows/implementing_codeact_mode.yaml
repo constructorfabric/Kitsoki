@@ -1,0 +1,53 @@
+# implementing_codeact_mode — implementation_mode=codeact swaps only the
+# mutating implementing-room step to host.agent.codeact.
+#
+# This is a no-LLM regression fixture for the arena CodeAct treatment. The
+# story starts directly in implementing with a prepared proposal artifact and a
+# non-empty workdir, so on_enter must call host.agent.codeact, bind the normal
+# implement_artifact payload, then use the same commit step as the existing
+# host.agent.task path.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: implementing
+initial_world:
+  ticket_id:     "TKT-CODEACT-IMPL"
+  ticket_title:  "CodeAct implementation branch"
+  thread:        "TKT-CODEACT-IMPL"
+  workspace_id:  ""
+  workdir:       "."
+  feature_branch: "paired-task-codeact"
+  bugfix_mode:   "quick"
+  implementation_mode: "codeact"
+  judge_mode:    "human"
+  propose_fix_artifact:
+    summary_title:    "Apply the CodeAct fixture edit"
+    summary_markdown: "Stub proposal used to prove the implementing room calls host.agent.codeact when implementation_mode is codeact."
+    fix_description:  "Edit README.md to add one sentence."
+    root_cause:       "The documentation omitted the sentence."
+    affected_files:   ["README.md"]
+
+host_handlers:
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        summary_title:    "Applied README CodeAct edit"
+        summary_markdown: "The CodeAct implementer inspected README.md through ctx.fs and wrote the missing sentence. This fixture proves the codeact branch returns the same implementing_artifact shape as the normal task implementer."
+        files_changed:    ["README.md"]
+        applied:          true
+      steps:
+        - snippet: "def main(ctx):\n    body = ctx.fs.read('README.md')\n    ctx.fs.write('README.md', body + '\\nCodeAct fixture.\\n')\n    return {'changed': 'README.md'}"
+          observation: { changed: "README.md" }
+  host.git:
+    data: { ok: true, sha: "codeact123", diff: "README.md" }
+
+turns:
+  - intent: { name: refine, slots: { feedback: "exercise the CodeAct implementation branch" } }
+    expect_state: implementing
+    expect_world:
+      implementation_mode: codeact
+    expect_view_matches: "Action surface:[\\s\\S]*codeact[\\s\\S]*Applied README CodeAct edit"
+
+expect_no_errors: true

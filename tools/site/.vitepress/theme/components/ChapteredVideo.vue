@@ -1,15 +1,20 @@
 <script setup lang="ts">
 /**
- * The demo-video player: MP4 + optional chapter sidecar (the recording specs'
- * <video>.mp4.chapters.json) rendered as a clickable chapter rail that seeks
- * the video and highlights the active chapter during playback.
+ * The demo player: rrweb replay iframe first, with the legacy MP4 + optional
+ * chapter sidecar path retained only for explicit fallback media.
+ *
+ * A rrweb-native story-demo has no mp4 at all (see demo.embed in
+ * features/*.yaml) — instead of a black "not rendered" placeholder it embeds
+ * the pre-bundled, self-contained Slidey deck html directly, at its scene
+ * (`?scene=N`), the same sandboxed-iframe-plus-open-link idiom the in-app
+ * `slideshow` media kind already uses (src/components/ViewElement.vue).
  *
  * Degrades by design:
  *  - embedded variant (binary /help/): poster only + "watch online" link —
- *    MP4s are never embedded into the binary.
- *  - video not staged locally: poster (or empty placeholder) + a hint to
- *    record it (`make demo-feature FEATURE=<id>`). The site build never fails
- *    on missing media.
+ *    MP4s and deck embeds are never embedded into the binary.
+ *  - replay not staged locally and no embed: poster (or empty placeholder) + a
+ *    hint to capture it (`make demo-feature-rrweb FEATURE=<id>`). The site build
+ *    never fails on missing media.
  */
 import { ref, computed, onMounted } from "vue";
 import { withBase, useData } from "vitepress";
@@ -19,6 +24,8 @@ interface Media {
   posterUrl: string | null;
   chaptersUrl: string | null;
   videoAvailable: boolean;
+  embedKind?: "deck" | "rrweb" | null;
+  embedUrl: string | null;
 }
 
 interface Chapter {
@@ -50,6 +57,17 @@ const { theme } = useData();
 const embedded = computed(() => theme.value.siteVariant === "embedded");
 const text = computed(() => theme.value.siteText?.labels ?? {});
 const showVideo = computed(() => !embedded.value && props.media.videoAvailable);
+const showEmbed = computed(() => !embedded.value && !showVideo.value && !!props.media.embedUrl);
+const embedHint = computed(() =>
+  props.media.embedKind === "rrweb"
+    ? (text.value.rrwebEmbedHint ?? "An interactive rrweb replay — generated directly from the DOM session log, no MP4 render.")
+    : (text.value.deckEmbedHint ?? "An interactive clip from the kitsoki story deck — replayed from a real run, no LLM.")
+);
+const embedTitle = computed(() =>
+  props.media.embedKind === "rrweb"
+    ? (text.value.rrwebEmbedTitle ?? "interactive replay")
+    : (text.value.deckEmbedTitle ?? "interactive deck clip")
+);
 const watchOnlineUrl = computed(() =>
   props.featureId
     ? `${theme.value.sitePublicUrl}${theme.value.siteLocale === "en" ? "" : `/${theme.value.siteLocale}`}/features/${props.featureId}.html`
@@ -121,6 +139,29 @@ defineExpose({ seekToStep, hasChapters: () => chapters.value.length > 0 });
       :src="withBase(media.videoUrl!)"
       @timeupdate="onTimeUpdate"
     />
+    <!-- rrweb-native story-demo: the pre-bundled, self-contained Slidey deck,
+         opened at this feature's scene (`?scene=N`) — the iframe+open-link
+         idiom the in-app slideshow media kind uses (ViewElement.vue). Unlike
+         the in-app case (agent-produced artifacts, opaque-origin sandbox) this
+         deck is OUR committed, reviewed asset served same-origin, and the
+         rrweb replayer inside it needs same-origin document access to rebuild
+         the recording (an `allow-scripts`-only sandbox leaves it stuck on
+         "Loading replay…" forever) — so allow-same-origin, keeping the rest of
+         the sandbox (no top-navigation, popups, forms) as defense-in-depth. -->
+    <template v-else-if="showEmbed">
+      <iframe
+        class="kv__embed"
+        :src="withBase(media.embedUrl!)"
+        sandbox="allow-scripts allow-same-origin"
+        :title="`${title} — ${embedTitle}`"
+        loading="lazy"
+      />
+      <p class="kv__badge">
+        {{ embedHint }}
+        <a :href="withBase(media.embedUrl!)" target="_blank" rel="noopener">{{ text.deckEmbedOpen ?? "Open full-screen" }} →</a>
+      </p>
+    </template>
+
     <div v-else class="kv__placeholder">
       <img
         v-if="media.posterUrl"
@@ -135,8 +176,8 @@ defineExpose({ seekToStep, hasChapters: () => chapters.value.length > 0 });
           <a :href="watchOnlineUrl" target="_blank" rel="noopener">{{ text.watchOnline ?? "Watch this demo online" }} →</a>
         </template>
         <template v-else>
-          {{ text.demoMissing ?? "demo video not rendered in this build" }}
-          <code v-if="featureId">make demo-feature FEATURE={{ featureId }}</code>
+          {{ text.demoMissing ?? "demo replay not captured in this build" }}
+          <code v-if="featureId">make demo-feature-rrweb FEATURE={{ featureId }}</code>
         </template>
       </p>
     </div>

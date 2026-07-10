@@ -34,6 +34,9 @@ func classifyCopilotEvent(ev map[string]any) classifiedEvent {
 		if c, _ := data["content"].(string); c != "" {
 			ce.Text = c
 		}
+		if t, _ := data["reasoningText"].(string); t != "" {
+			ce.Thinking = t
+		}
 		if ot, ok := data["outputTokens"].(float64); ok {
 			ce.OutputTokens = int(ot)
 		}
@@ -57,9 +60,9 @@ func classifyCopilotEvent(ev map[string]any) classifiedEvent {
 	case "assistant.reasoning":
 		// Surface reasoning prose for the trace when present.
 		if t, _ := data["text"].(string); t != "" {
-			ce.Text = t
+			ce.Thinking = t
 		} else if c, _ := data["content"].(string); c != "" {
-			ce.Text = c
+			ce.Thinking = c
 		}
 
 	case "result":

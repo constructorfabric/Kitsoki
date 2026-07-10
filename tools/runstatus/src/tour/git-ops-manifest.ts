@@ -35,7 +35,7 @@
  *
  * POPOVER PLACEMENT: the chat is what viewers most need to read, so every
  * in-session step anchors the SPOTLIGHT on `chat-section` (left ~46% column) and
- * places the popover to its `right` — parked over the dimmed trace/diagram panel
+ * places the popover to its `right` — over the trace/diagram panel
  * (right ~54%), never covering the chat. (The intro steps are on the home view,
  * which has no chat; the wrap-up is a centered summary card.)
  */

@@ -13,21 +13,24 @@ states:
   write_code_executing:
     description: "Drafting the code change for the task."
     view:
+      - banner:
+          text:     "✍ WRITING CODE"
+          subtitle: "Agent is applying the accepted task summary"
+          color:    "#7C3AED"
       - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
-      - heading: "Drafting the code change"
       - kv:
           pairs:
             Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
-            Summary:    '{{ world.code_artifact.summary_title|default:"(pending)" }}'
+            Summary:    '{{ world.code_artifact.summary_title|default:"agent working..." }}'
             Files:      '{{ world.code_artifact.affected_files|join:", "|default:"(pending)" }}'
-            Confidence: '{% if world.code_artifact.confidence %}{{ world.code_artifact.confidence|floatformat:2 }}{% else %}(pending){% endif %}'
-      - heading: "Artifact"
-      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+            Status:     "running"
+      - template: |
+          **Code work is in progress.** The full diff narrative will be linked at the checkpoint.
       - choice:
           mode: single
           prompt: "Actions"
           items:
-            - { label: "proceed", intent: proceed, hint: "deliver the code-artifact to the checkpoint" }
+            - { label: "proceed", intent: proceed, hint: "deliver the code artifact to the checkpoint", when: "world.judge_mode != 'human'" }
             - label:  "restart_from"
               intent: restart_from
               hint:   "bounce back to review_task"
@@ -72,6 +75,37 @@ states:
           message:   "{{ world.code_artifact.summary_title }}"
           stage_all: true
         on_error: idle
+      - invoke: host.artifacts_dir
+        id: code_artifact_file
+        with:
+          thread: "implementation_{{ world.ticket_id }}_02_code.md"
+          title:  "Code change: {{ world.ticket_id }}"
+          body:   "{{ world.code_artifact.summary_markdown }}"
+          mode:   replace
+        bind:
+          code_artifact_path: path
+        on_error: idle
+      - invoke: host.artifacts_dir
+        id: implementation_progress_file
+        with:
+          thread: "implementation_{{ world.ticket_id }}_progress.yaml"
+          body: |
+            ticket_id: "{{ world.ticket_id }}"
+            phase: write_code
+            state: ready_for_operator
+            cycle: {{ world.cycle }}
+            artifacts:
+              task_summary: "{{ world.task_summary_artifact_path }}"
+              code: "{{ world.code_artifact_path }}"
+              test: "{{ world.test_artifact_path }}"
+              review: "{{ world.review_artifact_path }}"
+            next_action: accept_or_refine
+          mode: replace
+        bind:
+          implementation_progress_artifact_path: path
+        on_error: idle
+      - when: "world.judge_mode == 'human' && world.code_artifact_path != ''"
+        emit_intent: proceed
     on:
       proceed:
         - target: write_code_awaiting_reply
@@ -84,6 +118,7 @@ states:
                 # Re-entering review_task_executing for a fresh run — clear
                 # its once: cache so the task summary regenerates.
                 task_summary_artifact: {}
+                task_summary_artifact_path: ""
       quit:
         - target: "@exit:abandoned"
       look:
@@ -93,19 +128,28 @@ states:
   write_code_awaiting_reply:
     description: "Code change posted; awaiting verdict."
     view:
+      - banner:
+          text:     "✅ CODE CHANGE READY"
+          subtitle: "Review the short summary; open the artifact for details"
+          color:    "#16A34A"
       - prose: '{{ world.ticket_id|default:"(no ticket)" }}  ·  {{ world.workdir|default:"(no workspace)" }}  ·  {{ world.feature_branch|default:"(no branch)" }}  ·  cycle {{ world.cycle }}  ·  judge {{ world.judge_mode }}'
-      - heading: "Code change — awaiting verdict"
       - kv:
           pairs:
-            Ticket:     "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Ticket:   "{{ world.ticket_id }} — {{ world.ticket_title }}"
+            Summary:  '{{ world.code_artifact.summary_title|default:"(missing title)" }}'
+            Files:    '{{ world.code_artifact.affected_files|join:", "|default:"(not listed)" }}'
+            Artifact: '{{ world.code_artifact_path|default:"(not written)" }}'
+            Progress: '{{ world.implementation_progress_artifact_path|default:"(not written)" }}'
       - when: "(world.llm_verdict.verdict ?? '') != ''"
         kv:
           pairs:
             Verdict:    '{{ world.llm_verdict.verdict }}'
             Confidence: '{{ world.llm_verdict.confidence|floatformat:2 }}'
             Reason:     '{{ world.llm_verdict.reason }}'
-      - heading: "Artifact"
-      - code: '{{ world.code_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+      - template: |
+          **{{ world.code_artifact.summary_title|default:"Code change" }}**
+
+          {% if world.code_artifact.affected_files %}Files: {{ world.code_artifact.affected_files|join:", " }}{% else %}Open the linked artifact for the full change narrative.{% endif %}
       - choice:
           mode: single
           prompt: "Actions"
@@ -133,7 +177,11 @@ states:
         with:
           thread:    "{{ world.thread }}"
           title:     "Code change: {{ world.ticket_id }}"
-          body:      "{{ world.code_artifact.summary_markdown }}"
+          body: |
+            Code change ready: {{ world.code_artifact.summary_title }}
+
+            Full artifact: {{ world.code_artifact_path }}
+            Progress: {{ world.implementation_progress_artifact_path }}
           phase_id:  "write_code_{{ world.ticket_id }}_{{ world.cycle }}"
       - invoke: host.inbox.add
         with:
@@ -141,7 +189,7 @@ states:
           title:   "Code change: {{ world.ticket_id }}"
           thread:  "{{ world.thread }}"
           state:   write_code_awaiting_reply
-          body:    "{{ world.code_artifact.summary_markdown }}"
+          body:    "Code change ready: {{ world.code_artifact.summary_title }}\n\nFull artifact: {{ world.code_artifact_path }}\nProgress: {{ world.implementation_progress_artifact_path }}"
       - when: "world.judge_mode == 'llm' || world.judge_mode == 'llm_then_human'"
         invoke: host.agent.decide
         with:
@@ -172,6 +220,7 @@ states:
                 # Advancing to test_executing for a fresh run — clear its
                 # once: cache so the test artifact regenerates.
                 test_artifact:     {}
+                test_artifact_path: ""
       refine:
         - target: write_code_executing
           effects:
@@ -180,6 +229,7 @@ states:
                 cycle:           "{{ world.cycle + 1 }}"
                 # Clear the once: cache so the code artifact regenerates.
                 code_artifact:   {}
+                code_artifact_path: ""
       restart_from:
         - target: review_task_executing
           effects:
@@ -189,6 +239,7 @@ states:
                 # Re-entering review_task_executing for a fresh run — clear
                 # its once: cache so the task summary regenerates.
                 task_summary_artifact: {}
+                task_summary_artifact_path: ""
       quit:
         - target: "@exit:abandoned"
       look:

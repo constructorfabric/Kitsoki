@@ -28,6 +28,19 @@ func repoRootFromCWD(t *testing.T) string {
 	}
 }
 
+func writableRepoRoot(t *testing.T) string {
+	t.Helper()
+	realRoot := repoRootFromCWD(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module kitsoki\n"), 0o644); err != nil {
+		t.Fatalf("write temp go.mod: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(realRoot, "stories"), filepath.Join(root, "stories")); err != nil {
+		t.Fatalf("symlink stories into temp repo: %v", err)
+	}
+	return root
+}
+
 func TestLoadRoot_Rung0_NoRootBlock(t *testing.T) {
 	// A config with only harness-profile concerns (or none) ⇒ rung 0: Root is
 	// nil and RootSpec() returns nil so SynthesizeRoot uses its default.
@@ -51,7 +64,7 @@ func TestLoadRoot_Rung0_NoRootBlock(t *testing.T) {
 func TestLoadRoot_Rung1_Overrides(t *testing.T) {
 	// World-key validation loads dev-story, so write the config under the repo
 	// worktree where @kitsoki/dev-story resolves.
-	root := repoRootFromCWD(t)
+	root := writableRepoRoot(t)
 	dir, err := os.MkdirTemp(root, "wc-rung1-")
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +99,7 @@ func TestLoadRoot_Rung1_Overrides(t *testing.T) {
 }
 
 func TestLoadRoot_ProjectProfile(t *testing.T) {
-	root := repoRootFromCWD(t)
+	root := writableRepoRoot(t)
 	dir, err := os.MkdirTemp(root, "wc-profile-")
 	if err != nil {
 		t.Fatal(err)
@@ -151,8 +164,45 @@ dev_story_profile:
 	}
 }
 
+func TestLoadRoot_ProjectProfileScriptBinding(t *testing.T) {
+	root := writableRepoRoot(t)
+	dir, err := os.MkdirTemp(root, "wc-profile-script-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".kitsoki"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, ".kitsoki.yaml")
+	if err := os.WriteFile(path, []byte("project_profile: .kitsoki/project-profile.yaml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	profile := `schema: project-profile/v1
+kitsoki:
+  instance:
+    bindings:
+      ticket: .kitsoki/providers/ticket.star
+      vcs: host.git
+      ci: host.local
+      workspace: host.git_worktree
+      transport: host.append_to_file
+`
+	if err := os.WriteFile(filepath.Join(dir, ".kitsoki", "project-profile.yaml"), []byte(profile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load profile root: %v", err)
+	}
+	spec := cfg.Root.RootSpec()
+	if spec.Bindings["ticket"] != ".kitsoki/providers/ticket.star" {
+		t.Fatalf("profile script binding not carried into RootSpec: %+v", spec.Bindings)
+	}
+}
+
 func TestLoadRoot_ProjectProfileExplicitRootWins(t *testing.T) {
-	root := repoRootFromCWD(t)
+	root := writableRepoRoot(t)
 	dir, err := os.MkdirTemp(root, "wc-profile-override-")
 	if err != nil {
 		t.Fatal(err)
@@ -195,8 +245,48 @@ dev_story_profile:
 	}
 }
 
+func TestLoadRoot_LocalRootOverrideWinsOverProjectProfile(t *testing.T) {
+	root := writableRepoRoot(t)
+	dir, err := os.MkdirTemp(root, "wc-profile-local-override-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := os.MkdirAll(filepath.Join(dir, ".kitsoki"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, ".kitsoki.yaml")
+	if err := os.WriteFile(path, []byte("story_dirs: [./stories]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	local := `root:
+  overrides:
+    world:
+      ticket_repo: bsacrobatix/Kitsoki
+`
+	if err := os.WriteFile(filepath.Join(dir, ".kitsoki.local.yaml"), []byte(local), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	profile := `schema: project-profile/v1
+dev_story_profile:
+  docs:
+    ticket_repo: constructorfabric/Kitsoki
+`
+	if err := os.WriteFile(filepath.Join(dir, ".kitsoki", "project-profile.yaml"), []byte(profile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load profile root with local override: %v", err)
+	}
+	spec := cfg.Root.RootSpec()
+	if spec.World["ticket_repo"] != "bsacrobatix/Kitsoki" {
+		t.Fatalf("local root override should win over profile ticket_repo: %+v", spec.World)
+	}
+}
+
 func TestLoadRoot_FailFast(t *testing.T) {
-	root := repoRootFromCWD(t)
+	root := writableRepoRoot(t)
 
 	cases := []struct {
 		name   string

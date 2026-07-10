@@ -8,6 +8,7 @@ initial_state: core.bf.testing
 initial_world:
   core__ticket_id:      "123"
   core__ticket_title:   "High quality GitHub issue"
+  core__ticket_repo:    "constructorfabric/Kitsoki"
   core__thread:         "123"
   core__workdir:        ".worktrees/issue-123"
   core__workspace_id:   "ws-123"
@@ -18,6 +19,7 @@ initial_world:
   core__judge_confidence_threshold: 0.8
   core__bf__ticket_id:      "123"
   core__bf__ticket_title:   "High quality GitHub issue"
+  core__bf__ticket_repo:    "constructorfabric/Kitsoki"
   core__bf__thread:         "123"
   core__bf__workdir:        ".worktrees/issue-123"
   core__bf__workspace_id:   "ws-123"
@@ -31,7 +33,13 @@ initial_world:
   core__bf__implement_review_artifact:
     summary_title: "Tests need another pass"
     summary_markdown: "The generated regression test is still incomplete."
-    status: "blocked"
+    # status=passed (NOT blocked/failed) so the testing refine arc reaches the
+    # `testing_cycle >= testing_budget` abandon arm — "implementation is fine,
+    # the test review needs another pass" — instead of the status-aware
+    # `blocked → implementing` arm (added by bc41f5c7) which would route back
+    # into implementing and fire the workspace-provisioning git ops this
+    # offline flow does not stub.
+    status: "passed"
 
 host_handlers:
   host.agent.decide:
@@ -42,7 +50,7 @@ host_handlers:
         intent: "refine"
         reason: "The test artifact is incomplete; a human should inspect the issue."
         confidence: 0.95
-  host.gh.ticket:
+  host.local_github.ticket:
     data: { ok: true, comment_id: "issue-comment-123" }
 
 turns:
@@ -53,7 +61,7 @@ turns:
       core__human_review_reason: "testing_cycle_budget_exhausted"
       core__human_review_issue_comment_id: "issue-comment-123"
     expect_host_calls:
-      - handler: host.gh.ticket.comment
+      - handler: host.local_github.ticket.comment
         args: { id: "123" }
         times: 1
 

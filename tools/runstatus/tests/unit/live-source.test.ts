@@ -325,6 +325,20 @@ describe("LiveSource", () => {
     expect(body.params.slots).toEqual({ n: 2, text: "two" });
   });
 
+  it("driveOperation calls runstatus.session.drive_operation", async () => {
+    fetchMock.mockResolvedValueOnce(
+      rpcOk({ mode: "transitioned", state: "__exit__done", turn_number: 4 })
+    );
+    const src = new LiveSource("/");
+    const result = await src.driveOperation("s1");
+    expect(result.state).toBe("__exit__done");
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string
+    ) as { method: string; params: { session_id: string } };
+    expect(body.method).toBe("runstatus.session.drive_operation");
+    expect(body.params.session_id).toBe("s1");
+  });
+
   it("offpath calls runstatus.session.offpath and returns the answer", async () => {
     fetchMock.mockResolvedValueOnce(rpcOk({ answer: "42" }));
     const src = new LiveSource("/");
@@ -360,6 +374,31 @@ describe("LiveSource", () => {
     expect(body.method).toBe("runstatus.stories.rescan");
   });
 
+  it("setupStatus calls runstatus.setup.status", async () => {
+    fetchMock.mockResolvedValueOnce(
+      rpcOk({
+        warnings: [
+          {
+            id: "run-as-user",
+            title: "Agent run_as_user delegation is not configured",
+            body: "Run the setup story.",
+            action_command: "kitsoki run @kitsoki/run-as-user-setup",
+            story_id: "run-as-user-setup",
+          },
+        ],
+        project_onboarded: true,
+      })
+    );
+    const src = new LiveSource("/");
+    const status = await src.setupStatus();
+    expect(status.warnings[0]!.id).toBe("run-as-user");
+    expect(status.project_onboarded).toBe(true);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string
+    ) as { method: string };
+    expect(body.method).toBe("runstatus.setup.status");
+  });
+
   it("newSession calls runstatus.session.new with story_path and returns the id", async () => {
     fetchMock.mockResolvedValueOnce(rpcOk({ session_id: "sess-new" }));
     const src = new LiveSource("/");
@@ -370,6 +409,30 @@ describe("LiveSource", () => {
     ) as { method: string; params: { story_path: string } };
     expect(body.method).toBe("runstatus.session.new");
     expect(body.params.story_path).toBe("/abs/story/app.yaml");
+  });
+
+  it("newSession forwards initialWorld when supplied", async () => {
+    fetchMock.mockResolvedValueOnce(rpcOk({ session_id: "sess-seeded" }));
+    const src = new LiveSource("/");
+    const id = await src.newSession("/abs/story/app.yaml", {
+      initialWorld: {
+        ticket_source_ref: ".artifacts/issues/bugs/B-123.md",
+        oversight_mode: "no-gate",
+      },
+    });
+    expect(id).toBe("sess-seeded");
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string
+    ) as {
+      method: string;
+      params: { story_path: string; initial_world: Record<string, unknown> };
+    };
+    expect(body.method).toBe("runstatus.session.new");
+    expect(body.params.story_path).toBe("/abs/story/app.yaml");
+    expect(body.params.initial_world).toEqual({
+      ticket_source_ref: ".artifacts/issues/bugs/B-123.md",
+      oversight_mode: "no-gate",
+    });
   });
 
   it("getTranscript calls runstatus.session.transcript and maps schema_version", async () => {

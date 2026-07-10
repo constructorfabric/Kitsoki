@@ -1,0 +1,84 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/deliver/decomposition.yaml
+    out: "false"
+  # lint reads the manifest once, fleet.load re-parses it once — same read
+  # twice, mirroring decompose_happy.inspect.yaml.
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      coverage_note: >
+        These two briefs cover a small deliver fixture end to end: the first
+        adds the shared health model, the second wires it into the HTTP
+        handler. The second depends on the first, so the graph has one clear
+        edge and no parallel write overlap; nothing is left unowned.
+      briefs:
+        - id: health-model
+          title: Add health status model
+          kind: runtime
+          brief: "Add a HealthStatus struct in internal/health with Status and Version fields."
+          scope: ["internal/health/**"]
+          acceptance:
+            - "HealthStatus has status and version fields."
+            - "The model package has a focused unit test."
+          risk: low
+          gate_command: "go test ./internal/health/..."
+          deps: []
+        - id: health-handler
+          title: Wire health handler
+          kind: runtime
+          brief: "Add a GET /health handler that serializes HealthStatus to JSON."
+          scope: ["internal/handler/**"]
+          acceptance:
+            - "GET /health returns a JSON HealthStatus payload."
+            - "The handler test covers status code and payload shape."
+          risk: medium
+          gate_command: "go test ./internal/handler/..."
+          deps: [health-model]
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      coverage_note: >
+        These two briefs cover a small deliver fixture end to end: the first
+        adds the shared health model, the second wires it into the HTTP
+        handler. The second depends on the first, so the graph has one clear
+        edge and no parallel write overlap; nothing is left unowned.
+      briefs:
+        - id: health-model
+          title: Add health status model
+          kind: runtime
+          brief: "Add a HealthStatus struct in internal/health with Status and Version fields."
+          scope: ["internal/health/**"]
+          acceptance:
+            - "HealthStatus has status and version fields."
+            - "The model package has a focused unit test."
+          risk: low
+          gate_command: "go test ./internal/health/..."
+          deps: []
+        - id: health-handler
+          title: Wire health handler
+          kind: runtime
+          brief: "Add a GET /health handler that serializes HealthStatus to JSON."
+          scope: ["internal/handler/**"]
+          acceptance:
+            - "GET /health returns a JSON HealthStatus payload."
+            - "The handler test covers status code and payload shape."
+          risk: medium
+          gate_command: "go test ./internal/handler/..."
+          deps: [health-model]
+  # scope-path bounds checks the lint script performs (health-model, then
+  # health-handler); neither directory exists yet, so each falls back to its
+  # existing repo-root parent "internal".
+  - op: exists
+    target: internal/health
+    out: "false"
+  - op: exists
+    target: internal
+    out: "true"
+  - op: exists
+    target: internal/handler
+    out: "false"
+  - op: exists
+    target: internal
+    out: "true"

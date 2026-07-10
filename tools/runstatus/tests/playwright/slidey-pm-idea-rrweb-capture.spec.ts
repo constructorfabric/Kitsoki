@@ -293,10 +293,10 @@ async function ease(page: Page, to: number, ms: number): Promise<void> {
 // re-open it at the very end to show the completed state graph + trace. Idempotent:
 // only clicks when the current state differs from `want` (reads aria-expanded).
 async function setTraceColumn(page: Page, want: "collapsed" | "expanded"): Promise<void> {
-  // Click via JS, not a real .click(): during the tour the overlay backdrop sits
-  // over the header and intercepts a pointer click on the toggle (Playwright then
-  // hangs on actionability). The toggle is a plain button — a direct .click() on
-  // the element is equivalent and immune to the backdrop.
+  // Click via JS, not a real .click(): during the tour the popover can cover the
+  // header and make a pointer click on the toggle fail actionability. The toggle
+  // is a plain button — a direct .click() on the element is equivalent and
+  // immune to hit-testing.
   const changed = await page.evaluate((wantCollapsed) => {
     const btn = document.querySelector('[data-testid="trace-column-toggle"]') as HTMLButtonElement | null;
     if (!btn) return false;

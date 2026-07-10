@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/require"
 
+	"kitsoki/internal/storyauthoring"
 	tuipkg "kitsoki/internal/tui"
 )
 
@@ -113,14 +114,17 @@ func TestComposeFrame_MetadataMatchesMachine(t *testing.T) {
 	require.Equal(t, "normal", frame.Metadata.Mode,
 		"frame Mode must be the resting mode label")
 
-	// AllowedIntents equals the machine-reported intents for that state.
+	// AllowedIntents equals the visible machine-reported menu for that state.
 	w := orch.CurrentWorld(sid)
 	var want []string
 	for _, ai := range orch.AllowedIntents(rm.CurrentStateForTest(), w) {
+		if ai.Hidden || storyauthoring.HideIntentFromMenu(string(rm.CurrentStateForTest()), ai.Name) {
+			continue
+		}
 		want = append(want, ai.Name)
 	}
 	require.Equal(t, want, frame.Metadata.AllowedIntents,
-		"frame AllowedIntents must equal the machine's allowed intents")
+		"frame AllowedIntents must equal the machine's visible allowed intents")
 	require.NotEmpty(t, want, "the cloak foyer should expose at least one intent")
 }
 

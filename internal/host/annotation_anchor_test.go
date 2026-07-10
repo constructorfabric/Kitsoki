@@ -104,15 +104,29 @@ func TestAnchorFromParams_EachKind(t *testing.T) {
 		a := host.AnchorFromParams(map[string]any{
 			"kind": "semantic_element",
 			"semantic_element": map[string]any{
-				"plugin": "slidey",
-				"ref":    opaque,
-				"bbox":   []any{float64(5), float64(6), float64(7), float64(8)},
+				"plugin":        "html-data",
+				"ref":           opaque,
+				"semantic_kind": "field",
+				"label":         "Status",
+				"description":   "Issue status field",
+				"selector":      "[data-field=status]",
+				"text":          "Blocked",
+				"value":         "blocked",
+				"data":          map[string]any{"path": "issue.status"},
+				"bbox":          []any{float64(5), float64(6), float64(7), float64(8)},
 			},
 		})
 		require.Equal(t, host.AnchorSemanticElement, a.Kind)
 		require.NotNil(t, a.SemanticElement)
-		assert.Equal(t, "slidey", a.SemanticElement.Plugin)
+		assert.Equal(t, "html-data", a.SemanticElement.Plugin)
 		assert.Equal(t, opaque, a.SemanticElement.Ref, "ref must round-trip verbatim, never interpreted")
+		assert.Equal(t, "field", a.SemanticElement.SemanticKind)
+		assert.Equal(t, "Status", a.SemanticElement.Label)
+		assert.Equal(t, "Issue status field", a.SemanticElement.Description)
+		assert.Equal(t, "[data-field=status]", a.SemanticElement.Selector)
+		assert.Equal(t, "Blocked", a.SemanticElement.Text)
+		assert.Equal(t, "blocked", a.SemanticElement.Value)
+		assert.Equal(t, map[string]any{"path": "issue.status"}, a.SemanticElement.Data)
 		assert.Equal(t, [4]int{5, 6, 7, 8}, a.SemanticElement.Bbox)
 
 		// And it survives into the recorded/template map under target.ref unchanged.
@@ -122,6 +136,9 @@ func TestAnchorFromParams_EachKind(t *testing.T) {
 		target := anchor["target"].(map[string]any)
 		assert.Equal(t, "semantic_element", target["kind"])
 		assert.Equal(t, opaque, target["ref"])
+		assert.Equal(t, "Status", target["label"])
+		assert.Equal(t, "Blocked", target["text"])
+		assert.Equal(t, map[string]any{"path": "issue.status"}, target["data"])
 	})
 
 	t.Run("absent / unkinded anchor decodes to zero", func(t *testing.T) {

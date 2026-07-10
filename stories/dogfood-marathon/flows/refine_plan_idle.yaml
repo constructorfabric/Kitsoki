@@ -1,0 +1,46 @@
+# refine_plan_idle — before a fresh queue marathon starts, the operator can
+# refine the plan from the TUI choice menu, and resume is not advertised unless a
+# journal path is already known.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  inner_pipeline: "bugfix"
+  backlog_sources: "local:.artifacts/issues/bugs"
+  backlog_limit: 15
+  run_id: "dogfood-marathon"
+  profile: "codex-native"
+  model: "gpt-5.5"
+  journal_path: ""
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: idle
+    expect_view_matches: '(?s)Marathon.*Plan.*Start will load up to 15 queue case\(s\).*Actions:.*start the marathon.*fresh durable journal.*refine plan \[what should change\?\]\s+edit queue sources[^\n]*\n\s+quit\s+abandon\n\s+look'
+    expect_no_host_calls: [host.starlark.run, host.agent.task, host.slidey.render, host.artifacts_dir]
+
+  - intent:
+      name: refine_plan
+      slots:
+        feedback: "Use the shorter smoke backlog first."
+        backlog_limit: 10
+        inner_pipeline: "delivery-tail"
+        run_id: "dogfood-smoke"
+    expect_state: idle
+    expect_world:
+      inner_pipeline: "delivery-tail"
+      backlog_limit: 10
+      run_id: "dogfood-smoke"
+      plan_revision: 1
+      plan_feedback: "Use the shorter smoke backlog first."
+      resume_from_journal: false
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Marathon plan updated. Review the plan, then start the marathon or refine again."
+    expect_view_matches: 'Marathon(?s).*Inner workflow:\s+delivery-tail.*Backlog limit:\s+10.*Run id:\s+dogfood-smoke.*Plan revision:\s+1.*Last refinement: Use the shorter smoke backlog first\..*start the marathon.*refine plan \[what should change\?\]'
+    expect_no_host_calls: [host.starlark.run, host.agent.task, host.slidey.render, host.artifacts_dir]
+
+expect_terminal: false
+expect_no_errors: true

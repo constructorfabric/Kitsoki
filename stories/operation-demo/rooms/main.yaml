@@ -1,0 +1,80 @@
+states:
+
+  idle:
+    description: "Ready to start a background operation."
+    relevant_world: [status, last_job_id, result_summary, result_path]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Start a deterministic background operation. The session stays usable while the handle tracks progress."
+          - kv:
+              pairs:
+                Status: "{{ world.status }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "start"
+                  hint: "create the operation handle"
+                - label: "check"
+    on:
+      start:
+        - target: running
+          operation: background_task
+          effects:
+            - set:
+                status: "running"
+                result_summary: ""
+                result_path: ""
+      check:
+        - target: .
+
+  running:
+    description: "Background operation running."
+    relevant_world: [status, last_job_id, result_summary, result_path]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The operation is running in the background. Its banner exposes status, mode, phase facts, and a Drive action while it is active."
+          - kv:
+              pairs:
+                Status: "{{ world.status }}"
+                Job: "{{ world.last_job_id|default:'(pending)' }}"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "check"
+    on_enter:
+      - invoke: host.run
+        with:
+          cmd: "operation-demo"
+        background: true
+        bind: { last_job_id: job_id }
+        on_complete:
+          - set:
+              status: "complete"
+              result_summary: "Background task produced a report."
+              result_path: ".artifacts/operation-demo/report.md"
+          - say: "Operation completed with a report artifact."
+          - target: done
+    on:
+      check:
+        - target: .
+
+  done:
+    description: "Background operation complete."
+    terminal: true
+    relevant_world: [status, result_summary, result_path]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The operation completed and produced a terminal report artifact."
+          - kv:
+              pairs:
+                Status: "{{ world.status }}"
+                Result: "{{ world.result_summary }}"
+                Report: "{{ world.result_path }}"

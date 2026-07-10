@@ -19,10 +19,11 @@ initial_world:
 host_handlers:
   host.append_to_file: { data: { ok: true } }
   host.inbox.add:      { data: { ok: true } }
-  host.agent.task:
+  host.agent.codeact:
     data:
       ok: true
-      submitted:
+      terminated: "done"
+      payload:
         verdict:          "STILL-LIVE"
         confidence:       0.84
         summary_title:    "STILL-LIVE — cited handler still reads the buggy field (illustrative fixture)"
@@ -32,6 +33,9 @@ host_handlers:
         fixed_in_ref:     null
         involved_components:
           - { name: "internal/example/foo.go", reason: "cited buggy field still read (illustrative)" }
+      steps:
+        - snippet: "def main(ctx):\n    return {'seen': ctx.world.get('ticket_id')}"
+          observation: { seen: "TKT-TRIAGE-2" }
 
 turns:
   # triage → triaging (verdict bound, no auto-accept in human mode).

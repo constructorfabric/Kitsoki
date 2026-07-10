@@ -1,0 +1,73 @@
+# conflict_rebase_stuck — entered with a rebase in progress but NO conflicted files.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: conflict
+initial_world:
+  integration_branch:       main
+  current_branch:           main
+  on_integration:           true
+  working_dir:              "."
+  main_worktree_path:       "."
+  conflict_origin:          pull
+  conflict_files:           "stale.go "
+  conflict_scan_done:       false
+  conflict_agent_ready:     false
+  conflict_verdict:         { resolved: false, confidence: 0.3, resolution_summary: "could not resolve" }
+  conflict_intent_guidance: ""
+  last_op_output:           "fatal: It seems that there is already a rebase-merge directory"
+  build_check_cmd:          "echo 'build ok'"
+  rebase_done:              false
+
+host_handlers:
+  host.run:
+    by_call:
+      gather_conflict_files:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            conflict_files: ""
+            gosum_only:     false
+            conflict_scan_done: true
+      rebase_continue_cmd:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            output:       "Successfully rebased."
+            ok:           true
+            outcome:      build_failed
+            new_conflict: false
+      build_check_after_rebase:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout:    "build ok"
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  false
+
+turns:
+  - intent: { name: guide, slots: { intent: "noop" } }
+    expect_state: conflict
+    expect_world:
+      last_op_outcome: "no_conflict_files"
+      conflict_files:  ""
+  - intent: { name: rebase_continue, slots: {} }
+    expect_state: main_ops
+    expect_world:
+      rebase_done: true
+
+expect_no_errors: true

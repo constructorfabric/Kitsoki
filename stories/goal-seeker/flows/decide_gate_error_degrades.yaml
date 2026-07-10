@@ -1,0 +1,49 @@
+# decide_gate_error_degrades — the evaluate decide gate is ADVISORY ONLY (the ledger's
+# ready_id is the authoritative pick). So an evaluator FAILURE (crash / timeout /
+# "session abandoned without successful submit") must NOT dead-end the whole loop at
+# needs_human — it must DEGRADE gracefully to the deterministic ready change and keep
+# driving, exactly as deciding_gate falls back to ready_id when the advice merely
+# disagrees (see gate_not_red_parks_and_advances.yaml). Only an explicit
+# verdict=blocked (a decision, not a failure) is allowed to escalate to a human.
+#
+# Regression for the live-run dead-end: a real gpt-5.5 evaluator abandoned the decide
+# session without submitting (0 attempts) and the loop parked to needs_human with the
+# whole bounded backbone still perfectly healthy — the deterministic ready_id was sat
+# right there unused. This fixture pins the degrade path with a stubbed decide error.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  goal_slug: goal-seeker-two-ready
+  goal_dir:  stories/goal-seeker/testdata/two-ready
+  work_dir:  .artifacts/goal/flow-decide-error
+  reset_log: true
+
+host_handlers:
+  # The evaluate decide-gate ERRORS (the evaluator abandoned the session without a
+  # successful submit). This is a FAILURE of an advisory gate, not a verdict=blocked.
+  host.agent.decide:
+    by_call:
+      evaluate:
+        error: "validator: session abandoned without successful submit after 3 outer iteration(s), 0 attempt(s)"
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok → evaluate (fold: both ready, C1 first)
+    expect_state: evaluate
+    expect_world: { remaining: 2, ready_id: "C1" }
+  - intent: { name: advance, slots: {} }        # evaluate → deciding (build preamble)
+    expect_state: deciding
+  # advance runs the decide gate; it ERRORS → on_error routes to deciding_degraded,
+  # which emits dispatch_next on the deterministic ready_id. The loop must land on
+  # dispatch with next_change_id=C1, NEVER dead-end at needs_human.
+  - intent: { name: advance, slots: {} }
+    expect_state: dispatch
+    expect_not_state: needs_human
+    expect_world: { next_change_id: "C1" }
+
+expect_no_errors: true

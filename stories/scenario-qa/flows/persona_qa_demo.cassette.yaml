@@ -1,0 +1,173 @@
+kind: host_cassette
+app_id: scenario-qa
+app_version: 0.1.0
+generated_at: "2026-07-09T00:00:00Z"
+source_run: "persona-qa required-input real evidence demo"
+match_on: [handler, call]
+
+episodes:
+  - id: preview_transport_suite_required_input
+    match:
+      handler: host.run
+      call: preview_transport_suite
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout_json:
+          schema: kitsoki/persona-qa-transport-suite/v1
+          status: ready
+          summary:
+            scenario_count: 1
+            requested_transports: [web, tui]
+            transport_count: 2
+            leg_count: 2
+            skipped_count: 0
+          scenarios:
+            - scenario: required-input-affordance
+              label: Required input affordance
+              task: Check that QA engineers and developers can provide required input, understand the planned transport checks, and interpret the final report.
+              applicable_transports: [web, tui]
+              skipped_transports: []
+          legs:
+            - leg_id: "required-input-affordance::web"
+              scenario: required-input-affordance
+              transport: web
+              transport_label: Web
+              visual_surface: web
+              evidence_contract:
+                evidence_kind: browser_screenshot
+                level: frame-level
+                primary_tool: visual.snapshot
+            - leg_id: "required-input-affordance::tui"
+              scenario: required-input-affordance
+              transport: tui
+              transport_label: TUI
+              visual_surface: tui
+              evidence_contract:
+                evidence_kind: rendered_tui_frame
+                level: frame-level
+                primary_tool: render.tui_png
+
+  - id: emit_scenario_qa_run_required_input
+    match:
+      handler: host.run
+      call: emit_scenario_qa_run
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout_json:
+          run_id: scenario-qa-affordance-demo-run
+          run_dir: /repo/.artifacts/product-journey/scenario-qa-affordance-demo-run
+          driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-affordance-demo-run/driver-plan.md
+          execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-affordance-demo-run/execution-plan.md
+          agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-affordance-demo-run/agent-brief.md
+          driver_plan:
+            driver_agent: ".agents/agents/product-journey-qa-driver.md"
+            scenarios:
+              - leg_id: "required-input-affordance::web"
+                scenario: required-input-affordance
+                label: Required input affordance
+                task: Check that QA engineers and developers can provide required input, understand the planned transport checks, and interpret the final report.
+                transport: web
+                visual_surface: web
+                evidence_dir: "evidence/required-input-affordance/web"
+                primary_story: "stories/dev-story/app.yaml"
+                success_criteria:
+                  - The operator can enter the plain-language request.
+                  - The preview explains what will be checked before capture.
+                  - The report shows per-transport verdicts and replay artifacts.
+                  - The report screen has a main-room return action.
+                transport_evidence_contract:
+                  primary_tool: "visual.snapshot"
+                  evidence_kind: "browser_screenshot"
+                  level: "frame-level"
+                playback_path: "clips/web-required-input.rrweb.json"
+                playback_caption: "Web session replay shows scenario entry, plan preview, two transport checks, summary report, and main-room return."
+              - leg_id: "required-input-affordance::tui"
+                scenario: required-input-affordance
+                label: Required input affordance
+                task: Check that QA engineers and developers can provide required input, understand the planned transport checks, and interpret the final report.
+                transport: tui
+                visual_surface: tui
+                evidence_dir: "evidence/required-input-affordance/tui"
+                primary_story: "stories/dev-story/app.yaml"
+                success_criteria:
+                  - The operator can enter the same plain-language request in the terminal.
+                  - The preview explains what will be checked before capture.
+                  - The report shows per-transport verdicts and replay artifacts.
+                  - The report screen has a main-room return action.
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+                playback_path: "clips/tui-required-input.rrweb.json"
+                playback_caption: "TUI session replay shows scenario entry, plan preview, two transport checks, summary report, and main-room return through the real TUI bridge."
+
+  - id: drive_required_input_any_transport
+    replay: any
+    match:
+      handler: host.agent.task
+      call: drive_leg
+    agent:
+      verb: task
+      agent: driver
+      model: cassette
+      turn: 1
+      duration_ms: 0
+      prompt_tokens: 0
+      response_tokens: 0
+      cost_usd: 0
+      prompt: "Drive one required-input affordance scenario leg."
+      response: '{"status":"captured","evidence_refs":["frame-required-input.png"],"frames_dir":"evidence/required-input-affordance","summary":"Captured the required-input affordance for this transport check."}'
+    response:
+      data:
+        ok: true
+        submitted:
+          status: captured
+          evidence_refs: ["frame-required-input.png"]
+          frames_dir: evidence/required-input-affordance
+          summary: Captured the required-input affordance for this transport check.
+
+  - id: judge_required_input_any_transport
+    replay: any
+    match:
+      handler: host.agent.task
+      call: judge_leg
+    agent:
+      verb: task
+      agent: judge
+      model: cassette
+      turn: 1
+      duration_ms: 0
+      prompt_tokens: 0
+      response_tokens: 0
+      cost_usd: 0
+      prompt: "Judge one required-input affordance scenario leg."
+      response: '{"verdict":"pass","summary":"Captured evidence shows the required-input request entry, preview plan, final report, replay artifact links, and main-room return action.","cited_frames":["frame-required-input.png"]}'
+    response:
+      data:
+        ok: true
+        submitted:
+          verdict: pass
+          summary: Captured evidence shows the required-input request entry, preview plan, final report, replay artifact links, and main-room return action.
+          cited_frames: ["frame-required-input.png"]
+
+  - id: build_scenario_qa_deck_required_input
+    match:
+      handler: host.run
+      call: build_scenario_qa_deck
+    response:
+      data:
+        ok: true
+        exit_code: 0
+        stdout_json:
+          status: scenario_qa_deck_built
+          run_dir: /repo/.artifacts/product-journey/scenario-qa-affordance-demo-run
+          deck_path: /repo/.artifacts/product-journey/scenario-qa-affordance-demo-run/deck.slidey.json
+          leg_count: 2
+          pass_count: 2
+          fail_count: 0
+          degraded_count: 0
+          summary: "2 / 2 transport checks passed."

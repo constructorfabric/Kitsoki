@@ -1,0 +1,31 @@
+states:
+  desk:
+    description: "Scenario Foundry desk — replays one mined utterance per turn"
+    relevant_world: [text, last_answer]
+    on_enter:
+      # Only fires once world.text has been set by an `ask` intent (guarded by
+      # `when:` rather than `once:`, since `once:` would skip every turn after
+      # the first — this room is entered once per mined turn via the `ask`
+      # self-loop below, and each turn needs its own converse call).
+      - invoke: host.agent.converse
+        id: converse
+        when: "world.text != ''"
+        with:
+          question: "{{ world.text }}"
+        bind:
+          last_answer: answer
+    view:
+      - prose: "Scenario Foundry replay desk."
+      - kv:
+          pairs:
+            Last utterance: "{{ world.text }}"
+            Last answer: "{{ world.last_answer }}"
+    on:
+      ask:
+        # Explicit `target: desk` (NOT the `.` shorthand) — `.` deliberately
+        # skips on_enter (the "look"/redescribe idiom), but each mined turn
+        # needs its own fresh converse invoke. See internal/machine/machine.go
+        # around "same state with fresh on_enter".
+        - target: desk
+          effects:
+            - set: { text: "{{ slots.text }}" }

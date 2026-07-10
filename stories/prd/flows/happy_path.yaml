@@ -20,6 +20,9 @@ initial_world:
   workdir:     "."
   output_path: ".artifacts/prd.md"
   judge_mode:  "human"
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
+
+starlark_inspect_cassette: ../cassettes/slug_a_cli_for_x_that_helps.inspect.yaml
 
 host_handlers:
   # The brief room opens the editable brief in the editor on entry.
@@ -53,19 +56,7 @@ host_handlers:
             matched_count:       2
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/prd/example-cli/001-brief.md", message_id: "001-brief#1" }
-  # search-confirm mints the workspace; accept publishes the draft.
-  host.run:
-    by_call:
-      mint_workspace:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { slug: "example-cli", workspace: ".artifacts/prd/example-cli" }
-      publish:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { prd_file: "docs/prd/example-cli.md" }
+  # search-confirm mints the workspace via real Starlark; accept publishes the draft via real Starlark.
   host.agent.task:
     data:
       ok: true
@@ -139,9 +130,9 @@ turns:
     expect_state: __exit__done
     expect_world:
       status:   "done"
-      prd_file: "docs/prd/example-cli.md"
+      prd_file: "/tmp/kitsoki-prd-fixtures/example-cli.md"
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "publish" }
 
 expect_terminal: true

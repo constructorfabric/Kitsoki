@@ -10,6 +10,32 @@ export interface SessionHeader {
   turn: number;
   started_at: string; // ISO 8601
   terminal: boolean;
+  operation_run?: OperationRunSummary;
+}
+
+export interface OperationRunSummary {
+  operation_id?: string;
+  policy_id?: string;
+  title?: string;
+  status?: string;
+  mode?: string;
+  execution_mode?: string;
+  run_in_background?: boolean;
+  from?: string;
+  to?: string;
+  entry_intent?: string;
+  phase?: string;
+  terminal_state?: string;
+  terminal_artifact?: string;
+  terminal_artifact_handle?: string;
+  stop_reason?: string;
+  stop_detail?: string;
+}
+
+export interface OperationDriveSummary {
+  turns?: number;
+  stop_reason?: string;
+  last_intent?: string;
 }
 
 export interface MermaidSnapshot {
@@ -206,6 +232,8 @@ export interface ViewElement {
   /** Slot the composed instruction is written to on AnnotateIntent (default
    *  "feedback"). */
   AnnotateFeedbackSlot?: string;
+  /** Optional URL for transports that hand annotation off to the web surface. */
+  AnnotateURL?: string;
   Items?: ListItem[] | null;
   Pairs?: KVPair[] | null;
   Marker?: string;
@@ -322,6 +350,8 @@ export interface TurnResult {
    * ContextRouteReceipt and docs/architecture/semantic-routing.md §7.
    */
   context_route?: ContextRouteInfo;
+  /** Present on runstatus.session.drive_operation responses. */
+  operation_drive?: OperationDriveSummary;
 }
 
 /**

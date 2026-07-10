@@ -1,0 +1,69 @@
+kind: arena_corpus_sources
+version: 1
+updated_at: "2026-07-06"
+
+sources:
+  - id: oss-oracle-cost-bench
+    label: "Pre-registered OSS oracle corpus"
+    status: active
+    owner: tools/arena/corpus/cost-bench.manifest.yaml
+    task_count: 26
+    repo_count: 12
+    selection: >
+      Twenty repo-history tasks over the pre-registered public OSS targets plus
+      six hidden-oracle bugfix fixtures from query-string and kitsoki.
+    oracle_contract:
+      red_rule: task-specific deterministic oracle is false at baseline_sha
+      green_rule: task-specific deterministic oracle is true at fix_sha
+      kinds:
+        - github_content
+        - external_bakeoff
+    reusable_as:
+      - paired-task arena source
+      - bugfix hidden-oracle source
+
+  - id: bugswarm
+    label: "BugSwarm fail/pass CI artifact corpus"
+    status: adapter-ready
+    owner: external
+    adapter: tools/arena/scripts/bugswarm_to_arena.py
+    verifier: tools/arena/scripts/bugswarm_verify_source.py
+    verification_applier: tools/arena/scripts/bugswarm_apply_verification.py
+    spec_generator: tools/arena/scripts/bugswarm_to_arena_spec.py
+    upstream:
+      website: https://www.bugswarm.org/
+      client: https://github.com/BugSwarm/client
+      rest_api: https://www.bugswarm.org/docs/toolset/bugswarm-rest-api/
+      paper: https://arxiv.org/abs/1903.06725
+    selection: >
+      Import an explicit exported list of BugSwarm artifacts instead of
+      querying live services during tests. Each selected artifact must be a
+      reproducible or intentionally tracked flaky fail/pass pair with a stable
+      image_tag and failed/passed job ids.
+    required_fields:
+      - image_tag
+      - repo
+      - failed_job_id
+      - passed_job_id
+    optional_fields:
+      - language
+      - build_system
+      - classification
+      - failed_tests
+      - diff_size
+      - reproducibility
+    oracle_contract:
+      kind: bugswarm_fail_pass_pair
+      red_rule: failed job script exits non-zero inside the BugSwarm artifact
+      green_rule: passed job script exits zero inside the same artifact
+      isolation: artifact Docker image supplies both code versions and CI scripts
+    reusable_as:
+      - paired-task arena source
+      - bugfix hidden-oracle source
+      - heldout external corpus
+    notes:
+      - "Adapter generation is offline and no-LLM; live artifact verification requires Docker and must be explicitly invoked."
+      - "Verification runs failed and passed scripts in separate fresh containers: run_failed.sh must exit non-zero, run_passed.sh must exit zero."
+      - "bugswarm_apply_verification.py turns an execute-mode verification report into a verified source YAML for report generation and benchmark scheduling."
+      - "bugswarm_to_arena_spec.py turns that verified source into a paired-task arena spec with kitsoki-vs-raw-prompt candidate arms."
+      - "BugSwarm fail/pass pairs measure CI failure repair; some artifacts are not suitable APR bugs and must be filtered or reported separately."

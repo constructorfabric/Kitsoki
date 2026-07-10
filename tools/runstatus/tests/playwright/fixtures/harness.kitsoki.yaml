@@ -2,7 +2,7 @@
 # demo showcases, each with the model (and, where supported, effort) selectors.
 # The flow posture never forks a backend, so the ${VAR} is satisfied by a dummy
 # SYNTHETIC_API_KEY the spec sets; no real key is used. Shape matches
-# docs/architecture/harness-profiles.md.
+# docs/guide/agents/harness-profiles.md.
 default_profile: claude-native
 harness_profiles:
   claude-native:

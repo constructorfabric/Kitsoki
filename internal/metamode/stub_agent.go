@@ -246,11 +246,30 @@ func defaultStubReply(in AskInput, edited bool) string {
 		}
 		return fmt.Sprintf("Done — I've applied “%s” to the story and reloaded it. _(deterministic no-LLM reply)_", user)
 	}
+	if isImproveModeStub(in, user) {
+		return defaultStubImproveReport(in, user)
+	}
 	state := extractContextField(in.UserMessage, "state")
 	if state != "" {
 		return fmt.Sprintf("You're at `%s`. _(deterministic no-LLM reply to: “%s”)_", state, user)
 	}
 	return fmt.Sprintf("_(deterministic no-LLM reply to: “%s”)_", user)
+}
+
+func isImproveModeStub(in AskInput, user string) bool {
+	haystack := strings.ToLower(in.SystemPrompt + "\n" + user)
+	return strings.Contains(haystack, "story-improver") ||
+		strings.Contains(haystack, "kitsoki-improver") ||
+		strings.Contains(haystack, "introspection improvement report") ||
+		strings.Contains(haystack, "improvement report")
+}
+
+func defaultStubImproveReport(in AskInput, user string) string {
+	state := extractContextField(in.UserMessage, "state")
+	if state == "" {
+		state = "the latest run"
+	}
+	return fmt.Sprintf("Introspection report\n\nObserved false start:\nThis deterministic no-LLM demo is reviewing `%s` after completion for the operator request: “%s”.\n\nLikely cause:\nThe run finished successfully, so there is no real failure in the cassette; the improvement opportunity is making the completion-to-improve loop visible and cheap.\n\nRecommended change:\nKeep the completion reminder near the terminal state, and route it to `story.improve` so story authors can review prompts, tools, scripts, and flow coverage without leaving the session.\n\nEvidence bundle:\nFile a durable meta-improve report with the redacted session trace and transcript/playback evidence. Browser sessions also attach scrubbed HAR (`har.json`), rrweb replay (`rrweb.json`), recent console (`console.json`), and the redacted trace (`trace.redacted.jsonl`). TUI demos pair the report with the recorded terminal playback and transcript evidence.\n\nPosting:\nDefault to local `.artifacts/issues/bugs` for private iteration, use `--ticket-repo` for kitsoki engine/community-story GitHub issues, or use the private ticket-provider posting path via `--improve-ticket-provider` for private story ticket systems.\n\nTool and permission notes:\n`story.improve` stays read-only with Read/Glob/Grep. Do not grant shell or write permissions to the report mode; use `story.edit` only after the author accepts a concrete recommendation.\n\nRegression coverage:\nPin the path with no-LLM UI evidence: completed session -> improve reminder -> `story.improve` report -> evidence-backed local or remote posting.\n\nNext action:\nApply one scoped story or engine change through the edit mode, or enable auto-run at completion for future sessions.\n\n_(deterministic no-LLM improvement report)_", state, user)
 }
 
 // extractContextField pulls a single-line `key: value` out of the

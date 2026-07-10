@@ -18,9 +18,9 @@ import (
 	"kitsoki/internal/jobs"
 	kitsokimcp "kitsoki/internal/mcp"
 	"kitsoki/internal/orchestrator"
-	"kitsoki/internal/world"
 	"kitsoki/internal/render/elements"
 	"kitsoki/internal/store"
+	"kitsoki/internal/world"
 )
 
 // Driver is the write side of the runstatus surface: the server calls it to
@@ -90,6 +90,34 @@ type Driver interface {
 	// intent-class rewind is not yet recoverable from the journal and returns an
 	// explicit error the surface presents gracefully (a disabled control), not a 500.
 	RewindRoute(ctx context.Context, decisionID string, newClass orchestrator.ContextRouteClass, reason string) (*orchestrator.TurnOutcome, error)
+
+	// RecordRoutingFeedback journals an operator's up/down verdict on a
+	// previously-routed turn (WS-C C4: the routing-dissatisfaction substrate).
+	// It backs the runstatus.session.routing_feedback RPC the web chat's
+	// thumbs-up/down control calls — the browser-side twin of the TUI's
+	// `/route up|down` command. state/intent/phrase/tier are recovered by the
+	// browser from the turn's own trace events (see readTurnRouting in
+	// stores/run.ts), exactly like the TUI recovers them from its routing
+	// pipeline snapshot; this method does no lookup of its own. It never
+	// mutates session/world state (a standalone journal write), so it is safe
+	// to call without the session writer lock.
+	RecordRoutingFeedback(ctx context.Context, statePath, intent, phrase, tier string, verdict orchestrator.RoutingFeedbackVerdict) error
+}
+
+// OperationDriver is an optional live-session extension for driving an
+// operation handle until it reaches a terminal/waiting checkpoint or there is no
+// safe autonomous next action. Kept off the core Driver interface so read-only
+// and white-box test drivers do not need to implement operation machinery.
+type OperationDriver interface {
+	DriveOperation(ctx context.Context) (*orchestrator.OperationDriveOutcome, error)
+}
+
+// BackgroundOperationDriver is the automatic twin of OperationDriver. It only
+// advances a running operation when the active handle declares
+// run_in_background:true; explicit DriveOperation remains available for
+// operator-requested foreground/supervised drives.
+type BackgroundOperationDriver interface {
+	DriveBackgroundOperation(ctx context.Context) (*orchestrator.OperationDriveOutcome, error)
 }
 
 // WorkLister is an optional read-only extension for Drivers that can expose the
@@ -274,6 +302,14 @@ func (d OrchestratorDriver) SubmitDirect(ctx context.Context, intent string, slo
 
 func (d OrchestratorDriver) ContinueTurn(ctx context.Context, slots map[string]any) (*orchestrator.TurnOutcome, error) {
 	return d.Orch.ContinueTurn(ctx, d.SID, slots)
+}
+
+func (d OrchestratorDriver) DriveOperation(ctx context.Context) (*orchestrator.OperationDriveOutcome, error) {
+	return d.Orch.DriveOperation(ctx, d.SID)
+}
+
+func (d OrchestratorDriver) DriveBackgroundOperation(ctx context.Context) (*orchestrator.OperationDriveOutcome, error) {
+	return d.Orch.DriveBackgroundOperation(ctx, d.SID)
 }
 
 func (d OrchestratorDriver) AskOffPath(ctx context.Context, input string) (string, error) {
@@ -843,6 +879,12 @@ func (d OrchestratorDriver) RewindRoute(ctx context.Context, decisionID string, 
 	return d.Orch.RewindRoute(ctx, d.SID, decisionID, newClass, reason)
 }
 
+// RecordRoutingFeedback delegates to Orchestrator.RecordRoutingFeedback,
+// binding the session id. See the [Driver] doc for the surface contract.
+func (d OrchestratorDriver) RecordRoutingFeedback(ctx context.Context, statePath, intent, phrase, tier string, verdict orchestrator.RoutingFeedbackVerdict) error {
+	return d.Orch.RecordRoutingFeedback(ctx, d.SID, app.StatePath(statePath), intent, phrase, tier, verdict)
+}
+
 // IntentInfo resolves the intent's slot schema against `state` and derives the
 // browser menu metadata. TextSlot is the single string slot the UI binds its
 // input box to: an intent qualifies when it has exactly one string-typed slot
@@ -915,6 +957,11 @@ type turnResult struct {
 	// matched class/intent, the contextual confidence, and a stable DecisionID
 	// so the web surface can show a "routed to … · contextual" receipt chip.
 	ContextRoute *contextRouteInfo `json:"context_route,omitempty"`
+	// OperationDrive is present only on runstatus.session.drive_operation
+	// responses. It preserves the bounded driver result so web surfaces can tell
+	// the operator whether the drive completed, parked at a checkpoint, or hit a
+	// safety stop without scraping trace events.
+	OperationDrive *operationDriveResult `json:"operation_drive,omitempty"`
 }
 
 // contextRouteInfo is the wire shape of orchestrator.ContextRouteReceipt — the
@@ -929,6 +976,12 @@ type contextRouteInfo struct {
 	TargetChatID string  `json:"target_chat_id,omitempty"`
 	TargetLane   string  `json:"target_lane,omitempty"`
 	DecisionID   string  `json:"decision_id"`
+}
+
+type operationDriveResult struct {
+	Turns      int    `json:"turns"`
+	StopReason string `json:"stop_reason,omitempty"`
+	LastIntent string `json:"last_intent,omitempty"`
 }
 
 // intentInfo is one entry in turnResult.Intents — the per-intent menu metadata
@@ -1003,6 +1056,19 @@ func newTurnResult(out *orchestrator.TurnOutcome, resolver Driver) turnResult {
 			}
 		}
 		tr.DefaultIntent = resolver.DefaultIntent(string(out.NewState))
+	}
+	return tr
+}
+
+func newTurnResultWithOperationDrive(out *orchestrator.TurnOutcome, resolver Driver, drive *orchestrator.OperationDriveOutcome) turnResult {
+	tr := newTurnResult(out, resolver)
+	if drive == nil {
+		return tr
+	}
+	tr.OperationDrive = &operationDriveResult{
+		Turns:      drive.Turns,
+		StopReason: strings.TrimSpace(drive.StopReason),
+		LastIntent: strings.TrimSpace(drive.LastIntent),
 	}
 	return tr
 }

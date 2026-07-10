@@ -106,6 +106,7 @@ func runClaudeOneShot(ctx context.Context, bin string, cliArgs []string, stdin, 
 	if len(sessionID) > 0 {
 		sid = sessionID[0]
 	}
+	cliArgs = appendClaudeMCPPermissionSettings(ctx, cliArgs)
 
 	// Non-claude backends (copilot) expose only one JSON mode — JSONL, one
 	// event per line — so there is no separate buffered-envelope contract to
@@ -307,9 +308,16 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 
 	backend := AgentBackendFromContext(ctx)
 	inv := backend.TranslateInvocation(cliArgs, stdin, workingDir)
+	if inv.Cleanup != nil {
+		defer inv.Cleanup()
+	}
+	quotaPrompt := inv.Stdin
+	if inv.PromptForBudget != "" {
+		quotaPrompt = inv.PromptForBudget
+	}
 
 	if r := backend.runnerFromContext(ctx); r != nil {
-		reservation, qErr := reserveProviderQuota(ctx, backend, inv.Stdin)
+		reservation, qErr := reserveProviderQuota(ctx, backend, quotaPrompt)
 		if qErr != nil {
 			return ClaudeRun{}, "", qErr
 		}
@@ -340,7 +348,7 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 		return cr, parsedSID, nil
 	}
 
-	reservation, qErr := reserveProviderQuota(ctx, backend, inv.Stdin)
+	reservation, qErr := reserveProviderQuota(ctx, backend, quotaPrompt)
 	if qErr != nil {
 		return ClaudeRun{}, "", qErr
 	}
@@ -404,6 +412,7 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 		resultUsage   map[string]any
 		resultCost    float64
 		sumOutTokens  int
+		seenThinking  map[string]bool
 	)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -428,6 +437,7 @@ func runClaudeStreamJSON(ctx context.Context, bin string, cliArgs []string, stdi
 				json.RawMessage(trimmed), time.Since(callStart).Milliseconds())
 		}
 		ce := backend.Classify(ev)
+		dedupeClassifiedThinking(&ce, &seenThinking)
 		emitClassified(ctx, ce)
 		sumOutTokens += ce.OutputTokens
 		if ce.Text != "" {
@@ -893,6 +903,7 @@ func parseStreamJSONOutput(ctx context.Context, raw string) (reply, sessionID st
 	}
 	backend := AgentBackendFromContext(ctx)
 	sumOutTokens := 0
+	var seenThinking map[string]bool
 	scanner := bufio.NewScanner(strings.NewReader(raw))
 	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 	for scanner.Scan() {
@@ -910,6 +921,7 @@ func parseStreamJSONOutput(ctx context.Context, raw string) (reply, sessionID st
 				json.RawMessage(line), time.Since(callStart).Milliseconds())
 		}
 		ce := backend.Classify(ev)
+		dedupeClassifiedThinking(&ce, &seenThinking)
 		emitClassified(ctx, ce)
 		sumOutTokens += ce.OutputTokens
 		if ce.Text != "" {
@@ -936,6 +948,21 @@ func parseStreamJSONOutput(ctx context.Context, raw string) (reply, sessionID st
 		reply = assembled.String()
 	}
 	return reply, sessionID, rawEvents, usage, cost
+}
+
+func dedupeClassifiedThinking(ce *classifiedEvent, seen *map[string]bool) {
+	if ce == nil || strings.TrimSpace(ce.Thinking) == "" {
+		return
+	}
+	key := strings.TrimSpace(ce.Thinking)
+	if *seen == nil {
+		*seen = map[string]bool{}
+	}
+	if (*seen)[key] {
+		ce.Thinking = ""
+		return
+	}
+	(*seen)[key] = true
 }
 
 // claudeExitErrorMessage builds the Result.Error string for a non-zero

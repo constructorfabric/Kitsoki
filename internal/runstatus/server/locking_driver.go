@@ -14,9 +14,9 @@ import (
 // closure over store.WithWriterLock bound to the session id.
 type LockFunc func(ctx context.Context, fn func() error) error
 
-// lockingDriver wraps a [Driver] so the three state-advancing RPCs (Turn,
-// SubmitDirect, ContinueTurn) run under a session writer lock. This serialises a
-// browser turn against a concurrent inbound-bridge turn on the same persisted
+// lockingDriver wraps a [Driver] so state-advancing RPCs (Turn, SubmitDirect,
+// ContinueTurn, DriveOperation) run under a session writer lock. This serialises
+// a browser turn against a concurrent inbound-bridge turn on the same persisted
 // session, and makes a turn that races another process's `kitsoki session
 // continue` fail cleanly (the loser gets the lock error) rather than interleave
 // two writers on one session.
@@ -62,6 +62,20 @@ func (d *lockingDriver) ContinueTurn(ctx context.Context, slots map[string]any) 
 	err := d.lock(ctx, func() error {
 		var e error
 		out, e = d.Driver.ContinueTurn(ctx, slots)
+		return e
+	})
+	return out, err
+}
+
+func (d *lockingDriver) DriveOperation(ctx context.Context) (*orchestrator.OperationDriveOutcome, error) {
+	od, ok := d.Driver.(OperationDriver)
+	if !ok {
+		return nil, fmt.Errorf("session.drive_operation: operation driving unavailable")
+	}
+	var out *orchestrator.OperationDriveOutcome
+	err := d.lock(ctx, func() error {
+		var e error
+		out, e = od.DriveOperation(ctx)
 		return e
 	})
 	return out, err

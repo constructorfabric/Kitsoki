@@ -177,10 +177,16 @@ watch(
   }
 );
 
-// The three modes the web surface curates (same set the launcher dropdown
-// shows); the server may advertise more (story.bug, kitsoki.edit, …) that we
-// don't surface as tabs here.
-const CURATED = new Set(["story.edit", "story.ask", "kitsoki.ask"]);
+// The modes the web surface curates (same set the launcher dropdown shows);
+// the server may advertise more (story.bug, kitsoki.edit, …) that we don't
+// surface as tabs here.
+const CURATED = new Set([
+  "story.edit",
+  "story.ask",
+  "story.improve",
+  "kitsoki.ask",
+  "kitsoki.improve",
+]);
 const tabModes = computed(() => meta.modes.filter((m) => CURATED.has(m.key)));
 
 const draft = ref("");

@@ -1,0 +1,93 @@
+# pr-split — group a branch's commits into concern buckets and open one PR each.
+#
+# Linear story: idle (detect + deterministically classify commits by path) →
+# planning (agent finalizes buckets + authors PR titles/bodies) → splitting
+# (native deterministic branch/cherry-pick/push/open-PR per bucket) → done.
+#
+# Progressive determinism: the path→concern mapping and all git/GitHub plumbing
+# are deterministic host operations; the LLM appears once, only to resolve
+# mixed-concern commits and write human PR copy. The agent has NO Bash
+# (write-fence) — the story drives every git command.
+#
+# See .context/2026-06-29-pr-split-story-design.md.
+
+app:
+  id: pr-split
+  version: 0.1.0
+  title: "pr-split — concern-grouped PRs from a branch's commits"
+  author: "Kitsoki"
+  license: "CC0"
+
+hosts:
+  - host.run
+  - host.git
+  - host.agent.decide
+  - host.starlark.run
+
+agents:
+  bucketer:
+    system_prompt: |
+      You group git commits into PULL-REQUEST buckets by CONCERN so each PR is
+      independently reviewable and revertable. You are given each commit's sha,
+      subject, changed files, and a deterministic concern guess derived from file
+      paths. Most commits are already unambiguous — keep their concern. Your real
+      job: (1) place mixed-concern commits (ambiguous=true) into the single most
+      appropriate bucket, keeping a bucket coherent; (2) order commits within a
+      bucket by their original order so cherry-pick applies cleanly; (3) write a
+      clear PR title and body for each bucket. NEVER split one commit across
+      buckets and never drop a commit — every input sha must appear in exactly one
+      bucket. You MUST NOT run any git commands; you only return the grouping.
+    model: claude-sonnet-4-6
+    tools: [Read]   # reads the .git/kitsoki-prsplit-input.txt briefing; no writes
+    external_side_effect: false
+
+world:
+  integration_branch: { type: string, default: "main" }
+  working_dir:        { type: string, default: "." }
+  repo:               { type: string, default: "" }
+  remote:             { type: string, default: "origin" }
+  source_branch:      { type: string, default: "" }
+  commits:            { type: object, default: {} }
+  commit_count:       { type: int,    default: 0 }
+  buckets:            { type: object, default: {} }
+  buckets_json:       { type: string, default: "" }
+  opened_prs:         { type: object, default: {} }
+  dry_run:            { type: bool,   default: false }
+  route:              { type: string, default: "look" }
+  last_op_output:     { type: string, default: "" }
+  last_op_ok:         { type: bool,   default: true }
+
+intents:
+  accept:
+    description: "Accept the proposed buckets and open the PRs."
+    examples: ["accept", "looks good", "open the PRs", "ship it", "do it"]
+    priority: 60
+  regenerate:
+    description: "Ask the agent to re-bucket the commits."
+    examples: ["regenerate", "redo the grouping", "try again", "re-bucket"]
+    priority: 60
+  toggle_dry_run:
+    description: "Toggle dry-run (plan only, no push or PR)."
+    examples: ["dry run", "plan only", "don't push", "just show the plan"]
+    priority: 60
+  quit:
+    description: "Exit pr-split."
+    examples: ["quit", "exit", "done", "cancel", "bye"]
+    priority: 50
+  look:
+    description: "Refresh / show the current state."
+    examples: ["look", "status", "refresh", "show me"]
+    priority: 10
+  proceed:
+    description: "Internal routing token."
+    examples: []
+    priority: 95
+  empty:
+    description: "Internal routing: no commits to split."
+    examples: []
+    priority: 95
+
+root: idle
+
+include:
+  - rooms/*.yaml

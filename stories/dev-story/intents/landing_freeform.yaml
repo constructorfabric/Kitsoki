@@ -8,8 +8,23 @@
 #     and landing now declares default_intent: work.
 #   - explicit drive verbs still route to `drive`.
 #
-# These resolve in the deterministic tiers (semantic stem-subset / the
-# conf-1.0 default-intent sink), so they need no recording and no LLM.
+# `explicit-drive-it` resolves in the deterministic bare-string tier, so it
+# needs no recording and no LLM under `kitsoki test routing`.
+#
+# dwf3 routing triage (2026-07-06): the two affirmation fixtures below used
+# to assert `intent: {name: landing_capture}` under `test routing`, but that
+# tier is `orchestrator.Classify` — deterministic display/example match →
+# semantic synonym/template → optional embedding (see
+# internal/testrunner/routing.go's package doc). Classify NEVER resolves a
+# state's `default_intent` sink or the app's `routing.free_form_fallback`;
+# those are a LATER tier the live Turn pipeline applies only once Classify
+# itself reports no match. So "ok go ahead" / "do it" correctly fail
+# Classify with ok=false — the stale expectation was asserting a resolution
+# Classify cannot produce, not a real misroute. `defers_to_interpreter: true`
+# is the routing.go-documented shape for exactly this case (Classify
+# declines; the later default_intent/free_form_fallback tier resolves it in
+# the live pipeline — see `landing_write_mode_opt_in.yaml`'s flow fixture for
+# that later-tier proof).
 
 test_kind: intents
 app: ../app.yaml
@@ -19,19 +34,17 @@ defaults:
   min_pass_rate: 1.0
 
 fixtures:
-  # Continuation → the workbench agent (default_intent: work). The whole
-  # utterance fills the required `request` slot.
+  # Continuation → the workbench agent (default_intent: work) one tier below
+  # Classify. Classify correctly declines (no-LLM tiers stop at "not a known
+  # command"); the later default_intent sink is what actually resolves this
+  # live, not something `test routing` can observe.
   - id: affirmation-ok-go-ahead
-    intent:
-      name: work
-      slots: { request: "ok go ahead" }
+    defers_to_interpreter: true
     inputs:
       - "ok go ahead"
 
   - id: affirmation-do-it
-    intent:
-      name: work
-      slots: { request: "do it" }
+    defers_to_interpreter: true
     inputs:
       - "do it"
 

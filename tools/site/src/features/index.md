@@ -1,38 +1,34 @@
 ---
-title: Features
+title: Demos and features
 ---
 
-# Proof before catalog
+# Demos and features
 
-Kitsoki's claim is not that the UI is pleasant or that the model is clever. The
-claim is that the workflow stays in charge while the model works inside declared
-boundaries. Start with the demos that prove that claim, then browse the rest of
-the catalog.
+This is the full catalog, grouped by the question a new developer is likely
+asking. If you only have a few minutes, use the curated [Proof path](/proof.html)
+first.
 
-- **Agent action transcripts:** the host rejects a model submission, injects a
-  nudge, and accepts the corrected result inside one bounded call.
-- **Trace introspection:** deterministic routing advances a turn with no model
-  call, and every decision/world mutation is inspectable after the fact.
-- **Operator ask:** agent questions park the run and wait for the operator
-  instead of silently defaulting.
-- **Meta mode:** the running machine can explain and edit its own story, then
-  hot-reload the YAML.
-- **Story demos:** real repo workflows replay from captured runs, so the proof
-  is not a scripted mock conversation.
+Every page below is generated from the same feature catalog used by in-app
+tours and QA scenarios. Recorded demos replay from cassettes; synthetic demos
+use no-LLM fixtures. The published site render does not improvise with a live
+model.
 
-Each page below pairs a deterministic demo video with a step-by-step
-walkthrough, generated from the same feature catalog that drives in-app tours
-and QA scenarios. Recorded demos replay from cassettes; synthetic demos use
-no-LLM fixtures. The published site render does not improvise with a live model.
+## Runtime control
 
-## Features
+<FeatureGrid :ids="['agent-actions', 'operator-ask', 'trace-introspection', 'trace-features']" />
 
-<FeatureGrid :kinds="['feature']" />
+## Try it in an existing repo
 
-## Product tours
+<FeatureGrid :ids="['stranger-install', 'kitsoki-doctor', 'first-run-message', 'get-started-actions', 'harness-picker', 'onboarding-tour']" />
 
-<FeatureGrid :kinds="['product-tour']" />
+## Author workflows safely
 
-## Story demos
+<FeatureGrid :ids="['meta-improvement', 'meta-mode', 'story-editor', 'dynamic-workflows', 'punch-list', 'goal-seeker']" />
 
-<FeatureGrid :kinds="['story-demo']" />
+## Inspect and operate runs
+
+<FeatureGrid :ids="['chat-stream', 'web-inbox', 'session-media-workbench', 'diagram-showcase', 'review', 'multi-story']" />
+
+## Real workflow case studies
+
+<FeatureGrid :ids="['dev-story-bugfix', 'slidey-bugfix', 'slidey-open-pr', 'slidey-dev-prd-design', 'slidey-architect-design', 'slidey-decomposition', 'design-walkthrough', 'mockup-video', 'weather-report']" />

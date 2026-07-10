@@ -1,0 +1,60 @@
+# integrate_existing_ships — ship-it skips the maker, consumes an existing
+# worktree handoff, and completes through the imported delivery-tail.
+#
+# This is the no-LLM completion proof for the `ship_it` operation policy. The
+# maker is mocked by seeding the exact worktree handoff seam it would leave:
+# worktree_path + workspace_branch + gate_command. The delivery tail's host.run
+# calls are stubbed to integrate, re-verify the same gate on main, clean up, and
+# exit shipped.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  brief:              "Fix the rate-limit burst off-by-one"
+  gate_command:       "go test ./internal/ratelimit/"
+  base_branch:        main
+  main_worktree_path: "."
+  workspace_id:       burst-fix
+  workspace_branch:   burst-fix
+  worktree_path:      ".worktrees/burst-fix"
+
+host_handlers:
+  host.run:
+    by_call:
+      integrate_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:        integrated
+            integrated_sha: "e4f5a6b"
+            last_op_ok:     true
+            last_error:     ""
+      verify-rerun:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: "ok  internal/ratelimit  0.012s"
+      cleanup_exec:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome:    cleaned
+            last_op_ok: true
+            last_error: ""
+
+turns:
+  - intent: { name: integrate_existing }
+    expect_state: __exit__shipped
+    expect_world:
+      status:         shipped
+      shipped_sha:    "e4f5a6b"
+      tail__status:   shipped
+      tail__shipped_sha: "e4f5a6b"
+
+expect_operation_policy: ship_it
+expect_operation_status: completed
+expect_terminal: true
+expect_no_errors: true

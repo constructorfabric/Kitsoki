@@ -1,0 +1,134 @@
+# init_python_project -- a pyproject checkout should onboard as a first-class
+# Python project with pytest/dev-command defaults and a generated @kitsoki/dev-story
+# instance. Host calls are stubbed; no LLM or real checkout mutation happens.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/tmp/kitsoki-init-fixtures/acme-py"
+  repo_root: "/tmp/kitsoki-init-fixtures/acme-py"
+
+host_handlers:
+  host.run:
+    by_call:
+      discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target_path":"/tmp/kitsoki-init-fixtures/acme-py","project_id":"acme-py","project_title":"Acme Py","stack":"python/fastapi project","dev_command":"uvicorn app:app --reload","test_command":"python -m pytest","build_command":"","conventions":"project","tracker":"none","transcript_count":0,"transcript_sources":[],"mining_recommendation":{"status":"no-transcripts-found","sample":"recency","first_pass_sample":0,"transcript_count":0,"sources":[],"note":"No associated Claude/Codex transcripts were found during deterministic discovery."}}'
+          stdout_json:
+            target_path: "/tmp/kitsoki-init-fixtures/acme-py"
+            project_id: "acme-py"
+            project_title: "Acme Py"
+            stack: "python/fastapi project"
+            dev_command: "uvicorn app:app --reload"
+            test_command: "python -m pytest"
+            build_command: ""
+            conventions: "project"
+            tracker: "none"
+            transcript_count: 0
+            transcript_sources: []
+            mining_recommendation:
+              status: "no-transcripts-found"
+              sample: "recency"
+              first_pass_sample: 0
+              transcript_count: 0
+              sources: []
+              note: "No associated Claude/Codex transcripts were found during deterministic discovery."
+      apply:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"status":"applied","config_path":"/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml","profile_path":"/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml","instance_path":"/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/app.yaml","gitignore_path":"/tmp/kitsoki-init-fixtures/acme-py/.gitignore","profile_validation":{"ok":true,"warnings":["commands.build is empty"]},"writes":["/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml","/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml","/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/app.yaml","/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/README.md"]}'
+          stdout_json:
+            status: "applied"
+            config_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml"
+            profile_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml"
+            instance_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/app.yaml"
+            gitignore_path: "/tmp/kitsoki-init-fixtures/acme-py/.gitignore"
+            profile_validation:
+              ok: true
+              warnings:
+                - "commands.build is empty"
+            writes:
+              - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/app.yaml"
+              - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/README.md"
+      install_tools:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target":"/tmp/kitsoki-init-fixtures/acme-py","skills":["kitsoki-story-authoring"],"agents":["kitsoki-mcp-driver.md"],"mcp_path":"/tmp/kitsoki-init-fixtures/acme-py/.mcp.json","mcp_written":true}'
+          stdout_json:
+            target: "/tmp/kitsoki-init-fixtures/acme-py"
+            skills: ["kitsoki-story-authoring"]
+            agents: ["kitsoki-mcp-driver.md"]
+            mcp_path: "/tmp/kitsoki-init-fixtures/acme-py/.mcp.json"
+            mcp_written: true
+
+turns:
+  - intent: { name: landing_capture, slots: { request: "onboard /tmp/kitsoki-init-fixtures/acme-py" } }
+    expect_state: init_discover
+    expect_world:
+      init_target_path: "/tmp/kitsoki-init-fixtures/acme-py"
+      init_project_id: "acme-py"
+      init_stack: "python/fastapi project"
+      init_dev_command: "uvicorn app:app --reload"
+      init_test_command: "python -m pytest"
+      init_profile_status: "discovering"
+    expect_view_matches: "python/fastapi project"
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init
+    expect_world:
+      init_profile_status: "draft"
+      init_test_command: "python -m pytest"
+      init_build_command: ""
+    expect_view_matches: "uvicorn app:app --reload"
+
+  - intent: { name: confirm_init, slots: {} }
+    expect_state: init_apply
+    expect_world:
+      init_profile_status: "applying"
+      init_apply_result:
+        status: "applied"
+        config_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml"
+        profile_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml"
+        instance_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/app.yaml"
+        gitignore_path: "/tmp/kitsoki-init-fixtures/acme-py/.gitignore"
+        profile_validation:
+          ok: true
+          warnings:
+            - "commands.build is empty"
+        writes:
+          - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/app.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/README.md"
+      init_tools_ok: true
+    expect_view_matches: "commands.build is empty"
+
+  - intent: { name: init_applied, slots: {} }
+    expect_state: init_done
+    expect_world:
+      init_profile_status: "applied"
+      init_apply_result:
+        status: "applied"
+        config_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml"
+        profile_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml"
+        instance_path: "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/app.yaml"
+        gitignore_path: "/tmp/kitsoki-init-fixtures/acme-py/.gitignore"
+        profile_validation:
+          ok: true
+          warnings:
+            - "commands.build is empty"
+        writes:
+          - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/project-profile.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/app.yaml"
+          - "/tmp/kitsoki-init-fixtures/acme-py/.kitsoki/stories/acme-py-dev/README.md"
+    expect_view_matches: "acme-py-dev"
+
+expect_no_errors: true

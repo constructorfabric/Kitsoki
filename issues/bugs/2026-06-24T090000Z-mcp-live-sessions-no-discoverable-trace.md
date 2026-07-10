@@ -1,9 +1,15 @@
 ---
+# fixed via the codeact goal (docs/goals/codeact/) — 7746b97d — session.new/
+# session.attach's resolveTracePath now resolves through store.DefaultTracePath
+# (an "mcp" transport label) instead of an anonymous $TMPDIR file. Hit
+# independently while extracting a codeact live-drive replay fixture — see
+# .context/codeact-dogfood-findings.md's "Blocker" section for the
+# reproduction that reconfirmed this bug live before the fix landed.
 id: 2026-06-24T090000Z-mcp-live-sessions-no-discoverable-trace
 title: "MCP-driven live sessions (session_new) leave no discoverable trace under ~/.kitsoki/sessions/<app>/ — cost/token evidence is unrecoverable"
 target: kitsoki
 filed_at: 2026-06-24T09:00:00Z
-status: open
+status: fixed
 severity: P1
 component: observability
 kitsoki_rev: 501cbd28
@@ -155,3 +161,21 @@ of `resolveTracePath` (`session_tools.go:1171`) at
 `store.DefaultTracePath(def.App.ID, "<transport>", sid)` so MCP sessions land
 in the same discoverable per-app dir as web. A `mcp`/`studio` transport infix
 would also let cost-mining tools distinguish them from web sessions.
+
+## Fix
+
+Landed `7746b97d` (branch `fix/mcp-session-trace-discoverable`, part of the
+codeact goal's dogfood — `docs/goals/codeact/`). `resolveTracePath` now takes
+`(override, storyPath, key)`; absent an override, it resolves through
+`store.DefaultTracePath(appSlugFromStoryPath(storyPath), "mcp", thread)` —
+`thread` is `key` when the caller supplied one (deterministic re-attach) or a
+fresh `uuid.NewString()` otherwise. `appSlugFromStoryPath` derives the app id
+from the story's directory name since the trace path is resolved before the
+story loads. `specFrame`'s genuinely-ephemeral throwaway render keeps the old
+`os.CreateTemp` behavior via a new `ephemeralTracePath()` — it was never the
+bug. New tests: `internal/mcp/studio/trace_path_test.go`. Independently
+reconfirmed live during the codeact goal's s4 slice: a drive against the
+pre-fix binary lost its trace exactly as this ticket describes; the same
+drive against the fixed binary produced a real, discoverable, reusable
+`.jsonl` (converted into a committed replay fixture via `kitsoki trace
+to-flow`, see `stories/bugfix/flows/codeact_live_proof_triage.yaml`).

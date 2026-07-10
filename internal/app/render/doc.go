@@ -84,7 +84,7 @@
 // # Reference
 //
 // The app pipeline this package terminates — load, validate, render — is
-// described in docs/architecture/developer-guide.md. The state-machine
+// described in docs/guide/development/developer-guide.md. The state-machine
 // vocabulary the rendered tables surface (rooms, intents, transitions,
 // effects, off-path) is documented under docs/stories.
 package render

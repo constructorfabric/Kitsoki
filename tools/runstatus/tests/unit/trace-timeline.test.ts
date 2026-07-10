@@ -512,10 +512,10 @@ describe("TraceTimeline — phase headers", () => {
     wrapper.unmount();
   });
 
-  // A phase whose work spans non-adjacent turns (entering in turn N, revisited
-  // later) must still produce EXACTLY ONE phase header. Before grouping by
-  // phase (rather than by adjacency), "proposing" appeared twice.
-  it("renders each phase header exactly once even when its turns are non-adjacent", async () => {
+  // A phase whose work is revisited after another phase must render at the
+  // revisit point. The trace is the audit record, so chronological order wins
+  // over globally de-duping phase headers.
+  it("preserves chronological phase visits when a phase is revisited", async () => {
     const events: TraceEvent[] = [
       makeEvent({ msg: "host.invoked",  turn: 1, state_path: "proposing",   time: "2026-01-01T00:00:01Z" }),
       makeEvent({ msg: "host.invoked",  turn: 2, state_path: "reproducing", time: "2026-01-01T00:00:02Z" }),
@@ -531,9 +531,7 @@ describe("TraceTimeline — phase headers", () => {
     const phaseNames = wrapper
       .findAll(".trace-timeline__phase-header .trace-timeline__turn-phase")
       .map((h) => h.text());
-    // "proposing" must appear once, not twice.
-    expect(phaseNames.filter((n) => n === "proposing")).toEqual(["proposing"]);
-    expect(phaseNames).toContain("reproducing");
+    expect(phaseNames).toEqual(["proposing", "reproducing", "proposing"]);
 
     wrapper.unmount();
   });

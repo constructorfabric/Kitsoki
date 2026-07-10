@@ -13,6 +13,12 @@ test_kind: flow
 app: ../app.yaml
 initial_state: core.landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): these fixtures test
+  # the downstream bugfix walk, not triage. core-level key — the bf import
+  # wrapper re-seeds bf__auto_triage on entry from dev-story's world_in
+  # projection of (core__)auto_triage. Pre-flight contract:
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  core__auto_triage: false
   core__ticket_id:      "2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed"
   core__ticket_title:   "scenarios/README.md says --warp but the boot-time flag path resolution is undocumented"
   core__ticket_url:     "stories/oregon-trail/issues/bugs/2026-05-14T120000Z-scenarios-readme-warp-flag-misnamed.md"
@@ -45,7 +51,7 @@ host_handlers:
       comments: ""
   host.local:
     data: { ok: true, log: "PASS: 28 tests", passed: 28, failed: 0, state: "success" }
-  host.gh.ticket:
+  host.local_github.ticket:
     data:
       ok: true
       tickets:

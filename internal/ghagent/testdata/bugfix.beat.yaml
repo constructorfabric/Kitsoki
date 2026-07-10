@@ -1,8 +1,18 @@
-# bugfix.beat.yaml — the per-job beat RunStorySession points RunFlows at for a
-# bug-labelled @kitsoki mention. RunFlows is invoked with the real
-# stories/bugfix/app.yaml as appPath; this fixture seeds the initial world from
-# the mention and drives the `start` intent to prove a turn executed against the
-# REAL bugfix machine. Host calls are served by inline handlers (no LLM, no gh).
+# bugfix.beat.yaml — flow-test-only dispatch-plumbing coverage
+# (docs/proposals/gh-agent-honest-issues.md task 2.3). RunStorySession no
+# longer reaches this fixture for the "bug" route in production — that route
+# has a registered realDispatchPlans entry (internal/ghagent/realdispatch.go)
+# and runs the REAL stories/bugfix machine end-to-end via a recorded cassette
+# instead. This file is retained only as a plumbing check
+# (runStubBeatFixture, exercised directly by
+# internal/ghagent/dispatch_e2e_test.go) proving materializeJobFlowFixture's
+# world-seeding shape stays valid for routes that DON'T have a real-dispatch
+# plan yet (a caller-supplied route.BeatFixture still opts a route into this
+# path deliberately). Host calls here are served by inline "always succeed"
+# handlers (no LLM, no gh) — this is intentionally NOT what a real pipeline
+# run looks like; see stories/bugfix/flows/happy_human.yaml +
+# stories/bugfix/cassettes/happy_human.cassette.yaml for the real, recorded
+# shape realDispatchPlans replays.
 test_kind: flow
 app: ../../../stories/bugfix/app.yaml
 initial_state: idle

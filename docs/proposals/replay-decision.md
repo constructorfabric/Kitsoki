@@ -114,11 +114,11 @@ ephemeral in v1; optionally persist as an annotation once #5 lands.*
   recorded model, must reproduce the recorded verdict for a cassette-backed
   call (the operator backend is itself replayed from its cassette). This is
   the test that proves reconstruction is faithful.
-- **Sandbox for `task` verbs.** A `task` agent can run tools with side
-  effects; replaying one must honor the same workspace sandbox the live path
-  uses (`task-fs-sandbox.md`). *Lean: v1 restricts replay to
-  side-effect-free verbs (`decide`/`ask`/`extract`); `task`/`converse`
-  replay is gated behind the sandbox slice.*
+- **Runtime boundary for `task` verbs.** A `task` agent can run tools with side
+  effects; replaying one must honor the same secure runtime policy the live path
+  used (`task-fs-sandbox.md`). *Lean: v1 restricts replay to side-effect-free
+  verbs (`decide`/`ask`/`extract`); `task`/`converse` replay is gated behind the
+  secure-runtime slice.*
 
 ## Backward compatibility / migration
 
@@ -140,7 +140,7 @@ ephemeral in v1; optionally persist as an annotation once #5 lands.*
 - [ ] 1.1 Reconstruct a single call from a trace (session.story + agent.call.start ref → prompt+agent+schema+world)
 - [ ] 1.2 Isolated single-call dispatch reusing agent_dispatch.Dispatch; throwaway sink; NO machine/world/trace write to the original
 - [ ] 1.3 Operator routing (claude | local | human); refuse non-replayable traces with a clear message
-- [ ] 1.4 Restrict v1 to side-effect-free verbs (decide/ask/extract); gate task/converse behind task-fs-sandbox
+- [ ] 1.4 Restrict v1 to side-effect-free verbs (decide/ask/extract); gate task/converse behind the secure agent runtime in task-fs-sandbox
 
 ## 2. Verification
 - [ ] 2.1 Determinism: replay a cassette-backed decide against the same operator, no edit → reproduces the recorded verdict
@@ -183,7 +183,8 @@ in CI.
 - **Replaying a whole turn or run.** This is single-call replay; replaying a
   sequence is a much larger change (and the existing deterministic replay
   already re-runs whole runs).
-- **`task`/`converse` replay in v1** — gated behind `task-fs-sandbox.md`
+- **`task`/`converse` replay in v1** — gated behind the secure agent runtime in
+  `task-fs-sandbox.md`
   because those verbs can have side effects.
 - **Auto-comparing operators across a dataset.** Systematically replaying
   many calls against two backends to score them is the

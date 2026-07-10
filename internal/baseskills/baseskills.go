@@ -17,7 +17,10 @@
 // agents} into this package's assets/ subdir (gitignored), and [Materialize]
 // extracts a content-hashed copy to the user cache. An un-staged binary (only
 // the committed .gitkeep placeholder embedded) reports [ErrNotStaged] rather
-// than failing to compile.
+// than failing to compile. Like basestories, this package's own mechanism
+// stays embed + local-override, never a fetcher; internal/kitgit is where
+// S2 added the first real (git) fetcher, as a resolveImportSource tier
+// alongside — not replacing — this one.
 package baseskills
 
 import "errors"

@@ -1,5 +1,5 @@
-# clean — the suite passes on the first (background) run; nothing to fix.
-# idle --start--> running_executing; on_complete (exit 0) --> done_clean.
+# clean — the quick gate and full gate both pass on the first run; nothing to fix.
+# idle --start--> starting --> running_executing; green --> full_verifying_executing; green --> review --> done_clean.
 test_kind: flow
 app: ../app.yaml
 initial_state: idle
@@ -13,19 +13,36 @@ host_handlers:
       run_initial:
         data: { exit_code: 0, ok: true, stdout: "ok\tall packages\n" }
         delay: "20ms"
-      write_report:
-        data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-clean.md" }
+      full_verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\tfull suite\n" }
+        delay: "20ms"
+  host.agent.decide:
+    by_call:
+      review-0:
+        data:
+          submitted:
+            pass: true
+            reason: "No diff to review and the command is green."
+            functionality_preserved: true
+            tests_not_weakened: true
+            findings: []
+            fixes: []
   host.inbox.add:
     data: { ok: true }
 
 turns:
   - intent: { name: start }
     advance_clock: "500ms"
-    expect_state: done_clean
+    expect_state: __exit__achieved
     expect_world:
       tests_passed: true
       outcome:      "clean"
       cycle:        0
       report_path:  ".artifacts/fix-tests/report-clean.md"
+      review_ok:    true
 
+expect_terminal: true
+expect_operation_policy: fix_tests
+expect_operation_status: completed
+expect_terminal_artifact: report_path
 expect_no_errors: true

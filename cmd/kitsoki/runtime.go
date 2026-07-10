@@ -142,6 +142,19 @@ type runtimeConfig struct {
 	HarnessProfiles map[string]orchestrator.HarnessProfile
 	DefaultProfile  string
 
+	// HarnessLadder carries the operator-declared `.kitsoki.yaml`
+	// `harness_ladder:` block (automatic multi-provider fallback +
+	// effort/model escalation for every host.agent.decide / host.agent.task
+	// dispatch — see internal/host/ladder.go and
+	// internal/webconfig.HarnessLadder). Zero value means the live runtime uses
+	// host.DefaultLadderConfig; flow/cassette postures stay single-attempt
+	// unless they explicitly install a ladder.
+	HarnessLadder host.LadderConfig
+
+	// AgentLaunchPolicy is the machine-local preflight guard for external
+	// host.agent.* launches. Zero value means disabled.
+	AgentLaunchPolicy host.AgentLaunchPolicy
+
 	// WantRoomEnterSink allocates a TUI room-enter sink and wires it into the
 	// orchestrator. `kitsoki run` sets this; `kitsoki web` does not.
 	RoomEnterSink orchestrator.RoomEnterSink
@@ -204,6 +217,10 @@ type runtimeBase struct {
 	// .kitsoki.yaml and inherited by every session the registry spins up.
 	HarnessProfiles map[string]orchestrator.HarnessProfile
 	DefaultProfile  string
+	// HarnessLadder mirrors runtimeConfig.HarnessLadder, inherited by every
+	// session the registry spins up.
+	HarnessLadder     host.LadderConfig
+	AgentLaunchPolicy host.AgentLaunchPolicy
 
 	// Mining is the resolved .kitsoki.yaml `mining:` block, inherited by every
 	// session. Default-zero (no block / enabled:false) ⇒ no miner — every flow
@@ -268,6 +285,8 @@ func (b runtimeBase) config(storyPath string, def *app.AppDef) runtimeConfig {
 		AgentBackend:      b.AgentBackend,
 		HarnessProfiles:   b.HarnessProfiles,
 		DefaultProfile:    b.DefaultProfile,
+		HarnessLadder:     b.HarnessLadder,
+		AgentLaunchPolicy: b.AgentLaunchPolicy,
 		Flow:              b.Flow,
 		FlowFilePath:      b.FlowFilePath,
 		HostCassette:      b.HostCassette,
@@ -352,6 +371,7 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 		// web surface never records, so no record-mode cassette wiring.
 		hostReg = host.NewRegistry()
 		host.RegisterBuiltins(hostReg)
+		host.RegisterStarlarkBindings(hostReg, def.StarlarkHostBindings)
 		testrunner.RegisterHostStubs(hostReg, cfg.Flow.HostHandlers)
 
 		if cfg.Flow.HostCassette != "" {
@@ -390,12 +410,47 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 				return real(starlarkhost.WithHTTP(ctx, httpClient), args)
 			})
 		}
+
+		// Starlark inspect cassette: the fs/probe sibling of the HTTP cassette
+		// above. Unlike a host.starlark.run HostCassette stub (which replaces
+		// the whole call with a canned Result), this lets the REAL handler run
+		// a story's script for real — only its ctx.fs.*/ctx.probe I/O is served
+		// from disk instead of touching the filesystem. Mirrors
+		// testrunner.buildOrchestratorRig's identical wiring
+		// (internal/testrunner/flows.go) so a flow fixture written for `test
+		// flows` (e.g. stories/deliver's decompose_happy / slidey_decomposition
+		// / dev-story's design_to_decompose_to_impl, which fake ctx.fs.read of a
+		// decomposition manifest the stubbed decomposer agent never actually
+		// wrote to disk) drives identically live under `kitsoki web --flow`.
+		if cfg.Flow.StarlarkInspectCassette != "" {
+			cassettePath := cfg.Flow.StarlarkInspectCassette
+			if !filepath.IsAbs(cassettePath) && cfg.FlowFilePath != "" {
+				cassettePath = filepath.Join(filepath.Dir(cfg.FlowFilePath), cassettePath)
+			}
+			raw, rerr := os.ReadFile(cassettePath)
+			if rerr != nil {
+				return nil, fmt.Errorf("read starlark inspect cassette: %w", rerr)
+			}
+			var cas starlarkhost.InspectCassette
+			if uerr := goyaml.Unmarshal(raw, &cas); uerr != nil {
+				return nil, fmt.Errorf("parse starlark inspect cassette %q: %w", cassettePath, uerr)
+			}
+			inspector := starlarkhost.NewReplayInspector(&cas)
+			if _, ok := hostReg.Get("host.starlark.run"); !ok {
+				hostReg.Register("host.starlark.run", host.StarlarkRunHandler)
+			}
+			real2, _ := hostReg.Get("host.starlark.run")
+			hostReg.Replace("host.starlark.run", func(ctx context.Context, args map[string]any) (host.Result, error) {
+				return real2(starlarkhost.WithInspector(ctx, inspector), args)
+			})
+		}
 		// Harness stays nil: flow intents are submitted explicitly via the
 		// write RPCs; the orchestrator's RunIntent path never calls the
 		// harness.
 	} else {
 		hostReg = host.NewRegistry()
 		host.RegisterBuiltins(hostReg)
+		host.RegisterStarlarkBindings(hostReg, def.StarlarkHostBindings)
 		// Layer a host cassette over the live-harness posture when requested
 		// (e.g. --harness replay for free-text routing + --host-cassette for the
 		// off-ramp's host.agent.converse). The cassette's episodes replace the
@@ -411,9 +466,13 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 			return nil, fmt.Errorf("validate hosts: %w", err)
 		}
 
-		h, err = buildHarness(cfg.HarnessType, cfg.ClaudeModel, cfg.AgentBackend, cfg.RecordingPath, cfg.RecordPath, def)
-		if err != nil {
-			return nil, fmt.Errorf("build harness: %w", err)
+		if len(cfg.HarnessProfiles) > 0 {
+			h = newSelectableRoutingHarness(cfg.HarnessType, cfg.ClaudeModel, cfg.AgentBackend, cfg.RecordingPath, cfg.RecordPath, def, cfg.HarnessProfiles, cfg.DefaultProfile, nil)
+		} else {
+			h, err = buildHarness(cfg.HarnessType, cfg.ClaudeModel, cfg.AgentBackend, cfg.RecordingPath, cfg.RecordPath, def)
+			if err != nil {
+				return nil, fmt.Errorf("build harness: %w", err)
+			}
 		}
 		rt.Harness = h
 		setHarnessLogger(h, logger)
@@ -466,8 +525,8 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 		orchestrator.WithJournalWriter(jw),
 		orchestrator.WithJournalReader(jr),
 		orchestrator.WithExecutionMode(cfg.ExecMode),
-		semanticRoutingOption(),
 	}
+	runOpts = append(runOpts, semanticRoutingOptions()...)
 	if agentPluginReg != nil {
 		runOpts = append(runOpts, orchestrator.WithAgentRegistry(agentPluginReg))
 	}
@@ -486,6 +545,16 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 	if len(cfg.HarnessProfiles) > 0 {
 		runOpts = append(runOpts, orchestrator.WithHarnessProfiles(cfg.HarnessProfiles, cfg.DefaultProfile))
 	}
+	harnessLadder := cfg.HarnessLadder
+	if !harnessLadder.Enabled() && cfg.Flow == nil {
+		harnessLadder = host.DefaultLadderConfig()
+	}
+	if harnessLadder.Enabled() {
+		runOpts = append(runOpts, orchestrator.WithHarnessLadderConfig(harnessLadder))
+	}
+	if cfg.AgentLaunchPolicy.Enabled {
+		runOpts = append(runOpts, orchestrator.WithAgentLaunchPolicy(cfg.AgentLaunchPolicy))
+	}
 	if d := def.Decider; d != nil {
 		runOpts = append(runOpts, orchestrator.WithDecider(orchestrator.DeciderConfig{
 			Agent: d.Agent, Schema: d.Schema, Prompt: d.Prompt, Threshold: d.Threshold,
@@ -497,6 +566,9 @@ func buildSessionRuntime(cfg runtimeConfig) (*sessionRuntime, error) {
 	// submissions.
 	var harnessArg harness.Harness = h
 	orch := orchestrator.New(def, m, s, harnessArg, runOpts...)
+	if selectable, ok := h.(*selectableRoutingHarness); ok {
+		selectable.SetSelectionResolver(orch.Selection)
+	}
 	if perr := orchestrator.PromptValidationError(orch.ValidatePromptExtensions()); perr != nil {
 		return nil, perr
 	}

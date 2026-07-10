@@ -1,0 +1,44 @@
+# Example arena job: persona-QA driver-replay smokes across product-journey's
+# real corpora, entirely no-LLM.
+#
+# `arena run` defaults to the deterministic driver-replay-smoke path (see
+# arena/plugins/persona_qa.py) so this whole spec is provable with zero spend;
+# `--live` swaps in a gated, cost-bearing dispatch of the
+# product-journey-qa-driver agent per cell.
+#
+#   python3 tools/arena/arena.py plan --spec tools/arena/specs/persona-qa-onboarding.yaml
+#   python3 tools/arena/arena.py run  --spec tools/arena/specs/persona-qa-onboarding.yaml \
+#       --out .artifacts/arena/persona-qa-onboarding
+
+job_type: persona-qa
+
+# unify-corpora: targets loaded from product-journey's own corpus, not
+# hand-copied. Trim to one target with a real fixture (vscode has the seeded
+# demo/driver-replay fixtures) to keep the no-LLM sweep small and fast.
+targets:
+  - id: vscode
+    label: "microsoft/vscode"
+    repo: https://github.com/microsoft/vscode.git
+    stack: typescript
+
+variants:
+  - id: kitsoki-gpt-5.5
+    backend: codex
+    model: gpt-5.5
+
+# unify-corpora: persona axis loaded from tools/product-journey/personas.json
+# rather than hand-copying persona ids.
+persona_axis_from: tools/product-journey/personas.json
+
+# The per-job axis: which scenario each cell drives.
+axes:
+  scenario: [project-onboarding]
+
+placement:
+  hosts: [local]
+  concurrency: 2
+  retry: 0
+
+options:
+  replay: true
+  note: "Deterministic no-LLM driver-replay-smoke sweep; live agent dispatch remains explicitly gated behind --live."

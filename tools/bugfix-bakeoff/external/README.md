@@ -1,11 +1,13 @@
-# External-project bug-fix benchmark — "should I use kitsoki for MY project?"
+# Manifest-driven bug-fix harness — "should I use kitsoki for MY project?"
 
-The parent [`tools/bugfix-bakeoff`](../README.md) compares kitsoki's `bugfix`
-pipeline against a naive single-prompt agent on **kitsoki's own** bugs. This
-`external/` subtree generalises that into a **repo-agnostic benchmarking tool**:
-point it at any open-source repo, onboard it, let a model fix real filed-issue
-bugs through the kitsoki pipeline, and grade each fix **deterministically**
-against the regression test the real PR shipped.
+[`tools/bugfix-bakeoff`](../README.md) is the package: live cell driving,
+deterministic grading, aggregation, deck/report generation, durable results, and
+compatibility entry points. This `external/` subtree is the package's
+manifest-driven harness implementation. It handles kitsoki's own bugs and
+third-party repos through the same project manifest contract: point it at a repo,
+onboard it, let a model fix real filed-issue bugs through the kitsoki pipeline,
+and grade each fix **deterministically** against the regression test the real PR
+shipped.
 
 Use it to evaluate kitsoki's prompts/patterns on real-world code, and to answer
 the prospective-user question: *if I onboard my repo and let kitsoki fix a bug,
@@ -38,6 +40,23 @@ monorepo — captured from the 2026-06 gears-rust dogfood marathon + hard-case r
 and [`projects/kitsoki`](projects/kitsoki) (**kitsoki's own** go+ts dogfood bugs —
 `local_only`, folded in from the retired parent harness; the 3 armed fixtures are
 bug9/bug12/bug14, all proven RED@baseline→GREEN@fix via a throwaway local mirror).
+
+The promoted bug rows are exposed as **repo-history capsules** in the shared
+Kitsoki capsule catalog. They currently use this harness as their materializer
+because core `kitsoki capsule open` is still limited to local synthetic
+fixtures:
+
+```sh
+go run ./cmd/kitsoki capsule list --kind repo-history
+python3 tools/bugfix-bakeoff/external/bench.py capsules --markdown
+make repo-history-capsules
+```
+
+The current promoted set is 10 capsules: 3 `query-string`, 4 `gears-rust`, and
+3 `kitsoki`. Local-only manifests can declare `BUGFIX_BAKEOFF_REPO` and
+`BUGFIX_BAKEOFF_META_REPO` plus `repo_subdir`, so the same manifest can run
+against a standalone checkout or an initialized meta checkout whose submodule
+history contains the benchmark baseline/fix commits.
 
 ### Polyglot repos (a JS package not at the repo root)
 
@@ -83,7 +102,7 @@ cost/tokens from the trace) + `model`/`effort`/`provider`, so it feeds
   dirties your working tree) and shares a `CARGO_TARGET_DIR`:
 
   ```sh
-  GEARS_RUST_REPO=~/code/gears-rust make gears-bakeoff
+  BUGFIX_BAKEOFF_REPO=/path/to/checkout make gears-bakeoff
   ```
 
   The cost-bearing one-cell path uses the same local checkout explicitly:
@@ -106,6 +125,19 @@ To keep VM runs reproducible and reduce host drift, provision target repos and
 their checker image before spending. By default, scored cells now run inside the
 repo-runtime image for repo isolation (`--no-docker-score` disables this):
 
+For a fresh or stale bake-off VM, start by provisioning the harness checkout.
+The script is idempotent: it creates or refreshes `/opt/bakeoff/repos/kitsoki`
+from `https://github.com/bsacrobatix/kitsoki.git` on `main`, installs the
+`kitsoki` binary, and verifies the codex/claude worker prerequisites.
+
+```sh
+ssh root@<vm> 'bash -s' < tools/bugfix-bakeoff/external/provision_vm.sh
+```
+
+Use `KITSOKI_DIR`, `KITSOKI_REMOTE_URL`, and `KITSOKI_BRANCH` only when testing a
+nonstandard checkout. The default VM path should just pull from
+`bsacrobatix/kitsoki/main`.
+
 ```sh
 cd tools/bugfix-bakeoff/external
 
@@ -117,7 +149,7 @@ cd tools/bugfix-bakeoff/external
 ./provision_repos.sh --project query-string --project gears-rust
 
 # For private/local-only projects, point to a local checkout:
-GEARS_RUST_REPO=/path/to/gears-rust ./provision_repos.sh --project gears-rust
+BUGFIX_BAKEOFF_REPO=/path/to/checkout ./provision_repos.sh --project gears-rust
 
 # Run a no-cost check in the repo runtime image.
 ./run_repo_docker.sh \
@@ -130,7 +162,9 @@ GEARS_RUST_REPO=/path/to/gears-rust ./provision_repos.sh --project gears-rust
 `run_repo_docker.sh` always mounts the checkout at `/workspace/repo`; for
 local-only projects, pass `--repo-dir /workspace/repo` inside the containered
 `bench.py` command. `drive_cell.sh` already handles this via its host-side
-`--repo-dir` wiring.
+`--repo-dir` wiring. When arena calls `drive_cell.sh`, it passes
+`--completion-state <path>` through to the final `bench.py score` call so live
+and no-LLM verification cells use the same result contract.
 
 The image is built from:
 `tools/bugfix-bakeoff/external/docker/Dockerfile.repo-runtime` and includes
@@ -255,7 +289,7 @@ rerun the listed `--no-drive` command before trusting that handoff.
 For the full gears-rust reference corpus, run:
 
 ```sh
-GEARS_RUST_REPO=~/code/gears-rust make gears-history-full-smoke
+BUGFIX_BAKEOFF_REPO=/path/to/checkout make gears-history-full-smoke
 ```
 
 That uses the same generic smoke over the four armable fixtures
@@ -411,9 +445,10 @@ Pending cells are included in reports as `pending`, counted separately from
 never ran; once a model produced a candidate worktree, grade it with `score`.
 
 For private or heavy `local_only` projects, pass `--repo-dir <checkout>` or set
-`<PROJECT>_REPO` (for example `GEARS_RUST_REPO`). The harness creates disposable
-per-cell worktrees under `.artifacts/external-bakeoff/cells/` and leaves the
-source checkout untouched.
+`BUGFIX_BAKEOFF_REPO`. For a meta checkout, set `BUGFIX_BAKEOFF_META_REPO` and
+declare `project.repo_subdir`. The harness creates disposable per-cell worktrees
+under `.artifacts/external-bakeoff/cells/` and leaves the source checkout
+untouched.
 
 Before any arm/drive step, run the free preflight. It reports all setup blockers
 as JSON: manifest/oracle files, local checkout presence, baseline/fix commits,

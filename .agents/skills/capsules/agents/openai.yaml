@@ -1,0 +1,4 @@
+interface:
+  display_name: "Capsules"
+  short_description: "Use hermetic repo capsules for fixtures"
+  default_prompt: "Use $capsules to add or migrate a deterministic git fixture."

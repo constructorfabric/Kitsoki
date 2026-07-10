@@ -1,0 +1,10 @@
+{
+  "meta": {"mode": "pitch", "title": "Fixture"},
+  "scenes": [
+    {
+      "type": "title",
+      "title": "",
+      "subtitleHtml": "<span class=\"deck-subtitle-note\">Production-ready workflows. Zero effort.</span>"
+    }
+  ]
+}

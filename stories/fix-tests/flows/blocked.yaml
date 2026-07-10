@@ -14,8 +14,6 @@ host_handlers:
       run_initial:
         data: { exit_code: 1, ok: false, stdout: "--- FAIL: TestAmbiguous\nFAIL\n" }
         delay: "10ms"
-      write_report:
-        data: { exit_code: 0, ok: true, stdout: ".artifacts/fix-tests/report-blocked.md" }
   host.agent.task:
     by_call:
       fix:
@@ -36,10 +34,13 @@ host_handlers:
 turns:
   - intent: { name: start }
     advance_clock: "2s"
-    expect_state: blocked
+    expect_state: __exit__needs-human
     expect_world:
       outcome:     "blocked"
       cycle:       1
       report_path: ".artifacts/fix-tests/report-blocked.md"
 
+expect_terminal: true
+expect_operation_policy: fix_tests
+expect_operation_status: waiting
 expect_no_errors: true

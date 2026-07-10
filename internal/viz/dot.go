@@ -10,6 +10,7 @@ import (
 	dotlib "github.com/emicklei/dot"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/storyauthoring"
 )
 
 // Export streams a Graphviz DOT state graph for a to w: compound states become
@@ -68,6 +69,9 @@ func addStatesToGraph(
 			continue
 		}
 		fullPath := joinPath(prefix, name)
+		if storyauthoring.IsFrameworkRoom(fullPath) {
+			continue
+		}
 
 		if len(s.States) > 0 {
 			// Compound state: cluster subgraph. Parallel parents get a
@@ -122,6 +126,9 @@ func addStatesToGraph(
 func addTransitionEdges(g *dotlib.Graph, s *app.State, fromPath string) {
 	fromID := strings.ReplaceAll(fromPath, ".", "_")
 	for intentName, transitions := range s.On {
+		if storyauthoring.IsFrameworkTransition(fromPath, intentName) {
+			continue
+		}
 		label := intentName
 		if label == "*" {
 			label = "*(any)"

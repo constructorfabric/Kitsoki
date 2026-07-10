@@ -96,8 +96,8 @@ host_handlers:
           exit_code: 0
           stdout:    "[feat/auth 1a2b3c4] fix(auth): handle nil session on expiry"
 
-      # ② rebase: hits a conflict the agent auto-resolves. one-shot runs the full
-      # conflict→resolve→continue cascade in one turn → branch_ops/rebase_done.
+      # ② rebase: hits a conflict, then an explicit resolver turn lets the agent
+      # auto-resolve both files before continuing.
       rebase_exec:
         data:
           ok:        true
@@ -116,6 +116,7 @@ host_handlers:
           exit_code: 0
           stdout_json:
             conflict_files: "internal/auth/session.go internal/auth/token.go "
+            conflict_scan_done: true
             gosum_only:     false
       rebase_continue_cmd:
         data:
@@ -208,6 +209,12 @@ turns:
 
   # ② "rebase onto main and resolve the conflicts" (multi-file, auto-resolved)
   - intent: { name: rebase, slots: {} }
+    expect_state: conflict
+    expect_world:
+      conflict_scan_done: true
+      conflict_agent_ready: true
+      rebase_done: false
+  - intent: { name: conflict_ready, slots: {} }
     expect_state: branch_ops
     expect_world:
       rebase_done: true

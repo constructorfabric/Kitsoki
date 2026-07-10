@@ -83,6 +83,8 @@ const SINGLE_FRAME = {
   ],
 };
 
+const CUSTOM_ANSWER = "Ship the shim behind a feature flag and open a deprecation ticket.";
+
 const MULTI_FRAME = {
   session_id: "demo-session",
   question_id: "demo-q-2",
@@ -184,6 +186,14 @@ test("operator-ask forwarding feature-spotlight video", async () => {
       // multi-select question just before its narration step.
       if (step.id === "oa-multi") {
         await pushQuestion(page, MULTI_FRAME);
+        await dwell(page, SETTLE_MS);
+      }
+      // The preceding step clicks Custom answer; populate the now-visible input
+      // before the screenshot so the demo proves the custom-answer affordance.
+      if (step.id === "oa-custom-type") {
+        const input = page.getByTestId("oq-custom-answer-0");
+        await expect(input).toBeVisible({ timeout: 8000 });
+        await input.fill(CUSTOM_ANSWER);
         await dwell(page, SETTLE_MS);
       }
       // Before sending the multi-select answer, also check a second option so

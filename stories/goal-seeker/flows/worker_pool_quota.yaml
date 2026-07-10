@@ -1,0 +1,64 @@
+# worker_pool_quota — WM.5 story-pool seam, no LLM.
+#
+# Proves the goal-seeker dispatch manifest configures the punch-list maker with a
+# cheap-first harness ladder rather than a single fixed codex-native/gpt-5.5
+# profile. The host package's Ladder tests exercise the fallback rung execution;
+# this flow proves the story emits and punch-list loads the worker-pool policy.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bootstrap
+initial_world:
+  goal_slug: goal-seeker-test
+  goal_dir:  stories/goal-seeker/testdata/goal
+  work_dir:  .artifacts/goal/flow-worker-pool-quota
+  reset_log: true
+
+host_handlers:
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: not_done
+            summary: "C1 is ready; dispatch it."
+            next_instruction:
+              change_id: "C1"
+              action: "implement C1"
+              pipeline: "implementation"
+              gate: { class: "G-FLOW", cmd: "true" }
+  host.run:
+    by_call:
+      redcheck: { data: { ok: false, exit_code: 1, stdout: "FAIL: not implemented" } }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }
+    expect_state: evaluate
+    expect_world: { remaining: 1, ready_id: "C1" }
+  - intent: { name: advance, slots: {} }
+    expect_state: deciding
+  - intent: { name: advance, slots: {} }
+    expect_state: dispatch
+    expect_world: { next_change_id: "C1" }
+  - intent: { name: advance, slots: {} }
+    expect_state: redcheck
+  - intent: { name: advance, slots: {} }
+    expect_state: punchlist.load
+    expect_world:
+      punchlist__item_count: "1"
+      punchlist__load_error: ""
+expect_no_errors: true
+expect_files:
+  - path: ../../../.artifacts/goal/flow-worker-pool-quota/manifests/C1.json
+    content_matches: '"harness":"ladder"'
+  - path: ../../../.artifacts/goal/flow-worker-pool-quota/manifests/C1.json
+    content_matches: '"harness_ladder":\{"backoff":"5m".*"model":"hf:zai-org/GLM-5\.2","provider":"synthetic-codex"'
+  - path: ../../../.artifacts/goal/flow-worker-pool-quota/manifests/C1.json
+    content_matches: '"model":"opus","provider":"claude-native"'
+  - path: ../../../.artifacts/goal/flow-worker-pool-quota/manifests/C1.json
+    content_matches: '"sandbox":\{"degrade":"warn".*"min_strength":"supervised".*"repo":"read_only"'

@@ -1,0 +1,38 @@
+# starlark_session — minimal no-LLM fixture for issue #37 (MCP session.new
+# can drive host.starlark.run stories). The root room's on_enter invokes
+# host.starlark.run against a RELATIVE script path (scripts/hello.star). The
+# handler resolves a relative script path against KITSOKI_APP_DIR — see
+# internal/host/starlark_run.go's resolvePromptPath call — so opening this
+# story through session.new only succeeds end to end if the studio session
+# runner publishes KITSOKI_APP_DIR for the loaded app's directory before the
+# on_enter dispatches. No HTTP, no LLM: the script is pure computation.
+app:
+  id: starlark-session
+  version: 0.1.0
+  title: "Starlark Session"
+
+hosts:
+  - host.starlark.run
+
+world:
+  greeting: { type: str, default: "" }
+
+intents:
+  noop:
+    title: "(unused) placeholder intent"
+
+root: greeting_room
+
+states:
+  greeting_room:
+    terminal: true
+    description: "Runs a Starlark glue script on entry and captures its output."
+    view: |
+      Greeting: {{ world.greeting }}
+    on_enter:
+      - invoke: host.starlark.run
+        id: say_hello
+        with:
+          script: scripts/hello.star
+        bind:
+          greeting: greeting

@@ -1,0 +1,106 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+# Load an existing run bundle, then derive cross-run issue stats from local
+# product-journey artifacts and a cached GitHub issue-state fixture. The story
+# only drives the runner; no GitHub or LLM calls happen in this flow.
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-777
+            run_dir: .artifacts/product-journey/run-777
+            project: vscode
+            persona: ide-first-engineer
+            seed: stats-demo
+            deck_path: .artifacts/product-journey/run-777/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-777/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-777/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-777/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-777/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-777/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-777/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-777/scenario-outcomes.md
+            finding_total_count: 4
+            strength_count: 1
+            weakness_count: 1
+            issue_count: 2
+            fix_count: 0
+            blocked_count: 1
+            proof_evidence_count: 3
+            review_status: needs_evidence
+      derive_product_journey_stats:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: stats_derived
+            stats_root: .artifacts/product-journey
+            stats_output: .artifacts/product-journey/stats/latest.json
+            runs_scanned: 8
+            findings_found_count: 11
+            findings_filed_count: 9
+            issues_fixed_count: 4
+            issues_reopened_count: 1
+            issues_unknown_state_count: 2
+            similar_pair_count: 3
+            issue_state_status: issue_state_cached
+            issue_state_output: .artifacts/product-journey/issue-state.json
+            issue_state_count: 9
+            issue_state_summary: "Refreshed 9 issue state record(s) through kitsoki gitops issue-state-cache."
+            manual_stats_replaced: "yes"
+            stats_summary: "Derived product-journey stats: 11 found, 9 filed, 4 fixed, 1 reopened, 3 similar pair(s)."
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-777
+    expect_state: run_created
+    expect_world:
+      status: run_loaded
+      run_id: run-777
+      run_dir: .artifacts/product-journey/run-777
+      issue_count: 2
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: stats
+      slots:
+        stats_root: .artifacts/product-journey
+        issue_state_file: .artifacts/product-journey/issue-state.json
+        refresh_issue_state: "true"
+        ticket_repo: owner/repo
+        stats_output: .artifacts/product-journey/stats/latest.json
+    expect_state: run_created
+    expect_world:
+      status: stats_derived
+      stats_status: stats_derived
+      stats_root: .artifacts/product-journey
+      stats_output: .artifacts/product-journey/stats/latest.json
+      stats_found_count: 11
+      stats_filed_count: 9
+      stats_fixed_count: 4
+      stats_reopened_count: 1
+      stats_unknown_state_count: 2
+      stats_similar_pair_count: 3
+      issue_state_status: issue_state_cached
+      issue_state_output: .artifacts/product-journey/issue-state.json
+      issue_state_count: 9
+      issue_state_summary: "Refreshed 9 issue state record(s) through kitsoki gitops issue-state-cache."
+      stats_summary: "Derived product-journey stats: 11 found, 9 filed, 4 fixed, 1 reopened, 3 similar pair(s)."
+    expect_view_matches: "RUN CREATED[\\s\\S]*Issue state[\\s\\S]*issue_state_cached: 9 refreshed[\\s\\S]*Derived stats[\\s\\S]*stats_derived: found 11, filed 9, fixed 4, reopened 1,[\\s\\S]*similar 3[\\s\\S]*Stats runs[\\s\\S]*8 scanned; unknown state 2[\\s\\S]*Issue state artifact[\\s\\S]*\\.artifacts/product-journey/issue-state\\.json[\\s\\S]*Refreshed 9 issue state record\\(s\\) through kitsoki gitops issue-state-cache\\.[\\s\\S]*Derived product-journey stats: 11 found, 9 filed, 4 fixed, 1 reopened, 3 similar[\\s\\S]*pair\\(s\\)\\."
+    expect_host_calls:
+      - handler: host.run
+        args: { call: derive_product_journey_stats }
+
+expect_no_errors: true

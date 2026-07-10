@@ -21,6 +21,8 @@
 // submit tool's output file, NOT the agent_message — same as claude/copilot.
 package host
 
+import "strings"
+
 // classifyCodexEvent maps one parsed codex JSONL event into classifiedEvent.
 // Best-effort and defensive: unrecognized shapes return a value carrying only
 // the type so a future codex release adding an event kind still appears in the
@@ -75,13 +77,10 @@ func classifyCodexItem(eventType string, item map[string]any, ce *classifiedEven
 	case "reasoning":
 		// Reasoning prose is backend-neutral assistant activity. Surface it
 		// with the same type Claude uses so TUI/web/VS Code consumers do not
-		// need provider-specific branches to render thinking.
+		// need provider-specific branches to render thinking. Keep it in
+		// Thinking, not Text: reasoning is never the final reply.
 		ce.Type = "assistant"
-		if t, _ := item["text"].(string); t != "" {
-			ce.Text = t
-		} else if s, _ := item["summary"].(string); s != "" {
-			ce.Text = s
-		}
+		ce.Thinking = codexReasoningText(item)
 
 	case "command_execution":
 		// A shell command run by codex. Preview the command line.
@@ -113,6 +112,32 @@ func classifyCodexItem(eventType string, item map[string]any, ce *classifiedEven
 	default:
 		// Unknown item type — leave ce carrying only the top-level type.
 	}
+}
+
+func codexReasoningText(item map[string]any) string {
+	if t, _ := item["text"].(string); t != "" {
+		return t
+	}
+	if s, _ := item["summary"].(string); s != "" {
+		return s
+	}
+	if parts, _ := item["summary"].([]any); len(parts) > 0 {
+		var out []string
+		for _, part := range parts {
+			switch v := part.(type) {
+			case string:
+				if v != "" {
+					out = append(out, v)
+				}
+			case map[string]any:
+				if t, _ := v["text"].(string); t != "" {
+					out = append(out, t)
+				}
+			}
+		}
+		return strings.Join(out, "\n")
+	}
+	return ""
 }
 
 // codexMCPToolName extracts the tool name from an mcp_tool_call item,

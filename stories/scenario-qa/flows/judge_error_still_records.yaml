@@ -1,0 +1,142 @@
+# judge_error_still_records — the driver captured real evidence, but the
+# JUDGE dispatch itself dies (host.agent.task: judge_leg errors). judge.yaml's
+# on_error: recording still routes forward so the leg's outcome is journaled
+# honestly (driver_status intact, verdict "unjudged") instead of stranding
+# the loop. record_leg_result.star's G7 guard deliberately leaves an
+# "unjudged" verdict alone (see scripts/record_leg_result.star) — a dead
+# judge dispatch is a distinct, already-honest failure mode from a judge
+# that rendered a verdict over inadequate evidence, so it must not be
+# recorded as "degraded-evidence" either. Exercises judge.yaml:39.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-run-judge-error
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-judge-error
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-judge-error/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-judge-error/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-run-judge-error/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-judge-error
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-run-judge-error/deck.slidey.json
+            leg_count: 1
+            pass_count: 0
+            fail_count: 0
+            degraded_count: 0
+            summary: "0 / 1 transport checks judged (1 unjudged)."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "bugfix::tui"
+                scenario: "bugfix"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+                primary_story: "stories/bugfix/app.yaml"
+                success_criteria: ["Hidden oracle passes."]
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-run-judge-error"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "bugfix::tui"
+            scenario: "bugfix"
+            transport: "tui"
+            visual_surface: "tui"
+            evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+          current_leg_id: "bugfix::tui"
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "bugfix::tui"
+                scenario: "bugfix"
+                transport: "tui"
+                visual_surface: "tui"
+                driver_status: "captured"
+                evidence_refs: ["render_tui_png:frame-1"]
+                verdict: "unjudged"
+                verdict_summary: ""
+                frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+          pass_count: 0
+          fail_count: 0
+          degraded_count: 0
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-run-judge-error/report.md"
+          report_summary: "0 / 1 transport checks judged (1 unjudged)."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["render_tui_png:frame-1"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            blockers: []
+            summary: "Captured a render.tui_png frame showing the fixed state."
+      judge_leg:
+        error: "host.agent.task: judge session abandoned without successful submit"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-run-judge-error
+      leg_count: 1
+      pass_count: 0
+      fail_count: 0
+      degraded_count: 0
+      last_error: "host.agent.task: judge session abandoned without successful submit"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+    expect_view_matches: "Scenario:[\\s\\S]*bugfix[\\s\\S]*judge session abandoned without successful submit[\\s\\S]*tui \\[\\] verdict=unjudged driver=captured"
+
+expect_no_errors: true

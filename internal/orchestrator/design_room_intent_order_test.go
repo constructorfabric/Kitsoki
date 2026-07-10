@@ -37,28 +37,17 @@ import (
 	"kitsoki/internal/store"
 )
 
-// setupDevStoryRepo copies the live stories/ tree into a temp dir (same
-// approach as setupDogfoodRepo) and returns the absolute path to
-// stories/dev-story/app.yaml inside that tree. Dev-story imports bugfix
-// and pr-refinement via relative paths, so the whole stories/ sub-tree
-// needs to be present.
-//
-// Unlike the dogfood smoke tests we do NOT need a real git repo here —
-// no host.git_worktree calls happen in these query-only tests.
-func setupDevStoryRepo(t *testing.T) string {
+// devStoryAppPath returns the checked-in dev-story app path. These query-only
+// tests never mutate story files, so copying the whole stories/ tree into a temp
+// dir only adds several seconds of fixture setup without improving isolation.
+func devStoryAppPath(t *testing.T) string {
 	t.Helper()
-
-	repoRoot := t.TempDir()
 
 	cwd, err := os.Getwd()
 	require.NoError(t, err)
 	kitsokiRoot := filepath.Clean(filepath.Join(cwd, "..", ".."))
 
-	src := filepath.Join(kitsokiRoot, "stories")
-	dst := filepath.Join(repoRoot, "stories")
-	require.NoError(t, copyTree(src, dst), "copy stories/ → %s", dst)
-
-	return filepath.Join(repoRoot, "stories", "dev-story", "app.yaml")
+	return filepath.Join(kitsokiRoot, "stories", "dev-story", "app.yaml")
 }
 
 // newDevStoryOrchestrator loads the dev-story app and returns a minimal
@@ -134,7 +123,7 @@ func textSlotForIntent(def app.Intent) string {
 // 5dc4123); the state and this test were updated to match — the discuss /
 // capture_existing intents and their priority contract carried over unchanged.
 func TestDesignRoom_AllowedIntents_DiscussBeforeCaptureExisting(t *testing.T) {
-	appPath := setupDevStoryRepo(t)
+	appPath := devStoryAppPath(t)
 	orch, sid := newDevStoryOrchestrator(t, appPath)
 
 	ctx := context.Background()
@@ -178,7 +167,7 @@ func TestDesignRoom_AllowedIntents_DiscussBeforeCaptureExisting(t *testing.T) {
 // Any rename or type change in app.yaml will break the InputBar's text
 // binding silently — this test catches the drift before users see it.
 func TestProposalRoom_IntentSlotBindings(t *testing.T) {
-	appPath := setupDevStoryRepo(t)
+	appPath := devStoryAppPath(t)
 	orch, sid := newDevStoryOrchestrator(t, appPath)
 
 	ctx := context.Background()

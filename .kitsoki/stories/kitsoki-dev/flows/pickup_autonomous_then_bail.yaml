@@ -8,9 +8,8 @@
 # emit_intent gate closes on `judge_mode == 'human'`.
 #
 # Proves the autonomous loop bails cleanly to human in mid-stream
-# without restart, replay, or state reload — the same exact mechanism
-# kitsoki-dev uses when the autonomous variant of the dogfood loop
-# from proposal §5.4 hits an uncertain verdict and needs a human ack.
+# without restart, replay, or state reload — the same mechanism this
+# self-hosted instance uses when an uncertain verdict needs a human ack.
 #
 # Story shape borrowed from stories/bugfix/flows/mixed_judge_swap.yaml
 # (where it pins the bare bugfix story) and re-expressed through the
@@ -20,6 +19,12 @@ test_kind: flow
 app: ../app.yaml
 initial_state: core.landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): these fixtures test
+  # the downstream bugfix walk, not triage. core-level key — the bf import
+  # wrapper re-seeds bf__auto_triage on entry from dev-story's world_in
+  # projection of (core__)auto_triage. Pre-flight contract:
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  core__auto_triage: false
   core__ticket_id:      "2026-05-14T103205Z-tui-view-render-before-bind"
   core__ticket_title:   "TUI view templates render BEFORE on_enter binds"
   core__thread:         "issues/bugs/2026-05-14T103205Z-tui-view-render-before-bind.md"
@@ -56,7 +61,7 @@ host_handlers:
     data: { ok: true, sha: "abc123", diff: "", url: "https://example/pr/103205", pr_id: "103205", state: "success", checks: "", comments: "" }
   host.local:
     data: { ok: true, log: "PASS: 12 tests", passed: 12, failed: 0, state: "success" }
-  host.gh.ticket:
+  host.local_github.ticket:
     data: { ok: true, tickets: "" }
   # Confident verdict — every checkpoint where judge_mode is non-human
   # will auto-fire `accept` until we flip the mode.
@@ -89,7 +94,7 @@ host_handlers:
         # resolves bare emit names through the state's IntentAliases
         # map, so a live LLM-judge producing the bare `accept` works
         # end-to-end (covered by .kitsoki/stories/kitsoki-dev/flows/
-        # dogfood_autonomous_smoke.yaml). This fixture keeps the
+        # self_host_autonomous_smoke.yaml). This fixture keeps the
         # fully-prefixed spelling as regression coverage that
         # already-prefixed names ALSO dispatch correctly.
         intent:     "core__bf__accept"

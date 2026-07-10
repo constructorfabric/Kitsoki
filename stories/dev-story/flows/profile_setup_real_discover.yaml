@@ -1,0 +1,25 @@
+# profile_setup_real_discover — regression for live sessions where the profile
+# setup helper path must resolve through the real host.run command. This keeps
+# discovery unstubbed but does not call a provider or write files.
+
+test_kind: flow
+app: ../app.yaml
+use_orchestrator: true
+initial_state: landing
+initial_world:
+  workdir: "."
+  repo_root: "."
+
+# Trigger RegisterBuiltins so host.run is real in this fixture. No LLM host is
+# invoked by the profile_setup_discover room.
+host_bindings:
+  host.run: host.run
+
+turns:
+  - intent: { name: go_profile_setup, slots: {} }
+    expect_state: profile_setup_discover
+    expect_world:
+      profile_setup_status: "discovering"
+    expect_view_matches: "Default profile"
+
+expect_no_errors: true

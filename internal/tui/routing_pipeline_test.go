@@ -88,6 +88,20 @@ func TestRoutingPipeline_ResolveFromProvenance(t *testing.T) {
 	}
 }
 
+func TestRoutingPipeline_ImportedIntentLabelIsHumanized(t *testing.T) {
+	t.Parallel()
+	p := newRoutingPipeline()
+	p.markHit(TierSemantic, "core__go_dogfood_marathon", "", 0.90, true)
+
+	got := p.renderResolved()
+	if strings.Contains(got, "core__") {
+		t.Fatalf("resolved line leaked internal imported intent: %q", got)
+	}
+	if !strings.Contains(got, "go dogfood marathon") {
+		t.Fatalf("resolved line = %q, want humanized imported intent label", got)
+	}
+}
+
 // TestRoutingPipeline_ZeroValueSafe guards the panic that bit the warp path: a
 // zero-value pipeline must render without indexing a nil layer slice.
 func TestRoutingPipeline_ZeroValueSafe(t *testing.T) {

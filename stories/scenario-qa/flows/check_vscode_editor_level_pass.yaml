@@ -1,0 +1,143 @@
+# check_vscode_editor_level_pass — P2.11 (vscode editor-level evidence)
+# regression: a vscode leg that captured the mandatory bridge-level floor
+# (preflight + post-drive visual.open kind=vscode) AND the opportunistic
+# editor-level tier (a post-drive host.ide.* `ide.context_captured` trace
+# event, proof a REAL VS Code + kitsoki extension was linked and queried
+# during this drive) is free to keep the judge's `pass` verdict, and its
+# recorded `evidence_level` is promoted to "editor-level" -- not left at the
+# static "bridge-level" floor. See docs/persona-qa.md's Transport Contract
+# section and stories/scenario-qa/scripts/record_leg_result.star's
+# `_evidence_level`/`_vscode_bridge_only`.
+#
+# host.starlark.run is left UNSTUBBED so plan_legs.star and
+# record_leg_result.star run for REAL against the driver-plan.json this
+# flow's starlark_inspect_cassette serves -- only the driver/judge agent
+# dispatch (host.agent.task) and the run.py subprocess calls (host.run) are
+# stubbed. This is the pass-path twin of check_vscode_bridge_only_degraded.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+starlark_inspect_cassette: ../cassettes/check_vscode_editor_level.inspect.yaml
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-vscode-editor-run
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run/deck.slidey.json
+            leg_count: 1
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 0
+            summary: "1 / 1 transport checks passed."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs:
+              - "evidence/gears-rust--core-maintainer/bugfix/01-preflight-vscode-observe.json"
+              - "evidence/gears-rust--core-maintainer/bugfix/02-postdrive-vscode-observe.json"
+              - "evidence/gears-rust--core-maintainer/bugfix/03-postdrive-ide-context.json"
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            blockers: []
+            post_drive_evidence_ref: "evidence/gears-rust--core-maintainer/bugfix/02-postdrive-vscode-observe.json"
+            post_drive_session_handle: "s2"
+            post_drive_editor_evidence_ref: "evidence/gears-rust--core-maintainer/bugfix/03-postdrive-ide-context.json"
+            post_drive_editor_trace_ref: "s2:ide.context_captured"
+            harness_used: "live"
+            profile_used: "claude-native"
+            summary: "Preflighted the vscode bridge, drove the bugfix pipeline live to the validating room (which calls host.ide.get_diagnostics), re-captured the bridge, then persisted the post-drive ide.context_captured trace event (connected:true) as editor-level proof."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "post_drive_evidence_ref and post_drive_editor_evidence_ref both prove the driven-forward state, including a real editor's diagnostics."
+            cited_frames: ["02-postdrive-vscode-observe.json", "03-postdrive-ide-context.json"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: vscode
+        persona: core-maintainer
+        target: gears-rust
+        seed: scenario-qa
+        profile: claude-native
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-vscode-editor-run
+      live_profile: claude-native
+      leg_count: 1
+      leg_index: 0
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 0
+      leg_results:
+        items:
+          - leg_id: "bugfix::vscode"
+            scenario: "bugfix"
+            transport: "vscode"
+            visual_surface: "vscode"
+            evidence_level: "editor-level"
+            natural_utterance_count: 0
+            natural_utterance_example: ""
+            natural_utterance_sources: []
+            driver_status: "captured"
+            evidence_refs:
+              - "evidence/gears-rust--core-maintainer/bugfix/01-preflight-vscode-observe.json"
+              - "evidence/gears-rust--core-maintainer/bugfix/02-postdrive-vscode-observe.json"
+              - "evidence/gears-rust--core-maintainer/bugfix/03-postdrive-ide-context.json"
+            post_drive_evidence_ref: "evidence/gears-rust--core-maintainer/bugfix/02-postdrive-vscode-observe.json"
+            post_drive_editor_evidence_ref: "evidence/gears-rust--core-maintainer/bugfix/03-postdrive-ide-context.json"
+            harness_used: "live"
+            playback_path: ""
+            playback_caption: ""
+            verdict: "pass"
+            verdict_summary: "post_drive_evidence_ref and post_drive_editor_evidence_ref both prove the driven-forward state, including a real editor's diagnostics."
+            cause: ""
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+    expect_view_matches: "verdict=pass driver=captured"
+
+expect_no_errors: true

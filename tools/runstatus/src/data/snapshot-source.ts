@@ -138,6 +138,10 @@ export class SnapshotSource implements DataSource {
     return this.readOnly("continueTurn");
   }
 
+  driveOperation(_sessionId: string): Promise<TurnResult> {
+    return this.readOnly("driveOperation");
+  }
+
   offpath(
     _sessionId: string,
     _input: string,

@@ -1,0 +1,91 @@
+# idea_uses_context_workspace — kitsoki-dev's proposal/idea room must not
+# attempt to create docs/proposals/.workspace in the protected primary checkout.
+#
+# The imported dev-story design pipeline is generic and defaults to
+# docs/proposals, but kitsoki-dev runs against this repo where docs/proposals is
+# read-mostly. The instance projects design_durable_path=.context/designs into
+# core, so intake, durable-path resolution, materialize, and artifact writes all
+# stay in local context.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: core.design
+initial_world:
+  judge_mode: "human"
+  # Flow fixtures that force an imported child state bypass the runtime root
+  # boot on_enter that applies imports.core.world_in. Seed the folded child key
+  # to match the live kitsoki-dev boot projection from app.yaml.
+  core__design_durable_path: ".context/designs"
+
+starlark_inspect_cassette: ../cassettes/idea_context_designs.inspect.yaml
+
+host_handlers:
+  host.fs.writable_dir:
+    data: { path: ".context/designs", used_fallback: false }
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.agent.decide:
+    by_call:
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "No overlapping design work found." }
+      references_research:
+        data:
+          ok: true
+          submitted: { items: [] }
+  host.agent.search:
+    data: { hits: [], top: null }
+  host.artifacts_dir:
+    data: { ok: true, path: ".context/designs/.workspace/local-yaml-probe-machine-which/out.md", message_id: "out#1" }
+  host.agent.task:
+    by_call:
+      refine_brief:
+        data:
+          ok: true
+          submitted: { summary: "Idea is ready for brief shaping.", gaps: [] }
+
+turns:
+  - intent:
+      name: core__discuss
+      slots:
+        message: "local yaml probe machine which"
+    expect_state: core.design_search
+    expect_world:
+      core__design_slug: "local-yaml-probe-machine-which"
+      core__design_durable_path: ".context/designs"
+      core__design_workspace_root_resolved: ".context/designs"
+      core__design_workspace: ""
+    expect_host_calls:
+      - handler: host.starlark.run
+        args:
+          call: "name_slug"
+          inputs: { proposed: "local yaml probe machine which", durable_path: ".context/designs" }
+      - handler: host.fs.writable_dir
+        args: { path: ".context/designs", fallback: ".context/designs" }
+      - handler: host.agent.decide
+        args: { call: "existing_scan" }
+    expect_no_host_calls: [host.artifacts_dir]
+
+  - intent: { name: core__confirm, slots: {} }
+    expect_state: core.design_refine
+    expect_world:
+      core__design_overlap_decision: "new"
+      core__design_durable_path: ".context/designs"
+      core__design_workspace: ".context/designs/.workspace/local-yaml-probe-machine-which"
+      core__design_brief_path: ".context/designs/.workspace/local-yaml-probe-machine-which/out.md"
+    expect_host_calls:
+      - handler: host.starlark.run
+        args:
+          call: "uniquify"
+          inputs: { proposed: "local-yaml-probe-machine-which", durable_path: ".context/designs" }
+      - handler: host.artifacts_dir
+        args: { thread: "002-existing-state", workdir: ".context/designs/.workspace/local-yaml-probe-machine-which" }
+      - handler: host.artifacts_dir
+        args: { thread: "003-references.json", workdir: ".context/designs/.workspace/local-yaml-probe-machine-which" }
+      - handler: host.artifacts_dir
+        args: { thread: "001-brief", artifacts_root: ".context/designs/.workspace/local-yaml-probe-machine-which" }
+      - handler: host.ide.open_file
+        args: { path: ".context/designs/.workspace/local-yaml-probe-machine-which/out.md" }
+
+expect_no_errors: true

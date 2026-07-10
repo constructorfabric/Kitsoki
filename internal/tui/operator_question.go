@@ -16,8 +16,8 @@
 //     answers keyed by each question's text, and finalize after the last.
 //
 // The answer map matches what AskUserQuestion itself would have returned: a
-// single-select question maps its text → the chosen option label; a
-// multi-select maps its text → the list of chosen labels.
+// single-select question maps its text → the chosen option label or a custom
+// text answer; a multi-select maps its text → the list of chosen labels.
 package tui
 
 import (
@@ -55,6 +55,7 @@ type operatorQuestionModel struct {
 	idx      int          // index of the question currently on screen
 	cursor   int          // option cursor within the current question
 	selected map[int]bool // multi-select picks for the current question
+	custom   string       // single-select custom answer buffer for current question
 	answers  map[string]any
 	errMsg   string
 }
@@ -119,15 +120,32 @@ func (m operatorQuestionModel) Update(msg tea.Msg) (operatorQuestionModel, tea.C
 		return m, nil, nil
 	case tea.KeyDown:
 		m.errMsg = ""
-		if m.cursor < len(q.Options)-1 {
+		if m.cursor < maxOperatorQuestionCursor(q) {
 			m.cursor++
 		}
 		return m, nil, nil
 	case tea.KeySpace:
-		// Space toggles in multi-select; in single-select it is inert (Enter
-		// is the commit gesture, matching the choice widget).
+		// Space toggles in multi-select; on the single-select custom row it
+		// edits the custom answer. Other single-select rows still commit with
+		// Enter, matching the choice widget.
 		if q.MultiSelect && len(q.Options) > 0 {
 			m.selected[m.cursor] = !m.selected[m.cursor]
+			m.errMsg = ""
+		} else if isOperatorQuestionCustomCursor(q, m.cursor) {
+			m.custom += " "
+			m.errMsg = ""
+		}
+		return m, nil, nil
+	case tea.KeyBackspace:
+		if isOperatorQuestionCustomCursor(q, m.cursor) && m.custom != "" {
+			runes := []rune(m.custom)
+			m.custom = string(runes[:len(runes)-1])
+			m.errMsg = ""
+		}
+		return m, nil, nil
+	case tea.KeyRunes:
+		if isOperatorQuestionCustomCursor(q, m.cursor) {
+			m.custom += string(key.Runes)
 			m.errMsg = ""
 		}
 		return m, nil, nil
@@ -157,6 +175,13 @@ func (m operatorQuestionModel) commitCurrent(q host.OperatorQuestion) (operatorQ
 			return m, nil, nil
 		}
 		m.answers[q.Question] = labels
+	} else if isOperatorQuestionCustomCursor(q, m.cursor) {
+		answer := strings.TrimSpace(m.custom)
+		if answer == "" {
+			m.errMsg = "type a custom answer"
+			return m, nil, nil
+		}
+		m.answers[q.Question] = answer
 	} else {
 		m.answers[q.Question] = q.Options[m.cursor].Label
 	}
@@ -166,6 +191,7 @@ func (m operatorQuestionModel) commitCurrent(q host.OperatorQuestion) (operatorQ
 		m.idx++
 		m.cursor = 0
 		m.selected = map[int]bool{}
+		m.custom = ""
 		m.errMsg = ""
 		return m, nil, nil
 	}
@@ -241,6 +267,24 @@ func (m *operatorQuestionModel) renderOptions(q host.OperatorQuestion) string {
 			sb.WriteString(choiceHintStyle.Render(opt.Description))
 		}
 	}
+	if operatorQuestionSupportsCustom(q) {
+		if sb.Len() > 0 {
+			sb.WriteByte('\n')
+		}
+		if isOperatorQuestionCustomCursor(q, m.cursor) {
+			sb.WriteString(choiceCursorStyle.Render("▸ "))
+		} else {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("Custom answer")
+		sb.WriteString("  ")
+		custom := strings.TrimSpace(m.custom)
+		if custom == "" {
+			sb.WriteString(choiceHintStyle.Render("type your own response"))
+		} else {
+			sb.WriteString(custom)
+		}
+	}
 	return sb.String()
 }
 
@@ -248,6 +292,8 @@ func (m *operatorQuestionModel) renderFooter(q host.OperatorQuestion) string {
 	var hint string
 	if q.MultiSelect {
 		hint = "[↑/↓ • Space toggle • Enter confirm • Esc let agent decide]"
+	} else if operatorQuestionSupportsCustom(q) {
+		hint = "[↑/↓ move • type on Custom answer • Enter confirm • Esc let agent decide]"
 	} else {
 		hint = "[↑/↓ move • Enter confirm • Esc let agent decide]"
 	}
@@ -256,4 +302,22 @@ func (m *operatorQuestionModel) renderFooter(q host.OperatorQuestion) string {
 		rendered = choiceErrorStyle.Render("("+m.errMsg+")") + "\n" + rendered
 	}
 	return rendered
+}
+
+func operatorQuestionSupportsCustom(q host.OperatorQuestion) bool {
+	return !q.MultiSelect && len(q.Options) > 0
+}
+
+func isOperatorQuestionCustomCursor(q host.OperatorQuestion, cursor int) bool {
+	return operatorQuestionSupportsCustom(q) && cursor == len(q.Options)
+}
+
+func maxOperatorQuestionCursor(q host.OperatorQuestion) int {
+	if operatorQuestionSupportsCustom(q) {
+		return len(q.Options)
+	}
+	if len(q.Options) == 0 {
+		return 0
+	}
+	return len(q.Options) - 1
 }

@@ -8,14 +8,15 @@
  * IMPLEMENTED:
  *
  * Clicking the Meta launcher's "Report bug" item no longer files silently. It
- * CAPTURES (rrweb session replay + console/errors + a server-recorded, scrubbed
- * HAR via the runstatus.bug.preview RPC) and opens a REVIEW MODAL. The single
+ * CAPTURES (rrweb session replay + console/errors + a browser-observed,
+ * server-scrubbed HAR via the runstatus.bug.preview RPC) and opens a REVIEW MODAL. The single
  * visual is the rrweb session replay — an interactive, scrubbable reconstruction
  * of the exact DOM the operator saw. The operator inspects that replay, the
  * scrubbed HAR (summary + expandable raw JSON), and console/error state, edits
  * the prefilled title + optional description, then clicks "File bug" (or
- * Cancel). Only on "File bug" does the server write issues/bugs/<id>.md plus a
- * sibling <id>.artifacts/ folder, surfacing the filed path in a result toast.
+ * Cancel). Only on "File bug" does the server write
+ * .artifacts/issues/bugs/<id>.md plus a sibling <id>.artifacts/ folder,
+ * surfacing the filed path in a result toast.
  *
  * SINGLE SOURCE OF TRUTH: the same array drives both
  *   1. the live tour overlay (started via window.__startTourWithSteps), and
@@ -102,7 +103,7 @@ export const REPORT_BUG_TOUR_STEPS: readonly TourStep[] = [
     id: "bug-welcome",
     route: "any",
     title: "Capture, review, then file",
-    body: "Hit a surprising state? The Meta launcher's Report bug action captures an interactive session replay of exactly what you saw, the console, and a server-recorded network trace — scrubbed of secrets — then opens a review modal so you can check it all before anything is written. This tour walks the whole flow.",
+    body: "Hit a surprising state? The Meta launcher's Report bug action captures an interactive session replay of exactly what you saw, the console, and a browser-observed network trace — scrubbed of secrets — then opens a review modal so you can check it all before anything is written. This tour walks the whole flow.",
     placement: "center",
     kind: "explain",
     advance: "next",
@@ -166,7 +167,7 @@ export const REPORT_BUG_TOUR_STEPS: readonly TourStep[] = [
     target: "bug-modal-har-raw",
     waitForTarget: "bug-modal-har-summary",
     title: "The scrubbed network trace",
-    body: "The server records the run's RPC exchanges and runs the LLM-free harscrub anonymizer over them. The summary lists each request; expand the raw HAR JSON to confirm exactly what — secret-free — would be attached.",
+    body: "The browser records the network exchanges it observed, then the server runs the LLM-free harscrub anonymizer over them. The summary lists each request; expand the raw HAR JSON to confirm exactly what — secret-free — would be attached.",
     placement: "left",
     kind: "explain",
     advance: "next",
@@ -204,7 +205,7 @@ export const REPORT_BUG_TOUR_STEPS: readonly TourStep[] = [
     target: "bug-toast-path",
     waitForTarget: "bug-toast-path",
     title: "Filed, with a path",
-    body: "Done. The toast shows the filed path — issues/bugs/<id>.md — backed by a sibling <id>.artifacts/ folder holding the scrubbed HAR and the session replay. A reviewed, reproducible, secret-free bug report.",
+    body: "Done. The toast shows the filed path — .artifacts/issues/bugs/<id>.md — backed by a sibling <id>.artifacts/ folder holding the scrubbed HAR and the session replay. A reviewed, reproducible, secret-free local artifact bug report.",
     placement: "left",
     kind: "explain",
     advance: "next",

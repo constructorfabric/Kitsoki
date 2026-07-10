@@ -175,6 +175,23 @@ func TestStoryGraphMatchesEditor(t *testing.T) {
 
 // TestStoryGraphDetailAndAgents exercises the mode selection: a room id selects
 // detail, the agents flag selects agent contracts.
+
+func TestStoryGraphSuggestsStoryRootsForRepoDir(t *testing.T) {
+	ctx := context.Background()
+	cs := newStudioWithWorkspace(ctx, t, bugfixDir(t))
+
+	res, err := callTool(ctx, cs, "story.graph", map[string]any{"dir": repoRoot(t)})
+	require.NoError(t, err)
+	require.True(t, res.IsError, "repo root without app.yaml should be an actionable structured error")
+
+	var toolErr studio.ToolError
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &toolErr))
+	assert.Equal(t, studio.ErrBadRequest, toolErr.Code)
+	assert.Contains(t, toolErr.Error, "no app.yaml")
+	assert.Contains(t, toolErr.Error, "pass dir as a story root")
+	assert.Contains(t, toolErr.Error, "stories/")
+}
+
 func TestStoryGraphDetailAndAgents(t *testing.T) {
 	ctx := context.Background()
 	dir := bugfixDir(t)
@@ -199,24 +216,90 @@ func TestStoryGraphDetailAndAgents(t *testing.T) {
 	assert.Equal(t, wantDetail.Intents, detail.Detail.Intents)
 }
 
-// ─── 2.4 test: RunFlows over bugfix flows reproduces `kitsoki test flows` ──────
+func TestStoryGraphStructuredGraphMode(t *testing.T) {
+	ctx := context.Background()
+	dir := bugfixDir(t)
+	cs := newStudioWithWorkspace(ctx, t, dir)
 
-// TestStoryTestReproducesFlows runs story.test over stories/bugfix/flows and
-// asserts every fixture passes with no LLM — the same result `kitsoki test
-// flows stories/bugfix/app.yaml` produces (48/48 at time of writing).
+	var got studio.StoryGraphOK
+	callStory(ctx, t, cs, "story.graph", map[string]any{"graph": true}, &got)
+	assert.Equal(t, "graph", got.Mode)
+	require.NotNil(t, got.Graph)
+	assert.Equal(t, graph.SchemaV1, got.Graph.Schema)
+	assert.Equal(t, "room-state-machine", got.Graph.Kind)
+	assert.True(t, got.Graph.Directed)
+	assert.NotEmpty(t, got.Graph.Nodes)
+	assert.NotEmpty(t, got.Graph.Edges)
+
+	var hasIdle, hasDone, hasForwardEdge bool
+	for _, n := range got.Graph.Nodes {
+		if n.ID == "state:idle" {
+			hasIdle = true
+		}
+		if n.ID == "state:done" {
+			hasDone = true
+		}
+	}
+	for _, e := range got.Graph.Edges {
+		if e.Source == "state:idle" && e.Target != "" && e.Label != "" {
+			hasForwardEdge = true
+		}
+	}
+	assert.True(t, hasIdle, "entry room node present")
+	assert.True(t, hasDone, "terminal room node present")
+	assert.True(t, hasForwardEdge, "entry room has at least one labelled outgoing edge")
+}
+
+// ─── 2.4 test: RunFlows over a fixture reproduces `kitsoki test flows` ──────
+
+// TestStoryTestReproducesFlows runs story.test over one concrete flow fixture
+// and asserts it passes with no LLM. The full all-story replay remains owned by
+// scripts/run-tests.sh; this unit test only proves the MCP tool is wired through
+// to the flow runner and returns structured per-fixture results.
 func TestStoryTestReproducesFlows(t *testing.T) {
 	ctx := context.Background()
-	cs := newStudioWithWorkspace(ctx, t, bugfixDir(t))
+	dir := filepath.Join(repoRoot(t), "stories", "inbox-demo")
+	cs := newStudioWithWorkspace(ctx, t, dir)
 
 	var got studio.StoryTestOK
-	callStory(ctx, t, cs, "story.test", nil, &got)
-	assert.True(t, got.OK, "all bugfix flows should pass; failed=%d", got.Failed)
+	callStory(ctx, t, cs, "story.test", map[string]any{
+		"flows": filepath.Join(dir, "flows", "background_notifies.yaml"),
+	}, &got)
+	assert.True(t, got.OK, "inbox demo flow should pass; failed=%d", got.Failed)
+	assert.Equal(t, 1, got.Passed)
 	assert.Equal(t, 0, got.Failed, "no flow failures")
-	assert.Greater(t, got.Passed, 0, "fixtures ran")
 	require.NotEmpty(t, got.Results, "per-fixture results present")
 	for _, r := range got.Results {
 		assert.True(t, r.Passed || r.Skipped, "fixture %s passed or skipped; failure_count=%d failures=%v", r.File, r.FailureCount, r.Failures)
 	}
+}
+
+func TestStoryTestResolvesRelativeFlowPathsAgainstStoryDir(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join(repoRoot(t), "stories", "inbox-demo")
+	cs := newStudioWithWorkspace(ctx, t, dir)
+
+	var got studio.StoryTestOK
+	callStory(ctx, t, cs, "story.test", map[string]any{
+		"flows": "flows/background_notifies.yaml",
+	}, &got)
+	assert.True(t, got.OK, "relative flow path should resolve against story dir; failed=%d", got.Failed)
+	assert.Equal(t, 1, got.Passed)
+	assert.Equal(t, 0, got.Failed)
+}
+
+func TestStoryTestResolvesRelativeFlowGlobsAgainstStoryDir(t *testing.T) {
+	ctx := context.Background()
+	dir := filepath.Join(repoRoot(t), "stories", "inbox-demo")
+	cs := newStudioWithWorkspace(ctx, t, dir)
+
+	var got studio.StoryTestOK
+	callStory(ctx, t, cs, "story.test", map[string]any{
+		"flows": "flows/background_*.yaml",
+	}, &got)
+	assert.True(t, got.OK, "relative flow glob should resolve against story dir; failed=%d", got.Failed)
+	assert.GreaterOrEqual(t, got.Passed, 1)
+	assert.Equal(t, 0, got.Failed)
 }
 
 func TestStoryTestExposesCLIFlowOptions(t *testing.T) {
@@ -429,6 +512,8 @@ states:
 	callStory(ctx, t, cs, "story.write", map[string]any{"path": "app.yaml", "content": badYAML}, &wrote)
 	assert.True(t, wrote.OK, "the write itself succeeded")
 	assert.Equal(t, "app.yaml", wrote.Written)
+	assert.True(t, wrote.Validated, "story package writes should auto-validate")
+	require.NotNil(t, wrote.Validation, "validation result returned for story package writes")
 	assert.False(t, wrote.Validation.OK, "the written story is invalid")
 	require.NotEmpty(t, wrote.Validation.Errors, "validation errors returned in the write round-trip")
 	joined := ""
@@ -436,6 +521,38 @@ states:
 		joined += e.Message + "\n"
 	}
 	assert.Contains(t, joined, "undeclared_intent")
+}
+
+func TestStoryWriteSkipsValidationForPlainWorkspace(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	cs := newStudioWithWorkspace(ctx, t, dir)
+
+	var wrote studio.StoryWriteOK
+	callStory(ctx, t, cs, "story.write", map[string]any{
+		"path":    filepath.Join(".context", "note.md"),
+		"content": "# Note\n\nPlain workspace file.\n",
+	}, &wrote)
+	assert.True(t, wrote.OK)
+	assert.Equal(t, filepath.Join(".context", "note.md"), wrote.Written)
+	assert.False(t, wrote.Validated, "plain workspace writes should not try to load <workspace>/app.yaml")
+	assert.Nil(t, wrote.Validation)
+	assert.FileExists(t, filepath.Join(dir, ".context", "note.md"))
+
+	forceValidate := true
+	res, err := callTool(ctx, cs, "story.write", map[string]any{
+		"path":     filepath.Join(".context", "force.md"),
+		"content":  "# Force\n",
+		"validate": forceValidate,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "forced validation returns structured validation data, not a tool error: %s", contentText(res))
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &wrote))
+	assert.True(t, wrote.Validated)
+	require.NotNil(t, wrote.Validation)
+	assert.False(t, wrote.Validation.OK)
+	require.NotEmpty(t, wrote.Validation.Errors)
+	assert.Contains(t, wrote.Validation.Errors[0].Message, "app.yaml")
 }
 
 // ─── no-workspace guard ───────────────────────────────────────────────────────

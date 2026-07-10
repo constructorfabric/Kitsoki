@@ -17,7 +17,7 @@ turns:
   - intent: { name: look, slots: {} }
     expect_state: landing
 
-  # `go_main` is the re-homed "home" arc — it now self-targets the workbench
+  # `go_main` is the re-homed "home" arc - it now loops back to the workbench
   # floor (landing), not the retained `main` catalog.
   - intent: { name: go_main, slots: {} }
     expect_state: landing

@@ -1,0 +1,70 @@
+# never_silent_bounce_autostart_masking — failure class: on_error bounce whose
+# diagnostic is MASKED by a follow-on auto-transition (the "near-silent"
+# shape: the error is recorded, but the operator lands somewhere else doing
+# something else).
+#
+# Same sync failure as never_silent_sync_error_bounce, but in a session where
+# idle's autostart chain has NOT yet pinned bf_autostart_attempted (a
+# headless drive that seeded workspace identity directly). The `on_error:
+# idle` bounce re-enters idle, whose on_enter sees the flag unset and
+# re-fires the autostart `start` emit — so the session lands in REPRODUCING,
+# not parked idle. This fixture pins the CURRENT surfaced contract for that
+# walk:
+#   - the bounce is not lost: world.last_error still carries the sync error,
+#   - the re-entry pins bf_autostart_attempted so the session cannot loop
+#     (idle → fail → idle → start → …) — the pre-2026-05-18 regression
+#     called out in rooms/idle.yaml.
+# The rendered view is the reproducing room (the restart is deliberate
+# self-healing), so no banner assertion here — the durable diagnostic lives
+# in last_error. If S2's near-miss work later tightens this to a visible
+# per-view surface, extend the assertion rather than deleting it.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: proposing
+initial_world:
+  ticket_id:      "TKT-904"
+  thread:         "TKT-904"
+  judge_mode:     "human"
+  workspace_id:   "bf-TKT-904"
+  feature_branch: "fix/TKT-904"
+  workdir:        ".worktrees/bf-TKT-904"
+  # bf_autostart_attempted deliberately unset — the masking precondition.
+  propose_fix_artifact:
+    summary_title:    "Stub proposal"
+    summary_markdown: "stub"
+    affected_files:   ["x.go"]
+    confidence:       0.9
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    by_op:
+      create:
+        data: { ok: true, log: "reused existing worktree" }
+      sync:
+        error: "host.git_worktree: sync: worktree dir .worktrees/bf-TKT-904 is missing"
+  host.git:
+    data: { ok: true, sha: "abc", diff: "" }
+  host.local:
+    data: { ok: true, log: "PASS", passed: 1, failed: 0 }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title: "stub"
+
+turns:
+  # accept → implementing → sync fails → on_error: idle → idle.on_enter
+  # autostart re-fires `start` → reproducing. The diagnostic survives in
+  # last_error and the loop-breaker flag is pinned.
+  - intent: { name: accept, slots: {} }
+    expect_state: reproducing
+    expect_world:
+      last_error: "host.git_worktree: sync: worktree dir .worktrees/bf-TKT-904 is missing"
+      bf_autostart_attempted: true
+
+expect_terminal: false

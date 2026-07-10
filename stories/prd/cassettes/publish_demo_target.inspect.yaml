@@ -1,0 +1,20 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/prd/example-cli/004-prd.md
+    out: "true"
+  - op: read
+    target: .artifacts/prd/example-cli/004-prd.md
+    out: |
+      ## PRD: Example CLI
+
+      A sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics.
+  - op: exists
+    target: .artifacts/prd-demo/example-cli.md
+    out: "false"
+  - op: write
+    target: .artifacts/prd-demo/example-cli.md
+    out: |
+      ## PRD: Example CLI
+
+      A sufficiently long summary body to satisfy the schema minimum length for the prd_artifact summary_markdown field, covering problem, users, goals, and metrics.

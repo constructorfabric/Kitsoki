@@ -4,18 +4,21 @@
 > features as **GitHub Issues** on
 > [`constructorfabric/Kitsoki`](https://github.com/constructorfabric/Kitsoki/issues).
 > These files are kept for reference and git history; nothing should file new
-> tickets here. New bugs come from `kitsoki bug create --github` / the web
-> Report-bug modal, new features from the design pipeline, and the existing pile
-> migrates with `kitsoki issues migrate`. See [DEPRECATED.md](./DEPRECATED.md).
+> tickets here. Developer-local bug loops write `.artifacts/issues/bugs/`;
+> remote handoffs come from `kitsoki bug create --github` / the web Report-bug
+> modal with `--ticket-repo`, new features from the design pipeline, and the
+> existing pile migrates with `kitsoki issues migrate`. See
+> [DEPRECATED.md](./DEPRECATED.md).
 
 This directory **was** kitsoki's own bug + feature backlog, on disk, in
 plain Markdown. Each file is a YAML-frontmatter-headed `.md` per the
 bug format documented inline below (and in
 [`docs/stories/bugs.md`](../docs/stories/bugs.md)).
 
-Historically the dogfood app (`.kitsoki/stories/kitsoki-dev/`) read this directory via
-`host.local_files.ticket`; once the GitHub cutover lands it binds
-`host.gh.ticket` instead.
+Historically the dogfood app (`.kitsoki/stories/kitsoki-dev/`) read this
+directory via `host.local_files.ticket`. Current local dogfood still uses the
+local-files provider, but points it at `.artifacts/issues/bugs/`; GitHub is a
+remote handoff option, not the local developer default.
 
 ## Layout
 

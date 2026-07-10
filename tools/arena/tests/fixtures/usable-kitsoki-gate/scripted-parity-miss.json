@@ -1,0 +1,426 @@
+{
+  "$description": "Identical to clean-pass.json except 3 of mcp's 10 scenarios have candidate_completed=false (mcp parity = 70%); web and tui stay 100%. The flat aggregate across all 30 records is 27/30 = 90.0%, which would PASS a naive average-based check -- this fixture exists specifically to prove the rollup gates on the WORST surface (min across surfaces, usable_kitsoki_gate_constants.WORST_SURFACE_GATING), not the average, since only the per-surface reduction (mcp=70%) correctly fails it. Zero silent_bounce, zero misroute_adjacent -- isolates the parity_at_or_above_threshold gate condition.",
+  "run_id": "scripted-parity-miss",
+  "records": [
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-001",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-001/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-002",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-002/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-003",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-003/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-004",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-004/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-005",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-005/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-006",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-006/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-007",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-007/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-008",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-008/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-009",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-009/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-web-010",
+      "persona": "core-maintainer",
+      "surface": "web",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-web-010/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-001",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-001/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-002",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-002/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-003",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-003/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-004",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-004/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-005",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-005/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-006",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-006/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-007",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-007/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-008",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-008/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-009",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-009/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-tui-010",
+      "persona": "core-maintainer",
+      "surface": "tui",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-tui-010/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-001",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": false,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-001/trace.jsonl"
+      ],
+      "notes": "golden regression fixture: scripted parity miss (candidate did not complete)"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-002",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": false,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-002/trace.jsonl"
+      ],
+      "notes": "golden regression fixture: scripted parity miss (candidate did not complete)"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-003",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": false,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-003/trace.jsonl"
+      ],
+      "notes": "golden regression fixture: scripted parity miss (candidate did not complete)"
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-004",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-004/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-005",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-005/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-006",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-006/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-007",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-007/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-008",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-008/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-009",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-009/trace.jsonl"
+      ],
+      "notes": ""
+    },
+    {
+      "schema_version": "1.0.0",
+      "scenario_id": "scn-mcp-010",
+      "persona": "core-maintainer",
+      "surface": "mcp",
+      "source_completed": true,
+      "candidate_completed": true,
+      "silent_bounce": false,
+      "misroute_adjacent": false,
+      "evidence_refs": [
+        ".artifacts/usable-kitsoki-gate/golden/scn-mcp-010/trace.jsonl"
+      ],
+      "notes": ""
+    }
+  ]
+}

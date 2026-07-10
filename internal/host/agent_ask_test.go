@@ -4,7 +4,7 @@ package host_test
 //
 // Coverage:
 //   - Verb contract: prompt_path required; prompt alias accepted.
-//   - Tool surface: mutation tools (Edit, Write) rejected at handler level.
+//   - Tool surface: mutation tools (Edit, Write) hard-denied by toolbox policy.
 //   - Bash gate: Bash in tools without bash_profile is rejected.
 //   - Bash profile enforcement: read-only profile blocks rm; commands profile
 //     blocks unlisted argv0; sandboxed-write allows any command.
@@ -78,20 +78,25 @@ func TestAgentAsk_AgentOptional(t *testing.T) {
 	}
 }
 
-// ── Tool surface safety net ───────────────────────────────────────────────────
+// ── Tool surface enforcement ──────────────────────────────────────────────────
 
-func TestAgentAsk_RejectsMutationTool_Edit(t *testing.T) {
+func TestAgentAsk_HardDeniesMutationTool_Edit(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "p.md")
 	if err := os.WriteFile(p, []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
+	var captured []string
+	runner := host.FakeAsk("ok")
 	ctx := host.WithClaudeRunner(
 		host.WithAgents(context.Background(), map[string]host.Agent{
 			"mutator": {Tools: []string{"Read", "Edit"}},
 		}),
-		host.FakeAsk("should not reach"),
+		func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+			captured = append([]string(nil), args...)
+			return runner(ctx, args, stdin, workingDir)
+		},
 	)
 	res, err := host.AgentAskHandler(ctx, map[string]any{
 		"prompt_path": p,
@@ -100,23 +105,32 @@ func TestAgentAsk_RejectsMutationTool_Edit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
-	if !strings.Contains(res.Error, "Edit") || !strings.Contains(res.Error, "not permitted") {
-		t.Fatalf("expected Edit rejection, got %q", res.Error)
+	if res.Error != "" {
+		t.Fatalf("unexpected handler error: %q", res.Error)
+	}
+	denied, ok := hostTestFlagValue(captured, "--disallowedTools")
+	if !ok || !strings.Contains(denied, "Edit") {
+		t.Fatalf("expected Edit in --disallowedTools, got args=%v", captured)
 	}
 }
 
-func TestAgentAsk_RejectsMutationTool_Write(t *testing.T) {
+func TestAgentAsk_HardDeniesMutationTool_Write(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "p.md")
 	if err := os.WriteFile(p, []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
+	var captured []string
+	runner := host.FakeAsk("ok")
 	ctx := host.WithClaudeRunner(
 		host.WithAgents(context.Background(), map[string]host.Agent{
 			"mutator": {Tools: []string{"Write"}},
 		}),
-		host.FakeAsk("should not reach"),
+		func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+			captured = append([]string(nil), args...)
+			return runner(ctx, args, stdin, workingDir)
+		},
 	)
 	res, err := host.AgentAskHandler(ctx, map[string]any{
 		"prompt_path": p,
@@ -125,19 +139,28 @@ func TestAgentAsk_RejectsMutationTool_Write(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
-	if !strings.Contains(res.Error, "Write") || !strings.Contains(res.Error, "not permitted") {
-		t.Fatalf("expected Write rejection, got %q", res.Error)
+	if res.Error != "" {
+		t.Fatalf("unexpected handler error: %q", res.Error)
+	}
+	denied, ok := hostTestFlagValue(captured, "--disallowedTools")
+	if !ok || !strings.Contains(denied, "Write") {
+		t.Fatalf("expected Write in --disallowedTools, got args=%v", captured)
 	}
 }
 
-func TestAgentAsk_PerCallTools_RejectsMutation(t *testing.T) {
+func TestAgentAsk_PerCallTools_HardDeniesMutation(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	p := filepath.Join(dir, "p.md")
 	if err := os.WriteFile(p, []byte("hello"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	ctx := host.WithClaudeRunner(context.Background(), host.FakeAsk("nope"))
+	var captured []string
+	runner := host.FakeAsk("ok")
+	ctx := host.WithClaudeRunner(context.Background(), func(ctx context.Context, args []string, stdin, workingDir string) (host.ClaudeRun, error) {
+		captured = append([]string(nil), args...)
+		return runner(ctx, args, stdin, workingDir)
+	})
 	res, err := host.AgentAskHandler(ctx, map[string]any{
 		"prompt_path": p,
 		"tools":       []any{"Read", "Edit"},
@@ -145,8 +168,12 @@ func TestAgentAsk_PerCallTools_RejectsMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected Go error: %v", err)
 	}
-	if !strings.Contains(res.Error, "Edit") {
-		t.Fatalf("expected Edit rejection via per-call tools, got %q", res.Error)
+	if res.Error != "" {
+		t.Fatalf("unexpected handler error: %q", res.Error)
+	}
+	denied, ok := hostTestFlagValue(captured, "--disallowedTools")
+	if !ok || !strings.Contains(denied, "Edit") {
+		t.Fatalf("expected Edit in --disallowedTools, got args=%v", captured)
 	}
 }
 
@@ -587,4 +614,80 @@ func TestAgentStreamer_CLIArgs_PanicsOnPositionalArgInTests(t *testing.T) {
 	}
 	// Should panic because "POSITIONAL" follows a flag value, not a flag name.
 	_, _, _ = streamer.Run(context.Background())
+}
+
+func TestAgentStreamer_MCPAllowedToolsPreauthorizedViaSettings(t *testing.T) {
+	t.Parallel()
+	var captured []string
+	stub := func(_ context.Context, args []string, _, _ string) (host.ClaudeRun, error) {
+		captured = append([]string(nil), args...)
+		return host.ClaudeRun{Stdout: `{"type":"result","subtype":"success","result":"ok"}`}, nil
+	}
+	ctx := host.WithClaudeRunner(context.Background(), stub)
+
+	_, _, err := host.AgentStreamerRunExport(ctx, "stub://claude", []string{
+		"-p",
+		"--permission-mode", "bypassPermissions",
+		"--allowedTools", "Read,mcp__validator__submit,mcp__kitsoki__session_status",
+	}, "prompt", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	settingsJSON, ok := hostTestFlagValue(captured, "--settings")
+	if !ok {
+		t.Fatalf("--settings not passed for MCP allowlist; args=%v", captured)
+	}
+	var settings struct {
+		Permissions struct {
+			Allow []string `json:"allow"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal([]byte(settingsJSON), &settings); err != nil {
+		t.Fatalf("settings JSON did not parse: %v\n%s", err, settingsJSON)
+	}
+	got := strings.Join(settings.Permissions.Allow, ",")
+	for _, want := range []string{"mcp__validator__submit", "mcp__kitsoki__session_status"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("settings permissions.allow = %v, missing %s", settings.Permissions.Allow, want)
+		}
+	}
+	if strings.Contains(got, "Read") {
+		t.Fatalf("settings permissions.allow should only preauthorize MCP tools, got %v", settings.Permissions.Allow)
+	}
+}
+
+func TestAgentStreamer_NoSettingsOverlayWithoutMCPAllowedTools(t *testing.T) {
+	t.Parallel()
+	var captured []string
+	stub := func(_ context.Context, args []string, _, _ string) (host.ClaudeRun, error) {
+		captured = append([]string(nil), args...)
+		return host.ClaudeRun{Stdout: `{"type":"result","subtype":"success","result":"ok"}`}, nil
+	}
+	ctx := host.WithClaudeRunner(context.Background(), stub)
+
+	_, _, err := host.AgentStreamerRunExport(ctx, "stub://claude", []string{
+		"-p",
+		"--permission-mode", "default",
+		"--allowedTools", "Read,Grep,Glob",
+	}, "prompt", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := hostTestFlagValue(captured, "--settings"); ok {
+		t.Fatalf("--settings should not be passed without MCP tools; args=%v", captured)
+	}
+}
+
+func hostTestFlagValue(args []string, flag string) (string, bool) {
+	var values []string
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			values = append(values, args[i+1])
+		}
+	}
+	if len(values) == 0 {
+		return "", false
+	}
+	return strings.Join(values, ","), true
 }

@@ -27,6 +27,8 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
   host.git:
     data:
       ok:       true
@@ -108,36 +110,23 @@ host_handlers:
         reason:     "Stub."
 
 turns:
-  # main → go_implementation → impl.idle (the impl compound's entry).
+  # main → go_implementation → impl.review_task_awaiting_reply. impl.idle auto-starts
+  # when a ticket is already projected.
   # world_in: projects parent ticket_id / workdir / feature_branch /
   # judge_mode / judge_confidence_threshold / merge_strategy into
   # impl__<key>.
   - intent: { name: go_implementation, slots: {} }
-    expect_state: impl.idle
+    expect_state: impl.review_task_awaiting_reply
     expect_world:
       impl__ticket_id:    "TKT-T-100"
       impl__workdir:      ".worktrees/tkt-t-100"
       impl__judge_mode:   "human"
 
-  # impl__start fires the bare `start` arc inside the impl child.
-  # The child's intents are prefixed (impl__start) because the
-  # parent's `start` was lifted by the bf import — no double lift.
-  - intent: { name: impl__start, slots: {} }
-    expect_state: impl.review_task_executing
-
-  - intent: { name: impl__proceed, slots: {} }
-    expect_state: impl.review_task_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
-    expect_state: impl.write_code_executing
-  - intent: { name: impl__proceed, slots: {} }
     expect_state: impl.write_code_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
-    expect_state: impl.test_executing
-  - intent: { name: impl__proceed, slots: {} }
     expect_state: impl.test_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
-    expect_state: impl.review_executing
-  - intent: { name: impl__proceed, slots: {} }
     expect_state: impl.review_awaiting_reply
 
   # accept on impl.review_awaiting_reply → impl.handoff. The arc

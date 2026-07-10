@@ -17,8 +17,8 @@
 # WriteModeGranted event) is exercised end-to-end without an LLM by the unit
 # table in internal/host/write_mode_gate_test.go — a flow fixture stubs the
 # whole host.agent.task subprocess, so the in-subprocess gate cannot fire here
-# (per AGENTS.md the live agent doing real mutating work is a dogfood-only,
-# gated step, never CI).
+# (per AGENTS.md the live agent doing real mutating work is a live-only gated
+# step, never CI).
 
 test_kind: flow
 app: ../app.yaml
@@ -40,8 +40,8 @@ host_handlers:
 turns:
   # The operator describes a mutating piece of work. `work` captures the
   # request, clears the prior note to re-arm the on_enter agent task, and
-  # self-targets so the landing_agent dispatches on the fresh request.
-  - intent: { name: work, slots: { request: "edit the off-ramp guard so an empty utterance never off-ramps, and add a test" } }
+  # loops back so the landing_agent dispatches on the fresh request.
+  - intent: { name: landing_capture, slots: { request: "edit the off-ramp guard so an empty utterance never off-ramps, and add a test" } }
     expect_state: landing
     expect_world:
       landing_request: "edit the off-ramp guard so an empty utterance never off-ramps, and add a test"

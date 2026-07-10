@@ -1,0 +1,88 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: intake
+initial_world:
+  session_id: flowsess
+  base_branch: main
+  judge_mode: llm
+  auto_triage: false
+
+host_handlers:
+  host.git_worktree:
+    data: { ok: true, path: ".worktrees/bf-bug-flowsess-flowsess", log: "" }
+  host.git:
+    data:
+      ok: true
+      sha: "abc123"
+      diff: ""
+      branch: "fix/bug-flowsess-flowsess"
+  host.local:
+    data: { ok: true, state: "success", log: "PASS", passed: 1, failed: 0 }
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title: "Stub accepted"
+        summary_markdown: "Stub artifact accepted."
+        confidence: 0.95
+        verdict: accept
+        intent: accept
+        reason: "Confident."
+        outcome: pass
+        status: passed
+    by_call:
+      classify_idea:
+        data:
+          ok: true
+          submitted:
+            route: bug
+            confidence: 0.93
+            reason: "The idea describes an existing broken behavior."
+            questions: []
+            title: "List disappears after adding a second note"
+            body: "When a second note is added, the note list disappears. Expected both notes to remain visible."
+            ticket_id: "bug-flowsess"
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title: "Note list disappears"
+        summary_markdown: "Stub bugfix artifact body."
+        bug_verified: true
+        fix_description: "Replace in-place mutation with immutable update."
+        root_cause: "Array identity was reused."
+        affected_files: ["frontend/src/NotesList.tsx"]
+        confidence: 0.95
+        status: passed
+        outcome: pass
+        tests_added: ["frontend/src/NotesList.test.tsx"]
+        tests_run: { passed: 1, failed: 0, log: "PASS" }
+  host.agent.ask:
+    data:
+      ok: true
+      submitted:
+        summary_title: "Fix proposal"
+        summary_markdown: "Use immutable update."
+        fix_description: "Replace in-place mutation with immutable update."
+        root_cause: "Array identity was reused."
+        affected_files: ["frontend/src/NotesList.tsx"]
+
+turns:
+  - intent:
+      name: implement
+      slots:
+        idea: "The note list disappears after I add a second note; both notes should stay visible."
+    expect_state: bf.implementing
+    expect_world:
+      status: running
+      bf__ticket_id: "bug-flowsess"
+      bf__ticket_body: "When a second note is added, the note list disappears. Expected both notes to remain visible."
+      bf__judge_mode: llm
+
+expect_operation_policy: bf__bugfix_full
+expect_operation_status: running
+expect_no_errors: true

@@ -6,15 +6,32 @@ import type { ViewElement } from "../types.js";
 import { createDataSource } from "../data/source.js";
 import type { AnnotationAnchor, MediaKind } from "../lib/annotationAnchor.js";
 import { serializeAnchor } from "../lib/annotationAnchor.js";
+import { renderMarkdownDocument } from "../lib/markdown.js";
 import MarkdownModal from "./MarkdownModal.vue";
+import DiffModal from "./DiffModal.vue";
 import ArtifactAnnotator from "./ArtifactAnnotator.vue";
 import { useRunStore } from "../stores/run.js";
+import { getActivePinia } from "pinia";
 
 // The live-run store owns the conversation transcript + turn streaming. Routing
 // an annotation dispatch through it (rather than calling the data source
 // directly) makes the annotation appear as a normal user message in the main
 // chat and streams the agent's edit + re-render back as the reply.
-const _run = useRunStore();
+const _run = getActivePinia()
+  ? useRunStore()
+  : {
+      embedScope: "",
+      embedStep: "",
+      embedLabel: "",
+      setEmbedView: (_view: { scope: string; step?: string; label?: string }) => {},
+      submitIntent: async (
+        _source: unknown,
+        _sessionId: string,
+        _intent: string,
+        _slots: Record<string, unknown>,
+        _displayLabel?: string,
+      ) => {},
+    };
 
 // Track which place the embedded artifact (e.g. the live deck) reports it is
 // showing, via the generic `embed:view` postMessage protocol. The latest scope
@@ -58,9 +75,12 @@ const _ds = createDataSource();
 function artifactUrl(handle: string): string {
   return _ds.artifactUrl(handle);
 }
+function artifactPosterUrl(handle: string): string {
+  return _ds.artifactPosterUrl?.(handle) ?? "";
+}
 
 function withQuery(url: string, params: Record<string, string>): string {
-  const entries = Object.entries(params).filter(([, v]) => v !== "");
+  const entries = Object.entries(params).filter(([, v]) => typeof v === "string" && v !== "");
   if (entries.length === 0) return url;
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}${entries
@@ -68,7 +88,13 @@ function withQuery(url: string, params: Record<string, string>): string {
     .join("&")}`;
 }
 
-const props = defineProps<{ element: ViewElement }>();
+const props = withDefaults(
+  defineProps<{
+    element: ViewElement;
+    showPin?: boolean;
+  }>(),
+  { showPin: true },
+);
 
 const el = computed(() => props.element);
 
@@ -88,6 +114,7 @@ const KIND_MIME: Record<string, string> = {
 };
 const mediaHandle = computed<string>(() => el.value.Handle ?? el.value.MediaHandle ?? "");
 const mediaCaption = computed<string>(() => el.value.Caption ?? el.value.MediaCaption ?? "");
+const mediaTitle = computed<string>(() => mediaCaption.value || mediaHandle.value || "Media artifact");
 // "Open in review" affordance: when a video renders inside a live session view,
 // link to the /review feedback surface for that handle. Absent off-session
 // (snapshot / artifact mode) where there is no sessionId to scrub against.
@@ -107,11 +134,14 @@ const mediaMime = computed<string>(() => {
   // which player branch renders; /artifact/{id} sets the real Content-Type.
   return "video/mp4";
 });
+const mediaPosterUrl = computed<string>(() => {
+  return mediaHandle.value ? artifactPosterUrl(mediaHandle.value) : "";
+});
 
 // A `slideshow` media kind is a multi-scene deck (e.g. a slidey deck rendered to
-// a self-contained HTML file). Inline display embeds the static HTML deck; when
-// annotation is opened and a semantic sidecar exists, the annotator switches to
-// the slidey poster+overlay substrate.
+// a self-contained HTML file). Inline display embeds the static HTML deck;
+// annotation uses the live embed substrate so the producer can report exact
+// semantic picks.
 const isSlideshow = computed<boolean>(
   () => (el.value.MediaKind ?? "").toLowerCase() === "slideshow"
 );
@@ -152,9 +182,9 @@ const slideshowUrl = computed<string>(() =>
 
 /** The engine's MediaKind ("video"|"image"|"html"|"slideshow"|"pdf") maps onto
  *  the annotator's MediaKind union. pdf is intentionally absent — a pdf is not
- *  annotatable, so `mediaAnnotatable` gates it out before this is consulted. A
- *  sidecar-bearing artifact is promoted to "slidey" at annotate-open time (see
- *  openAnnotate) so the deck gets the SemanticOverlay. */
+ *  annotatable, so `mediaAnnotatable` gates it out before this is consulted.
+ *  Sidecar-bearing DOM/image artifacts stay on their native substrate; video
+ *  artifacts use the poster-backed semantic overlay path. */
 const ENGINE_MEDIA_KIND: Record<string, MediaKind> = {
   video: "mp4",
   image: "png",
@@ -182,8 +212,8 @@ const mediaAnnotatable = computed<boolean>(() => {
 });
 
 const annotateOpen = ref(false);
-/** The MediaKind the annotator renders with once opened (slidey-promoted when a
- *  semantic sidecar exists for this handle). Null until openAnnotate resolves. */
+/** The MediaKind the annotator renders with once opened. Null until
+ *  openAnnotate resolves. */
 const annotateKind = ref<MediaKind | null>(null);
 const annotateBusy = ref(false);
 const annotateSent = ref<string | null>(null);
@@ -219,10 +249,10 @@ function anchorKey(anchor: AnnotationAnchor): string {
 /** Per-spot parked instruction drafts (keyed by anchorKey). */
 const drafts = ref<Record<string, string>>({});
 
-/** Open the annotator. Probe the semantic sidecar ONCE: a non-null map means the
- *  media (even an mp4 deck) carries producer-declared elements, so render with
- *  the slidey path (poster backdrop + SemanticOverlay) regardless of the base
- *  artifact's MIME. Otherwise use the engine-kind / MIME-mapped kind. */
+/** Open the annotator. Probe the semantic sidecar ONCE. DOM/image artifacts keep
+ *  their native substrate and render semantic markers there; time-based media
+ *  with a sidecar uses the existing poster overlay path because the video pixels
+ *  are not directly addressable. */
 async function openAnnotate(): Promise<void> {
   annotateError.value = null;
   annotateSent.value = null;
@@ -239,7 +269,7 @@ async function openAnnotate(): Promise<void> {
     try {
       if (_ds.semanticMap) {
         const env = await _ds.semanticMap(_sessionId.value, mediaHandle.value);
-        if (env && env.elements.length > 0) kind = "slidey";
+        if (env && env.elements.length > 0 && kind === "mp4") kind = "slidey";
       }
     } catch {
       /* no sidecar / probe failed — keep the MIME-mapped kind */
@@ -254,6 +284,19 @@ function shouldAutoOpenAnnotate(): boolean {
   const raw = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("visual_annotate");
   if (!raw) return false;
   return raw === "1" || raw === "true" || raw === mediaHandle.value;
+}
+
+function pinMedia(): void {
+  if (!mediaHandle.value) return;
+  window.dispatchEvent(
+    new CustomEvent("kitsoki:pin-media", {
+      detail: {
+        handle: mediaHandle.value,
+        title: mediaTitle.value,
+        kind: el.value.MediaKind || mediaMime.value,
+      },
+    }),
+  );
 }
 
 async function maybeAutoOpenAnnotate(): Promise<void> {
@@ -449,30 +492,98 @@ function segments(para: string): Seg[] {
 
 const items = computed(() => el.value.Items ?? []);
 const pairs = computed(() => el.value.Pairs ?? []);
+const renderedTemplateMarkdown = computed(() =>
+  renderMarkdownDocument(el.value.Source ?? "")
+);
 
 /** Path currently open in the markdown modal (null = closed). */
 const openedPath = ref<string | null>(null);
+/** Path currently open in the diff modal (null = closed). */
+const openedDiffPath = ref<string | null>(null);
 
 function isMarkdownPath(value: string): boolean {
   return /\S+\.md$/.test(value.trim());
 }
 
+function isDiffPath(value: string): boolean {
+  return /\S+\.(diff|patch)$/.test(value.trim());
+}
+
+interface KVInlineLink {
+  label: string;
+  target: string;
+}
+
+function kvInlineLink(value: string): KVInlineLink | null {
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed !== value || trimmed.includes("\n")) return null;
+  const markdown = /^\[([^\]\n]+)\]\(([^)\s]+)\)$/.exec(trimmed);
+  if (markdown) {
+    const label = markdown[1].trim();
+    const target = markdown[2].trim();
+    if (label !== "" && target !== "") return { label, target };
+    return null;
+  }
+  if (/^https?:\/\/[^\s]+$/i.test(trimmed)) {
+    return { label: trimmed, target: trimmed };
+  }
+  return null;
+}
+
+function kvInlineLinkRel(target: string): string | undefined {
+  return /^https?:\/\//i.test(target) ? "noopener noreferrer" : undefined;
+}
+
+function kvInlineLinkTarget(target: string): string | undefined {
+  return /^https?:\/\//i.test(target) ? "_blank" : undefined;
+}
+
 /** A literal hex accent (#rgb / #rrggbb / #rrggbbaa) authored on the banner. */
 const HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const bannerSource = computed<string>(() => el.value.Source ?? "");
+const bannerSubtitle = computed<string>(() => el.value.Subtitle ?? "");
+const bannerText = computed<string>(() =>
+  `${bannerSource.value} ${bannerSubtitle.value} ${el.value.Marker ?? ""}`
+);
+const isWarningBanner = computed<boolean>(() => {
+  const c = (el.value.Color ?? "").toLowerCase();
+  if (c === "warn" || c === "warning" || c === "amber") return true;
+  return /\b(warn|warning|stale|changed|removed)\b/i.test(bannerText.value);
+});
+const isErrorBanner = computed<boolean>(() => {
+  const c = (el.value.Color ?? "").toLowerCase();
+  if (c === "error" || c === "danger" || c === "red") return true;
+  return /\b(error|failed|failure)\b/i.test(bannerText.value);
+});
 const bannerHex = computed<string>(() => {
+  // Warning/error semantics win over authored phase colour: a warning that was
+  // coloured blue must still read as a warning in the browser.
+  if (isWarningBanner.value || isErrorBanner.value) return "";
   const c = (el.value.Color ?? "").trim();
   return HEX_RE.test(c) ? c : "";
 });
+const bannerMarkerText = computed<string>(() => {
+  if (el.value.Marker) return el.value.Marker;
+  if (isWarningBanner.value) return "⚠";
+  if (isErrorBanner.value) return "!";
+  return "";
+});
+const bannerSourceLines = computed<string[]>(() =>
+  bannerSource.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+);
+const bannerSubtitleLines = computed<string[]>(() =>
+  bannerSubtitle.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+);
 
 /** Banner color → CSS modifier class. Named tokens map to a semantic box; a
  * literal hex accent is honoured inline (see bannerStyle) so the web conveys
  * the same per-phase colour the TUI's coloured rule does — the hex is authored
  * in the trace, so rendering it is faithful, not a UI override. */
 const bannerClass = computed(() => {
-  if (bannerHex.value) return "banner--accent";
   const c = (el.value.Color ?? "").toLowerCase();
-  if (c === "error" || c === "danger" || c === "red") return "banner--error";
-  if (c === "warn" || c === "warning" || c === "amber") return "banner--warn";
+  if (isErrorBanner.value) return "banner--error";
+  if (isWarningBanner.value) return "banner--warn";
+  if (bannerHex.value) return "banner--accent";
   if (c === "success" || c === "ok" || c === "green") return "banner--success";
   if (c === "info" || c === "blue") return "banner--info";
   return "banner--neutral";
@@ -493,8 +604,8 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
 </script>
 
 <template>
-  <!-- prose / template: paragraphs with minimal inline-code rendering. -->
-  <template v-if="el.Kind === 'prose' || el.Kind === 'template'">
+  <!-- prose: paragraphs with minimal inline-code rendering. -->
+  <template v-if="el.Kind === 'prose'">
     <p v-for="(para, pi) in paragraphs" :key="pi" class="ve-prose">
       <template v-for="(seg, si) in segments(para)" :key="si">
         <code v-if="seg.kind === 'code'" class="ve-inline-code">{{ seg.text }}</code>
@@ -503,6 +614,13 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
       </template>
     </p>
   </template>
+
+  <div
+    v-else-if="el.Kind === 'template'"
+    class="ve-markdown"
+    data-testid="view-template-markdown"
+    v-html="renderedTemplateMarkdown"
+  ></div>
 
   <h3 v-else-if="el.Kind === 'heading'" class="ve-heading">{{ el.Source }}</h3>
 
@@ -519,10 +637,22 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
     <template v-for="(pair, pi) in pairs" :key="pi">
       <dt class="ve-kv-key">{{ pair.Key }}</dt>
       <dd class="ve-kv-value">
+        <a
+          v-if="kvInlineLink(pair.Value)"
+          class="ve-kv-inline-link"
+          :href="kvInlineLink(pair.Value)?.target"
+          :target="kvInlineLinkTarget(kvInlineLink(pair.Value)?.target ?? '')"
+          :rel="kvInlineLinkRel(kvInlineLink(pair.Value)?.target ?? '')"
+        >{{ kvInlineLink(pair.Value)?.label }}</a>
         <button
-          v-if="isMarkdownPath(pair.Value)"
+          v-else-if="isMarkdownPath(pair.Value)"
           class="ve-kv-file-link"
           @click="openedPath = pair.Value.trim()"
+        >{{ pair.Value }}</button>
+        <button
+          v-else-if="isDiffPath(pair.Value)"
+          class="ve-kv-file-link"
+          @click="openedDiffPath = pair.Value.trim()"
         >{{ pair.Value }}</button>
         <template v-else>{{ pair.Value }}</template>
       </dd>
@@ -534,6 +664,11 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
     :path="openedPath"
     @close="openedPath = null"
   />
+  <DiffModal
+    v-if="openedDiffPath !== null"
+    :path="openedDiffPath"
+    @close="openedDiffPath = null"
+  />
 
   <div
     v-else-if="el.Kind === 'banner'"
@@ -542,10 +677,20 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
     :style="bannerStyle"
     role="note"
   >
-    <span v-if="el.Marker" class="ve-banner-marker">{{ el.Marker }}</span>
+    <span v-if="bannerMarkerText" class="ve-banner-marker">{{ bannerMarkerText }}</span>
     <div class="ve-banner-body">
-      <div class="ve-banner-text">{{ el.Source }}</div>
-      <div v-if="el.Subtitle" class="ve-banner-subtitle">{{ el.Subtitle }}</div>
+      <div v-if="bannerSourceLines.length > 1" class="ve-banner-lines">
+        <div v-for="(line, i) in bannerSourceLines" :key="i" class="ve-banner-line">
+          {{ line }}
+        </div>
+      </div>
+      <div v-else class="ve-banner-text">{{ el.Source }}</div>
+      <div v-if="bannerSubtitleLines.length > 1" class="ve-banner-subtitle ve-banner-lines">
+        <div v-for="(line, i) in bannerSubtitleLines" :key="i" class="ve-banner-line">
+          {{ line }}
+        </div>
+      </div>
+      <div v-else-if="el.Subtitle" class="ve-banner-subtitle">{{ el.Subtitle }}</div>
     </div>
   </div>
 
@@ -553,6 +698,16 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
 
   <!-- media: dispatch on MIME family; fall back to a labeled download link. -->
   <div v-else-if="el.Kind === 'media'" class="ve-media" data-testid="media-element">
+    <div v-if="mediaHandle && showPin" class="ve-media-toolbar" data-testid="media-toolbar">
+      <span class="ve-media-title" :title="mediaTitle">{{ mediaTitle }}</span>
+      <button
+        type="button"
+        class="ve-media-pin"
+        data-testid="media-pin-workbench"
+        title="Pin this artifact beside the chat"
+        @click="pinMedia"
+      >Pin</button>
+    </div>
     <!-- While annotating, the ArtifactAnnotator below renders the annotatable
          substrate for this same handle; suppress the standalone player/iframe so
          the deck is embedded ONCE (not stacked as a second instance). -->
@@ -566,6 +721,7 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
         controls
         preload="metadata"
         :src="artifactUrl(mediaHandle)"
+        :poster="mediaPosterUrl || undefined"
       >
         <span class="ve-media-fallback">
           Your browser does not support video playback.
@@ -762,6 +918,7 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
 <style scoped>
 :host,
 .ve-prose,
+.ve-markdown,
 .ve-heading,
 .ve-list,
 .ve-kv,
@@ -781,6 +938,36 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
 .ve-prose:last-child {
   margin-bottom: 0;
 }
+
+.ve-markdown {
+  margin: 0 0 0.85em;
+  font-size: 15px;
+}
+
+.ve-markdown :deep(.md-h1) { font-size: 1.45em; font-weight: 700; margin: 0 0 0.55em; color: var(--k-paper-fg, #11151c); }
+.ve-markdown :deep(.md-h2) { font-size: 1.2em; font-weight: 650; margin: 1em 0 0.45em; color: var(--k-paper-fg, #11151c); border-bottom: 1px solid var(--k-paper-border, #e5e7eb); padding-bottom: 0.2em; }
+.ve-markdown :deep(.md-h3) { font-size: 1.05em; font-weight: 650; margin: 0.85em 0 0.35em; color: var(--k-paper-fg, #11151c); }
+.ve-markdown :deep(.md-h4),
+.ve-markdown :deep(.md-h5),
+.ve-markdown :deep(.md-h6) { font-size: 1em; font-weight: 650; margin: 0.75em 0 0.3em; color: var(--k-paper-fg, #1f2430); }
+.ve-markdown :deep(.md-p) { margin: 0 0 0.75em; line-height: 1.6; color: var(--k-paper-fg, #1f2430); }
+.ve-markdown :deep(.md-ul),
+.ve-markdown :deep(.md-ol) { margin: 0 0 0.75em; padding-left: 1.45em; line-height: 1.6; color: var(--k-paper-fg, #1f2430); }
+.ve-markdown :deep(.md-ul li),
+.ve-markdown :deep(.md-ol li) { margin: 0.25em 0; }
+.ve-markdown :deep(.md-blockquote) { margin: 0 0 0.75em; padding: 0.45em 0.85em; border-left: 4px solid var(--k-paper-border, #d1d5db); background: var(--k-bg-widget, #f9fafb); color: var(--k-fg-muted, #4a5160); }
+.ve-markdown :deep(.md-hr) { margin: 1em 0; border: none; border-top: 1px solid var(--k-paper-border, #e5e7eb); }
+.ve-markdown :deep(.md-pre) { margin: 0 0 0.75em; padding: 0.75em 0.9em; background: var(--k-bg-deep, #1b1f27); color: var(--k-fg, #e6e9ef); border-radius: 6px; overflow-x: auto; white-space: pre; font-size: 13px; line-height: 1.5; }
+.ve-markdown :deep(.md-pre code) { background: none; padding: 0; color: inherit; font-size: inherit; }
+.ve-markdown :deep(.md-table) { width: 100%; border-collapse: collapse; margin: 0 0 0.85em; font-size: 14px; line-height: 1.45; }
+.ve-markdown :deep(.md-table th),
+.ve-markdown :deep(.md-table td) { border: 1px solid var(--k-paper-border, #d1d5db); padding: 0.35em 0.55em; vertical-align: top; }
+.ve-markdown :deep(.md-table th) { background: var(--k-bg-widget, #f6f7f9); color: var(--k-paper-fg, #11151c); font-weight: 650; }
+.ve-markdown :deep(code) { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; background: var(--k-bg-input, #f0f1f4); border-radius: 4px; padding: 0.08em 0.35em; font-size: 0.9em; color: var(--k-fg-code, #b3306b); }
+.ve-markdown :deep(strong) { font-weight: 700; }
+.ve-markdown :deep(em) { font-style: italic; }
+.ve-markdown :deep(a) { color: var(--k-fg-accent, #1d4ed8); text-decoration: underline; }
+.ve-markdown :deep(a:hover) { color: #1e40af; }
 
 .ve-inline-code,
 .ve-code code {
@@ -860,7 +1047,8 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
   color: var(--k-paper-fg, #1f2430);
 }
 
-.ve-kv-file-link {
+.ve-kv-file-link,
+.ve-kv-inline-link {
   background: none;
   border: none;
   padding: 0;
@@ -873,7 +1061,8 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
   word-break: break-all;
   text-align: left;
 }
-.ve-kv-file-link:hover {
+.ve-kv-file-link:hover,
+.ve-kv-inline-link:hover {
   color: var(--k-fg-accent, #1e40af);
 }
 
@@ -885,16 +1074,44 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
   padding: 0.85em 1.1em;
   border-radius: 8px;
   border: 1px solid;
+  border-left-width: 4px;
   font-size: 15px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .ve-banner-marker {
-  font-size: 1.1em;
-  line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.7em;
+  height: 1.7em;
+  border-radius: 999px;
+  font-size: 0.95em;
+  font-weight: 800;
+  line-height: 1;
+  background: color-mix(in srgb, currentColor 14%, transparent);
 }
 
 .ve-banner-text {
   font-weight: 500;
+}
+
+.ve-banner-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35em;
+}
+
+.ve-banner-line {
+  padding: 0.35em 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  font-weight: 500;
+}
+
+.ve-banner-line:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .ve-banner-subtitle {
@@ -931,21 +1148,59 @@ const bannerStyle = computed<Record<string, string>>((): Record<string, string> 
 }
 
 .banner--warn {
-  background: var(--k-paper-bg, #fff8eb);
-  border-color: var(--k-warning, #f5dca0);
-  color: var(--k-warning, #92590a);
+  background: #fff7ed;
+  border-color: #fb923c;
+  color: #9a3412;
+  box-shadow: 0 1px 2px rgba(154, 52, 18, 0.16);
 }
 
 .banner--error {
-  background: var(--k-paper-bg, #fef2f2);
-  border-color: var(--k-error, #f5c2c2);
-  color: var(--k-error, #b42318);
+  background: #fef2f2;
+  border-color: #f87171;
+  color: #991b1b;
+  box-shadow: 0 1px 2px rgba(153, 27, 27, 0.16);
 }
 
 /* ── Media element ─────────────────────────────────────────────────────── */
 
 .ve-media {
   margin: 0 0 0.85em;
+}
+
+.ve-media-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+  min-width: 0;
+}
+
+.ve-media-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--k-fg-muted, #64748b);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ve-media-pin {
+  flex: 0 0 auto;
+  border: 1px solid var(--k-border, #cbd5e1);
+  background: var(--k-bg-widget, #f8fafc);
+  color: var(--k-button-bg, #1d4ed8);
+  border-radius: 4px;
+  padding: 0.16rem 0.45rem;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ve-media-pin:hover {
+  border-color: var(--k-button-bg, #1d4ed8);
+  background: var(--k-bg-hover, #eff6ff);
 }
 
 .ve-media-video {

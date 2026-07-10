@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -568,9 +569,10 @@ type AgentJournalLookup func(ctx context.Context, verb string) (*host.AgentCallB
 // BuildCassetteDispatcher returns a host.Handler closure that the testrunner
 // installs under every handler name referenced by the cassette's episodes.
 // stateOf is called per-invocation to read the orchestrator's current StatePath.
-// fallback is dispatched on miss when non-nil; nil fallback on miss returns
-// ErrCassetteMiss. recordSink is called with synthesised episodes when
-// KITSOKI_CASSETTE_RECORD is active.
+// fallback is dispatched only when cassette record mode is enabled; replay-mode
+// misses always return ErrCassetteMiss so deterministic runs fail closed instead
+// of silently calling live handlers. recordSink is called with synthesised
+// episodes when KITSOKI_CASSETTE_RECORD is active.
 func BuildCassetteDispatcher(
 	cas *Cassette,
 	handlerName string,
@@ -708,9 +710,12 @@ func buildCassetteDispatcherFull(
 		mode := CassetteRecordMode(cas)
 
 		if mode == "none" || mode == "" {
-			if fallback != nil {
-				return fallback(ctx, args)
-			}
+			callID, _ := args["call"].(string)
+			slog.WarnContext(ctx, "cassette.miss.fail_closed",
+				slog.String("handler", handlerName),
+				slog.String("call", callID),
+				slog.Any("available_episodes", miss.AvailableEpisodes),
+			)
 			return host.Result{}, miss
 		}
 
@@ -815,6 +820,7 @@ func writeCassetteAgentEvents(ctx context.Context, sink store.EventSink, cas *Ca
 		Verb:       o.Verb,
 		Agent:      o.Agent,
 		Model:      model,
+		Backend:    host.AgentBackendFromContext(ctx).Name(),
 		Profile:    profileName,
 		Effort:     effort,
 		Prompt:     inlinePrompt,

@@ -87,9 +87,12 @@ func (noRouteHarness) Close() error { return nil }
 // MCP server processes one tool call at a time per connection, and a handle is
 // single-writer by construction.
 type sessionRuntime struct {
-	def   *app.AppDef
-	orch  *orchestrator.Orchestrator
-	sink  *store.JSONLSink
+	def  *app.AppDef
+	orch *orchestrator.Orchestrator
+	sink *store.JSONLSink
+	// tap records the latest trace event so status/inspect can report live
+	// in-flight progress while an async drive runs (never-silent).
+	tap   *activityTap
 	sid   app.SessionID
 	model tui.RootModel
 	mu    sync.Mutex
@@ -112,6 +115,9 @@ type sessionRuntime struct {
 	// outcome.error / mode="error" alongside the frame — a replay miss is a
 	// turn-level failure the agent should see, not a transport error.
 	lastTurnErr error
+	// lastOperationDrive is populated when a normal drive/submit/continue
+	// automatically follows a run_in_background operation.
+	lastOperationDrive *orchestrator.OperationDriveOutcome
 
 	// inFlight is the suspend broker for a drive that has not settled yet: either
 	// parked on operator-ask (session.answer fallback) or still running after
@@ -169,7 +175,7 @@ func (rt *sessionRuntime) Close() {
 // backend (synthetic, codex, …) instead of the static default — the same
 // remap `kitsoki turn --profile` applies. An empty map leaves the session on the
 // legacy default-backend path (selectedProfile is then ignored).
-func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harness.Harness, profiles map[string]orchestrator.HarnessProfile, selectedProfile string, initialWorld map[string]any, hostCassette string, resolver app.ImportResolver, chatStore *chats.Store, configureHosts HostRegistryConfigurer) (*sessionRuntime, error) {
+func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harness.Harness, profiles map[string]orchestrator.HarnessProfile, selectedProfile string, initialWorld map[string]any, hostCassette string, failClosedAgentReplay bool, resolver app.ImportResolver, chatStore *chats.Store, configureHosts HostRegistryConfigurer, agentLaunchPolicy host.AgentLaunchPolicy) (*sessionRuntime, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -211,6 +217,7 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: open trace %q: %v", tracePath, err)}
 	}
 	rt.sink = sink
+	rt.tap = &activityTap{}
 	rt.closers = append(rt.closers, func() { _ = sink.Close() })
 
 	def, err := app.LoadWithResolver(storyPath, nil, resolver)
@@ -219,6 +226,15 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 		return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: load story %q: %v", storyPath, err)}
 	}
 	rt.def = def
+
+	// Publish KITSOKI_APP_DIR so host.starlark.run's env-only prompt-path
+	// resolver joins story-relative `script:` paths against the story
+	// directory instead of the studio server's cwd. Mirrors publishAppDir in
+	// cmd/kitsoki/session.go and the loadfiles.go loader sequence. Set only
+	// after a successful load so a failed load does not mutate the global.
+	if absDir, aerr := filepath.Abs(filepath.Dir(storyPath)); aerr == nil {
+		_ = os.Setenv(host.AppDirEnv, absDir)
+	}
 
 	m, err := machine.New(def)
 	if err != nil {
@@ -247,6 +263,7 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 
 	hostReg := host.NewRegistry()
 	host.RegisterBuiltins(hostReg)
+	host.RegisterStarlarkBindings(hostReg, def.StarlarkHostBindings)
 	// Test-only injection seam: a flow/cassette test registers an extra host
 	// capability (e.g. one that forwards to the in-context OperatorPrompter) so a
 	// no-LLM drive can exercise the operator-ask branch end-to-end without
@@ -254,16 +271,22 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 	if registerExtraHostCaps != nil {
 		registerExtraHostCaps(hostReg)
 	}
+	cassetteHandlers := map[string]bool{}
+	if hostCassette != "" {
+		seen, err := applyStudioHostCassette(hostReg, hostCassette, tapSink{EventSink: sink, tap: rt.tap}, failClosedAgentReplay)
+		if err != nil {
+			rt.Close()
+			return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: apply host cassette: %v", err)}
+		}
+		cassetteHandlers = seen
+	}
+	if failClosedAgentReplay {
+		installReplayAgentMissHandlers(hostReg, cassetteHandlers)
+	}
 	if configureHosts != nil {
 		if err := configureHosts(hostReg); err != nil {
 			rt.Close()
 			return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: configure host registry: %v", err)}
-		}
-	}
-	if hostCassette != "" {
-		if err := applyStudioHostCassette(hostReg, hostCassette, sink); err != nil {
-			rt.Close()
-			return nil, &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("session: apply host cassette: %v", err)}
 		}
 	}
 	if err := hostReg.ValidateAllowList(def.Hosts); err != nil {
@@ -280,7 +303,7 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 
 	orchOpts := []orchestrator.Option{
 		orchestrator.WithHostRegistry(hostReg),
-		orchestrator.WithEventSink(sink),
+		orchestrator.WithEventSink(tapSink{EventSink: sink, tap: rt.tap}),
 		orchestrator.WithEventSinkAuthority(true),
 		orchestrator.WithAgentRegistry(agentReg),
 		orchestrator.WithScheduler(rt.scheduler),
@@ -292,13 +315,9 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 			orchestrator.WithChatsConcrete(chatStore),
 		)
 	}
-	// Honor the global semantic-routing toggle when explicitly set via env. The
-	// `kitsoki mcp` command exports KITSOKI_SEMANTIC_ROUTING from
-	// --semantic-routing (default false → LLM-only routing). When the env var is
-	// absent — the posture of flow/cassette tests that drive the studio
-	// directly — routing defers to the per-app routing.enabled config so the
-	// existing deterministic test fixtures keep matching. See
-	// docs/architecture/semantic-routing.md.
+	// Honor the global semantic-routing toggle. When the env var is absent,
+	// studio sessions use the same simple default as the CLI: exact
+	// deterministic first, then the selected harness/model.
 	if opt, ok := semanticRoutingEnvOption(); ok {
 		orchOpts = append(orchOpts, opt)
 	}
@@ -308,6 +327,9 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 	// of WithHarnessProfiles), so replay/flow sessions are unaffected.
 	if len(profiles) > 0 {
 		orchOpts = append(orchOpts, orchestrator.WithHarnessProfiles(profiles, selectedProfile))
+	}
+	if agentLaunchPolicy.Enabled {
+		orchOpts = append(orchOpts, orchestrator.WithAgentLaunchPolicy(agentLaunchPolicy))
 	}
 	orch := orchestrator.New(def, m, s, h, orchOpts...)
 	rt.orch = orch
@@ -372,10 +394,10 @@ func newSessionRuntime(ctx context.Context, storyPath, tracePath string, h harne
 	return rt, nil
 }
 
-func applyStudioHostCassette(hostReg *host.Registry, cassettePath string, sink store.EventSink) error {
+func applyStudioHostCassette(hostReg *host.Registry, cassettePath string, sink store.EventSink, failClosedAgentReplay bool) (map[string]bool, error) {
 	cas, err := testrunner.LoadCassette(cassettePath)
 	if err != nil {
-		return fmt.Errorf("load host cassette: %w", err)
+		return nil, fmt.Errorf("load host cassette: %w", err)
 	}
 	stateOf := func() string { return "" }
 	seen := map[string]bool{}
@@ -386,9 +408,39 @@ func applyStudioHostCassette(hostReg *host.Registry, cassettePath string, sink s
 		}
 		seen[hn] = true
 		fallback, _ := hostReg.Get(hn)
+		if failClosedAgentReplay && strings.HasPrefix(hn, "host.agent.") {
+			fallback = replayAgentMissHandler(hn)
+		}
 		hostReg.Replace(hn, testrunner.BuildCassetteDispatcherWithSink(cas, hn, stateOf, fallback, nil, clock.Real(), sink, nil))
 	}
-	return nil
+	return seen, nil
+}
+
+var replayAgentHostHandlers = []string{
+	"host.agent.ask",
+	"host.agent.extract",
+	"host.agent.decide",
+	"host.agent.task",
+	"host.agent.converse",
+	"host.agent.search",
+}
+
+func installReplayAgentMissHandlers(hostReg *host.Registry, cassetteHandlers map[string]bool) {
+	for _, name := range replayAgentHostHandlers {
+		if cassetteHandlers[name] {
+			continue
+		}
+		hostReg.Replace(name, replayAgentMissHandler(name))
+	}
+}
+
+func replayAgentMissHandler(name string) host.Handler {
+	return func(context.Context, map[string]any) (host.Result, error) {
+		return host.Result{}, fmt.Errorf(
+			"studio: harness:replay cannot dispatch %s without a matching host_cassette episode; replay misses fail closed instead of falling through to a live agent",
+			name,
+		)
+	}
 }
 
 // newComposerModel seeds the headless TUI model used solely as the slice-1
@@ -424,14 +476,48 @@ func newComposerModel(orch *orchestrator.Orchestrator, sid app.SessionID, jobSto
 // alongside the structured failure.
 func (rt *sessionRuntime) drive(ctx context.Context, input string, cols, rows int) (*orchestrator.TurnOutcome, tui.Frame) {
 	out, err := rt.driver.Turn(ctx, input)
-	rt.lastTurnErr = err
+	drive, finalOut, finalErr := rt.driveBackgroundOperationAfterTurn(ctx, out, err)
+	rt.lastTurnErr = finalErr
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.model = rt.model.ApplyTurnOutcome(out, input, err)
 	if out != nil {
 		rt.modelTurn = out.TurnNumber
 	}
+	if drive != nil && drive.Final != nil {
+		rt.model = rt.model.ApplyTurnOutcome(drive.Final, "(background operation)", finalErr)
+		rt.modelTurn = drive.Final.TurnNumber
+	}
+	rt.lastOperationDrive = drive
+	if finalOut != nil {
+		out = finalOut
+	}
 	return out, tui.ComposeFrame(&rt.model, cols, rows)
+}
+
+func (rt *sessionRuntime) driveBackgroundOperationAfterTurn(ctx context.Context, out *orchestrator.TurnOutcome, err error) (*orchestrator.OperationDriveOutcome, *orchestrator.TurnOutcome, error) {
+	if err != nil || out == nil || out.Mode != orchestrator.ModeTransitioned {
+		return nil, out, err
+	}
+	driver, ok := rt.driver.(rsserver.BackgroundOperationDriver)
+	if !ok {
+		return nil, out, nil
+	}
+	drive, err := driver.DriveBackgroundOperation(ctx)
+	if err != nil {
+		return nil, out, err
+	}
+	if drive == nil {
+		return nil, out, nil
+	}
+	if drive.Final != nil {
+		return drive, drive.Final, nil
+	}
+	current, err := rt.driver.View(ctx)
+	if err != nil {
+		return drive, out, err
+	}
+	return drive, current, nil
 }
 
 // slash routes a TUI slash command through the same RootModel dispatcher the
@@ -481,6 +567,39 @@ func (rt *sessionRuntime) driveElicit(ctx context.Context, input string, cols, r
 // timeout (inside the bridge), so a never-answered park falls through to the
 // headless tool-error path on its own.
 func (rt *sessionRuntime) driveSuspendable(ctx context.Context, input string, cols, rows int, wait time.Duration) (res turnResult, pq *pendingQuestion, turnDone bool, running *runningDrive, err error) {
+	return rt.turnSuspendable(ctx, input, cols, rows, wait, func(turnCtx context.Context) (*orchestrator.TurnOutcome, tui.Frame) {
+		return rt.drive(turnCtx, input, cols, rows)
+	})
+}
+
+func (rt *sessionRuntime) submitSuspendable(ctx context.Context, intent string, slots map[string]any, cols, rows int, wait time.Duration) (res turnResult, pq *pendingQuestion, turnDone bool, running *runningDrive, err error) {
+	label := "intent:" + intent
+	return rt.turnSuspendable(ctx, label, cols, rows, wait, func(turnCtx context.Context) (*orchestrator.TurnOutcome, tui.Frame) {
+		return rt.submit(turnCtx, intent, slots, cols, rows)
+	})
+}
+
+func (rt *sessionRuntime) continueSuspendable(ctx context.Context, slots map[string]any, cols, rows int, wait time.Duration) (res turnResult, pq *pendingQuestion, turnDone bool, running *runningDrive, err error) {
+	return rt.turnSuspendable(ctx, "continue", cols, rows, wait, func(turnCtx context.Context) (*orchestrator.TurnOutcome, tui.Frame) {
+		return rt.cont(turnCtx, slots, cols, rows)
+	})
+}
+
+func (rt *sessionRuntime) turnSuspendable(ctx context.Context, input string, cols, rows int, wait time.Duration, run func(context.Context) (*orchestrator.TurnOutcome, tui.Frame)) (res turnResult, pq *pendingQuestion, turnDone bool, running *runningDrive, err error) {
+	return rt.turnSuspendableResult(ctx, input, cols, rows, wait, func(turnCtx context.Context) turnResult {
+		out, frame := run(turnCtx)
+		return turnResult{outcome: out, frame: frame, err: rt.lastTurnErr, operationDrive: rt.lastOperationDrive}
+	})
+}
+
+func (rt *sessionRuntime) driveOperationSuspendable(ctx context.Context, cols, rows int, wait time.Duration) (res turnResult, pq *pendingQuestion, turnDone bool, running *runningDrive, err error) {
+	return rt.turnSuspendableResult(ctx, "operation", cols, rows, wait, func(turnCtx context.Context) turnResult {
+		drive, out, frame := rt.driveOperation(turnCtx, cols, rows)
+		return turnResult{outcome: out, frame: frame, err: rt.lastTurnErr, operationDrive: drive}
+	})
+}
+
+func (rt *sessionRuntime) turnSuspendableResult(ctx context.Context, input string, cols, rows int, wait time.Duration, run func(context.Context) turnResult) (res turnResult, pq *pendingQuestion, turnDone bool, running *runningDrive, err error) {
 	rt.mu.Lock()
 	if rt.inFlight != nil {
 		rt.mu.Unlock()
@@ -507,8 +626,7 @@ func (rt *sessionRuntime) driveSuspendable(ctx context.Context, input string, co
 	turnCtx := host.WithOperatorPrompter(turnBase, prompter)
 	turnCtx = host.WithKitsokiSessionID(turnCtx, string(rt.sid))
 	go func() {
-		out, frame := rt.drive(turnCtx, input, cols, rows)
-		broker.finish(turnResult{outcome: out, frame: frame, err: rt.lastTurnErr})
+		broker.finish(run(turnCtx))
 		rt.clearInFlightIf(broker)
 	}()
 
@@ -521,7 +639,7 @@ func (rt *sessionRuntime) driveSuspendable(ctx context.Context, input string, co
 	r, q, werr := broker.waitNext(waitCtx)
 	if werr != nil {
 		if wait > 0 && werr == context.DeadlineExceeded {
-			return turnResult{}, nil, false, &runningDrive{startedAt: startedAt}, nil
+			return turnResult{}, nil, false, broker.snapshotRunning(), nil
 		}
 		cancelTurn()
 		rt.clearInFlightIf(broker)
@@ -551,10 +669,7 @@ func (rt *sessionRuntime) driveSnapshot() (driveSnapshot, error) {
 		return driveSnapshot{}, fmt.Errorf("session.drive: load pre-drive snapshot: %w", err)
 	}
 	allowed := rt.orch.AllowedIntents(j.State, j.World)
-	allowedNames := make([]string, 0, len(allowed))
-	for _, ai := range allowed {
-		allowedNames = append(allowedNames, ai.Name)
-	}
+	allowedNames := visibleAllowedIntentNames(string(j.State), allowed)
 	view, verr := rt.orch.RenderState(j.State, j.World)
 	if verr != nil {
 		view = fmt.Sprintf("<render error: %v>", verr)
@@ -570,25 +685,34 @@ func (rt *sessionRuntime) driveSnapshot() (driveSnapshot, error) {
 // resumeSuspendable delivers the operator's answer to a parked question and
 // blocks until the turn completes or parks on the NEXT operator-ask. It is the
 // runtime half of session.answer: deliver → waitNext → {outcome | awaiting}.
-func (rt *sessionRuntime) resumeSuspendable(ctx context.Context, questionID string, answers map[string]any) (res turnResult, pq *pendingQuestion, turnDone bool, ok bool, err error) {
+func (rt *sessionRuntime) resumeSuspendable(ctx context.Context, questionID string, answers map[string]any, wait time.Duration) (res turnResult, pq *pendingQuestion, turnDone bool, running *runningDrive, ok bool, err error) {
 	rt.mu.Lock()
 	broker := rt.inFlight
 	rt.mu.Unlock()
 	if broker == nil {
-		return turnResult{}, nil, false, false, nil
+		return turnResult{}, nil, false, nil, false, nil
 	}
 	if !broker.answer(questionID, answers) {
-		return turnResult{}, nil, false, false, nil
+		return turnResult{}, nil, false, nil, false, nil
 	}
-	r, q, werr := broker.waitNext(ctx)
+	waitCtx := ctx
+	var cancelWait context.CancelFunc
+	if wait > 0 {
+		waitCtx, cancelWait = context.WithTimeout(ctx, wait)
+		defer cancelWait()
+	}
+	r, q, werr := broker.waitNext(waitCtx)
 	if werr != nil {
-		return turnResult{}, nil, false, true, werr
+		if wait > 0 && werr == context.DeadlineExceeded {
+			return turnResult{}, nil, false, broker.snapshotRunning(), true, nil
+		}
+		return turnResult{}, nil, false, nil, true, werr
 	}
 	if q != nil {
-		return turnResult{}, q, false, true, nil
+		return turnResult{}, q, false, nil, true, nil
 	}
 	rt.clearInFlightIf(broker)
-	return r, nil, true, true, nil
+	return r, nil, true, nil, true, nil
 }
 
 // submit applies a chosen intent + slots with no routing (SubmitDirect — the
@@ -596,26 +720,78 @@ func (rt *sessionRuntime) resumeSuspendable(ctx context.Context, questionID stri
 // Frame.
 func (rt *sessionRuntime) submit(ctx context.Context, intent string, slots map[string]any, cols, rows int) (*orchestrator.TurnOutcome, tui.Frame) {
 	out, err := rt.driver.SubmitDirect(ctx, intent, slots)
-	rt.lastTurnErr = err
+	drive, finalOut, finalErr := rt.driveBackgroundOperationAfterTurn(ctx, out, err)
+	rt.lastTurnErr = finalErr
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.model = rt.model.ApplyTurnOutcome(out, "", err)
 	if out != nil {
 		rt.modelTurn = out.TurnNumber
 	}
+	if drive != nil && drive.Final != nil {
+		rt.model = rt.model.ApplyTurnOutcome(drive.Final, "(background operation)", finalErr)
+		rt.modelTurn = drive.Final.TurnNumber
+	}
+	rt.lastOperationDrive = drive
+	if finalOut != nil {
+		out = finalOut
+	}
 	return out, tui.ComposeFrame(&rt.model, cols, rows)
+}
+
+// driveOperation advances the active operation handle through the same
+// OperationDriver seam used by the web/runstatus surface, then recomposes the
+// current frame for MCP clients. When the driver finds no safe turn to submit,
+// it returns a read-only view so callers still get the current screen.
+func (rt *sessionRuntime) driveOperation(ctx context.Context, cols, rows int) (*orchestrator.OperationDriveOutcome, *orchestrator.TurnOutcome, tui.Frame) {
+	var drive *orchestrator.OperationDriveOutcome
+	var out *orchestrator.TurnOutcome
+	var err error
+	driver, ok := rt.driver.(rsserver.OperationDriver)
+	if !ok {
+		err = fmt.Errorf("session.drive_operation: operation driving unavailable")
+	} else {
+		drive, err = driver.DriveOperation(ctx)
+		if err == nil {
+			if drive != nil && drive.Final != nil {
+				out = drive.Final
+			} else {
+				out, err = rt.driver.View(ctx)
+			}
+		}
+	}
+	rt.lastTurnErr = err
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if out != nil {
+		rt.model = rt.model.ApplyTurnOutcome(out, "(operation drive)", err)
+		rt.modelTurn = out.TurnNumber
+	} else {
+		rt.refreshFromJourneyLocked()
+	}
+	rt.lastOperationDrive = drive
+	return drive, out, tui.ComposeFrame(&rt.model, cols, rows)
 }
 
 // cont supplies missing slots for a pending clarification (ContinueTurn) and
 // returns the outcome plus the recomposed Frame.
 func (rt *sessionRuntime) cont(ctx context.Context, slots map[string]any, cols, rows int) (*orchestrator.TurnOutcome, tui.Frame) {
 	out, err := rt.driver.ContinueTurn(ctx, slots)
-	rt.lastTurnErr = err
+	drive, finalOut, finalErr := rt.driveBackgroundOperationAfterTurn(ctx, out, err)
+	rt.lastTurnErr = finalErr
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.model = rt.model.ApplyTurnOutcome(out, "", err)
 	if out != nil {
 		rt.modelTurn = out.TurnNumber
+	}
+	if drive != nil && drive.Final != nil {
+		rt.model = rt.model.ApplyTurnOutcome(drive.Final, "(background operation)", finalErr)
+		rt.modelTurn = drive.Final.TurnNumber
+	}
+	rt.lastOperationDrive = drive
+	if finalOut != nil {
+		out = finalOut
 	}
 	return out, tui.ComposeFrame(&rt.model, cols, rows)
 }
@@ -702,10 +878,7 @@ func (rt *sessionRuntime) refreshFromJourneyLocked() {
 		return
 	}
 	allowed := rt.orch.AllowedIntents(j.State, j.World)
-	allowedNames := make([]string, 0, len(allowed))
-	for _, ai := range allowed {
-		allowedNames = append(allowedNames, ai.Name)
-	}
+	allowedNames := visibleAllowedIntentNames(string(j.State), allowed)
 	view, err := rt.orch.RenderState(j.State, j.World)
 	if err != nil {
 		return

@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/completion-state/v1.1.0",
+  "title": "Completion State — Unified arena/persona-QA scoring contract",
+  "description": "The structural contract for grading one unit of comparison work (a bugfix cell, a persona-QA scenario run, or any future arena job-type) on a single job-agnostic verdict/health/metrics/evidence vocabulary. tools/arena's plugins score from this shape instead of scraping stdout; tools/persona_qa/completion.py builds it from a product-journey review.json; tools/bugfix-bakeoff/external/bench.py writes it from the hidden-oracle grade. additionalProperties stays true so a job-type plugin can carry extra fields (e.g. bugfix's cell_id/axis, persona-qa's checks_* counters) without forking the schema. v1.1.0 adds the optional `check_type` discriminator (WS-G G1): a matrix/arena cell declares a check SUITE, and every check emits one completion-state verdict tagged with its type; absent means `replay`, so every pre-1.1.0 producer/consumer stays valid.",
+  "version": "1.1.0",
+  "type": "object",
+  "required": ["schema_version", "verdict", "health", "metrics", "evidence_refs"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of this contract the payload was written against, e.g. \"1.0.0\". Consumers reject unknown major versions rather than silently misreading a field."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["solved", "partial", "failed", "armed", "blocked", "pending"],
+      "description": "Job-agnostic outcome grade. bugfix: oracle GREEN+suite -> solved, oracle GREEN+suite RED -> partial, oracle RED -> failed, verify-mode arming proof -> armed. persona-qa (19-check review gate): ready -> solved, needs_evidence (with some passing signal) -> partial, all-checks-failed / a blocking scenario -> failed or blocked. `pending` means the grade was never run (e.g. a provider/profile blocker) — it is NOT a failure and must be excluded from solve-rate denominators."
+    },
+    "check_type": {
+      "type": "string",
+      "enum": ["replay", "docs-fidelity", "ux-heuristic", "journey-verdict"],
+      "description": "Which proof class this verdict grades (WS-G G1 check-type discriminator). Optional; ABSENT MEANS `replay` — the default and the only value pre-1.1.0 producers ever meant — so existing payloads stay valid unchanged. `replay`: the mechanical no-LLM proof (flow/cassette/oracle replay, per-commit). `docs-fidelity`: a persona attempted the workflow using only the published docs; doc claims scored truthful/stale/missing. `ux-heuristic`: heuristic-catalog UX critique over captured frames/transcripts. `journey-verdict`: the product-journey review gate (evidence completeness, finding floors). A cell's matrix rollup aggregates one verdict PER check_type; consumers that predate check suites may treat every record as `replay`."
+    },
+    "health": {
+      "type": "string",
+      "pattern": "^(infra:[a-z0-9_-]+|model:result|incomplete)$",
+      "description": "Separates an INFRASTRUCTURE failure (harness/environment broke; not a model result — `infra:*`, e.g. `infra:harness`, `infra:worker-never-ran`, `infra:stall`) from a genuine MODEL result (`model:result`, defer to `verdict`) or a run that stopped early with no clear cause (`incomplete`). A `blocked`/`failed` verdict with `health: infra:*` must never be scored against a model/candidate."
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Free-form numeric telemetry for the cell/run: cost_usd, total_tokens, wall_time_s / wall_s, agent_calls, host, guidance_turns, … Job-type plugins add their own keys; consumers read what they recognize and ignore the rest.",
+      "properties": {
+        "cost_usd": { "type": ["number", "null"] },
+        "total_tokens": { "type": ["number", "null"] },
+        "wall_time_s": { "type": ["number", "null"] }
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Pointers to durable proof for the verdict — trace files, cassette:// URIs, attached-evidence paths, driver-journal evidence refs. Empty is valid (e.g. a `pending` cell has none yet)."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One-line human-readable summary of the grade, safe to print in a rollup."
+    },
+    "notes": {
+      "type": "string",
+      "description": "[bugfix] Short free-text note — first line of stdout/stderr on an infra signal, or a quality-decision caveat."
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "[persona-qa] Named blocking scenarios/gates or missing-proof reasons that produced a `blocked` verdict."
+    },
+    "cell_id": { "type": "string", "description": "[bugfix/arena] Cell identifier this completion-state grades." },
+    "job_type": { "type": "string", "description": "[bugfix/arena] Job-type plugin name that produced this grade (e.g. \"bugfix\", \"persona-qa\")." },
+    "target_id": { "type": "string", "description": "[bugfix/arena] Target (e.g. repo) id." },
+    "variant_id": { "type": "string", "description": "[bugfix/arena] Variant (candidate/model/treatment) id." },
+    "axis": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "[bugfix/arena] Extra per-job axis coordinates, e.g. {\"bug\": \"qs1\"}."
+    },
+    "trace_ref": { "type": "string", "description": "[bugfix/arena] Path/URI to the live trace this grade was read from, if any." },
+    "state": {
+      "type": "string",
+      "enum": ["completed", "incomplete", "blocked", "error"],
+      "description": "[persona-qa] Coarse run state backing `verdict`/`health` (completed->solved, error->blocked+infra:harness, …)."
+    },
+    "run_dir": { "type": "string", "description": "[persona-qa] Path to the run bundle this completion-state was derived from." },
+    "deck_path": { "type": "string", "description": "[persona-qa] Path to the run's Slidey deck, if produced." },
+    "review_status": { "type": "string", "description": "[persona-qa] Native review-gate status (ready | needs_evidence | not_reviewed | …)." },
+    "validation_status": { "type": "string", "description": "[persona-qa] Native validation-run status (valid | error | unknown | …)." },
+    "checks_passed": { "type": "integer", "minimum": 0 },
+    "checks_warned": { "type": "integer", "minimum": 0 },
+    "checks_failed": { "type": "integer", "minimum": 0 },
+    "checks_total": { "type": "integer", "minimum": 0 },
+    "scenarios_total": { "type": "integer", "minimum": 0 },
+    "scenarios_started": { "type": "integer", "minimum": 0 },
+    "scenarios_blocked": { "type": "integer", "minimum": 0 },
+    "proof_minimum_evidence_count": { "type": "integer", "minimum": 0 },
+    "minimum_evidence_count": { "type": "integer", "minimum": 0 }
+  }
+}

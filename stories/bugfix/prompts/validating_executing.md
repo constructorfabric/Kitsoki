@@ -13,6 +13,20 @@ The build / deploy / validation run produced:
 {{ args.build_log }}
 ```
 
+{% if args.ide_connected %}The attached editor reports **{{ args.ide_diagnostics_count }}** diagnostic(s)
+in its Problems panel:
+
+```
+{{ args.ide_diagnostics }}
+```
+
+Weigh these alongside the build log — a clean build with live editor
+diagnostics still open is not a clean pass.
+{% else %}No editor is attached (`host.ide.get_diagnostics` reports
+`connected: false`) — diagnostics are unavailable for this run; judge on the
+build log and review alone.
+{% endif %}
+
 {% if args.refine_feedback %}## ⚠ Operator refinement directive (cycle {{ args.cycle }})
 
 This is a refine cycle — the previous validation was rejected. The

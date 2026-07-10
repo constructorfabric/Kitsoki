@@ -36,8 +36,8 @@ examples:
   - name: harness-profile-doc-note
     args:
       target: "document how model harness profile selection works"
-      doc_path: "docs/architecture/harness-profiles.md"
+      doc_path: "docs/guide/agents/harness-profiles.md"
     expect:
       summary: "Documents how Kitsoki harness profiles select provider, model, and default profile."
-      file_path: "docs/architecture/harness-profiles.md"
+      file_path: "docs/guide/agents/harness-profiles.md"
       headings: ["Harness Profiles", "Configuration", "Selecting a profile"]

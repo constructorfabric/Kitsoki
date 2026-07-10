@@ -1,0 +1,87 @@
+# planning — list + classify the commits (deterministic), then the one interpretive
+# step: the bucketer agent groups them and authors PR copy; a starlark step
+# serializes the plan. All in ONE on_enter so each step binds before the next
+# renders (the agent always sees the commits — no cross-state race).
+
+states:
+
+  planning:
+    description: "Classify the commits, group them into concern buckets, and author PR copy. Review and accept."
+    relevant_world: [commits, commit_count, buckets, buckets_json, dry_run, source_branch, integration_branch]
+    view:
+      - kv:
+          pairs:
+            Source:      '{{ world.source_branch|default:"(detecting…)" }}'
+            Integration: '{{ world.integration_branch }}'
+            Commits:     '{{ world.commit_count }} ahead'
+            "Dry run":   '{% if world.dry_run %}yes (plan only){% else %}no{% endif %}'
+      - prose: "No commits ahead of {{ world.integration_branch }} — nothing to split."
+        when: "world.commit_count == 0"
+      - heading: "Proposed PRs"
+        when: "world.buckets_json != ''"
+      - template: |
+          {% for b in world.buckets.buckets %}### {{ b.title }}  [{{ b.concern }}]
+          {{ b.body }}
+          commits: {{ b.shas|length }}
+          {% empty %}(pending — the agent is grouping commits){% endfor %}
+        when: "world.buckets_json != ''"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "accept"
+              hint:  "open one PR per bucket{% if world.dry_run %} (dry-run: plan only){% endif %}"
+              intent: accept
+              when:  "world.buckets_json != ''"
+            - label: "regenerate"
+              hint:  "re-group the commits"
+              intent: regenerate
+            - label: "toggle_dry_run"
+              hint:  "currently {% if world.dry_run %}ON{% else %}OFF{% endif %}"
+              intent: toggle_dry_run
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on_enter:
+      # Interpretive: group + author PR copy. idle has already bound `commits` in
+      # a PRIOR turn (the operator's `proceed`), so the agent sees them — an
+      # on_enter host.run bind is NOT visible to a same-turn on_enter agent.
+      - invoke: host.agent.decide
+        once: true
+        id: bucket_commits
+        with:
+          prompt: prompts/bucket_commits.md
+          schema: schemas/pr_buckets.json
+        bind:
+          buckets: "submitted"
+        on_error: planning
+      # 3. Deterministic bridge: serialize the plan to JSON for the splitter
+      # (templates can't JSON-encode an object). serialize_plan.star tolerates empty.
+      - invoke: host.starlark.run
+        id: serialize_plan
+        with:
+          script: scripts/serialize_plan.star
+        bind:
+          buckets_json: buckets_json
+        on_error: planning
+    on:
+      empty:
+        - target: done
+      accept:
+        - target: splitting
+      regenerate:
+        - target: planning
+          effects:
+            - set:
+                buckets:      {}
+                buckets_json: ""
+      toggle_dry_run:
+        - target: .
+          effects:
+            - set:
+                dry_run: "{{ !world.dry_run }}"
+      look:
+        - target: .
+      quit:
+        - target: done

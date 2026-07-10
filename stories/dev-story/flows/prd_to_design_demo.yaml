@@ -1,6 +1,5 @@
-# prd_to_design_demo (dev-story) — the PRD walk used by the VS Code extension
-# demo video. kitsoki's SELF-TARGETING parallel of the (now external) gears-rust
-# demo flow, driven through the dev-story hub ("kitsoki on kitsoki").
+# prd_to_design_demo (dev-story) - the PRD walk used by the VS Code extension
+# demo video, driven through the dev-story hub with a neutral project example.
 #
 # A sibling of prd_to_design_full.yaml that, UNLIKE it, leaves host.ide.* AND
 # host.artifacts_dir UNSTUBBED so that, when driven through `kitsoki web` inside
@@ -14,11 +13,10 @@
 # The recording drives the SAME rooms through the chat UI; only the refine beat
 # differs (IDE-connected → diff + verdict gate; disconnected → plain re-draft).
 #
-# Naming vs. the gears variant: this flow starts in the dev-story ROOT (landing),
+# Naming note: this flow starts in the dev-story root (landing),
 # so it uses the dev-story hub's BARE entry intent (go_prd) and the prd import's
 # PREFIXED pipeline intents (prd__discuss, prd__start, …) — no `core__` instance
-# projection (gears imports dev-story as the `core` compound; here dev-story IS
-# the app). States are bare too: prd.idle, prd.drafting, prd_published.
+# projection. States are bare too: prd.idle, prd.drafting, prd_published.
 #
 # The author stub returns the COMPLETE PRD markdown in summary_markdown (the
 # drafting room mirrors it into the editor), and a distinct v2 on refine
@@ -30,10 +28,12 @@ initial_state: landing
 initial_world:
   judge_mode: "human"
   workdir:    "."
-  # Self-targeting defaults — slug-named docs/prd/<slug>.md. Projected into the
-  # prd import via its world_in (publish_durable_path + prd_doc_filename).
-  publish_durable_path: "docs/prd"
+  # Automated fixtures publish into gitignored artifacts rather than the
+  # tracked docs tree.
+  publish_durable_path: "/tmp/kitsoki-prd-fixtures"
   prd_doc_filename:     ""
+
+starlark_inspect_cassette: ../cassettes/prd_notes_service.inspect.yaml
 
 host_handlers:
   # NOTE: host.ide.* and host.artifacts_dir are intentionally NOT stubbed — the
@@ -74,23 +74,11 @@ host_handlers:
           ok: true
           submitted:
             items:
-              - { path: "docs/prd/notes-service.md", sections: "§5", rationale: "the PRD this design realizes" }
+              - { path: "/tmp/kitsoki-prd-fixtures/notes-service.md", sections: "§5", rationale: "the PRD this design realizes" }
       brief_check:
         data:
           ok: true
           submitted: { verdict: "continue", reason: "Crisp why, clear metric, IDs threaded.", questions: [] }
-  host.run:
-    by_call:
-      mint_workspace:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { slug: "notes-service", workspace: ".artifacts/prd/notes-service" }
-      publish:
-        data:
-          ok: true
-          exit_code: 0
-          stdout_json: { prd_file: "docs/prd/notes-service.md" }
   host.agent.task:
     by_call:
       # First draft (drafting on_enter, id: prd_author) — the full PRD body.
@@ -107,8 +95,8 @@ host_handlers:
               the work it belongs to, so context is lost between sessions.
 
               ## Target Users
-              Platform engineers and their teams who already live in the kitsoki
-              workspace.
+              Platform engineers and their teams who already live in the
+              project workspace.
 
               ## Goals
               - A first-class notes surface attached to sessions and tickets.
@@ -141,8 +129,8 @@ host_handlers:
               the work it belongs to, so context is lost between sessions.
 
               ## Target Users
-              Platform engineers and their teams who already live in the kitsoki
-              workspace.
+              Platform engineers and their teams who already live in the
+              project workspace.
 
               ## Goals
               - A first-class notes surface attached to sessions and tickets.
@@ -191,6 +179,6 @@ turns:
   - intent: { name: prd__accept, slots: {} }
     expect_state: prd_published
     expect_world:
-      prd__prd_file: "docs/prd/notes-service.md"
+      prd__prd_file: "/tmp/kitsoki-prd-fixtures/notes-service.md"
 
 expect_no_errors: true

@@ -31,7 +31,10 @@ loop drives itself maker → gate → repeat until a gate passes or a budget sto
   gate proves nothing — the goal is already met, or the gate is too weak — so the
   loop *refuses to spend* and rests for the operator (`reconfigure` or `accept`).
   This is the red-before-green discipline: never spend budget on a gate that can't
-  fail. The RED proof becomes the first maker feedback.
+  fail. Importers can set `baseline_green_policy: needs-human` to treat that
+  green baseline as an exception instead of offering `accept`; `ship-it` uses
+  that mode so autonomous delivery never silently accepts a weak gate. The RED
+  proof becomes the first maker feedback.
 - **iterating** — the **maker** (`host.agent.task`) makes the smallest change
   toward the goal, fed the *previous gate's failure reason* as feedback (the
   ralph-style reset: anchors + one failure reason, not a growing transcript),

@@ -7,6 +7,12 @@ description: Use when debugging TUI layout issues, writing regression tests for 
 
 **Use this when:** Debugging TUI layout issues, writing regression tests for rendering problems, or analyzing View() output structure.
 
+This is **structural, ANSI-text assertion inside `go test`** — no vision
+judge, no pixels, no screenshots. For evidence a human or vision reviewer
+signs off on (does the rendered screen show what a bug/plan claims?), or for
+driving a real live pty instead of `View()` in isolation, see
+[[kitsoki-ui-qa]]'s "TUI (terminal) evidence" section instead.
+
 ## Quick Start
 
 For any rendering bug, use the test apparatus to:

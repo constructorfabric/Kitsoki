@@ -35,6 +35,6 @@ that are cross-platform and hermetic (see the macOS gotchas below).
 The authoritative contributor reference — build/vet/test details, the CI + PR
 gate, cross-platform test gotchas (macOS `t.TempDir()` symlinks, unix-socket path
 limits), coding conventions, debugging, and common-change workflows — is
-[`docs/architecture/developer-guide.md`](docs/architecture/developer-guide.md).
+[`docs/guide/development/developer-guide.md`](docs/guide/development/developer-guide.md).
 
 Project conventions also live in [`CLAUDE.md`](CLAUDE.md).

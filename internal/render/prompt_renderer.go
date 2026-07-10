@@ -287,6 +287,8 @@ func (r *AppRenderer) ValidatePrompt(name string) error {
 	if r == nil || r.prompts == nil {
 		return nil
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if _, err := r.set.FromCache(name); err != nil {
 		return fmt.Errorf("prompt %q: %w", name, err)
 	}

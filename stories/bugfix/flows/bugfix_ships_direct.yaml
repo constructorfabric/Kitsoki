@@ -17,7 +17,7 @@ initial_state: idle
 initial_world:
   ticket_id:        "TKT-SHIP-1"
   ticket_title:     "Off-by-one in the rate-limit burst"
-  thread:           "TKT-SHIP-1"
+  thread:           "issues/bugs/TKT-SHIP-1.md"
   workspace_id:     "burst-fix"
   workdir:          ".worktrees/burst-fix"
   worktree_path:    ".worktrees/burst-fix"
@@ -112,6 +112,15 @@ turns:
       tail__integrate_outcome: integrated
       tail__verify_ok:         true
       tail__cleanup_outcome:   cleaned
+    expect_host_calls:
+      - handler: host.git.commit
+        args:
+          workdir: ".worktrees/burst-fix"
+          message: "chore: record bugfix transport mirror for TKT-SHIP-1"
+          files: ["issues/bugs/TKT-SHIP-1.md"]
 
 expect_terminal: true
+expect_operation_policy: bugfix_full
+expect_operation_status: completed
+expect_terminal_artifact: done_artifact
 expect_no_errors: true

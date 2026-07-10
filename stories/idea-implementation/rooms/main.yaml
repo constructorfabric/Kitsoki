@@ -1,0 +1,179 @@
+states:
+
+  intake:
+    description: "Ready for an idea."
+    relevant_world: [idea, status, route_decision, last_error]
+    on_enter:
+      - when: "world.idea != '' && (world.route_decision.route == nil || world.route_decision.route == '') && world.status == 'idle'"
+        emit_intent: implement
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Give one bug report or feature idea. The classifier routes it into an autonomous implementation pipeline."
+          - kv:
+              pairs:
+                Status: "{{ world.status }}"
+                Idea: "{{ world.idea|default:'(not set)' }}"
+          - prose: "{{ world.last_error }}"
+            when: "world.last_error != ''"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "implement idea=<text>"
+                  hint: "classify and launch the selected implementation pipeline"
+                - label: "look"
+                - label: "quit"
+    on:
+      implement:
+        - when: "(slots.idea ?? world.idea) != ''"
+          target: classifying
+          effects:
+            - set:
+                idea: "{{ slots.idea ?? world.idea }}"
+                route_decision: {}
+                status: "classifying"
+                last_error: ""
+                final_summary: ""
+                final_artifact: {}
+                shipped_sha: ""
+        - default: true
+          target: .
+          effects:
+            - say: "Provide an idea to implement."
+      quit:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                status: "needs-human"
+                last_error: "operator abandoned the intake"
+      look:
+        - target: .
+
+  classifying:
+    description: "Classifying the idea."
+    relevant_world: [idea, route_decision, route_confidence_threshold, status]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "Classifying the idea and choosing the implementation route."
+          - kv:
+              pairs:
+                Route: "{{ world.route_decision.route|default:'(pending)' }}"
+                Confidence: "{{ world.route_decision.confidence|default:'(pending)' }}"
+                Reason: "{{ world.route_decision.reason|default:'(pending)' }}"
+          - heading: "Questions"
+            when: "len(world.route_decision.questions ?? []) > 0"
+          - code: |
+              {% for q in world.route_decision.questions %}- {{ q }}
+              {% empty %}(none){% endfor %}
+            when: "len(world.route_decision.questions ?? []) > 0"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "look"
+                - label: "quit"
+    on_enter:
+      - invoke: host.agent.decide
+        id: classify_idea
+        once: true
+        with:
+          agent: classifier
+          prompt: prompts/classify_idea.md
+          schema: schemas/classification.json
+          args:
+            idea: "{{ world.idea }}"
+            base_branch: "{{ world.base_branch }}"
+        bind:
+          route_decision: submitted
+        on_error: needs_human
+      - when: "(world.route_decision.route ?? '') == 'bug' && float(world.route_decision.confidence ?? 0) >= world.route_confidence_threshold"
+        emit_intent: route_bug
+      - when: "(world.route_decision.route ?? '') == 'feature' && (world.route_decision.gate_command ?? '') != '' && float(world.route_decision.confidence ?? 0) >= world.route_confidence_threshold"
+        emit_intent: route_feature
+      - when: "(world.route_decision.route ?? '') != '' && ((world.route_decision.route ?? '') == 'needs_human' || float(world.route_decision.confidence ?? 0) < world.route_confidence_threshold || ((world.route_decision.route ?? '') == 'feature' && (world.route_decision.gate_command ?? '') == ''))"
+        emit_intent: route_needs_human
+    on:
+      route_bug:
+        - target: bf
+          effects:
+            - set:
+                status: "running"
+      route_feature:
+        - target: ship
+          effects:
+            - set:
+                status: "running"
+      route_needs_human:
+        - target: needs_human
+          effects:
+            - set:
+                status: "needs-human"
+                last_error: "{{ world.route_decision.reason ?? 'classifier requested clarification before implementation' }}"
+      quit:
+        - target: "@exit:needs-human"
+          effects:
+            - set:
+                status: "needs-human"
+                last_error: "operator abandoned the intake"
+      look:
+        - target: .
+
+  needs_human:
+    description: "Clarification required."
+    relevant_world: [idea, route_decision, last_error, status]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The autonomous run stopped because the classifier or selected pipeline needs human input."
+          - kv:
+              pairs:
+                Status: "{{ world.status }}"
+                Reason: "{{ world.last_error|default:'(none)' }}"
+                Route: "{{ world.route_decision.route|default:'(none)' }}"
+          - heading: "Questions"
+            when: "len(world.route_decision.questions ?? []) > 0"
+          - code: |
+              {% for q in world.route_decision.questions %}- {{ q }}
+              {% empty %}(none){% endfor %}
+            when: "len(world.route_decision.questions ?? []) > 0"
+        choices:
+          - heading: "Actions"
+          - list:
+              items:
+                - label: "implement idea=<revised text>"
+                  hint: "start a new intake with answers included"
+                - label: "look"
+    on:
+      implement:
+        - when: "(slots.idea ?? '') != ''"
+          target: classifying
+          effects:
+            - set:
+                idea: "{{ slots.idea }}"
+                route_decision: {}
+                status: "classifying"
+                last_error: ""
+        - default: true
+          target: .
+      look:
+        - target: .
+
+  done:
+    description: "Implementation complete."
+    terminal: true
+    relevant_world: [status, final_summary, shipped_sha]
+    view:
+      extends: "base"
+      blocks:
+        body:
+          - prose: "The selected implementation pipeline reached a terminal success."
+          - kv:
+              pairs:
+                Status: "{{ world.status }}"
+                Summary: "{{ world.final_summary|default:'(none)' }}"
+                SHA: "{{ world.shipped_sha|default:'(n/a)' }}"

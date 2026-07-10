@@ -58,6 +58,9 @@ states:
         id: fetch_widget
         with:
           script: scripts/fetch_widget.star
+          capabilities:
+            http:
+              methods: [GET]
           inputs:
             widget_id: "42"
         bind:

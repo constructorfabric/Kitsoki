@@ -23,6 +23,11 @@ initial_world:
 host_handlers:
   # NOTE: host.agent.task is intentionally ABSENT. Any invocation would fail.
 
+  host.git_worktree:
+    by_call:
+      prepare_workspace:
+        data: { ok: true, path: ".capsules/workspaces/slidey-edit-flow" }
+
   host.starlark.run:
     by_call:
       resolve_deck:
@@ -74,7 +79,7 @@ turns:
       deck_handle: "slidey-edit#1"
     expect_host_calls:
       - handler: host.slidey.render
-        args: { call: "render_deck" }
+        args: { call: "render_deck", spec_path: ".capsules/workspaces/slidey-edit-flow/docs/decks/kitsoki-pitch.slidey.json" }
       - handler: host.artifacts_dir
         args: { call: "emit_deck" }
 

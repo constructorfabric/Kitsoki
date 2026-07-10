@@ -28,6 +28,7 @@ import (
 
 	kitsokimcp "kitsoki/internal/mcp"
 	"kitsoki/internal/render/sourcecolor"
+	"kitsoki/internal/storyauthoring"
 	"kitsoki/internal/sysprompt"
 )
 
@@ -190,7 +191,10 @@ func parseValidatorOptions(args map[string]any) (validatorOptions, string) {
 // will write each successful submit's payload to that file (atomic, last-call wins)
 // so the parent can recover the canonical JSON.
 func buildValidatorMCPServer(ctx context.Context, schemaPath, outputPath string, opts validatorOptions) (map[string]any, error) {
-	resolved := resolvePromptPathCtx(ctx, schemaPath)
+	resolved, err := resolveValidatorSchemaPath(ctx, schemaPath)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := os.Stat(resolved); err != nil {
 		return nil, fmt.Errorf("schema %q not found: %w", resolved, err)
 	}
@@ -227,6 +231,13 @@ func buildValidatorMCPServer(ctx context.Context, schemaPath, outputPath string,
 		"command": bin,
 		"args":    cliArgs,
 	}, nil
+}
+
+func resolveValidatorSchemaPath(ctx context.Context, schemaPath string) (string, error) {
+	if resolved, ok, err := storyauthoring.ResolveSchemaPath(schemaPath); ok || err != nil {
+		return resolved, err
+	}
+	return resolvePromptPathCtx(ctx, schemaPath), nil
 }
 
 // AgentAskWithMCPHandler is no longer a registered verb (Phase 9 unregistered
@@ -660,7 +671,8 @@ func agentAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, a
 	}
 	// Thread agent tools (or per-call override) via --allowedTools. Per-call
 	// wins over agent.Tools per D5; effectiveTools emits a warn-line on conflict.
-	if tools := effectiveTools(ctx, args, agent); len(tools) > 0 {
+	tools := effectiveTools(ctx, args, agent)
+	if len(tools) > 0 {
 		cliArgs = appendAllowedToolsFlag(cliArgs, tools)
 	}
 	// Hard-deny AskUserQuestion: headless `-p` auto-resolves it with empty
@@ -753,6 +765,8 @@ func agentAskWithMCPCore(ctx context.Context, rendered, resolvedPrompt string, a
 			mcpServers["validator"] = validatorEntry
 		}
 	}
+
+	mcpServers = attachStudioMCPServer(mcpServers, tools)
 
 	// Materialize mcp_servers (if any) into a temp config file.
 	if len(mcpServers) > 0 {

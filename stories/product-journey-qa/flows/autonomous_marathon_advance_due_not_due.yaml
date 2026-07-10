@@ -1,0 +1,84 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      autonomous_product_journey_marathon_advance_due:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_not_due
+            autonomous_marathon_status: autonomous_marathon_not_due
+            autonomous_marathon_summary: "No due marathon advanced: 0 due, 1 upcoming, 0 blocked, 0 ignored"
+            autonomous_due_status: autonomous_marathon_due_checked
+            autonomous_due_summary: "0 due, 1 upcoming, 0 blocked, 0 ignored"
+            autonomous_due_root: .artifacts/product-journey
+            autonomous_due_count: 0
+            autonomous_due_upcoming_count: 1
+            autonomous_due_blocked_count: 0
+            autonomous_due_ignored_count: 0
+            autonomous_due_total_count: 1
+            autonomous_due_next_run_id: ""
+            autonomous_due_next_run_dir: ""
+            autonomous_due_next_command: ""
+            autonomous_due_next_story_intent: ""
+            autonomous_due_next_minutes_overdue: 0
+            autonomous_due_advance_status: autonomous_marathon_not_due
+            autonomous_due_advance_summary: "No due marathon advanced: 0 due, 1 upcoming, 0 blocked, 0 ignored"
+
+turns:
+  - intent:
+      name: autonomous_marathon_advance_due
+      slots:
+        stats_root: .artifacts/product-journey
+        due_now: "2026-07-02T01:00:00+00:00"
+    expect_state: idle
+    expect_world:
+      status: autonomous_marathon_not_due
+      autonomous_marathon_status: autonomous_marathon_not_due
+      autonomous_due_status: autonomous_marathon_due_checked
+      autonomous_due_count: 0
+      autonomous_due_upcoming_count: 1
+      autonomous_due_advance_status: autonomous_marathon_not_due
+      autonomous_due_advance_summary: "No due marathon advanced: 0 due, 1 upcoming, 0 blocked, 0 ignored"
+      autonomous_due_next_run_id: ""
+      run_id: ""
+      run_dir: ""
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_not_due[\\s\\S]*Marathon due[\\s\\S]*0 due, 1 upcoming,[\\s\\S]*0 blocked, 0 ignored[\\s\\S]*Due advance[\\s\\S]*autonomous_marathon_not_due: No due marathon[\\s\\S]*advanced"
+    expect_host_calls:
+      - handler: host.run
+        args:
+          call: autonomous_product_journey_marathon_advance_due
+          cmd: python3
+          args:
+            - tools/product-journey/run.py
+            - --autonomous-marathon-advance-due
+            - --json-output
+            - --report-invalid-autonomous-marathon
+            - --stats-root
+            - .artifacts/product-journey
+            - --stats-output
+            - ""
+            - --issue-state-file
+            - ""
+            - --due-now
+            - "2026-07-02T01:00:00+00:00"
+            - --due-limit
+            - 10
+            - --gh-agent-db
+            - ""
+            - --gh-agent-story
+            - stories/bugfix
+            - --gh-agent-project-root
+            - ""
+            - --gh-agent-incident-repo
+            - ""
+            - --gh-agent-asset-dir
+            - ""
+            - --gh-agent-comment-mode
+            - none
+
+expect_no_errors: true

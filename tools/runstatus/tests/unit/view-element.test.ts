@@ -117,6 +117,26 @@ describe("ViewElement", () => {
     w.unmount();
   });
 
+  it("renders template elements as markdown documents", () => {
+    const w = render({
+      Kind: "template",
+      Source:
+        "## Fix summary\n\n- Updated **config** handling for `APP_FLAG`.\n\n| Check | Result |\n|---|---|\n| unit | pass |",
+    });
+    const md = w.find('[data-testid="view-template-markdown"]');
+    expect(md.exists()).toBe(true);
+    expect(md.find("h2.md-h2").text()).toBe("Fix summary");
+    expect(md.find("ul.md-ul li").text()).toContain("Updated config handling");
+    expect(md.find("strong").text()).toBe("config");
+    expect(md.find("code").text()).toBe("APP_FLAG");
+    const table = md.find("table.md-table");
+    expect(table.exists()).toBe(true);
+    expect(table.findAll("th").map((th) => th.text())).toEqual(["Check", "Result"]);
+    expect(table.findAll("td").map((td) => td.text())).toEqual(["unit", "pass"]);
+    expect(md.html()).not.toContain("## Fix summary");
+    w.unmount();
+  });
+
   it("renders heading as <h3>", () => {
     const w = render({ Kind: "heading", Source: "Section Title" });
     const h = w.find("h3.ve-heading");
@@ -183,6 +203,25 @@ describe("ViewElement", () => {
     w.unmount();
   });
 
+  it("renders semantic warnings as orange warning callouts even when authored blue", () => {
+    const w = render({
+      Kind: "banner",
+      Source: "Session warning\nReload the story to apply changes",
+      Subtitle: "The current session may be stale",
+      Color: "blue",
+    });
+    const b = w.find(".ve-banner");
+    expect(b.exists()).toBe(true);
+    expect(b.classes()).toContain("banner--warn");
+    expect(b.classes()).not.toContain("banner--info");
+    expect(b.find(".ve-banner-marker").text()).toBe("⚠");
+    expect(b.findAll(".ve-banner-line").map((line) => line.text())).toEqual([
+      "Session warning",
+      "Reload the story to apply changes",
+    ]);
+    w.unmount();
+  });
+
   it("honours a literal hex banner colour as an inline accent (TUI parity)", () => {
     // The bugfix / design pipeline banners carry per-phase hex accents
     // (#06B6D4 cyan, #3B82F6 blue, #8B5CF6 violet, …). The web must convey the
@@ -214,9 +253,9 @@ describe("ViewElement", () => {
     w.unmount();
   });
 
-  it("renders template kind as prose paragraphs", () => {
+  it("renders simple template kind content through the markdown path", () => {
     const w = render({ Kind: "template", Source: "resolved text" });
-    const ps = w.findAll("p.ve-prose");
+    const ps = w.findAll(".ve-markdown p.md-p");
     expect(ps.length).toBe(1);
     expect(ps[0].text()).toBe("resolved text");
     w.unmount();
@@ -245,6 +284,7 @@ describe("ViewElement", () => {
     const video = wrapper.find("video.ve-media-video");
     expect(video.exists()).toBe(true);
     expect(video.attributes("src")).toBe("/fake-artifact/clip.mp4");
+    expect(video.attributes("poster")).toBe("/fake-artifact/clip.mp4/poster");
     expect(video.attributes("controls")).toBeDefined();
     w.unmount();
   });
@@ -450,6 +490,22 @@ describe("ViewElement", () => {
     expect(w.find('[data-testid="semantic-overlay"]').exists()).toBe(true);
     expect(w.find('[data-testid="so-marker-1/card_0"]').exists()).toBe(true);
     expect(w.find('[data-testid="so-marker-1/title"]').exists()).toBe(true);
+    w.unmount();
+  });
+
+  it("keeps a sidecar-bearing html artifact on the html substrate with semantic markers", async () => {
+    dsStub.semanticMap.mockResolvedValue(SIDECAR);
+    const w = renderWithSession({
+      Kind: "media",
+      Handle: "mockup.html",
+      Mime: "text/html",
+    });
+    await w.find('[data-testid="media-annotate"]').trigger("click");
+    await flushPromises();
+    expect(w.find('[data-testid="aa-html"]').exists()).toBe(true);
+    expect(w.find('[data-testid="aa-slidey"]').exists()).toBe(false);
+    expect(w.find('[data-testid="semantic-overlay"]').exists()).toBe(true);
+    expect(w.find('[data-testid="so-marker-1/card_0"]').exists()).toBe(true);
     w.unmount();
   });
 

@@ -1,0 +1,91 @@
+# design_workspace_unwritable_fallback — design_search's resolve_durable_path
+# step falls back to a writable location when the configured durable path
+# (design_durable_path, default "docs/proposals") is not writable.
+#
+# This is the regression coverage for the scenario-qa finding O2
+# ("host.artifacts_dir: mkdir docs/proposals/.workspace/<slug>: permission
+# denied" — Kitsoki's primary checkout keeps docs/proposals/ intentionally
+# read-only per AGENTS.md, and the design pipeline hardcoded its workspace
+# under that tree with no fallback). host.fs.writable_dir is stubbed here to
+# report the configured path as NOT writable (used_fallback: true), exactly
+# as it would for real against a read-only docs/proposals/ - proving the
+# room rebinds design_durable_path to the fallback and every downstream step
+# (workspace minting, artifact writes) uses that rebound value instead of
+# hard-failing on a raw permission-denied mkdir.
+#
+# Contrast with design_happy_path.yaml, which stubs host.fs.writable_dir with
+# used_fallback: false (the common case — the configured path IS writable)
+# and so keeps every path under docs/proposals/ throughout.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design
+initial_world:
+  judge_mode: "human"
+
+starlark_inspect_cassette: ../cassettes/design_workspace_unwritable_fallback.inspect.yaml
+
+host_handlers:
+  # The configured design_durable_path ("docs/proposals", the world default)
+  # is NOT writable in this run — the room must fall back to ".context/designs"
+  # rather than mint the workspace under the unwritable root.
+  host.fs.writable_dir:
+    data: { path: ".context/designs", used_fallback: true }
+  host.ide.open_file:
+    data: { ok: true, connected: true }
+  host.agent.decide:
+    by_call:
+      existing_scan:
+        data:
+          ok: true
+          submitted: { overlaps: [], roadmap_fit: "No overlap." }
+      references_research:
+        data:
+          ok: true
+          submitted: { items: [] }
+  host.agent.search:
+    data: { hits: [], top: null }
+  host.artifacts_dir:
+    data: { ok: true, path: ".context/designs/.workspace/offline-cache-expensive-querie/out.md", message_id: "out#1" }
+  host.agent.task:
+    by_call:
+      refine_brief:
+        data:
+          ok: true
+          submitted: { summary: "Idea is clear.", gaps: [] }
+
+turns:
+  # Intake: mint the candidate slug (the resolve step hasn't run yet — it
+  # lives in design_search's on_enter — so this first Starlark call still
+  # checks the UNRESOLVED default docs/proposals/ paths; harmless, since it
+  # only reads/exists, never writes).
+  - intent: { name: discuss, slots: { message: "I want an offline cache for expensive queries" } }
+    expect_state: design_search
+    expect_world:
+      design_slug: "offline-cache-expensive-querie"
+      # design_search's on_enter has now run: the configured durable path was
+      # reported not-writable, so design_durable_path is rebound to the
+      # fallback BEFORE the scout or any folder work.
+      design_durable_path: ".context/designs"
+      design_workspace_root_resolved: ".context/designs"
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: "name_slug" }
+      - handler: host.fs.writable_dir
+      - handler: host.agent.decide
+        args: { call: "existing_scan" }
+
+  # Confirm: materialize mints the workspace folder — now under the
+  # FALLBACK root, not the unwritable configured one.
+  - intent: { name: confirm, slots: {} }
+    expect_state: design_refine
+    expect_world:
+      design_overlap_decision: "new"
+      design_workspace: ".context/designs/.workspace/offline-cache-expensive-querie"
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: "uniquify" }
+      - handler: host.artifacts_dir
+        args: { thread: "002-existing-state" }
+
+expect_no_errors: true

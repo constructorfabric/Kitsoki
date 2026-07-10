@@ -1,4 +1,4 @@
-# restart_from_each_stage — port of cyber-repo's
+# restart_from_each_stage — port of focused-engineering's
 # stories/bugfix/flows/restart_from_each_stage.yaml.
 #
 # The done room's restart_from arc has a when:-ladder across each

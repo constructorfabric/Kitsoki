@@ -1,0 +1,32 @@
+# Allowlist for scripts/features/lint-tour-targets.ts.
+#
+# One entry per line: <testid>  # <reason, required>. A `#`-comment is
+# mandatory so every entry is self-documenting in a diff. Two legitimate
+# reasons to add an entry:
+#   1. demo-repair: a UI commit changed/removed the data-testid a tour step
+#      waits on; a parallel pass is repairing the recording/tour step. Use a
+#      `TODO(demo-repair): <what to fix>` comment so it's greppable.
+#   2. dynamic-unresolvable: the testid is built from an interpolation with no
+#      static leading prefix this linter's heuristic can match (rare — most
+#      dynamic testids use a `prefix-${expr}` shape the linter already
+#      resolves via prefix matching).
+#
+# Remove an entry as soon as its data-testid ships again (or the tour step is
+# fixed) — a stale, unused entry fails this lint too.
+
+# --- demo-repair: currently-broken (found by this lint's first run) ---------
+# Commit 0227386d "Remove the redundant Observe topbar link" deleted
+# data-testid="observe-link" from InteractiveView.vue outright — 7 tour steps
+# across 6 features still target/wait for it, so those steps now stall.
+observe-link  # TODO(demo-repair): InteractiveView.vue no longer renders an Observe link (commit 0227386d); repoint these tour steps at a live target or drop the step
+
+# --- dynamic-unresolvable: resolved at runtime via component data/props, not
+#     a template-literal or string-concat pattern this linter can trace ------
+guardrail-row  # dynamic-unresolvable: AgentActionRow.vue `kindTestid` computed ref (:data-testid="kindTestid" resolves to this literal when row.kind === "guardrail")
+nudge-row  # dynamic-unresolvable: AgentActionRow.vue `kindTestid` computed ref (resolves to this literal when row.kind === "host-nudge")
+chat-activity  # dynamic-unresolvable: ActivityDisclosure.vue's `testid` prop defaults to this literal, bound as :data-testid="testid"
+chat-activity-summary  # dynamic-unresolvable: ActivityDisclosure.vue summary element, :data-testid="`${testid}-summary`" with the chat-activity default
+chat-activity-feed  # dynamic-unresolvable: ActivityDisclosure.vue feed element, :data-testid="`${testid}-feed`" with the chat-activity default
+meta-activity  # dynamic-unresolvable: MetaOverlay.vue passes testid="meta-activity" into ActivityDisclosure.vue's :data-testid="testid"
+meta-activity-summary  # dynamic-unresolvable: ActivityDisclosure.vue summary element under the meta-activity testid prop
+meta-activity-feed  # dynamic-unresolvable: ActivityDisclosure.vue feed element under the meta-activity testid prop

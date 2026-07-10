@@ -1,0 +1,5 @@
+inputs:
+  decomposition_path: { type: string, required: true }
+outputs:
+  route: { type: string }
+  error: { type: string }

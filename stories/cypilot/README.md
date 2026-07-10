@@ -216,7 +216,7 @@ using the proposal's §6.4 idealised command shapes:
 | `validate` | `cpt analyze --target <id> [--mode <m>] --json` |
 | `decompose` | `cpt plan --task <id> --json` |
 
-Today's real `cpt` CLI (per `cyber-repo/cypilot/.core/workflows/`)
+Today's real `cpt` CLI (per `focused-engineering/cypilot/.core/workflows/`)
 uses `--json` as a top-level flag and slightly different subcommand
 verbs.  The provider tolerates both JSON envelopes and plain-text
 fallback for `list` and `decompose`; the LLM-judge prompts read the
@@ -233,5 +233,5 @@ for the full adapter behaviour.
   checkpoint shape this story mirrors.
 - [`stories/pr-refinement/`](../pr-refinement/) — the tail this story
   hands off to via `@exit:code_ready`.
-- `cyber-repo/cypilot/.core/workflows/{plan,generate,analyze}.md` —
+- `focused-engineering/cypilot/.core/workflows/{plan,generate,analyze}.md` —
   the cypilot workflows wrapped by this story.

@@ -1,0 +1,52 @@
+# fix_tests_autonomous — dev-story landing quick action enters the imported
+# fix-tests loop, drains the quick gate, full deterministic command gate, and
+# review gate, then returns to landing with the report/review projected.
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  landing_request: ""
+  test_cmd: "make test"
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 0, ok: true, stdout: "ok\n" }
+        delay: "10ms"
+      full_verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\tfull suite\n" }
+        delay: "10ms"
+  host.agent.decide:
+    by_call:
+      review-0:
+        data:
+          submitted:
+            pass: true
+            reason: "No diff to review and the command is green."
+            functionality_preserved: true
+            tests_not_weakened: true
+            findings: []
+            fixes: []
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: go_fix_tests, slots: {} }
+    advance_clock: "1s"
+    expect_state: landing
+    expect_world:
+      status: "tests-green"
+      fix_tests_report_path: ".artifacts/fix-tests/report-clean.md"
+      fix_tests_review:
+        pass: true
+        reason: "No diff to review and the command is green."
+        functionality_preserved: true
+        tests_not_weakened: true
+        findings: []
+        fixes: []
+
+expect_no_errors: true
+expect_operation_policy: tests__fix_tests
+expect_operation_status: completed
+expect_terminal_artifact: tests__report_path

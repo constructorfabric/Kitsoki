@@ -24,6 +24,12 @@ if (!dist || !fs.existsSync(dist)) {
 const FORBIDDEN_HREF =
   /href="(?!https?:)[^"]*docs\/(proposals|competitive-analysis|skills|case-studies)\/[^"]*"/;
 
+// Deck sources are first-class site pages. If staged docs fall through to the
+// generic GitHub escape hatch, local `make site-dev` sends clicks to a remote
+// branch that may not have the local deck yet.
+const REMOTE_DECK_HREF =
+  /href="https:\/\/github\.com\/bsacrobatix\/Kitsoki\/blob\/[^/]+\/docs\/decks\/(?:bundled\/)?[^"]+\.(?:json|html)(?:#[^"]*)?"/;
+
 const problems = [];
 function walk(dir) {
   for (const name of fs.readdirSync(dir)) {
@@ -37,6 +43,8 @@ function walk(dir) {
       const content = fs.readFileSync(p, "utf8");
       const m = content.match(FORBIDDEN_HREF);
       if (m) problems.push(`${path.relative(dist, p)}: forbidden internal-doc link ${m[0]}`);
+      const deck = content.match(REMOTE_DECK_HREF);
+      if (deck) problems.push(`${path.relative(dist, p)}: deck link should use the local /decks/ page, got ${deck[0]}`);
     }
   }
 }

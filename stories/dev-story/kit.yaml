@@ -1,0 +1,91 @@
+# dev-story's own kit.yaml — S6 Phase A
+# (.context/kits-implementation-plan.md "S6 — dev-story kit (POC #2) + root
+# generalization"). This is the SECOND proof kit (after object-graph, S5) and
+# the one that resolves the engine/dev-story bootstrap circularity (D5) and
+# feeds the D6 root-generalization machinery in internal/app/synthesis.go.
+#
+# Deliberately sits at stories/dev-story/kit.yaml — beside dev-story's
+# existing app.yaml, not inside a new nested stories/dev-story/ directory —
+# because Phase A exercises the kit resolver with zero distribution risk; the
+# real repo-split move (git-subtree, its own remote, a git+ kits.lock
+# source) is Phase B and explicitly out of scope here. provides.story_dirs
+# below is the escape hatch that makes that possible: it points the
+# "dev-story" story at "." (this directory) instead of the generic kit
+# convention's `stories/dev-story/app.yaml` (which would require app.yaml to
+# move to stories/dev-story/stories/dev-story/app.yaml — a Phase-B-shaped
+# restructure this slice does not do).
+schema: kit/v1
+kit: dev-story
+namespace: kitsoki
+version: 0.1.0
+title: "dev-story — Engineer's Day"
+summary: |
+  The engineer's-day hub story: bugfix, PR-refinement, implementation,
+  epic-delivery, and cypilot pipelines behind one free-form workbench
+  landing room. Today's default (and, in v1, the only) root kit — the
+  hub generated and hand-written project instances import as their root
+  (see docs/stories/imports.md "The blank root that grows" and D6 in
+  .context/kits-implementation-plan.md).
+
+requires:
+  kitsoki: ">=0.1.0"
+
+provides:
+  stories: [dev-story]
+  story_dirs:
+    dev-story: "."
+  interfaces: [ticket, vcs, ci, workspace, transport]
+  onboarding: go_init
+
+# D6: the manifest-driven replacement for the old hardcoded RootStoryName
+# const + duplicated five-interface allow-list (internal/app/synthesis.go,
+# internal/webconfig/webconfig.go, internal/projectprofile). Any installed
+# kit with a root: block naming one of its own provides.stories can be the
+# blessed root that internal/app.SynthesizeRoot/BuildRootImporter fold in;
+# dev-story is merely the DEFAULT one (internal/app.DefaultRootKitName),
+# not a hardcoded special case, going forward.
+root:
+  story: dev-story
+  # Mirrors dev-story's own `root: landing` — the free-form workbench is
+  # where the synthesized implicit root hands off into dev-story.
+  entry: landing
+  # Mirrors the old DevStoryIfaces allow-list byte-for-byte (dev-story's own
+  # host_interfaces: block, stories/dev-story/app.yaml) — the only ifaces an
+  # `overrides.bindings.<iface>` may rebind.
+  host_interfaces: [ticket, vcs, ci, workspace, transport]
+  # Mirrors the old synthesizedRootHosts() list byte-for-byte
+  # (internal/app/synthesis.go) — the fixed host allow-list the synthesized
+  # root declares (hosts: declared) so dev-story's subtree has the same
+  # fail-fast host surface a hand-written or generated project instance does.
+  hosts:
+    - host.local_files.ticket
+    - host.gh.ticket
+    - host.gh.ticket.comment
+    - host.gh.ticket.get
+    - host.gh.ticket.transition
+    - host.git
+    - host.local
+    - host.git_worktree
+    - host.append_to_file
+    - host.inbox.add
+    - host.fs.writable_dir
+    - host.agent.ask
+    - host.agent.decide
+    - host.agent.task
+    - host.agent.codeact
+    - host.run
+    - host.agent.search
+    - host.artifacts_dir
+    - host.slidey.render
+    - host.ide.get_diagnostics
+    - host.ide.open_file
+    - host.ide.open_diff
+    - host.agent.converse
+    - host.chat.resolve
+    - host.chat.transcript
+    - host.diff.open
+    - host.slidey.render
+    - host.starlark.run
+
+conformance:
+  flows: ["flows/*.yaml"]

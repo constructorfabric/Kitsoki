@@ -1,0 +1,37 @@
+# workbench_walk_cassette — room-workbench Task 1.4(a): confirm the
+# synthesized on_enter host.agent.task dispatch is legible in the trace as
+# workbench-origin using the EXISTING agent.call.* provenance (no new event
+# kind, per docs/proposals/room-workbench.md's Decision recording section).
+#
+# workbench_walk.yaml (Task 2.2) stubs host.agent.task wholesale via
+# host_handlers:, which replaces the handler entirely and never writes an
+# AgentCalled event — fine for proving world/state effects, but it can't
+# exercise the trace-provenance claim this fixture is for. host_cassette:
+# dispatch (internal/testrunner/cassette.go) DOES write a real
+# AgentCalled/AgentReturned pair to the JSONL sink, carrying
+# state_path == the dispatching state (oc.StatePath) — see
+# writeCassetteAgentEvents. This fixture switches the same one-room walk onto
+# a cassette so flows_workbench_smoke_trace_test.go can assert on that field
+# directly instead of asserting it can't be observed.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: bench
+initial_world: {}
+
+host_cassette: workbench_walk_cassette.cassette.yaml
+
+turns:
+  # Free-text capture into the synthesized bench_capture intent fires
+  # bench's on_enter for the first time (initial-state on_enter bypass —
+  # see workbench_walk.yaml's own note), dispatching the synthesized
+  # host.agent.task call through the cassette this time.
+  - intent: { name: bench_capture, slots: { request: "fix the flaky test" } }
+    expect_state: bench
+    expect_world:
+      bench_request: "fix the flaky test"
+      bench_note:
+        summary: "Picked up the free-form request and got it done."
+        details: "Would have edited a file; stayed read-only pending a write-mode grant."
+
+expect_no_errors: false

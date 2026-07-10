@@ -125,7 +125,7 @@
 //
 // The user-facing `kitsoki viz` invocation — DOT vs Mermaid vs flowchart,
 // `--detail`, `--rooms`, and rendering with Graphviz/mmdc — is documented in
-// docs/architecture/developer-guide.md. The state-machine concepts the
+// docs/guide/development/developer-guide.md. The state-machine concepts the
 // diagrams depict (rooms, compound/parallel states, transitions, on_enter
 // effects) are defined in docs/stories/state-machine.md.
 package viz

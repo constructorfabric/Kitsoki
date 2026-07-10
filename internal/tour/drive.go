@@ -20,8 +20,8 @@ func awaitPromise(p *runtime.EvaluateParams) *runtime.EvaluateParams {
 // executor runs a step's DriveAction list against the live page over CDP. It is
 // the Go port of the Playwright spec helpers (e.g. agent-actions-video.spec.ts:
 // typeAndSend, clickIntent, waitForState, revealTurn, ease, dwell). Every gesture is a
-// Runtime.evaluate (chromedp.Evaluate) so it fires through the tour overlay's
-// hit-test backdrop regardless of paint order — the same reason the spec
+// Runtime.evaluate (chromedp.Evaluate) so it avoids browser hit-test flake from
+// the tour popover or transient layout shifts — the same reason the spec
 // DOM-dispatches `el.click()` rather than a hit-test click.
 //
 // pace scales every dwell/reveal duration: 0 = instant (fast deterministic

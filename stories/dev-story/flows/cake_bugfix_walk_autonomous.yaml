@@ -43,6 +43,12 @@ test_kind: flow
 app: ../app.yaml
 initial_state: landing
 initial_world:
+  # Opt out of bf's auto_triage pre-flight (default on): this fixture tests
+  # the downstream bugfix walk, not triage. Parent-level key — the import
+  # wrapper re-seeds bf__auto_triage on entry; only the world_in projection
+  # sticks. The pre-flight contract lives in
+  # stories/bugfix/flows/preflight_triage_*.yaml.
+  auto_triage: false
   ticket_id:      "B-2026-05-18-list-broken"
   ticket_title:   "Note list disappears after creating a second note"
   ticket_type:    "bug"

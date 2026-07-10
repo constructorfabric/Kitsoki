@@ -19,6 +19,11 @@ and **trust only an independent verify** — never the maker's self-report.
 - [`stories/bugfix/README.md`](../../../stories/bugfix/README.md) — the pipeline being driven: rooms, exits (`shipped` / `needs-human` / `not-reproducible`), the RED→GREEN regression gate, `bugfix_mode=triage`.
 - The hardened prompts under [`stories/bugfix/prompts/`](../../../stories/bugfix/prompts/) — what a legitimate generic fix looks like (commit `d210ea67`).
 - [`issues/bugs/README.md`](../../../issues/bugs/README.md) + the ticket frontmatter for how findings become filed tickets.
+- For any TUI/video/deck proof of a marathon, use the universal scenario
+  mechanism: `tools/product-journey/scenarios.json`,
+  `tools/product-journey/run.py --emit-run --transport ...`, and
+  `stories/scenario-qa/app.yaml`. A TUI bridge or Playwright recorder is only the
+  capture adapter and must consume/attach evidence to that run bundle.
 - MEMORY: `workflow-gate-on-independent-verify`, `workflow-dead-impl-poisons-demo`, `bugfix-pipeline-verify-gaps`, `bugfix-triage-mode`, `set-block-atomic-determinism`.
 
 ## The marathon loop (per case)
@@ -38,12 +43,16 @@ the only write surface; you never touch the filesystem to drive the story.
    PARENT commit (`<fix>^`); for a live ticket it is current main (or the SHA the
    ticket was filed against). Confirm the bug is actually present at the baseline.
 
-2. **(Optional) triage-only pre-flight.** Cheap read-only verdict before spending
-   maker budget. Drive bugfix with `bugfix_mode=triage` → the triaging room emits a
-   standardized verdict: `ALREADY-FIXED | STILL-LIVE | PARTIAL | UNCLEAR` (read-only,
-   no worktree). Drop `ALREADY-FIXED` cases (a test/lint layered on an already-merged
-   behavioural fix → baseline is GREEN → degenerate); only run the full pipeline on
-   `STILL-LIVE` / `PARTIAL`. See MEMORY `bugfix-triage-mode`.
+2. **Triage pre-flight — now BUILT IN.** A fresh full/quick autostart runs bf's
+   `auto_triage` pre-flight by default (`world.auto_triage: true`): the read-only
+   triaging room verdicts `ALREADY-FIXED | STILL-LIVE | PARTIAL | UNCLEAR` before
+   any maker budget is spent, and `ALREADY-FIXED` short-circuits to `@exit:triaged`
+   (record it as a marathon outcome, not a failure). `STILL-LIVE`/`PARTIAL`/`UNCLEAR`
+   continue into reproducing automatically. Only seed `auto_triage: false` when the
+   baseline is already confirmed live in step 1 and the extra verdict is redundant
+   spend. A standalone triage-only pass (`bugfix_mode=triage`) remains available for
+   backlog scrubbing without driving the pipeline. See
+   `stories/bugfix/README.md#auto-triage-pre-flight-worldauto_triage-default-true`.
 
 3. **Drive the full pipeline live** via `session_new` (through kitsoki-mcp-driver):
    - `harness: live`, an explicit `profile:` (the profile, not the story agent-def,
@@ -53,10 +62,13 @@ the only write surface; you never touch the filesystem to drive the story.
      missing-trace bug; gotcha #12),
    - `base` / `base_branch` = the **baseline SHA** so the pipeline cuts its worktree
      from the buggy parent, not main where the bug is already gone (gotcha #11),
-   - a **scoped `test_cmd`** restricted to the changed-area packages — a repo with
-     pre-existing unrelated reds would bounce every fix forever (gotcha #13),
-   - a **hermetic per-case worktree** — cells/cases must NEVER share a worktree;
-     sharing IS bug #9 (gotcha #1).
+	   - a **scoped `test_cmd`** restricted to the changed-area packages — a repo with
+	     pre-existing unrelated reds would bounce every fix forever (gotcha #13),
+	   - a **hermetic per-case workspace** — cells/cases must NEVER share a worktree
+	     or clone-backed capsule; sharing IS bug #9 (gotcha #1). In this repo, the
+	     supervising agent must use the managed `scripts/dev-workspace.sh` lifecycle
+	     rather than raw `git worktree`/`git clone`; story/MCP internals may create
+	     their own isolated runtime workspace through their supported APIs.
    Then drive the rooms (`start` → reproducing → … → testing → tail) and answer
    judge checkpoints as an honest operator would.
 
@@ -90,7 +102,7 @@ repro commands; don't "fix" it.
 | per-case worktree | one fresh worktree per case, never shared | shared worktree IS bug #9 |
 | maker model = profile | set the model via session `profile:`, not story `model:` | profile supersedes the agent-def (`claude-native`→opus, `claude-sonnet`→sonnet, `synthetic-claude`→GLM, `codex-native`→gpt) |
 | needs-human park | un-instrumented ticket parks at needs-human | expected RED→GREEN discipline; human verifies+merges |
-| CLEAN pre-flight | before each case `git worktree remove --force` AND `git branch -D fix/<id>` | removing only the worktree dir leaves the branch; `workspace.create` silently REATTACHES it → the run inherits a prior run's commits (bug already "fixed" → not-reproducible). Delete BOTH. |
+| CLEAN pre-flight | ensure the story/MCP-created per-case workspace is gone and its case branch/claim is released through the supported workspace cleanup API | removing only a worktree dir leaves the branch; `workspace.create` can silently REATTACH it → the run inherits a prior run's commits (bug already "fixed" → not-reproducible). Clean BOTH through managed tooling. |
 | heartbeat watchdog | watch the trace mtime; kill on stall, NOT on wall-clock | a live run can legitimately take hours; a STUCK one stops growing the trace. See below. |
 
 ### Background runs: clean pre-flight + a heartbeat watchdog
@@ -100,9 +112,11 @@ that's fine *as long as it's making external progress*. The failure to guard
 against is the agent getting **truly stuck** (a blocked studio call, a hung
 maker, an owner-marker collision) and waiting forever with no signal.
 
-- **Pre-flight CLEAN** (per case): `git worktree remove --force .worktrees/bf-<id>`
-  AND `git branch -D fix/<id>` AND `git worktree prune`. Removing only the
-  worktree leaves the branch for `workspace.create` to reattach — a poisoned run.
+- **Pre-flight CLEAN** (per case): verify the story/MCP-managed per-case
+  workspace and branch/claim are both released through the supported cleanup API.
+  Do not run raw `git worktree`, `git clone`, or ad hoc teardown from the
+  supervising agent in this repo. Removing only the workspace directory leaves the
+  branch for `workspace.create` to reattach — a poisoned run.
 - **Monitor via the FILESYSTEM, not the MCP.** You can't check a running job
   with a second `session.status` — the MCP client serialises tool calls per
   connection and sessions are per-process (see `studio.handles` ticket; it's a
@@ -195,10 +209,18 @@ what-worked / what-didn't. When that story exists, prefer driving it (it journal
 per-case data for the deck); use this skill's by-hand loop to bootstrap it or for
 one-off marathons.
 
+If the user asks for a TUI demo/video/deck of the marathon, do not create a
+standalone bridge proof. Register or update a product-journey scenario for the
+marathon, emit a run bundle, record through `tools/tui-bridge` or another capture
+adapter that reads `driver-plan.json`, then attach the video, frame sequence,
+representative frame, and driver journal event back to the same run. The Slidey
+deck should be generated from that run/deck artifact, not from a private recorder
+manifest.
+
 ## Runbook (crisp)
 
 1. Assemble the backlog + pin each case's baseline; confirm the bug is present at baseline.
-2. (Optional) triage-only pass (`bugfix_mode=triage`); drop `ALREADY-FIXED`.
+2. Triage is built in (`auto_triage`, default on): `ALREADY-FIXED` exits at `triaged` — record and drop; seed `auto_triage: false` only for confirmed-live baselines.
 3. Per case, via **kitsoki-mcp-driver**: `session_new` (`harness:live`, `profile:`,
    explicit `trace:`, `base`=baseline, scoped `test_cmd`, fresh worktree) → drive rooms.
 4. **Independently verify** the deliverable yourself (oracle + deliverable-existence).

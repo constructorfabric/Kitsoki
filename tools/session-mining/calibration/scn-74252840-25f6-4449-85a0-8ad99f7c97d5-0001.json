@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-74252840-25f6-4449-85a0-8ad99f7c97d5-0001",
+  "source": "mined",
+  "provenance": {
+    "corpus": "claude-code",
+    "session_id": "74252840-25f6-4449-85a0-8ad99f7c97d5",
+    "span_idx": 1
+  },
+  "persona": "verifier",
+  "goal": "so make install will work now?",
+  "turns": [
+    {
+      "role": "user",
+      "text": "so make install will work now?",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [],
+  "abandoned": false
+}

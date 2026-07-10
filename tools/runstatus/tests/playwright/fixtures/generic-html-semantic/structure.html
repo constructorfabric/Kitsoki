@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      body { margin: 0; background: #f8fafc; color: #172033; }
+      .shell { width: 900px; height: 520px; box-sizing: border-box; padding: 42px 58px; background: linear-gradient(135deg, #f8fafc 0%, #eef6f4 100%); }
+      .mock { display: grid; grid-template-columns: 1.1fr .9fr; gap: 32px; height: 100%; }
+      .panel { background: #ffffff; border: 1px solid #d7dee8; border-radius: 8px; padding: 28px; box-shadow: 0 16px 38px rgba(15, 23, 42, .10); }
+      h2 { margin: 0 0 14px; font-size: 30px; line-height: 1.05; letter-spacing: 0; }
+      p { margin: 0 0 18px; color: #506076; font-size: 15px; line-height: 1.45; }
+      label { display: block; font-size: 12px; font-weight: 700; color: #334155; margin: 0 0 8px; text-transform: uppercase; }
+      input { width: 100%; box-sizing: border-box; border: 1px solid #b8c2cf; border-radius: 6px; padding: 13px 14px; font-size: 15px; margin-bottom: 18px; }
+      button { border: 0; border-radius: 6px; background: #0f766e; color: #ffffff; font-size: 15px; font-weight: 750; padding: 14px 20px; width: 100%; }
+      .aside { display: flex; flex-direction: column; justify-content: center; gap: 18px; }
+      .metric { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 18px; }
+      .metric strong { display: block; font-size: 28px; color: #9a3412; }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="mock">
+        <section class="panel">
+          <h2>Early access signup</h2>
+          <p>Static HTML mockup with addressable DOM structure.</p>
+          <label for="email">Email</label>
+          <input id="email" data-node="email" value="preview@example.com" />
+          <button type="button" data-node="submit">Request invite</button>
+        </section>
+        <aside class="aside">
+          <div class="metric"><strong>48%</strong><span>trial visitors abandon before invite request</span></div>
+          <div class="metric"><strong>12</strong><span>fields hidden behind progressive profiling</span></div>
+        </aside>
+      </div>
+    </div>
+  </body>
+</html>

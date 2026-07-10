@@ -1,0 +1,53 @@
+# bugfix_oversight_no_gate — user selects no-gate oversight before launching
+# the imported bugfix pipeline. Proves launch picks the no-gate operation policy
+# and suppresses the LLM checkpoint judge on the first phase.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  auto_triage: false
+  ticket_id:      "TKT-ON-1"
+  ticket_title:   "Oversight no-gate launch"
+  ticket_type:    "bug"
+  ticket_url:     "issues/bugs/TKT-ON-1.md"
+  thread:         "TKT-ON-1"
+  workdir:        ".worktrees/tkt-on-1"
+  workspace_id:   "ws-on-1"
+  base_branch:    "main"
+  feature_branch: "fix/tkt-on-1"
+
+host_handlers:
+  host.git_worktree:
+    data: { ok: true, log: "synced", path: ".worktrees/tkt-on-1" }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub reproduction"
+        summary_markdown: "The bug reproduces under deterministic fixture data."
+        bug_verified:     true
+        steps:            ["run fixture"]
+        involved_components: [{ name: "fixture", reason: "stub" }]
+        environment_check: { frontend_running: true, backend_running: true, dataset_ready: true }
+        confidence:       0.9
+        reasoning:        "stub"
+
+turns:
+  - intent: { name: oversight_no_gate, slots: {} }
+    expect_state: landing
+    expect_world:
+      oversight_mode: "no-gate"
+      judge_mode: "human"
+
+  - intent: { name: go_bugfix, slots: {} }
+    expect_state: bf.reproducing
+    expect_world:
+      bf__oversight_mode: "no-gate"
+      bf__judge_mode: "human"
+    expect_no_host_calls:
+      - host.agent.decide
+
+expect_operation_policy: bf__bugfix_full_no_gate
+expect_operation_status: running
+expect_no_errors: true

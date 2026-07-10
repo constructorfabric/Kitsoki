@@ -1,0 +1,67 @@
+# gitops_issue_create_uses_ticket_provider — issue creation in the git-ops hub
+# goes through iface.ticket, not ad-hoc `gh` shell commands.
+#
+# A parent project wrapper can bind the ticket interface to host.gh.ticket. This
+# flow stubs that provider and proves the nested dev-story -> gitops import can
+# create an issue from the story surface.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  ticket_repo: "acme/repo"
+
+host_bindings:
+  gitops__ticket: host.gh.ticket
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_intercept:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            on_integration:     true
+            no_common_ancestor: false
+  host.gh.ticket:
+    by_op:
+      create:
+        data:
+          ok: true
+          id: "106"
+          number: "106"
+          url: "https://github.com/acme/repo/issues/106"
+
+turns:
+  - intent: { name: go_gitops, slots: {} }
+    expect_state: gitops.intercept
+
+  - intent:
+      name: gitops__issue_create
+      slots:
+        title: "Replay miss must fail closed"
+        body: "Replay sessions must never fall through to a live agent."
+        labels: "bug,source-autonomous"
+    expect_state: gitops.intercept
+    expect_host_calls:
+      - handler: host.gh.ticket.create
+        args:
+          repo: "acme/repo"
+          title: "Replay miss must fail closed"
+          body: "Replay sessions must never fall through to a live agent."
+          labels: "bug,source-autonomous"
+    expect_world:
+      gitops__ticket_repo: "acme/repo"
+      gitops__issue_id: "106"
+      gitops__issue_title: "Replay miss must fail closed"
+      gitops__issue_status: "created"
+      gitops__issue_source: "ticket provider"
+      gitops__issue_url: "https://github.com/acme/repo/issues/106"
+
+expect_no_errors: true

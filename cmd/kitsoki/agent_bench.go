@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -34,12 +35,22 @@ func agentBenchScoreCmd() *cobra.Command {
 	var jsonOut string
 	var markdownOut string
 	var slideyOut string
+	var envelope bool
 	cmd := &cobra.Command{
 		Use:          "score <bench.yaml>",
 		Short:        "Score an existing trace without calling a provider",
 		SilenceUsage: true,
 		Args:         cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if envelope {
+				return runAgentBenchScoreEnvelope(cmd, args[0], agentBenchScoreOptions{
+					CaseID:      caseID,
+					Trace:       trace,
+					JSONOut:     jsonOut,
+					MarkdownOut: markdownOut,
+					SlideyOut:   slideyOut,
+				})
+			}
 			report, err := agentbench.ScoreManifestCase(args[0], caseID, trace)
 			if err != nil {
 				return err
@@ -67,7 +78,82 @@ func agentBenchScoreCmd() *cobra.Command {
 	cmd.Flags().StringVar(&jsonOut, "json-out", "", "write machine-readable report JSON")
 	cmd.Flags().StringVar(&markdownOut, "markdown-out", "", "write reviewable report Markdown")
 	cmd.Flags().StringVar(&slideyOut, "slidey-out", "", "write a Slidey JSON report deck")
+	cmd.Flags().BoolVar(&envelope, "envelope", false, "emit a final JSON status envelope for host.run bindings and return zero")
 	return cmd
+}
+
+type agentBenchScoreOptions struct {
+	CaseID      string
+	Trace       string
+	JSONOut     string
+	MarkdownOut string
+	SlideyOut   string
+}
+
+func runAgentBenchScoreEnvelope(cmd *cobra.Command, manifest string, opts agentBenchScoreOptions) error {
+	report, err := agentbench.ScoreManifestCase(manifest, opts.CaseID, opts.Trace)
+	if err != nil {
+		return printAgentBenchScoreEnvelope(cmd, map[string]any{
+			"status":          "failed",
+			"summary":         "failed",
+			"error":           err.Error(),
+			"stdout":          "",
+			"report_json":     opts.JSONOut,
+			"report_markdown": opts.MarkdownOut,
+			"report_deck":     opts.SlideyOut,
+			"exit_code":       1,
+		})
+	}
+	if err := writeAgentBenchReportArtifacts(agentBenchArtifactOptions{
+		JSONOut:     opts.JSONOut,
+		MarkdownOut: opts.MarkdownOut,
+		SlideyOut:   opts.SlideyOut,
+		JSONPayload: report,
+		Report:      report,
+	}); err != nil {
+		return printAgentBenchScoreEnvelope(cmd, map[string]any{
+			"status":          "failed",
+			"summary":         "failed",
+			"error":           err.Error(),
+			"stdout":          "",
+			"report_json":     opts.JSONOut,
+			"report_markdown": opts.MarkdownOut,
+			"report_deck":     opts.SlideyOut,
+			"exit_code":       1,
+		})
+	}
+
+	stdout := agentBenchReportText(report)
+	fmt.Fprint(cmd.OutOrStdout(), stdout)
+	status := "failed"
+	exitCode := 1
+	if report.Passed {
+		status = "passed"
+		exitCode = 0
+	}
+	summary := firstNonEmptyAgentBenchLine(stdout)
+	if summary == "" {
+		summary = status
+	}
+	return printAgentBenchScoreEnvelope(cmd, map[string]any{
+		"status":          status,
+		"summary":         summary,
+		"error":           strings.Join(report.Failures, "\n"),
+		"stdout":          stdout,
+		"report_json":     opts.JSONOut,
+		"report_markdown": opts.MarkdownOut,
+		"report_deck":     opts.SlideyOut,
+		"exit_code":       exitCode,
+	})
+}
+
+func printAgentBenchScoreEnvelope(cmd *cobra.Command, payload map[string]any) error {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), string(b))
+	return nil
 }
 
 func agentBenchRunCmd() *cobra.Command {
@@ -168,13 +254,19 @@ func writeAgentBenchArtifact(path string, data []byte) error {
 }
 
 func printAgentBenchReport(cmd *cobra.Command, report agentbench.Report) error {
+	fmt.Fprint(cmd.OutOrStdout(), agentBenchReportText(report))
+	return nil
+}
+
+func agentBenchReportText(report agentbench.Report) string {
+	var b strings.Builder
 	status := "FAIL"
 	if report.Passed {
 		status = "PASS"
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "%s %s\n", status, report.CaseID)
-	fmt.Fprintf(cmd.OutOrStdout(), "trace: %s\n", report.Trace)
-	fmt.Fprintf(cmd.OutOrStdout(), "cost=$%.6f input=%d output=%d tools=%d reads=%d wall=%.3fs final=%s submit=%t\n",
+	fmt.Fprintf(&b, "%s %s\n", status, report.CaseID)
+	fmt.Fprintf(&b, "trace: %s\n", report.Trace)
+	fmt.Fprintf(&b, "cost=$%.6f input=%d output=%d tools=%d reads=%d wall=%.3fs final=%s submit=%t\n",
 		report.Metrics.CostUSD,
 		report.Metrics.InputTokens,
 		report.Metrics.OutputTokens,
@@ -185,7 +277,7 @@ func printAgentBenchReport(cmd *cobra.Command, report agentbench.Report) error {
 		report.Metrics.Submitted,
 	)
 	if report.Metrics.AgentCallsStarted > 0 || report.Metrics.AgentCallsInFlight > 0 {
-		fmt.Fprintf(cmd.OutOrStdout(), "agent_calls started=%d finished=%d errored=%d in_flight=%d\n",
+		fmt.Fprintf(&b, "agent_calls started=%d finished=%d errored=%d in_flight=%d\n",
 			report.Metrics.AgentCallsStarted,
 			report.Metrics.AgentCallsFinished,
 			report.Metrics.AgentCallsErrored,
@@ -193,7 +285,16 @@ func printAgentBenchReport(cmd *cobra.Command, report agentbench.Report) error {
 		)
 	}
 	for _, failure := range report.Failures {
-		fmt.Fprintf(cmd.OutOrStdout(), "ERROR: %s\n", failure)
+		fmt.Fprintf(&b, "ERROR: %s\n", failure)
 	}
-	return nil
+	return b.String()
+}
+
+func firstNonEmptyAgentBenchLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) != "" {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
 }

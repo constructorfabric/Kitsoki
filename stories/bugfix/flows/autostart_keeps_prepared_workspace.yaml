@@ -1,0 +1,52 @@
+# autostart_keeps_prepared_workspace — Step-0w exemption 2 (regression guard
+# for b0c49153).
+#
+# workspace_prepared: true is the explicit, auditable opt-in for a
+# deliberately prepared NON-worktree workspace identity (e.g. a demo project
+# under testdata/). The guard must keep the seeded identity while the rest of
+# autostart (thread derivation, start) runs normally. Without the flag this
+# exact shape is cleared (see autostart_rejects_seeded_primary_workdir).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reproducing
+initial_world:
+  ticket_id:       "TKT-PREPARED-DEMO"
+  ticket_title:    "Deliberately prepared demo-project workspace"
+  session_id:      "session-1"
+  bugfix_mode:     "full"
+  judge_mode:      "human"
+  workspace_id:    "ws-demo"
+  feature_branch:  "fix/demo"
+  workdir:         "testdata/projects/cake"
+  workspace_prepared: true
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:       { data: { ok: true, id: "ib-1" } }
+  host.git_worktree:    { data: { ok: true, log: "reused", path: "testdata/projects/cake" } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:        "Reproduced"
+        summary_markdown:     "Repro artifact body."
+        bug_verified:         true
+        involved_components:  []
+
+turns:
+  - intent: { name: restart_from, slots: { stage: reproducing } }
+    expect_state: reproducing
+    expect_world:
+      ticket_id: "TKT-PREPARED-DEMO"
+      bf_autostart_attempted: true
+      workspace_id: "ws-demo"
+      feature_branch: "fix/demo"
+      workdir: "testdata/projects/cake"
+    expect_host_calls:
+      - handler: host.agent.task
+        args:
+          working_dir: "testdata/projects/cake"
+
+expect_terminal: false
+expect_no_errors: true

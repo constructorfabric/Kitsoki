@@ -1,0 +1,33 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      autonomous_product_journey_fix_smoke:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            summary: autonomous issue-to-fix smoke passed
+            exit_code: 0
+            output: "ok: autonomous loop validates bundle\nok: autonomous loop reports all reliability gates\nok: autonomous loop preserves filing status\nok: autonomous loop drained gh-agent\nok: autonomous loop exposes fix evidence assets\nok: autonomous loop rejects done fixes without independent verification\nok: autonomous loop reviewed and validated\nPASS"
+
+turns:
+  - intent:
+      name: autonomous_fix_smoke
+      slots: {}
+    expect_state: idle
+    expect_world:
+      status: autonomous_fix_smoke_checked
+      autonomous_fix_smoke_status: passed
+      autonomous_fix_smoke_summary: autonomous issue-to-fix smoke passed
+      autonomous_fix_smoke_exit_code: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_fix_smoke }
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Autonomous fix smoke[\\s\\S]*passed[\\s\\S]*Status[\\s\\S]*autonomous_fix_smoke_checked"
+
+expect_no_errors: true

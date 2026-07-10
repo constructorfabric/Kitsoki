@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-c4ef173f-2335-4490-a2f4-a035a6ae3d85-0000",
+  "source": "mined",
+  "provenance": {
+    "corpus": "claude-code",
+    "session_id": "c4ef173f-2335-4490-a2f4-a035a6ae3d85",
+    "span_idx": 0
+  },
+  "persona": "core-maintainer",
+  "goal": "check the .worktrees for things that are either garbage or already merged - i want to clean up to focus on real work",
+  "turns": [
+    {
+      "role": "user",
+      "text": "check the .worktrees for things that are either garbage or already merged - i want to clean up to focus on real work",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [
+    "Bash: cd <path> echo <val> git cherry main web-b completed",
+    "Bash: cd <path> echo <val> git diff --stat main. completed",
+    "Bash: cd <path> echo <val>; git merge-base --is- completed",
+    "Bash: cd <path> for wt in bf-B-x bf-F-2026-06-11 completed",
+    "Bash: cd <path> git worktree add .worktrees/merg completed",
+    "Bash: cd <path> git worktree remove --force .wor completed",
+    "Bash: ls -la .worktrees/ 2>/dev/null && echo <val> && git worktree completed"
+  ],
+  "abandoned": false
+}

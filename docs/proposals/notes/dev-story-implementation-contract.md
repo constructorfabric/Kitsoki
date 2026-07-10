@@ -139,7 +139,7 @@ host_interfaces:
       post:
         input:  { thread: string, body: string }
         output: { ok: bool, message_id: string }
-    default: host.append_to_file   # for kitsoki-dev; cyber rebinds to host.jira_comment
+    default: host.append_to_file   # project wrappers can rebind to tracker comments
 ```
 
 ### 2.6 `inbox` — local TUI inbox mirror (NOT an iface, registered as `host.inbox.add` directly)
@@ -418,7 +418,7 @@ These are explicit non-goals for Wave 1 (they land in Wave 2):
 - `internal/host/` handlers for github / cypilot_artifacts / jira
 - The `kitsoki bug create` CLI surface (lives in
   `bug-format-proposal.md`'s Phase A; consumed but not produced by Wave 1)
-- `issues/bugs/README.md` and any seed bugs (Wave 2 dogfood task)
+- `issues/bugs/README.md` and any seed bugs (Wave 2 local-instance task)
 - Cycle budgets, full `restart_from_stage` semantics, `quick_fix` /
   `skip_to_pr` / `full_pipeline` intent shortcuts
 - Provider sync to external trackers (`external:` frontmatter handling)
@@ -505,8 +505,8 @@ vcs:
 The default `host.git` handler backs it through the registry's
 prefix-fallback (one stub returning `{ok, sha}` satisfies the call in
 flow fixtures). A `host.github` rebind in Wave 3 will shell out to
-`gh pr merge --<strategy>`. A `host.bitbucket` rebind in cyber-repo
-hits the merge endpoint.
+`gh pr merge --<strategy>`. Other project wrappers can rebind the
+same interface to their review provider's merge endpoint.
 
 The op is **PR-refinement-owned**: per proposal §10 question 6
 (pragmatic reading), the merge lives inside pr-refinement and the
@@ -711,7 +711,7 @@ reference:
 Explicit non-goals for Wave 2 (deferred to Wave 3+):
 
 - `.kitsoki/stories/kitsoki-dev/` instance with `host.local_files.*` bindings
-  (Wave 3 — Phase 3 of the proposal). The dogfood loop closes there.
+  (Wave 3 - Phase 3 of the proposal). The self-hosted loop closes there.
 - `stories/implementation/`, `stories/code-review/`, `stories/cypilot/`
   sub-stories (Wave 3 — Phases 5–6). dev-story's rooms for these are
   Wave-3 stubs that route back to `main`.
@@ -734,10 +734,10 @@ Explicit non-goals for Wave 2 (deferred to Wave 3+):
 
 Plus `go test ./...` is fully green.
 
-## W2.11 — Wave 2 / Phase 3 — kitsoki-dev dogfood appendix
+## W2.11 - Wave 2 / Phase 3 - kitsoki-dev self-hosted appendix
 
 Phase 3 of the proposal (the PoC milestone ★) lands
-`.kitsoki/stories/kitsoki-dev/` — a ~50-line instance that imports
+`.kitsoki/stories/kitsoki-dev/` - a ~50-line instance that imports
 `stories/dev-story/` under the alias `core` with concrete bindings
 to the local-files providers (`host.local_files.ticket`, `host.git`,
 `host.local`, `host.git_worktree`, `host.append_to_file`,
@@ -748,7 +748,7 @@ ticket and conversation log".
 ### W2.11.1 — Instance-level world keys (forward-looking)
 
 `.kitsoki/stories/kitsoki-dev/app.yaml`'s `world:` block adds three keys for
-the dogfood seam that aren't consumed by any current room:
+the self-hosted provider boundary that aren't consumed by any current room:
 
 ```yaml
 world:
@@ -766,7 +766,7 @@ consumers:
   `$KITSOKI_TICKETS_ROOT` then `os.Getwd()`).
 - `ticket_globs` will be honoured at the handler once the
   multi-glob scan ships (today the handler reads
-  `<root>/issues/bugs/*.md` only). The dogfood instance's value
+  `<root>/issues/bugs/*.md` only). The self-hosted instance's value
   documents the FULL scan target so a future enhancement only
   needs to thread the world key through.
 - `autonomous_default_mode` is informational — the actual judge
@@ -863,7 +863,7 @@ covering it.
 
 ```
 $ kitsoki test flows .kitsoki/stories/kitsoki-dev/app.yaml
-PASS      dogfood_smoke.yaml             (4 turns)
+PASS      self_host_smoke.yaml           (4 turns)
 PASS      pickup_self_bug_supervised.yaml (18 turns)
 PASS      pickup_story_bug_supervised.yaml (18 turns)
 PASS      pickup_autonomous_then_bail.yaml (12 turns)
@@ -886,7 +886,7 @@ worktree not yet merged into this branch. Once it lands, `/meta
 kitsoki bug` and `/meta story bug` will produce properly-formed
 bug files automatically, and the closed loop from proposal §5.4
 runs without any hand-editing. Everything else — provider
-handlers, story imports, flow-test coverage, the dogfood manifest,
+handlers, story imports, flow-test coverage, the self-hosted manifest,
 the seed bugs — is in place on this branch.
 
 ---
@@ -1128,9 +1128,8 @@ The provider issues commands in the proposal §6.4 idealised form:
 `cpt artifact list --kind <k>`, `cpt generate --kind --title --slug
 --parent`, `cpt analyze --target --mode`, `cpt plan --task`.
 
-Today's actual `cpt` CLI (per
-`cyber-repo/cypilot/.core/workflows/*.md`) uses different surface
-shapes:
+Today's actual `cpt` CLI (per a project-specific cypilot checkout)
+uses different surface shapes:
 
 - `--json` is a TOP-LEVEL flag (`cpt --json validate ...`) rather
   than per-subcommand.
@@ -1158,7 +1157,7 @@ Explicit non-goals for Phase 5 (deferred to later phases):
 - **Per-feature code rooms.** Proposal §3 has one code room per
   feature phase; v1 has one final code room.
 - **Cycle budgets / `validation_failed` exit consumer.** Wave 4
-  ports the L2 cycle-budget pattern from cyber-repo bugfix; until
+  ports the L2 cycle-budget pattern from a project-specific bugfix story; until
   then the exit is declared but no in-flow path produces it.
 - **Real `gh` authentication.** `host.gh.ticket` shells to a
   pre-authenticated `gh` (`gh auth login` already run). Wrapping
@@ -1191,9 +1190,9 @@ mock the `gh` / `cpt` CLIs via the shared `cliExec` seam from
 
 Wave 1 shipped `stories/bugfix/` with `refine` / `accept` /
 `restart_from` as intent stubs and a single global `world.cycle`.
-Wave 3 / Phase 4 (this section) ports the cyber-repo L2 cycle-budget
+Wave 3 / Phase 4 (this section) ports the L2 cycle-budget
 pattern and the full Phase 4 vocabulary from proposal §4.2 onto the
-provider-neutral story. Strictly additive — every Wave 1–3 contract
+provider-neutral story. Strictly additive - every Wave 1-3 contract
 clause still holds.
 
 ## W4.1 — World keys
@@ -1351,8 +1350,8 @@ exports:
 Importing parent stories' `imports.bugfix.intents.import: [...]`
 clauses pick the subset they want to surface bare in the parent's
 intent table. Most parents (dev-story, kitsoki-dev) import the full
-list; cyber-repo's devstory will likely add Jira-specific intents
-on top and import all of the above.
+list; a project-specific wrapper can add tracker-specific intents on
+top and import all of the above.
 
 ## W4.7 — Flow fixtures (acceptance)
 
@@ -1383,14 +1382,14 @@ Final flow count: **42/42 passing** (was 10/10 at Wave 2).
 
 Explicit non-goals (deferred to later phases or out of scope):
 
-- **Per-cycle-arc budget counters.** Cyber-repo's L2 has counters
+- **Per-cycle-arc budget counters.** A prior L2 implementation has counters
   keyed on the arc that fired (e.g. `cycle__phase_9_7__on_validation_fail`
   vs `cycle__phase_9_7__on_validation_fail_short`). Phase 4 ships
   only a single per-phase counter — refine is the only arc that
   triggers it. If future arcs need separate budgets, extend with
   `<phase>_<arc>_cycle` keys following the same pattern.
 - **Free-form `jump_to.phase` slot.** Only the well-known aliases
-  are supported (matches cyber-repo's v1 contract). A
+  are supported (matches the v1 contract). A
   `slots.stage`-templated target would require runtime templating in
   `target:` strings — out of scope.
 - **Automatic restart-from on judge=`refine` with stage hint.**
@@ -1706,7 +1705,7 @@ types `impl__start` / `rev__start` to boot each story.
        TestEmitIntent_NonexistentNameInsideAliasMapIsNoArm.
      - `stories/dev-story/flows/bf_llm_auto_advance.yaml` —
        single-layer fold (dev-story → bf).
-     - `.kitsoki/stories/kitsoki-dev/flows/dogfood_autonomous_smoke.yaml` —
+     - `.kitsoki/stories/kitsoki-dev/flows/self_host_autonomous_smoke.yaml` —
        two-layer fold (kitsoki-dev → core → bf), bare `accept` in the
        verdict stub.
      - `stories/implementation/flows/happy_llm_then_human.yaml` was
@@ -1757,5 +1756,3 @@ types `impl__start` / `rev__start` to boot each story.
 | `stories/oregon-trail/flows/*.yaml` | 28 / 28 | regression (imports demo) |
 
 Full `go test ./...` clean. No runtime patches required.
-
-

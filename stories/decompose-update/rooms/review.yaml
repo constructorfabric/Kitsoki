@@ -1,0 +1,57 @@
+states:
+  review:
+    description: "Adversarial review of the managed decomposition delta before deterministic apply."
+    view:
+      - banner:
+          text: "Review"
+          subtitle: "A structured agent review must approve the delta before the no-LLM transaction gate runs."
+          color: "#7C3AED"
+      - kv:
+          pairs:
+            Status: "{{ world.status }}"
+            Approved: "{{ world.review_approved }}"
+            Workdir: "{{ world.workdir }}"
+      - heading: "Review summary"
+      - prose: '{{ world.review_summary|default:"(pending review)" }}'
+      - heading: "Findings"
+      - code: '{{ world.review_findings|default:"[]" }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "accept"
+              intent: accept
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.agent.decide
+        id: review_delta
+        with:
+          agent: reviewer
+          prompt: prompts/review_delta.md
+          schema: schemas/review_delta.json
+          inputs:
+            workdir: "{{ world.workdir }}"
+            gate_command: "python3 tools/decomposition-update/tests/run_no_llm.py"
+            transaction_tool: "tools/decomposition-update/apply_delta.py"
+        bind:
+          review_approved: submitted.approved
+          review_summary: submitted.summary
+          review_findings: submitted.findings
+        on_error: failed
+      - set: { status: "reviewed" }
+    on:
+      accept:
+        - when: "world.review_approved"
+          target: running
+          effects:
+            - set: { status: "running" }
+        - target: failed
+          effects:
+            - set: { status: "review_rejected" }
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

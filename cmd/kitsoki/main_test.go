@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,7 +54,8 @@ func TestCLI_TopLevelHelp(t *testing.T) {
 	subs := []string{
 		"run", "viz", "trace", "replay", "test", "serve", "render",
 		"docs", "record", "inspect", "turn", "session", "chat",
-		"mcp", "mcp-test", "mcp-validator", "agent-bench",
+		"mcp", "mcp-test", "mcp-codeact", "mcp-validator", "agent-bench",
+		"ticket-provider",
 	}
 	for _, sub := range subs {
 		sub := sub
@@ -144,5 +146,102 @@ func TestCLI_UnknownSubcommandFails(t *testing.T) {
 	_, err := execRoot(t, "nope-not-a-real-subcommand")
 	if err == nil {
 		t.Fatal("expected unknown subcommand to error")
+	}
+}
+
+func TestCLI_PersonaQAHelp(t *testing.T) {
+	out, err := execRoot(t, "persona-qa", "--help")
+	if err != nil {
+		t.Fatalf("persona-qa --help: %v\n%s", err, out)
+	}
+	for _, want := range []string{"Persona QA compatibility adapter", "kitsoki run @kitsoki/scenario-qa", "preview project-onboarding across all transports", "check project-onboarding across all transports", "transports", "emit-run", "deck", "complete"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("persona-qa help missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestCLI_NoArgsDelegatesToRun(t *testing.T) {
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tmp := t.TempDir()
+	t.Cleanup(func() {
+		if chdirErr := os.Chdir(oldWd); chdirErr != nil {
+			t.Fatalf("restore cwd: %v", chdirErr)
+		}
+	})
+	if err := os.WriteFile(filepath.Join(tmp, ".kitsoki.yaml"), []byte("root:\n  import: definitely-not-a-story\n"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	out, err := execRoot(t)
+	if err == nil {
+		t.Fatal("expected bare kitsoki to fail on invalid run config")
+	}
+	if strings.Contains(out, "Usage:") {
+		t.Fatalf("bare kitsoki printed help instead of entering run startup:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "definitely-not-a-story") {
+		t.Fatalf("expected run config error, got %v", err)
+	}
+}
+
+func TestCLI_NoArgsAcceptsRunFlags(t *testing.T) {
+	out, err := execRoot(t, "--mode", "definitely-not-a-mode")
+	if err == nil {
+		t.Fatal("expected bare kitsoki to parse --mode and fail validation")
+	}
+	if strings.Contains(out, "Usage:") {
+		t.Fatalf("bare kitsoki --mode printed help instead of entering run startup:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "--mode") {
+		t.Fatalf("expected mode validation error, got %v", err)
+	}
+}
+
+func TestCLI_RunStartupErrorSuppressesLoaderWarnings(t *testing.T) {
+	appPath := filepath.Join(t.TempDir(), "app.yaml")
+	if err := os.WriteFile(appPath, []byte(`
+app:
+  id: warning-app
+  version: 0.1.0
+world:
+  feature_branch_diff: { type: string, default: "(pending)" }
+intents:
+  go: {}
+root: start
+states:
+  start:
+    on_enter:
+      - invoke: host.diff
+        bind:
+          feature_branch_diff: diff
+    view: "{{ world.feature_branch_diff }}"
+`), 0o644); err != nil {
+		t.Fatalf("write app: %v", err)
+	}
+
+	var logBuf bytes.Buffer
+	oldLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	t.Cleanup(func() { slog.SetDefault(oldLogger) })
+
+	out, err := execRoot(t, "run", appPath, "--mode", "definitely-not-a-mode")
+	if err == nil {
+		t.Fatal("expected run to fail before launching TUI")
+	}
+	if strings.Contains(logBuf.String(), "view references an on_enter bind-target") {
+		t.Fatalf("loader advisory leaked to default slog during run startup:\n%s", logBuf.String())
+	}
+	if strings.Contains(out, "view references an on_enter bind-target") {
+		t.Fatalf("loader advisory leaked to cobra output:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "--mode") {
+		t.Fatalf("expected mode validation error, got %v", err)
 	}
 }

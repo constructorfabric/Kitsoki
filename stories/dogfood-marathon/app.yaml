@@ -1,23 +1,19 @@
-# dogfood-marathon — process a backlog of cases through an inner pipeline
-# (bugfix / delivery-tail / ship-it) and produce a slidey REPORT of the run.
+# dogfood-marathon — process a queue of cases through a configurable inner workflow
+# and produce a slidey REPORT of the run.
 #
-# This story is the drivable wrapper around the `dogfood-marathon` agent skill
-# (.agents/skills/dogfood-marathon/SKILL.md) and the method recorded in
-# .context/bakeoff-learnings.md. The skill's by-hand loop is: assemble a backlog,
-# (optionally) triage each case cheaply, drive the inner pipeline LIVE per case
-# via kitsoki-mcp-driver, INDEPENDENTLY VERIFY the deliverable (never trust the
-# maker's self-report), record outcome + cost(tokens primary) + findings, roll up,
-# then emit a marathon summary. This story journals that per-case data into a typed
-# world and bakes it into a slidey deck via host.slidey.render — the same producer
-# stories/slidey-edit uses (format: html → a self-contained static-HTML slidey
-# report, NOT an mp4).
+# This story is the generic marathon wrapper: assemble a queue, optionally triage
+# each case cheaply, drive the configured inner workflow LIVE per case via the
+# selected driver, INDEPENDENTLY VERIFY the deliverable (never trust the maker
+# self-report), record outcome + cost(tokens primary) + findings, roll up, then
+# emit a marathon summary. The self-hosted dogfood room is one configuration of
+# this generic queue runner, not the story's baked-in purpose.
 #
 # # Honesty posture (stories/AGENTS.md + the skill's honesty controls)
 #
-# The drive / triage / verify rooms are THIN ORCHESTRATION STUBS that delegate to
-# the live kitsoki-mcp-driver agent + the operator's own oracle when this story is
-# driven for real (harness: live). They NEVER fabricate an outcome: a case's
-# outcome is whatever the inner pipeline produced AND what the independent verify
+# The drive / triage / verify steps are THIN ORCHESTRATION STUBS that delegate to
+# the configured live driver + the operator's own oracle when this story is
+# driven for real. They NEVER fabricate an outcome: a case's outcome is whatever
+# the configured inner workflow produced AND what the independent verify
 # found — the room only journals it. Under flow/no-LLM testing every host call is
 # stubbed by invoke id, so the rooms exercise the workflow shape (loop, rollup,
 # deck) without an LLM and without inventing results. Where a room delegates rather
@@ -27,21 +23,20 @@
 #
 #   idle → intake → processing(per-case loop) → aggregating → reporting → slideshow → done
 #
-#   idle         deterministic: confirm/seed the backlog source + inner pipeline + baseline policy
-#   intake       deterministic: load the backlog of cases (host.starlark.run loads tickets/bugs)
-#   processing   the per-case DISPATCHER — a sub-state that re-enters until the
-#                backlog is drained (case_index >= |backlog|) OR the case budget is
-#                hit. Per case it walks: triaging → driving → verifying → recording,
-#                then `next_case` re-enters processing. (study stories/bugfix's
-#                regression-gate loop + stories/slidey-edit's cycle/budget refine
-#                loop — same guarded-emit / budget-cap shape.)
+#   idle         deterministic: confirm/seed the queue source + inner workflow + baseline policy
+#   intake       deterministic: load the queue of cases (host.starlark.run normalizes sources)
+#   processing   the per-case DISPATCHER — a checkpoint that auto-starts the next
+#                case when autonomous=true, until the backlog is drained
+#                (case_index >= |backlog|) OR the case budget is hit. Per case it
+#                walks: picking_case → triaging → driving(background) → recording,
+#                then re-enters processing. The background drive breaks the
+#                per-case chain so the story stays under the engine's emit-depth cap.
 #     triaging   cheap read-only verdict (ALREADY-FIXED|STILL-LIVE|PARTIAL|UNCLEAR);
 #                ALREADY-FIXED cases are dropped (degenerate baseline) — recorded skipped
-#     driving    drive the inner pipeline LIVE on the case (tracked: trace/cost/time)
-#     verifying  INDEPENDENT oracle check on the produced deliverable (gate on this,
-#                not the maker's return)
-#     recording  append the per-case result (outcome/exit/verify/cost/tokens/time/findings)
-#                to world.results, then emit next_case
+#     driving    drive the configured inner workflow LIVE on the case (tracked: trace/cost/time)
+#     recording  INDEPENDENT oracle check, append the per-case result
+#                (outcome/exit/verify/cost/tokens/time/findings), persist the
+#                journal, then emit next_case
 #   aggregating  roll up every result → world.rollup (counts, totals, what-worked / what-didn't)
 #   reporting    build the slidey deck SPEC from results+rollup (host.starlark.run → deck.json)
 #   slideshow    host.slidey.render the deck spec → a baked static-HTML slidey report; bind the handle
@@ -50,7 +45,7 @@
 app:
   id: dogfood-marathon
   version: 0.1.0
-  title: "Dogfood marathon — process a backlog, report the run"
+  title: "Marathon — process a queue, report the run"
   author: "Kitsoki"
   license: "CC0"
 
@@ -59,8 +54,8 @@ app:
 #                         per-case result, roll up, build the deck spec.
 #   host.slidey.render  — bundle the marathon-report deck JSON → static HTML deck.
 #   host.artifacts_dir  — emit the rendered report → a stable media handle.
-#   host.agent.task     — the LIVE per-case work (triage verdict + the inner-pipeline
-#                         drive). DELEGATED to kitsoki-mcp-driver when driven live;
+#   host.agent.task     — the LIVE per-case work (triage verdict + the configured
+#                         inner workflow drive). Delegated to the configured driver when live;
 #                         stubbed by id under flow/no-LLM tests. Never fabricates.
 hosts:
   - host.starlark.run
@@ -68,44 +63,65 @@ hosts:
   - host.artifacts_dir
   - host.agent.task
 
-# Personas. Both are THIN delegators in the dogfood method: the real driving of
-# the inner pipeline happens through the kitsoki-mcp-driver agent + the operator's
-# own oracle (the skill's "independent verify, never the maker's self-report"
-# discipline). These agent-defs exist so a live drive has a persona to attach the
-# triage / drive task to; the room comments mark each delegation.
+# Personas. Both are THIN delegators in the marathon method: the real driving of
+# the configured inner workflow happens through the selected driver + the
+# operator's own oracle (independent verify, never the maker's self-report).
+# These agent-defs exist so a live drive has a persona to attach the triage /
+# drive task to; the room comments mark each delegation.
 agents:
   triager:
-    system_prompt: "You are a marathon triage analyst. For the given case, inspect the current tree and emit a standardized read-only verdict (ALREADY-FIXED | STILL-LIVE | PARTIAL | UNCLEAR) citing concrete code evidence — never prose alone. This mirrors the inner bugfix story's triage-only mode; you do not fix anything."
-    model: claude-sonnet-4-6
+    system_prompt: "You are a marathon triage analyst. For the given case, inspect the current tree and emit a standardized read-only verdict (ALREADY-FIXED | STILL-LIVE | PARTIAL | UNCLEAR) citing concrete evidence — never prose alone. You do not fix anything."
+    model: gpt-5.5
     tools: [Read, Grep, Glob, Bash]
     bash_profile: read-only
-    external_side_effect: false
+    effect: write
   driver:
-    # Thin delegator: a real marathon drives the inner pipeline LIVE through the
-    # kitsoki-mcp-driver agent (session_new harness:live, explicit trace:, base=
-    # baseline SHA, scoped test_cmd, fresh per-case worktree — SKILL.md gotchas).
-    # This persona is the attachment point; the verifying room runs the operator's
+    # Thin delegator: a real marathon drives the configured inner workflow LIVE
+    # through the configured live driver (explicit trace, baseline, scoped verification command,
+    # isolated per-case workspace).
+    # This persona is the attachment point; the recording room runs the operator's
     # OWN oracle on the result and gates on that, not on this agent's return.
-    system_prompt: "You drive an inner kitsoki pipeline (bugfix / delivery-tail / ship-it) over one case to its terminal exit, then report the deliverable and the trace path. You do NOT self-grade — an independent verify oracle decides solved/partial/failed on the produced worktree. Surface the exit, the worktree/branch, and the trace for cost/token accounting."
-    model: claude-sonnet-4-6
+    system_prompt: "You drive the configured inner workflow over one queue case to its terminal exit, then report the deliverable and the trace path. You do NOT self-grade — an independent verify oracle decides solved/partial/failed on the produced workspace. Surface the exit, the workspace/branch, and the trace for cost/token accounting."
+    model: gpt-5.5
     tools: [Read, Grep, Glob, Bash, Edit, Write]
-    external_side_effect: true
+    effect: write
 
 # ── Typed world ─────────────────────────────────────────────────────────────
 world:
   # ── Run config ─────────────────────────────────────────────────────────────
-  # The inner pipeline being dogfooded (the wrapped story) + how cases are sourced.
-  inner_pipeline:   { type: string, default: "bugfix" }           # bugfix | delivery-tail | ship-it
-  backlog_source:   { type: string, default: "issues/bugs" }      # dir / glob the backlog loads from
-  backlog_limit:    { type: int,    default: 10 }                 # cap how many cases to load
-  # baseline_policy — how each case's baseline (the buggy state the inner pipeline
-  # reproduces against) is pinned. fix-parent = <fix>^ for a merged-fix case;
-  # current-main = a live ticket filed against main. (SKILL.md gotcha #11.)
+  # The configured inner workflow (story/room/pipeline/driver) + how queue cases are sourced.
+  inner_pipeline:   { type: string, default: "bugfix" }           # configured inner workflow identifier
+  backlog_source:   { type: string, default: "local:issues/bugs" } # legacy single source
+  backlog_sources:  { type: string, default: "local:issues/bugs" } # comma-separated local:/github: sources
+  backlog_limit:    { type: int,    default: 15 }                 # cap how many queue cases to load
+  run_id:           { type: string, default: "dogfood-marathon" }
+  run_dir:          { type: string, default: "" }                 # .artifacts/dogfood-marathon/<run_id>
+  journal_path:     { type: string, default: "" }                 # durable JSON checkpoint
+  journal_markdown_path: { type: string, default: "" }            # human-readable checkpoint
+  journal_status:   { type: string, default: "" }
+  journal_summary:  { type: string, default: "" }
+  loaded_journal:   { type: bool,   default: false }
+  resume_from_journal: { type: bool, default: false }
+  last_checkpoint:  { type: string, default: "" }
+  plan_revision:    { type: int,    default: 0 }
+  plan_feedback:    { type: string, default: "" }
+  # baseline_policy — how each case's baseline is pinned: the baseline state
+  # the configured inner workflow evaluates against is pinned. fix-parent = <fix>^ for a merged-fix case;
+  # current-main = a live ticket filed against main.
   baseline_policy:  { type: string, default: "fix-parent" }       # fix-parent | current-main
-  profile:          { type: string, default: "claude-native" }    # the maker model (profile supersedes agent-def)
+  profile:          { type: string, default: "codex-native" }     # maker profile; local config maps this to gpt-5.5
+  model:            { type: string, default: "gpt-5.5" }
+  exception_policy: { type: string, default: "ask-serious" }      # ask-serious | journal-only
+  autonomous:       { type: bool,   default: true }               # auto-start the next case unless a serious exception parks the run
+  intake_job_id:    { type: string, default: "" }
+  pick_job_id:      { type: string, default: "" }
+  triage_job_id:    { type: string, default: "" }
+  verify_job_id:    { type: string, default: "" }
+  record_job_id:    { type: string, default: "" }
+  journal_job_id:   { type: string, default: "" }
   # drop_already_fixed — skip cases whose triage verdict is ALREADY-FIXED (a
-  # degenerate baseline: a test/lint layered on an already-merged behavioural fix
-  # → baseline GREEN → nothing to reproduce). SKILL.md step 2 / gotcha #2.
+  # degenerate baseline: the case is already satisfied at the baseline, so there is
+  # nothing useful for the inner workflow to change.
   drop_already_fixed: { type: bool, default: true }
 
   # ── Backlog + per-case loop control ────────────────────────────────────────
@@ -118,9 +134,16 @@ world:
   # picks backlog.items[case_index]). Cleared on next_case.
   current_case:     { type: object, default: {} }                # {id,title,baseline,repro_command}
   current_case_id:  { type: string, default: "" }                # scalar mirror of current_case.id — the dispatcher's drain guard (empty = drained)
+  current_case_json: { type: string, default: "{}" }             # JSON form for agent prompt args (a raw object renders as a Go map string)
   triage_verdict:   { type: object, default: {} }                # this case's triage verdict (read-only)
-  drive_result:     { type: object, default: {} }                # inner-pipeline drive output {exit,worktree,branch,trace,cost_usd,tokens,wall_s}
+  drive_result:     { type: object, default: {} }                # inner-workflow drive output {exit,worktree,branch,trace,cost_usd,tokens,wall_s}
+  drive_job_id:     { type: string, default: "" }                # background job id while the inner drive is running
   verify_result:    { type: object, default: {} }                # INDEPENDENT oracle outcome {status:solved|partial|failed,how}
+  record_status:    { type: string, default: "" }                # set by record_case after post-bind settle
+  last_result:      { type: object, default: {} }                # latest recorded case, shown at the processing checkpoint
+  exception_pending: { type: string, default: "" }               # scalar pause signal from record_case.star
+  exception_summary: { type: string, default: "" }
+  exception_answer:  { type: string, default: "" }
 
   # ── Accumulated marathon data (the deck's source of truth) ─────────────────
   # results.items — one record per processed case (the recording room appends via
@@ -133,8 +156,16 @@ world:
   # findings.items — friction captured across the run (the skill turns the
   # consequential ones into filed tickets; this list feeds the deck's findings slide).
   findings:         { type: object, default: { items: [] } }
+  # exceptions.items — serious questions / blockers raised to the operator.
+  # Non-serious friction stays in findings; serious exception entries pause the
+  # story at exception_review when exception_policy=ask-serious.
+  exceptions:       { type: object, default: { items: [] } }
 
   # ── Report render outputs ──────────────────────────────────────────────────
+  aggregate_job_id: { type: string, default: "" }
+  deck_job_id:      { type: string, default: "" }
+  render_job_id:    { type: string, default: "" }
+  publish_job_id:   { type: string, default: "" }
   deck_spec:        { type: object, default: {} }                # {spec_path,summary} — the built deck JSON
   deck_path:        { type: string, default: "" }                # rendered static-HTML deck path
   report_handle:    { type: string, default: "" }                # media handle for the rendered report
@@ -146,12 +177,57 @@ world:
 # ── Intent vocabulary ───────────────────────────────────────────────────────
 intents:
   start:
-    description: "Begin the marathon: load the backlog and start processing cases."
-    examples: ["start", "begin", "run the marathon", "process the backlog"]
+    description: "Begin the marathon: load the queue and start processing cases."
+    examples: ["start", "begin", "run the marathon", "process the queue", "start backlog_sources=local:.artifacts/issues/bugs run_id=smoke profile=codex-native"]
     priority: 90
     slots:
-      backlog_source: { type: string, required: false }
-      inner_pipeline: { type: string, required: false }
+      backlog_source:  { type: string, required: false }
+      backlog_sources: { type: string, required: false }
+      inner_pipeline:  { type: string, required: false }
+      backlog_limit:   { type: int, required: false }
+      run_id:          { type: string, required: false }
+      journal_path:    { type: string, required: false }
+      profile:         { type: string, required: false }
+      model:           { type: string, required: false }
+  start_marathon:
+    description: "Begin the marathon from an imported dogfood room without colliding with parent start intents."
+    examples: ["start the marathon"]
+    priority: 91
+    slots:
+      backlog_source:  { type: string, required: false }
+      backlog_sources: { type: string, required: false }
+      inner_pipeline:  { type: string, required: false }
+      backlog_limit:   { type: int, required: false }
+      run_id:          { type: string, required: false }
+      journal_path:    { type: string, required: false }
+      profile:         { type: string, required: false }
+      model:           { type: string, required: false }
+  resume:
+    description: "Resume a durable marathon journal and continue at the next unprocessed queue case."
+    examples: ["resume", "resume run_id=bug15", "resume journal_path=.artifacts/dogfood-marathon/bug15/journal.json"]
+    priority: 88
+    slots:
+      run_id:          { type: string, required: false }
+      journal_path:    { type: string, required: false }
+      backlog_sources: { type: string, required: false }
+      backlog_limit:   { type: int, required: false }
+      profile:         { type: string, required: false }
+      model:           { type: string, required: false }
+  refine_plan:
+    title: "refine plan"
+    description: "Revise the queue, inner workflow, or run configuration before starting."
+    examples: ["refine plan", "refine plan feedback=use delivery-tail", "refine plan backlog_limit=10 run_id=nightly-dogfood"]
+    priority: 89
+    slots:
+      feedback:        { type: string, required: false }
+      backlog_source:  { type: string, required: false }
+      backlog_sources: { type: string, required: false }
+      inner_pipeline:  { type: string, required: false }
+      backlog_limit:   { type: int, required: false }
+      run_id:          { type: string, required: false }
+      journal_path:    { type: string, required: false }
+      profile:         { type: string, required: false }
+      model:           { type: string, required: false }
   # ── per-case loop drivers (mostly internal emit_intent; a few operator-typable) ──
   enter_processing:
     description: "(internal) the backlog is loaded; enter the per-case dispatcher."
@@ -159,14 +235,17 @@ intents:
   triage_done:
     description: "(internal) the triage verdict for the current case is recorded; route to drive or skip."
     priority: 1
-  drive_done:
-    description: "(internal) the inner-pipeline drive for the current case finished; route to verify."
+  case_picked:
+    description: "(internal) the next backlog case has been selected; route to triage."
     priority: 1
-  verify_done:
-    description: "(internal) the independent verify for the current case finished; route to record."
+  drive_done:
+    description: "(internal) the inner-pipeline drive for the current case finished; route to recording."
     priority: 1
   record_done:
     description: "(internal) the current case's result is appended; re-enter the dispatcher for the next case."
+    priority: 1
+  exception_raised:
+    description: "(internal) a serious case exception is queued for operator review."
     priority: 1
   next_case:
     description: "Advance to and process the next case in the backlog (or roll up the run when the backlog is drained)."
@@ -189,6 +268,18 @@ intents:
   rendered:
     description: "(internal) the report rendered → show the gallery."
     priority: 1
+  ack_exception:
+    title: "park case and continue"
+    description: "Keep the serious question parked as needs-human and continue the marathon."
+    examples: ["ack_exception", "park case and continue", "continue with the next case"]
+    priority: 80
+  answer_exception:
+    title: "answer with guidance"
+    description: "Record operator guidance for the serious exception, then continue."
+    examples: ["answer_exception answer=use the existing repro only", "answer with guidance"]
+    priority: 70
+    slots:
+      answer: { type: string, required: false }
   # ── shared ─────────────────────────────────────────────────────────────────
   quit:
     description: "Abandon the marathon."
@@ -205,6 +296,13 @@ exits:
     requires: [report_handle]
   abandoned:
     description: "The operator bailed."
+
+exports:
+  intents:
+    - start_marathon
+    - refine_plan
+    - ack_exception
+    - answer_exception
 
 root: idle
 

@@ -1,0 +1,5 @@
+inputs:
+  state_path: { type: string, required: true }
+outputs:
+  report_path: { type: string }
+  summary:     { type: string }

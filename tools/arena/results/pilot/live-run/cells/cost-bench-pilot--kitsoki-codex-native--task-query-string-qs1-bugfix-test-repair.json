@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "query-string-qs1-bugfix-test-repair"
+  },
+  "cell_id": "cost-bench-pilot--kitsoki-codex-native--task:query-string-qs1-bugfix-test-repair",
+  "evidence_refs": [
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs1-bugfix-test-repair",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/query-string-qs1-bugfix-test-repair--kitsoki--codex--gpt-5.5-score.json"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 0.443556,
+    "host": "local",
+    "tokens": 931778,
+    "wall_s": 366.657
+  },
+  "notes": "kitsoki bugfix pipeline via drive.sh+MCP; cost_usd=0.443556 (cache-aware estimate over REAL trace usage: 205237 fresh input + 716800 cache-read input + 9741 output tokens; subscription auth reports no metered cost); oracle solved",
+  "target_id": "cost-bench-pilot",
+  "trace_ref": "",
+  "variant_id": "kitsoki-codex-native",
+  "verdict": "solved"
+}

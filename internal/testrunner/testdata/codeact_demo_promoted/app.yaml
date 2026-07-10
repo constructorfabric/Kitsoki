@@ -1,0 +1,58 @@
+app:
+  id: codeact-demo-promoted
+  version: 0.1.0
+
+# Fixture app proving the codeact "promotion ratchet" (concept.md §4,
+# docs/goals/codeact/decomposition.yaml s5-promotion-ratchet):
+# internal/testrunner/testdata/codeact_demo/{app.yaml,flows/happy_path.yaml}
+# drives the SAME "sum the two numbers" outcome via a live-shaped
+# host.agent.codeact loop; this app drives it via the FROZEN, deterministic
+# script that internal/host/codeact.ExtractTrajectory promoted out of that
+# trajectory (internal/testrunner/testdata/codeact_demo_promoted/scripts/
+# promoted_sum.star + its sidecar), run through host.starlark.run.
+#
+# Critically, this app does NOT declare host.agent.codeact in its `hosts:`
+# list at all. internal/app/loader.go's `hosts:` allow-list is self-declared
+# (built straight from this file's `hosts:` list — see codeact_demo/app.yaml's
+# header comment), so if this room's effect somehow still tried to invoke
+# host.agent.codeact, the app would refuse to load (undeclared host). That
+# is exactly the "zero agent dispatch, proven by construction" property this
+# fixture exists to demonstrate: the promoted room can only ever reach its
+# terminal state via the deterministic script, never via a live/stubbed
+# agent loop.
+hosts:
+  - host.starlark.run
+
+world:
+  result_payload: { type: any, default: null }
+  result_terminated: { type: string, default: "" }
+
+root: work
+
+intents:
+  go:
+    title: "Go"
+    description: "Run the promoted script."
+
+states:
+  work:
+    description: "Drives the frozen, promoted starlark script (no agent dispatch)."
+    view:
+      - prose: "Ready to run the promoted script."
+    on:
+      go:
+        - target: done
+          effects:
+            - invoke: host.starlark.run
+              with:
+                script: scripts/promoted_sum.star
+              bind:
+                result_payload: total
+              on_error: work
+            - set:
+                result_terminated: "done"
+
+  done:
+    terminal: true
+    view:
+      - prose: "promoted script finished: {{ world.result_terminated }}"

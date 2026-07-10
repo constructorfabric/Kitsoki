@@ -1,0 +1,66 @@
+# refine_validating_fail_short_routes_implementing — a `refine` intent
+# fired while validate_artifact.outcome is fail_short must route back to
+# implementing (bumping implementing_cycle, clearing implement_artifact),
+# NOT self-loop validating re-running only the validator. Regression for
+# the bug where refine was outcome-blind and burned validating_budget
+# re-validating the same unfixed code without ever re-invoking the maker.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: validating
+initial_world:
+  ticket_id:           "TKT-150"
+  thread:              "TKT-150"
+  judge_mode:          "human"
+  implementing_budget: 3
+
+host_handlers:
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-1" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-1" }
+  host.git_worktree:
+    data: { ok: true, log: "" }
+  host.git:
+    data: { ok: true, sha: "abc", diff: "" }
+  host.local:
+    data: { ok: true, log: "PASS", passed: 1, failed: 0 }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub validation"
+        summary_markdown: "close but a minor patch is needed"
+        outcome:          "fail_short"
+        evidence:         { build: "ok", api: "n/a", ui: "n/a" }
+
+  host.agent.ask:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub validation"
+        summary_markdown: "close but a minor patch is needed"
+        outcome:          "fail_short"
+        evidence:         { build: "ok", api: "n/a", ui: "n/a" }
+
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Stub validation"
+        summary_markdown: "close but a minor patch is needed"
+        outcome:          "fail_short"
+        evidence:         { build: "ok", api: "n/a", ui: "n/a" }
+
+turns:
+  - intent: { name: refine, slots: { feedback: "almost there" } }
+    world_override:
+      validate_artifact:
+        outcome:          "fail_short"
+        summary_markdown: "close but a minor patch is needed"
+    expect_state: implementing
+    expect_world:
+      implementing_cycle: 1
+
+expect_terminal: false
+expect_no_errors: true

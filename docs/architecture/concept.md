@@ -116,6 +116,17 @@ action**, the **maximum context relevant to that domain**, and a
 to "figure out what to do next" at the conversation level — that's
 the state machine's job.
 
+This is also the leverage point for frontier models. Kitsoki is not a
+claim that strong agents are unnecessary; it is a way to use them where their
+reasoning matters most. A frontier model should spend its long context and
+planning horizon on synthesis, oversight, hard judgment, and cross-step
+coordination. Repeatable action should move into high-leverage tools around it:
+scripts and tests for deterministic execution, typed host calls for bounded
+side effects, cheaper model calls for narrow extraction or classification, and
+structured decomposition for long tasks that need reviewable handoffs. The
+runtime multiplies the agent by giving it better instruments than raw free-form
+tool use.
+
 The result is that every LLM call has a defined input shape, a
 defined output shape, and a defined position in the trace. When
 something goes wrong, an operator can point at the specific call that

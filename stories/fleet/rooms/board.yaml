@@ -1,6 +1,6 @@
 # board — the dispatcher loop head; re-pins after each brief.
 #
-# on_enter runs fleet_board.py: it folds any just-returned ship-it disposition
+# on_enter runs fleet_board.star: it folds any just-returned ship-it disposition
 # (_ship_disposition: shipped|parked, set by the dispatch exit projection) into
 # the brief's status, recounts shipped/parked/pending, and picks the next
 # pending brief. set:/increment can't mutate list elements, so this recompute is
@@ -17,7 +17,7 @@ states:
     relevant_world: [fleet_briefs, current_brief, merge_lock_held, has_pending,
                      shipped_count, parked_count, pending_count]
     view:
-      - prose: "Fanning out {{ len(world.fleet_briefs) }} brief(s). One brief integrates at a time (merge-lock); failures park and the rest continue."
+      - prose: "Fanning out {{ world.fleet_briefs|default:''|length }} brief(s). One brief integrates at a time (merge-lock); failures park and the rest continue."
       - kv:
           pairs:
             Shipped: '{{ world.shipped_count }}'
@@ -32,7 +32,7 @@ states:
               intent: look
     on_enter:
       # Reset the routing verdict BEFORE the recompute so the post-bind emit
-      # guards below defer until fleet_board.py rebinds it. board is re-entered
+      # guards below defer until fleet_board.star rebinds it. board is re-entered
       # after every brief; without this reset the PRIOR pass's board_route
       # (e.g. "dispatch") is still in world, so the pre-bind guard fires the
       # stale route immediately instead of waiting for the fresh recompute —
@@ -44,24 +44,23 @@ states:
       # id carries the briefs-resolved count so each board recompute is a
       # distinct, addressable host call (fleet_board-0, -1, …) — the cherny
       # gate-{{ iteration }} pattern, so flow fixtures can stub each pass.
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: "fleet_board-{{ world.dispatched_count }}"
         with:
-          cmd: python3
-          args:
-            - "stories/fleet/scripts/fleet_board.py"
-            - "{{ world.fleet_state_path }}"
-            - "{{ world.current_brief.id }}"
-            - "{{ world._ship_disposition }}"
-            - "{{ world._ship_last_error }}"
+          script: scripts/fleet_board.star
+          inputs:
+            fleet_briefs: "{{ world.fleet_briefs }}"
+            mark_id: "{{ world.current_brief.id ?? '' }}"
+            mark_status: "{{ world._ship_disposition ?? '' }}"
+            mark_error: "{{ world._ship_last_error ?? '' }}"
         bind:
-          fleet_briefs:  "stdout_json.fleet_briefs"
-          current_brief: "stdout_json.next_brief"
-          has_pending:   "stdout_json.has_pending"
-          board_route:   "stdout_json.route"
-          shipped_count: "stdout_json.shipped_count"
-          parked_count:  "stdout_json.parked_count"
-          pending_count: "stdout_json.pending_count"
+          fleet_briefs:  "fleet_briefs"
+          current_brief: "next_brief"
+          has_pending:   "has_pending"
+          board_route:   "route"
+          shipped_count: "shipped_count"
+          parked_count:  "parked_count"
+          pending_count: "pending_count"
         on_error: board
       # Clear the just-consumed disposition so the NEXT board entry doesn't
       # re-fold it.

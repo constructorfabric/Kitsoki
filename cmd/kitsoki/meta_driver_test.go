@@ -48,6 +48,7 @@ func TestMetaDriver_PerSession_AskAndEdit(t *testing.T) {
 	keys := modeKeys(t, reg, sid)
 	assert.True(t, keys["story.edit"], "story.edit must be available, got %v", keys)
 	assert.True(t, keys["story.ask"], "story.ask must be available, got %v", keys)
+	assert.True(t, keys["story.improve"], "story.improve must be available, got %v", keys)
 
 	// Story Q&A: read-only, no reload, transcript persists (user + assistant).
 	ask, err := md.Enter(ctx, "story.ask", "")
@@ -150,6 +151,11 @@ func TestMetaSelf_KitsokiHelp(t *testing.T) {
 	for _, m := range modes {
 		assert.Equal(t, "kitsoki", m.Group, "self driver exposes only cross-app kitsoki.* modes, got %q", m.Key)
 	}
+	keys := map[string]bool{}
+	for _, m := range modes {
+		keys[m.Key] = true
+	}
+	assert.True(t, keys["kitsoki.improve"], "self driver must expose kitsoki.improve, got %v", keys)
 
 	sess, err := md.Enter(ctx, "kitsoki.ask", "")
 	require.NoError(t, err)

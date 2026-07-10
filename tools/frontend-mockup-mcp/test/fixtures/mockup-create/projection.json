@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "graphs": [
+    {
+      "id": "g1",
+      "w": 400,
+      "h": 300,
+      "nodes": [{ "id": "n1", "label": "Node 1", "type": "a", "lane": 0, "row": 0 }],
+      "edges": []
+    },
+    {
+      "id": "g2",
+      "w": 400,
+      "h": 300,
+      "nodes": [{ "id": "n1", "label": "Node 1", "type": "a", "lane": 0, "row": 0 }],
+      "edges": []
+    }
+  ],
+  "states": {
+    "g1": { "graph": "g1", "status": {} },
+    "g2": { "graph": "g2", "status": {} }
+  }
+}

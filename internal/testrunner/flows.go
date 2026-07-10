@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -50,6 +51,41 @@ func publishAppDirForTestrunner(appPath string) {
 	if abs, err := filepath.Abs(appPath); err == nil {
 		_ = os.Setenv(host.AppDirEnv, filepath.Dir(abs))
 	}
+}
+
+// appDirLoadMu serializes the publish-then-Load span for KITSOKI_APP_DIR.
+//
+// KITSOKI_APP_DIR is a process-global env var (see
+// internal/mcp/studio/app_dir.go's doc comment): app.Load's env-var validator
+// reads it synchronously during Load to resolve `${KITSOKI_APP_DIR}`
+// references (e.g. meta_modes[*].cwd). Two concurrent RunFlows/RunIntents/
+// RunFlowCoverage calls in one process — e.g. gh-agent dispatching two jobs
+// for different stories at once — would otherwise race: whichever
+// publishAppDirForTestrunner call lands last during the other's Load wins the
+// global, corrupting that other job's env-expanded paths.
+//
+// This mutex narrows the race window to exactly that span (setenv through
+// Load) rather than serializing whole flow/turn runs: once app.Load returns,
+// the built orchestrator resolves per-call prompt/script paths through its
+// own def.BaseDir-scoped render.AppRenderer (internal/host/prompt_render.go),
+// not the global env var, so turn execution after Load stays fully
+// concurrent. The one residual gap is internal/host/starlark_run.go's
+// inspector-root fallback to os.Getenv(AppDirEnv) when world.workdir is
+// unset — callers that drive multiple concurrent jobs through Starlark glue
+// should seed world.workdir (e.g. to a per-job worktree path) so that
+// fallback is never reached.
+var appDirLoadMu sync.Mutex
+
+// loadAppForRun publishes KITSOKI_APP_DIR and loads appPath while holding
+// appDirLoadMu, so the setenv the loader depends on can never be clobbered by
+// a concurrent RunFlows/RunIntents/RunFlowCoverage call in the same process.
+// See appDirLoadMu's doc comment for the scope of what this does and doesn't
+// cover.
+func loadAppForRun(appPath string, resolver app.ImportResolver) (*app.AppDef, error) {
+	appDirLoadMu.Lock()
+	defer appDirLoadMu.Unlock()
+	publishAppDirForTestrunner(appPath)
+	return app.LoadWithResolver(appPath, nil, resolver)
 }
 
 // ─── Flow fixture YAML format ────────────────────────────────────────────────
@@ -138,6 +174,11 @@ type FlowFixture struct {
 	ExpectEventsCountAtMost  *int           `yaml:"expect_events_count_atmost,omitempty"`
 	ExpectNoErrors           *bool          `yaml:"expect_no_errors,omitempty"`
 	ExpectWorldFinal         map[string]any `yaml:"expect_world_final,omitempty"`
+	ExpectOperationStatus    string         `yaml:"expect_operation_status,omitempty"`
+	ExpectOperationPolicy    string         `yaml:"expect_operation_policy,omitempty"`
+	ExpectOperationPhase     string         `yaml:"expect_operation_phase,omitempty"`
+	ExpectStopReason         string         `yaml:"expect_stop_reason,omitempty"`
+	ExpectTerminalArtifact   string         `yaml:"expect_terminal_artifact,omitempty"`
 
 	// ExpectFiles asserts that, after the flow completes, named files
 	// exist (or don't) and their contents match a regex. The path itself
@@ -451,6 +492,11 @@ type FlowOptions struct {
 	// `kitsoki test flows` run a vendored instance in a foreign repo with no
 	// on-disk kitsoki checkout. nil keeps the legacy error-on-missing behaviour.
 	ImportResolver app.ImportResolver
+
+	// StarlarkCoverage, when non-nil, instruments real host.starlark.run scripts
+	// during flow execution and records statement/branch hits by fixture file.
+	// It is ignored by host_cassette stubs that replace host.starlark.run.
+	StarlarkCoverage *starlarkhost.CoverageRecorder
 }
 
 // ─── orchRig holds all resources for an orchestrator-backed flow run ─────────
@@ -503,6 +549,8 @@ type orchRig struct {
 	httpCassetteFlush func() error
 }
 
+const flowDrainTimeout = 30 * time.Second
+
 // buildOrchestratorRig constructs a fully wired orchestrator rig for one flow
 // run, using an in-memory SQLite store and a fake clock at epoch zero.
 //
@@ -512,7 +560,7 @@ type orchRig struct {
 //
 // filePath is the fixture file's absolute path; it is used to resolve
 // host_cassette: relative paths.
-func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machine, fixture *FlowFixture, filePath string, tracePath string) (*orchRig, error) {
+func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machine, fixture *FlowFixture, filePath string, tracePath string, starlarkCoverage *starlarkhost.CoverageRecorder) (*orchRig, error) {
 	// Deterministic epoch.
 	clk := clock.NewFake(time.Unix(0, 0))
 
@@ -544,6 +592,11 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	// precedence over any built-in with the same name (host.Register
 	// overwrites).
 	reg := host.NewRegistry()
+	// Starlark-script host_bindings (S3a/D2.1) are wired unconditionally —
+	// they're synthesized from def, not stub data, so any flow whose app
+	// declares one needs the real script-backed handler registered
+	// regardless of which branch below runs.
+	host.RegisterStarlarkBindings(reg, def.StarlarkHostBindings)
 	if len(fixture.HostBindings) > 0 {
 		// RegisterBuiltins covers host.jobs.answer_clarification too,
 		// so the bare-registration branch below is skipped.
@@ -561,6 +614,11 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	// Register host_handlers: stubs via the shared registration path so the
 	// flow-test runner and `kitsoki web --flow` resolve a stub identically.
 	RegisterHostStubs(reg, fixture.HostHandlers)
+	if appDeclaresHost(def, "host.starlark.run") {
+		if _, ok := reg.Get("host.starlark.run"); !ok {
+			reg.Register("host.starlark.run", host.StarlarkRunHandler)
+		}
+	}
 
 	// Allocate the rig pointer early so the cassette dispatcher's stateOf closure
 	// can hold a reference to &rig.currentStatePath that the turn loop updates
@@ -787,6 +845,15 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 			return real(starlarkhost.WithInspector(ctx, inspector), args)
 		})
 	}
+	if starlarkCoverage != nil {
+		if _, ok := reg.Get("host.starlark.run"); !ok {
+			reg.Register("host.starlark.run", host.StarlarkRunHandler)
+		}
+		real, _ := reg.Get("host.starlark.run")
+		reg.Replace("host.starlark.run", func(ctx context.Context, args map[string]any) (host.Result, error) {
+			return real(starlarkhost.WithCoverage(ctx, starlarkCoverage, filePath), args)
+		})
+	}
 
 	// Use a no-op harness; the orchestrator path calls RunIntent directly
 	// for intent: turns and never falls through to the harness in normal use.
@@ -882,6 +949,9 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 	rig.sid = sid
 	rig.clk = clk
 	rig.cleanup = func() error {
+		drainCtx, cancel := context.WithTimeout(context.Background(), flowDrainTimeout)
+		_ = drainRig(drainCtx, &rig)
+		cancel()
 		_ = eventSink.Close()
 		if traceOwned {
 			_ = os.Remove(tracePath)
@@ -889,6 +959,18 @@ func buildOrchestratorRig(ctx context.Context, def *app.AppDef, m machine.Machin
 		return st.Close()
 	}
 	return &rig, nil
+}
+
+func appDeclaresHost(def *app.AppDef, name string) bool {
+	if def == nil {
+		return false
+	}
+	for _, h := range def.Hosts {
+		if h == name {
+			return true
+		}
+	}
+	return false
 }
 
 // lookupAgentCallByVerb queries the journal for the most recently written
@@ -954,7 +1036,8 @@ func shouldUseOrchestrator(fixture *FlowFixture) bool {
 
 // ─── RunFlows runs all flow fixtures matching the glob ───────────────────────
 
-// RunFlows loads the app, finds all flow fixtures matching the glob, and runs them.
+// RunFlows loads the app, finds all flow fixtures matching the glob or comma
+// separated glob list, and runs them.
 // Returns a FlowReport and non-nil error only for fatal startup errors.
 func RunFlows(ctx context.Context, appPath, glob string, opts FlowOptions) (*FlowReport, error) {
 	// Publish KITSOKI_APP_DIR BEFORE loading so the app yaml's loader-
@@ -962,11 +1045,10 @@ func RunFlows(ctx context.Context, appPath, glob string, opts FlowOptions) (*Flo
 	// env-expanded field (e.g. meta_modes[*].cwd). Setting the env var
 	// after Load was the bug-2 ordering issue — `hally test flows`
 	// then rejected a perfectly valid yaml because the var wasn't set
-	// yet at validation time.
-	publishAppDirForTestrunner(appPath)
-
-	// Load app.
-	def, err := app.LoadWithResolver(appPath, nil, opts.ImportResolver)
+	// yet at validation time. loadAppForRun holds appDirLoadMu across the
+	// setenv+Load span so a concurrent RunFlows/RunIntents/RunFlowCoverage
+	// call in the same process can't clobber the var mid-Load.
+	def, err := loadAppForRun(appPath, opts.ImportResolver)
 	if err != nil {
 		return nil, fmt.Errorf("load app %q: %w", appPath, err)
 	}
@@ -978,12 +1060,9 @@ func RunFlows(ctx context.Context, appPath, glob string, opts FlowOptions) (*Flo
 	}
 
 	// Find fixture files.
-	files, err := filepath.Glob(glob)
+	files, err := ExpandGlobList(glob)
 	if err != nil {
-		return nil, fmt.Errorf("glob %q: %w", glob, err)
-	}
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no flow fixtures matched %q", glob)
+		return nil, err
 	}
 
 	report := &FlowReport{}
@@ -1016,6 +1095,45 @@ func RunFlows(ctx context.Context, appPath, glob string, opts FlowOptions) (*Flo
 	}
 
 	return report, nil
+}
+
+// ExpandGlobList expands one glob or a comma-separated list of globs/files.
+// It preserves caller order while de-duplicating repeated matches.
+func ExpandGlobList(patterns string) ([]string, error) {
+	seen := map[string]bool{}
+	var files []string
+	for _, pattern := range splitGlobList(patterns) {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("glob %q: %w", pattern, err)
+		}
+		if len(matches) == 0 {
+			return nil, fmt.Errorf("no flow fixtures matched %q", pattern)
+		}
+		sort.Strings(matches)
+		for _, match := range matches {
+			if seen[match] {
+				continue
+			}
+			seen[match] = true
+			files = append(files, match)
+		}
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no flow fixtures matched %q", patterns)
+	}
+	return files, nil
+}
+
+func splitGlobList(patterns string) []string {
+	var out []string
+	for _, part := range strings.Split(patterns, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // runFlowFile parses and runs one flow fixture file (which may contain multiple
@@ -1254,6 +1372,7 @@ func runOneFlowLegacy(ctx context.Context, def *app.AppDef, m machine.Machine, f
 			tr.View = v
 		} else {
 			tr.View = machResult.View
+			tr.Failures = append(tr.Failures, fmt.Sprintf("G-VIEW: post-turn render failed for state %q: %s", currentState, rErr.Error()))
 		}
 		tr.Events = machResult.Events
 
@@ -1357,6 +1476,15 @@ func runOneFlowLegacy(ctx context.Context, def *app.AppDef, m machine.Machine, f
 			}
 		}
 
+		// G-FLOW near-silent-bounce gate. The legacy (machine-only) runner
+		// bypasses host dispatch, so it cannot itself apply an on_error:
+		// redirect or emit the intent="on_error" TransitionApplied the gate
+		// looks for — this call is a no-op today, kept here so the two
+		// per-turn assertion blocks stay symmetric if that ever changes.
+		if errs := assertNoSilentOnErrorBounce(filePath, i, tr.Events, tr.View, lastErrorString(currentWorld)); len(errs) > 0 {
+			tr.Failures = append(tr.Failures, errs...)
+		}
+
 		// expect_slots — assert on accepted slots (we don't have a clean path here
 		// unless we compare the call slots; do that).
 		if len(turn.ExpectSlots) > 0 {
@@ -1421,6 +1549,7 @@ func runOneFlowLegacy(ctx context.Context, def *app.AppDef, m machine.Machine, f
 	if len(fixture.ExpectFiles) > 0 {
 		sessionFailures = append(sessionFailures, assertExpectFiles(filepath.Dir(filePath), fixture.ExpectFiles)...)
 	}
+	sessionFailures = append(sessionFailures, assertOperationExpectations(allEvents, fixture)...)
 
 	// Compute overall pass.
 	allTurnsPassed := true
@@ -1464,7 +1593,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 	result := &FlowResult{File: filePath}
 
 	// Build the rig (store + scheduler + orchestrator).
-	rig, err := buildOrchestratorRig(ctx, def, m, fixture, filePath, opts.TracePath)
+	rig, err := buildOrchestratorRig(ctx, def, m, fixture, filePath, opts.TracePath, opts.StarlarkCoverage)
 	if err != nil {
 		return nil, fmt.Errorf("runOneFlowOrchestrator: %w", err)
 	}
@@ -1493,6 +1622,11 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 			turnErr error
 			call    intent.IntentCall
 		)
+		preTurnHistory, histErr := rig.st.LoadHistory(rig.sid)
+		if histErr != nil {
+			return nil, fmt.Errorf("turn %d: pre-turn history: %w", i+1, histErr)
+		}
+		preTurnEventCount := len(preTurnHistory)
 
 		// Pre-turn job snapshot for expect_jobs diffing. We capture the set
 		// of every job ID currently in the store along with its status; a
@@ -1571,8 +1705,6 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 			return nil, fmt.Errorf("turn %d: RunIntent: %w", i+1, turnErr)
 		}
 
-		allEvents = append(allEvents, outcome.Events...)
-
 		// AdvanceClock: move the fake clock forward, then wait for scheduler + listener.
 		if turn.AdvanceClock != "" {
 			// app.ParseDuration accepts Go-std durations plus Nd (days), so
@@ -1582,7 +1714,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 				return nil, fmt.Errorf("turn %d: advance_clock %q: %w", i+1, turn.AdvanceClock, parseErr)
 			}
 			if d > 0 {
-				waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				waitCtx, cancel := context.WithTimeout(ctx, flowDrainTimeout)
 				if advErr := advanceAndWait(waitCtx, rig, d); advErr != nil {
 					cancel()
 					return nil, fmt.Errorf("turn %d: advance_clock: %w", i+1, advErr)
@@ -1590,6 +1722,16 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 				cancel()
 			}
 		}
+
+		postTurnHistory, histErr := rig.st.LoadHistory(rig.sid)
+		if histErr != nil {
+			return nil, fmt.Errorf("turn %d: post-turn history: %w", i+1, histErr)
+		}
+		turnEvents := []store.Event{}
+		if preTurnEventCount <= len(postTurnHistory) {
+			turnEvents = append(turnEvents, postTurnHistory[preTurnEventCount:]...)
+		}
+		allEvents = append(allEvents, turnEvents...)
 
 		tr := TurnResult{TurnIndex: i}
 
@@ -1631,7 +1773,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 				}
 			}
 			tr.NewState = currentState
-			tr.Events = outcome.Events
+			tr.Events = turnEvents
 			tr.Passed = len(tr.Failures) == 0
 			if outcome.Mode == orchestrator.ModeRejected {
 				hasError = true
@@ -1646,18 +1788,26 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 		}
 
 		tr.NewState = currentState
-		// Use the outcome view when available — it reflects runtime-injected
-		// content (e.g. the on_error redirect error banner) that a bare
-		// template re-render cannot reproduce. Fall back to re-rendering
-		// against the post-completion state/world when the outcome has no
-		// view (e.g. clock-only turns or turns where the view was not yet
-		// captured at return time).
+		// Re-render against the post-completion state/world unconditionally
+		// (the G-VIEW gate): a non-nil error here fails the turn even if the
+		// fixture declares no expect_view_matches, so a broken template can't
+		// hide behind runtime-injected content from a prior step. The
+		// rendered text is only used as tr.View when outcome.View is empty
+		// (e.g. clock-only turns, or turns where the view was not yet
+		// captured at return time) — when outcome.View IS set it reflects
+		// runtime-injected content (e.g. the on_error redirect error banner)
+		// that a bare template re-render cannot reproduce, so it still wins.
+		if v, rErr := rig.orch.RenderState(currentState, currentWorld); rErr == nil {
+			if outcome.View == "" {
+				tr.View = v
+			}
+		} else {
+			tr.Failures = append(tr.Failures, fmt.Sprintf("G-VIEW: post-turn render failed for state %q: %s", currentState, rErr.Error()))
+		}
 		if outcome.View != "" {
 			tr.View = outcome.View
-		} else if v, rErr := rig.orch.RenderState(currentState, currentWorld); rErr == nil {
-			tr.View = v
 		}
-		tr.Events = outcome.Events
+		tr.Events = turnEvents
 
 		// expect_state.
 		if turn.ExpectState != "" && string(currentState) != turn.ExpectState {
@@ -1737,6 +1887,14 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 		if turn.ExpectNoView != nil && *turn.ExpectNoView && tr.View != "" {
 			tr.Failures = append(tr.Failures, fmt.Sprintf("expect_no_view: view is not empty: %q", tr.View))
 		}
+		// G-FLOW near-silent-bounce gate (never-silent-runtime): a turn that
+		// drove an on_error: redirect must render the error banner (or the
+		// raw failure message it stands in for). This is an automatic
+		// check, not opt-in — a fixture cannot silently pass an on_error:
+		// arc the way it can skip expect_view_matches.
+		if errs := assertNoSilentOnErrorBounce(filePath, i, tr.Events, tr.View, lastErrorString(currentWorld)); len(errs) > 0 {
+			tr.Failures = append(tr.Failures, errs...)
+		}
 		// expect_slots.
 		if len(turn.ExpectSlots) > 0 {
 			for k, expected := range turn.ExpectSlots {
@@ -1815,6 +1973,7 @@ func runOneFlowOrchestrator(ctx context.Context, def *app.AppDef, m machine.Mach
 	if len(fixture.ExpectFiles) > 0 {
 		sessionFailures = append(sessionFailures, assertExpectFiles(filepath.Dir(filePath), fixture.ExpectFiles)...)
 	}
+	sessionFailures = append(sessionFailures, assertOperationExpectations(allEvents, fixture)...)
 
 	// Persist any newly recorded Starlark HTTP exchanges back to the cassette
 	// file (no-op for replay-only runs). Done before the orphan check / cleanup
@@ -2098,13 +2257,16 @@ func advanceAndWait(ctx context.Context, rig *orchRig, d time.Duration) error {
 		return fmt.Errorf("park barrier: %w", err)
 	}
 	rig.clk.Advance(d)
+	return drainRig(ctx, rig)
+}
 
+func drainRig(ctx context.Context, rig *orchRig) error {
 	// Drain loop: WaitIdle + WaitListenerIdle each cover one barrier; together
 	// they guarantee "no jobs running" + "all events fanned out have been
 	// processed by the listener".  Cascading on_complete chains can dispatch
 	// new jobs during the wait, so we loop until IsIdle() reports a stable
 	// no-running state after both barriers cleared.
-	const maxIter = 32
+	const maxIter = 128
 	for i := 0; i < maxIter; i++ {
 		if err := rig.sched.WaitIdle(ctx); err != nil {
 			return fmt.Errorf("scheduler WaitIdle: %w", err)
@@ -2387,6 +2549,99 @@ var _ harness.Harness = (*noopHarness)(nil)
 
 // ─── Assertion helpers ────────────────────────────────────────────────────────
 
+type operationExpectationSnapshot struct {
+	Seen             bool
+	Status           string
+	PolicyID         string
+	Phase            string
+	StopReason       string
+	TerminalArtifact string
+}
+
+func assertOperationExpectations(actual []store.Event, fixture *FlowFixture) []string {
+	if fixture == nil {
+		return nil
+	}
+	if fixture.ExpectOperationStatus == "" &&
+		fixture.ExpectOperationPolicy == "" &&
+		fixture.ExpectOperationPhase == "" &&
+		fixture.ExpectStopReason == "" &&
+		fixture.ExpectTerminalArtifact == "" {
+		return nil
+	}
+
+	snap := operationExpectationSnapshot{}
+	for _, ev := range actual {
+		if !isOperationLifecycleKind(ev.Kind) || ev.Payload == nil {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			continue
+		}
+		snap.Seen = true
+		if policyID, _ := payload["policy_id"].(string); policyID != "" {
+			snap.PolicyID = policyID
+		}
+		if phase, _ := payload["phase"].(string); phase != "" {
+			snap.Phase = phase
+		}
+		if artifact, _ := payload["terminal_artifact"].(string); artifact != "" {
+			snap.TerminalArtifact = artifact
+		}
+		if reason, _ := payload["stop_reason"].(string); reason != "" {
+			snap.StopReason = reason
+		} else if reason, _ := payload["reason"].(string); reason != "" {
+			snap.StopReason = reason
+		}
+		switch ev.Kind {
+		case store.OperationRunStarted:
+			snap.Status = "running"
+		case store.OperationRunWaiting:
+			snap.Status = "waiting"
+		case store.OperationRunCompleted:
+			snap.Status = "completed"
+		case store.OperationRunFailed:
+			snap.Status = "failed"
+		}
+	}
+
+	var failures []string
+	if !snap.Seen {
+		return []string{"operation expectation: no operation lifecycle events were emitted"}
+	}
+	if fixture.ExpectOperationStatus != "" && snap.Status != fixture.ExpectOperationStatus {
+		failures = append(failures, fmt.Sprintf("expect_operation_status: got %q, want %q", snap.Status, fixture.ExpectOperationStatus))
+	}
+	if fixture.ExpectOperationPolicy != "" && snap.PolicyID != fixture.ExpectOperationPolicy {
+		failures = append(failures, fmt.Sprintf("expect_operation_policy: got %q, want %q", snap.PolicyID, fixture.ExpectOperationPolicy))
+	}
+	if fixture.ExpectOperationPhase != "" && snap.Phase != fixture.ExpectOperationPhase {
+		failures = append(failures, fmt.Sprintf("expect_operation_phase: got %q, want %q", snap.Phase, fixture.ExpectOperationPhase))
+	}
+	if fixture.ExpectStopReason != "" && snap.StopReason != fixture.ExpectStopReason {
+		failures = append(failures, fmt.Sprintf("expect_stop_reason: got %q, want %q", snap.StopReason, fixture.ExpectStopReason))
+	}
+	if fixture.ExpectTerminalArtifact != "" && snap.TerminalArtifact != fixture.ExpectTerminalArtifact {
+		failures = append(failures, fmt.Sprintf("expect_terminal_artifact: got %q, want %q", snap.TerminalArtifact, fixture.ExpectTerminalArtifact))
+	}
+	return failures
+}
+
+func isOperationLifecycleKind(kind store.EventKind) bool {
+	switch kind {
+	case store.OperationRunStarted,
+		store.OperationRunPhaseStarted,
+		store.OperationRunPhaseCompleted,
+		store.OperationRunWaiting,
+		store.OperationRunCompleted,
+		store.OperationRunFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // countHostDispatchedMatching returns the number of HostDispatched
 // events whose namespace equals handler AND whose args partially-match
 // the args map (missing keys tolerated, set keys must equal). The
@@ -2552,6 +2807,70 @@ func assertEventsExact(actual []store.Event, expected []FlowEvent) []string {
 	for i, exp := range expected {
 		if !matchEvent(actual[i], exp) {
 			failures = append(failures, fmt.Sprintf("expect_events_exact[%d]: event mismatch. got kind=%q, want kind=%q", i, actual[i].Kind, exp.Kind))
+		}
+	}
+	return failures
+}
+
+// lastErrorString reads world.last_error as a string for the G-FLOW gate,
+// tolerating the schema-default zero value (absent key, wrong type, or a
+// world with a nil Vars map) by returning "".
+func lastErrorString(w world.World) string {
+	if w.Vars == nil {
+		return ""
+	}
+	s, _ := w.Vars["last_error"].(string)
+	return s
+}
+
+// assertNoSilentOnErrorBounce is the G-FLOW near-silent-bounce gate
+// (never-silent-runtime proposal, Task 2.2). It scans a turn's events for a
+// TransitionApplied whose payload names "on_error" as the driving intent
+// (emitted by enterRedirectState in internal/orchestrator/host_dispatch.go
+// whenever an on_error: arc fires) and, when found, requires the turn's
+// rendered view to surface the failure — either via the never-silent error
+// banner (orchestrator.ErrorBannerMarker) or, for stories that render
+// {{ world.last_error }} themselves, via the raw error message. That mirrors
+// the shared seam's own idempotency guard
+// (applyErrorBannerSeam in host_dispatch.go: "if strings.Contains(view, msg)
+// { return view }") — a room that already shows the error verbatim is not a
+// silent bounce even though it never gained the banner text, and the gate
+// must not fail well-behaved fixtures like testdata/apps/starlark_min's
+// `failed` room ("Fetch failed: {{ world.last_error }}.").
+//
+// lastError is the post-turn world's last_error value (empty when the arc's
+// target on_enter cleared it before render, e.g. testdata/apps/error_banner's
+// bounced_silent room) — the same value applyErrorBannerSeam gates on.
+//
+// A story whose on_error: target renders a view with no trace of what failed
+// (no banner AND no verbatim error message) fails this check
+// unconditionally — it is not an opt-in assertion like expect_view_matches,
+// because the whole point of the gate is to catch fixtures that never
+// thought to check.
+func assertNoSilentOnErrorBounce(filePath string, turnIdx int, events []store.Event, view string, lastError string) []string {
+	var failures []string
+	for _, ev := range events {
+		if string(ev.Kind) != string(store.TransitionApplied) {
+			continue
+		}
+		if ev.Payload == nil {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(ev.Payload, &payload); err != nil {
+			continue
+		}
+		intentName, _ := payload["intent"].(string)
+		if intentName != "on_error" {
+			continue
+		}
+		surfaced := strings.Contains(view, orchestrator.ErrorBannerMarker) ||
+			(lastError != "" && strings.Contains(view, lastError))
+		if !surfaced {
+			to, _ := payload["to"].(string)
+			failures = append(failures, fmt.Sprintf(
+				"G-FLOW: %s turn %d drove an on_error: arc to %q but the rendered view does not contain the never-silent error banner marker %q (nor the raw failure message) — the on_error: target must surface the failure (e.g. render {{ world.last_error }}) or rely on the runtime's appendErrorBanner seam, not bounce silently",
+				filePath, turnIdx+1, to, orchestrator.ErrorBannerMarker))
 		}
 	}
 	return failures

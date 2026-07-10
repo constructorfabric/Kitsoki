@@ -1,0 +1,51 @@
+# reset_log_clears_derived_state — reset_log is a TEST-FIXTURE-ONLY wipe.
+#
+# reset_log:true deliberately destroys ALL append-only goal history, including
+# integrated facts. It exists only to make flow fixtures hermetic; live sessions
+# should keep reset_log:false and preserve log.jsonl as the source of truth.
+#
+# The reset must neutralize derived files that can outlive the wiped log:
+# ledger.json becomes the empty-ledger JSON shape, preamble.md becomes blank,
+# and every existing manifests/*.json match becomes "{}". This clean-workdir
+# fixture also asserts reset does not invent a placeholder manifest. A surgical
+# unpark path for stale parked work is a possible WM.x follow-up, but is out of
+# scope here.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: start
+initial_world:
+  goal_slug: reset-log-test
+  goal_dir:  stories/goal-seeker/testdata/goal
+  work_dir:  .artifacts/goal/flow-reset-log
+  reset_log: true
+
+host_handlers:
+  host.run: { by_call: {} }
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: not_done
+            summary: "unused; this flow stops after bootstrap reset"
+            next_instruction: null
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: start
+  - intent: { name: advance, slots: {} }        # start → bootstrap; gs_init reset runs here.
+    expect_state: bootstrap
+
+expect_files:
+  - path: ../../../.artifacts/goal/flow-reset-log/log.jsonl
+    content_matches: "^$"
+  - path: ../../../.artifacts/goal/flow-reset-log/ledger.json
+    content_matches: '^\{"changes":\[\],"counts":\{"assigned":0,"blocked":0,"in_flight":0,"integrated":0,"parked":0,"ready":0,"reviewing":0,"verified":0\},"goal_slug":"","ready_ids":\[\],"remaining":0\}\n?$'
+  - path: ../../../.artifacts/goal/flow-reset-log/preamble.md
+    content_matches: "^$"
+  - path: ../../../.artifacts/goal/flow-reset-log/manifests/C1.json
+    must_not_exist: true
+
+expect_no_errors: true

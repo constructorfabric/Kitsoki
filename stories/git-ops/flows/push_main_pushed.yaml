@@ -1,0 +1,55 @@
+# push_main_pushed - main_ops can publish protected local main to origin/main
+# without force-pushing or bypassing the story surface.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main_ops
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      refresh_main:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            branch:             main
+            main_worktree_path: "."
+            worktree_list:      { raw: "" }
+            commits_ahead:      0
+            commits_behind:     0
+            has_uncommitted:    false
+            merge_in_progress:  false
+            no_common_ancestor: false
+            upstream_tracking:  true
+      push_main_exec:
+        data:
+          ok:        true
+          exit_code: 0
+          stdout_json:
+            outcome:  pushed
+            ok:       true
+            ahead:    3
+            behind:   0
+            output:   "To github.com:example/repo.git\n \trefs/heads/main:refs/heads/main\t0000000..1111111"
+
+turns:
+  - intent: { name: push_main, slots: { remote: origin } }
+    expect_state: push_main
+    expect_view_matches: "✅ Pushed[\\s\\S]*3 commits published"
+    expect_world:
+      push_remote: origin
+      push_result:
+        outcome: pushed
+        ok:      true
+        ahead:   3
+        behind:  0
+        output:  "To github.com:example/repo.git\n \trefs/heads/main:refs/heads/main\t0000000..1111111"
+
+expect_no_errors: true

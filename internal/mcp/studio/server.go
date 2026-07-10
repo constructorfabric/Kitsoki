@@ -34,9 +34,14 @@ package studio
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"os/exec"
+	"runtime/debug"
+	"strings"
 	"sync"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/bugprivacy"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -81,14 +86,21 @@ type Server struct {
 	// mutation), and the render tools stay available. Used by the meta-mode
 	// Q&A surface (`/meta story ask`), which must not edit the story.
 	readOnly bool
-	// issueFiler is the injectable issue.create seam: it files a composed
-	// {repo, title, body, labels} GitHub issue. Nil → issue.create returns
-	// ErrIssueUnavailable. Production (cmd/kitsoki) shells to gh; a test injects
-	// a fake. See WithIssueFiler.
+	// issueFiler is the injectable issue.create GitHub seam: it files a composed
+	// {repo, title, body, labels} GitHub issue when issueSink resolves to
+	// "github". Nil only makes the github sink unavailable; local-artifact stays
+	// usable. Production (cmd/kitsoki) routes through Kitsoki's native GitHub
+	// issue filing; tests inject fakes. See WithIssueFiler.
 	issueFiler IssueFiler
+	// issueSink is the default filing destination for issue.create. Empty means
+	// local-artifact, so local dogfood does not burn GitHub issues.
+	issueSink string
 	// artifactsDir is where issue.create writes rendered assets. Empty →
 	// defaultIssueArtifactsDir. See WithArtifactsDir.
 	artifactsDir string
+	// bugPrivacyChecker gates issue.create before the IssueFiler is called. Nil
+	// keeps deterministic scrubbing only.
+	bugPrivacyChecker bugprivacy.Checker
 	// importResolver is the loader/test resolver used for @kitsoki/<name>
 	// imports. It is the MCP twin of the CLI's buildImportResolver seam.
 	importResolver app.ImportResolver
@@ -106,6 +118,11 @@ func ReadOnly() ServerOption { return func(s *Server) { s.readOnly = true } }
 // into story.* and session.* tools. Nil keeps the loader's legacy behaviour.
 func WithImportResolver(resolver app.ImportResolver) ServerOption {
 	return func(s *Server) { s.importResolver = resolver }
+}
+
+// WithBugPrivacyChecker enables the provider-backed issue.create privacy gate.
+func WithBugPrivacyChecker(checker bugprivacy.Checker) ServerOption {
+	return func(s *Server) { s.bugPrivacyChecker = checker }
 }
 
 // NewServer constructs a studio Server over the given StudioSession and registers
@@ -130,7 +147,7 @@ func NewServer(sess *StudioSession, opts ...ServerOption) *Server {
 	// studio.ping — liveness; proves transport + attach.
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "studio.ping",
-		Description: "Liveness probe for the kitsoki studio server. Returns {ok, version}; proves the stdio transport and attach config resolved to this binary.",
+		Description: "Liveness and identity probe for the kitsoki studio server. Returns {ok, version, revision?, modified?, go_version?, executable?, working_dir?}; compare revision/working_dir with the checkout before trusting workflow generation.",
 	}, srv.handlePing)
 
 	// studio.handles — lists the open handles and their modes.
@@ -148,6 +165,13 @@ func NewServer(sess *StudioSession, opts ...ServerOption) *Server {
 	// story.* — the deterministic, LLM-free authoring tools (slice 6).
 	srv.registerStoryTools()
 
+	// story.list / story.search — discover and grep a story's files (the
+	// read/grep surface that lets a driver stay off the host Read/Grep).
+	srv.registerStorySearchTools()
+
+	// story.turn — dry-run one transition (the debugging microscope).
+	srv.registerStoryTurnTool()
+
 	// workflow.* — dynamic-workflow create/validate/export receipts.
 	srv.registerWorkflowTools()
 
@@ -161,12 +185,28 @@ func NewServer(sess *StudioSession, opts ...ServerOption) *Server {
 	// inbox.* — external intake into the per-session inbox.
 	srv.registerInboxTools()
 
-	// issue.* — file a GitHub issue with studio-produced evidence bundled in.
+	// issue.* — file a local artifact ticket or GitHub issue with studio-produced
+	// evidence bundled in.
 	srv.registerIssueTools()
 
 	// host.* — the standalone gate-runner: run a command against a worktree
 	// (e.g. go test) outside any live session, to gate on the real deliverable.
 	srv.registerHostTools()
+
+	// trace.* — read a session trace OFF DISK (no live handle) and convert one
+	// to a replayable flow fixture (the no-LLM test loop, closed in MCP).
+	srv.registerTraceTools()
+
+	// vcs.* / worktree.* — a structured git surface: status/diff/log, worktree
+	// lifecycle, and the guarded squash-merge that replaces the main-destroying
+	// `reset --soft` ritual.
+	srv.registerVCSTools()
+
+	// gh.* — read GitHub issues/PRs and post comments from inside the studio.
+	srv.registerGHTools()
+
+	// ticket.call — reusable Starlark ticket-provider modules.
+	srv.registerTicketProviderTools()
 
 	// visual.* — token-efficient visual interaction over web/TUI/VS Code-like
 	// surfaces, built on existing session/render seams.
@@ -224,8 +264,16 @@ type PingArgs struct{}
 // PingOK is the success response of studio.ping. JSON tags are load-bearing
 // (read by the client).
 type PingOK struct {
-	OK      bool   `json:"ok"`      // always true on this branch
-	Version string `json:"version"` // the studio server version (== Version)
+	OK         bool   `json:"ok"`                    // always true on this branch
+	Version    string `json:"version"`               // the studio server version (== Version)
+	Revision   string `json:"revision,omitempty"`    // vcs.revision from Go build info, when available
+	Modified   string `json:"modified,omitempty"`    // vcs.modified from Go build info, when available
+	GoVersion  string `json:"go_version,omitempty"`  // Go toolchain version from build info
+	Executable string `json:"executable,omitempty"`  // resolved process path, useful when an MCP client is stale
+	WorkingDir string `json:"working_dir,omitempty"` // process cwd, useful when an MCP client is pointed at another checkout
+	Checkout   string `json:"checkout,omitempty"`    // current working tree HEAD, used to detect stale attached servers
+	Stale      bool   `json:"stale,omitempty"`       // true when revision differs from checkout
+	ReloadHint string `json:"reload_hint,omitempty"` // operator-facing reconnect guidance when stale
 }
 
 // HandlesArgs is the (empty) input to studio.handles.
@@ -233,14 +281,62 @@ type HandlesArgs struct{}
 
 // ── handlers ──────────────────────────────────────────────────────────────────
 
-// handlePing returns {ok:true, version}. It never errors — its only job is to
-// prove the transport and attach config resolved to this server.
+// handlePing returns server identity. It never errors — its job is to prove the
+// transport and attach config resolved to this server, and to make stale MCP
+// attachments obvious before workflow generation spends time on the wrong code.
 func (srv *Server) handlePing(
 	ctx context.Context,
 	req *mcpsdk.CallToolRequest,
 	args PingArgs,
 ) (*mcpsdk.CallToolResult, any, error) {
-	return nil, PingOK{OK: true, Version: Version}, nil
+	return nil, buildPingOK(), nil
+}
+
+func buildPingOK() PingOK {
+	ok := PingOK{OK: true, Version: Version}
+	if info, available := debug.ReadBuildInfo(); available {
+		ok.GoVersion = info.GoVersion
+		for _, setting := range info.Settings {
+			switch setting.Key {
+			case "vcs.revision":
+				ok.Revision = setting.Value
+			case "vcs.modified":
+				ok.Modified = setting.Value
+			}
+		}
+	}
+	if exe, err := os.Executable(); err == nil {
+		ok.Executable = exe
+	}
+	if wd, err := os.Getwd(); err == nil {
+		ok.WorkingDir = wd
+		ok.Checkout = pingGitOutput(wd, "rev-parse", "HEAD")
+		if ok.Revision == "" {
+			ok.Revision = ok.Checkout
+		}
+		if ok.Modified == "" {
+			if status := pingGitOutput(wd, "status", "--porcelain"); status != "" {
+				ok.Modified = "true"
+			} else if ok.Revision != "" {
+				ok.Modified = "false"
+			}
+		}
+		if ok.Revision != "" && ok.Checkout != "" && ok.Revision != ok.Checkout {
+			ok.Stale = true
+			ok.ReloadHint = "Restart or reconnect the Kitsoki Studio MCP server for this checkout before calling workflow.create or workflow.launch."
+		}
+	}
+	return ok
+}
+
+func pingGitOutput(dir string, args ...string) string {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // handleHandles snapshots the open handles. It never errors — an empty studio
@@ -277,8 +373,8 @@ const (
 	ErrBadRequest = "BAD_REQUEST"
 	// ErrHarness — the session's harness could not be constructed.
 	ErrHarness = "HARNESS"
-	// ErrIssueUnavailable — issue.create was called on a studio with no issue
-	// filer wired (started without GitHub filing).
+	// ErrIssueUnavailable — issue.create was called with sink=github on a studio
+	// with no issue filer wired (started without GitHub filing).
 	ErrIssueUnavailable = "ISSUE_UNAVAILABLE"
 )
 

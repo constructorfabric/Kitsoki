@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>kitsoki · live TUI</title>
+  <!-- xterm.js served from this harness's node_modules (static root = tools/tui-bridge) -->
+  <link rel="stylesheet" href="/node_modules/@xterm/xterm/css/xterm.css" />
+  <script src="/node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="/node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <style>
+    :root { --brand-bg: #070d1a; }
+    html, body {
+      margin: 0; height: 100%; width: 100%;
+      background: radial-gradient(circle at 50% 30%, #14224a 0%, #0a1430 42%, #070d1a 100%);
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+    }
+    #stage {
+      position: relative; height: 100%; width: 100%;
+      display: flex; align-items: center; justify-content: center;
+      box-sizing: border-box; padding: 26px 64px 56px;
+    }
+    #footer {
+      position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+      z-index: 1; pointer-events: none; display: flex; align-items: center; gap: 11px;
+      color: #aab8cc; font: 700 18px ui-sans-serif, system-ui, sans-serif; letter-spacing: .05em;
+    }
+    #footer .accent { color: #fbbf24; }
+    #footer .status { color: #64748b; font-weight: 600; }
+    .term-window {
+      position: relative; z-index: 1;
+      border-radius: 12px; overflow: hidden;
+      box-shadow: 0 28px 80px rgba(0,0,0,.66), 0 0 0 1px #1e293b;
+      background: #0b1120;
+      width: 100%; height: 100%;
+    }
+    .term-titlebar {
+      display: flex; align-items: center; gap: 10px;
+      height: 38px; padding: 0 14px;
+      background: linear-gradient(#15203a, #0e1730);
+      border-bottom: 1px solid #1e293b;
+    }
+    .term-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .term-dot.r { background: #ff5f57; } .term-dot.y { background: #febc2e; } .term-dot.g { background: #28c840; }
+    .term-title {
+      margin-left: 8px; color: #94a3b8; font-size: 13px; font-weight: 600;
+      letter-spacing: .01em; min-width: 0; flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .term-badges {
+      margin-left: auto; display: flex; align-items: center; gap: 8px;
+      min-width: 0;
+    }
+    .term-badge {
+      color: #fbbf24; font-size: 11px; font-weight: 700;
+      border: 1px solid #3b3320; background: #221c0a; border-radius: 6px;
+      padding: 3px 8px; text-transform: uppercase; letter-spacing: .06em;
+      white-space: nowrap;
+    }
+    .term-badge[hidden] { display: none; }
+    .term-badge--mode {
+      color: #93c5fd; border-color: #1e3a5f; background: #0c1a2f;
+    }
+    .term-badge--warp {
+      color: #111827; border-color: #f59e0b; background: #fbbf24;
+      box-shadow: 0 0 0 1px rgba(251,191,36,.18), 0 0 24px rgba(251,191,36,.28);
+    }
+    .term-badge__chevrons {
+      display: inline-block; margin-right: 6px; letter-spacing: -.02em;
+    }
+    .term-badge__detail {
+      margin-left: 8px; color: #713f12; font-weight: 800; letter-spacing: .04em;
+    }
+    .term-body { position: absolute; inset: 38px 0 0 0; padding: 10px 12px 12px; }
+    #term { height: 100%; }
+    .xterm { padding: 2px; }
+  </style>
+</head>
+<body>
+  <div id="footer">
+    <span class="accent">kitsoki</span>
+    <span class="status" id="status">connecting…</span>
+  </div>
+  <div id="stage">
+    <div class="term-window" id="win">
+      <div class="term-titlebar">
+        <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+        <span class="term-title" id="winTitle">kitsoki</span>
+        <span class="term-badges">
+          <span class="term-badge term-badge--warp" id="warpBadge" hidden>
+            <span class="term-badge__chevrons" aria-hidden="true">»»</span>
+            <span id="warpLabel">FAST FORWARD</span>
+            <span class="term-badge__detail" id="warpDetail">cassette replay</span>
+          </span>
+          <span class="term-badge term-badge--mode" id="modeBadge">REAL TUI</span>
+        </span>
+      </div>
+      <div class="term-body"><div id="term"></div></div>
+    </div>
+  </div>
+  <script>
+    const THEME = {
+      background: "#0b1120", foreground: "#e2e8f0", cursor: "#fbbf24",
+      selectionBackground: "#33415588",
+      black: "#0b1120", red: "#f87171", green: "#34d399", yellow: "#fbbf24",
+      blue: "#60a5fa", magenta: "#c084fc", cyan: "#22d3ee", white: "#e2e8f0",
+      brightBlack: "#64748b", brightRed: "#fca5a5", brightGreen: "#6ee7b7",
+      brightYellow: "#fde68a", brightBlue: "#93c5fd", brightMagenta: "#d8b4fe",
+      brightCyan: "#67e8f9", brightWhite: "#f8fafc",
+    };
+    const term = new window.Terminal({
+      cols: 116, rows: 26,
+      fontFamily: 'ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace',
+      fontSize: 17, lineHeight: 1.3, letterSpacing: 0,
+      cursorBlink: true, cursorStyle: "bar", scrollback: 2000,
+      drawBoldTextInBrightColors: true, fontWeight: 400, fontWeightBold: 700,
+      theme: THEME, convertEol: false, allowProposedApi: true,
+    });
+    const fitAddon = new window.FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById("term"));
+    fitAddon.fit();
+
+    const statusEl = document.getElementById("status");
+    const warpBadge = document.getElementById("warpBadge");
+    const warpLabel = document.getElementById("warpLabel");
+    const warpDetail = document.getElementById("warpDetail");
+    const setStatus = (s) => { statusEl.textContent = s; };
+
+    function setWarpOverlay(state) {
+      const next = state && typeof state === "object" ? state : {};
+      const visible = Boolean(next.visible);
+      if (next.label) warpLabel.textContent = String(next.label);
+      if (next.detail) warpDetail.textContent = String(next.detail);
+      warpBadge.hidden = !visible;
+      document.body.classList.toggle("warp-active", visible);
+      return {
+        visible,
+        label: warpLabel.textContent,
+        detail: warpDetail.textContent,
+      };
+    }
+
+    // The bridge address: ?ws=ws://host:port/pty overrides the default, so a
+    // single served page can point at any running `kitsoki tui-serve`.
+    const wsUrl = new URLSearchParams(location.search).get("ws") || "ws://127.0.0.1:4700/pty";
+
+    const reconnectBaseMs = 250;
+    const reconnectMaxMs = 2000;
+    let socket;
+    let connectedOnce = false;
+    let reconnectTimer = 0;
+    let reconnectAttempts = 0;
+
+    function reconnectDelay() {
+      return Math.min(reconnectMaxMs, reconnectBaseMs * Math.pow(2, Math.min(reconnectAttempts, 3)));
+    }
+
+    function scheduleReconnect() {
+      if (connectedOnce) {
+        setStatus("disconnected");
+        return;
+      }
+      if (reconnectTimer) return;
+      const delay = reconnectDelay();
+      reconnectAttempts += 1;
+      setStatus("reconnecting…");
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = 0;
+        connect();
+      }, delay);
+    }
+
+    function connect() {
+      setStatus(reconnectAttempts ? "reconnecting…" : "connecting…");
+      const nextSocket = new WebSocket(wsUrl);
+      socket = nextSocket;
+      nextSocket.binaryType = "arraybuffer";
+
+      nextSocket.addEventListener("open", () => {
+        if (socket !== nextSocket) return;
+        connectedOnce = true;
+        reconnectAttempts = 0;
+        setStatus("connected");
+        sendResize();
+      });
+      nextSocket.addEventListener("close", () => {
+        if (socket !== nextSocket) return;
+        socket = null;
+        scheduleReconnect();
+      });
+      nextSocket.addEventListener("error", () => {
+        if (socket !== nextSocket) return;
+        setStatus(connectedOnce ? "error" : "reconnecting…");
+      });
+      nextSocket.addEventListener("message", (ev) => {
+        if (typeof ev.data === "string") return; // no server->client text frames today
+        term.write(new Uint8Array(ev.data));
+      });
+    }
+
+    function sendResize() {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+    }
+
+    // Real keystrokes in: xterm's onData carries the exact bytes a real
+    // terminal would send (including escape sequences for arrows etc).
+    term.onData((data) => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(new TextEncoder().encode(data));
+      }
+    });
+
+    window.addEventListener("resize", () => { fitAddon.fit(); sendResize(); });
+
+    // Drive/inspect surface for Playwright and claude-in-chrome: no OCR or
+    // vision needed to read back the exact current screen contents. Reads
+    // only the visible viewport (buf.viewportY .. +term.rows) — buf.length
+    // covers the full scrollback, which would silently include history that
+    // has already scrolled off-screen and doesn't match what a screenshot
+    // shows.
+    function dumpVisible() {
+      const buf = term.buffer.active;
+      const lines = [];
+      for (let i = 0; i < term.rows; i++) {
+        const line = buf.getLine(buf.viewportY + i);
+        lines.push(line ? line.translateToString(true) : "");
+      }
+      return lines.join("\n");
+    }
+
+    function dumpBuffer() {
+      const buf = term.buffer.active;
+      const lines = [];
+      for (let i = 0; i < buf.length; i++) {
+        const line = buf.getLine(i);
+        lines.push(line ? line.translateToString(true) : "");
+      }
+      return lines.join("\n");
+    }
+
+    function scrollToText(needle, contextLines = 2) {
+      const target = String(needle || "");
+      if (!target) return dumpVisible();
+      const buf = term.buffer.active;
+      for (let i = 0; i < buf.length; i++) {
+        const line = buf.getLine(i);
+        const text = line ? line.translateToString(true) : "";
+        if (text.includes(target)) {
+          term.scrollToLine(Math.max(0, i - Number(contextLines || 0)));
+          return dumpVisible();
+        }
+      }
+      return dumpVisible();
+    }
+
+    function focusTerm() {
+      term.focus();
+      return document.activeElement ? document.activeElement.className : "";
+    }
+
+    function cellAttrs(row, col) {
+      const buf = term.buffer.active;
+      const line = buf.getLine(buf.viewportY + Number(row || 0));
+      const cell = line && line.getCell(Number(col || 0));
+      if (!cell) return null;
+      return {
+        chars: cell.getChars(),
+        width: cell.getWidth(),
+        fgColorMode: cell.getFgColorMode(),
+        bgColorMode: cell.getBgColorMode(),
+        fgColor: cell.getFgColor(),
+        bgColor: cell.getBgColor(),
+        bold: cell.isBold(),
+        italic: cell.isItalic(),
+        dim: cell.isDim(),
+        underline: cell.isUnderline(),
+        inverse: typeof cell.isInverse === "function" ? cell.isInverse() : false,
+      };
+    }
+
+    function textAttrs(needle) {
+      const target = String(needle || "");
+      if (!target) return [];
+      const buf = term.buffer.active;
+      for (let row = 0; row < term.rows; row++) {
+        const line = buf.getLine(buf.viewportY + row);
+        if (!line) continue;
+        const text = line.translateToString(false);
+        const col = text.indexOf(target);
+        if (col < 0) continue;
+        const attrs = [];
+        for (let i = 0; i < target.length; i++) {
+          attrs.push({ row, col: col + i, ...cellAttrs(row, col + i) });
+        }
+        return attrs;
+      }
+      return [];
+    }
+
+    window.__dump = dumpVisible;
+    window.__dumpBuffer = dumpBuffer;
+    window.__cellAttrs = cellAttrs;
+    window.__textAttrs = textAttrs;
+    window.__focusTerm = focusTerm;
+    window.__scrollLines = (n) => { term.scrollLines(Number(n) || 0); return dumpVisible(); };
+    window.__scrollToText = scrollToText;
+    window.__scrollToTop = () => { term.scrollToTop(); return dumpVisible(); };
+    window.__scrollToBottom = () => { term.scrollToBottom(); return dumpVisible(); };
+    window.__status = () => statusEl.textContent;
+    window.__reconnectAttempts = () => reconnectAttempts;
+    window.__setWarpOverlay = setWarpOverlay;
+    window.__warpOverlayState = () => ({
+      visible: !warpBadge.hidden,
+      label: warpLabel.textContent,
+      detail: warpDetail.textContent,
+    });
+    window.__ready = true;
+
+    connect();
+  </script>
+</body>
+</html>

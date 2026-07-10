@@ -38,8 +38,10 @@ const (
 	DriveDwellMs     = "dwell-ms"
 )
 
-// validate reports whether the action carries the field its Type requires.
-func (d DriveAction) validate() error {
+// Validate reports whether the action carries the field its Type requires.
+// Exported so plan-level formats reusing the drive vocabulary (e.g.
+// internal/storyboard) validate against the same rules the renderer enforces.
+func (d DriveAction) Validate() error {
 	switch d.Type {
 	case DriveTypeAndSend:
 		if d.Text == "" {
@@ -203,7 +205,7 @@ func (m *TourManifest) validate() error {
 		}
 		seen[s.ID] = true
 		for j, d := range s.Drive {
-			if err := d.validate(); err != nil {
+			if err := d.Validate(); err != nil {
 				return fmt.Errorf("step %q drive[%d]: %w", s.ID, j, err)
 			}
 		}

@@ -3,10 +3,13 @@ id: multi-story
 kind: product-tour
 title: The full product walk
 tagline: Catalogue to live session to reload-survival — end to end.
-summary: "The end-to-end product demo: the story catalogue, a fresh PRD run narrated turn-by-turn on the chat surface, then the product's defining seam — a full page reload that the active session survives — landing back on the home active-sessions table."
+summary: 'The end-to-end product demo: the story catalogue, a fresh PRD run narrated turn-by-turn on the chat surface, then the product''s defining seam — a full page reload that the active session survives — landing back on the home active-sessions table.'
 promo:
   order: 10
+docs:
+  - docs/web/README.md
 demo:
+  format: rrweb
   spec: tests/playwright/multi-story.spec.ts
   artifactDir: multi-story
   videoBase: multi-story-demo
@@ -29,7 +32,7 @@ tour:
       route: home
       target: story-card
       title: A story card per pipeline
-      body: "Each card names a discovered story, its on-disk path, and a live-session badge. Rescan re-walks the tree on demand — no fsnotify magic, just an explicit, auditable refresh. We'll drive the PRD card: idea → clarify → brief → references → draft → done."
+      body: 'Each card names a discovered story, its on-disk path, and a live-session badge. Rescan re-walks the tree on demand — no fsnotify magic, just an explicit, auditable refresh. We''ll drive the PRD card: idea → clarify → brief → references → draft → done.'
       placement: right
       kind: explain
       advance: next
@@ -110,7 +113,7 @@ tour:
       route: home
       target: home-view
       title: Reload — your runs persist
-      body: "Sessions live in the server's store, not the browser tab. We just hard-reloaded the whole page and navigated home: every run is still here, its current state recovered straight from the trace. Close the tab, reopen tomorrow — the runs are exactly where you left them."
+      body: 'Sessions live in the server''s store, not the browser tab. We just hard-reloaded the whole page and navigated home: every run is still here, its current state recovered straight from the trace. Close the tab, reopen tomorrow — the runs are exactly where you left them.'
       placement: center
       kind: explain
       advance: next

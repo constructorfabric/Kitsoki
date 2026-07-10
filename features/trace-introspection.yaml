@@ -3,10 +3,14 @@ id: trace-introspection
 kind: feature
 title: Decision-first trace detail
 tagline: Verdicts, confidence, evidence, and replay — on a frozen trace.
-summary: "Trace introspection against a frozen bugfix-trace snapshot: observation-kind filter chips, the decide verdict block with confidence bar and collapsible evidence drawer, the deterministic-replay affordance, and the tree / waterfall / state-graph view modes."
+summary: 'Trace introspection against a frozen bugfix-trace snapshot: observation-kind filter chips, the decide verdict block with confidence bar and collapsible evidence drawer, the deterministic-replay affordance, and the tree / waterfall / state-graph view modes.'
+docs:
+  - docs/tracing/trace-format.md
+  - docs/tracing/run-status-ui.md
 related:
   - trace-features
 demo:
+  format: rrweb
   spec: tests/playwright/trace-introspection-demo.spec.ts
   artifactDir: trace-introspection-demo
   videoBase: trace-introspection-demo
@@ -17,7 +21,7 @@ tour:
     - id: ti-welcome
       route: any
       title: Introspecting a frozen trace
-      body: "This is a deterministic bugfix run, loaded from a frozen trace snapshot — no live server, no LLM. Everything you see is derived from the recorded trace, the auditable source of truth. This tour walks the introspection surfaces: observation kinds, decision-first detail, and the three view modes."
+      body: 'This is a deterministic bugfix run, loaded from a frozen trace snapshot — no live server, no LLM. Everything you see is derived from the recorded trace, the auditable source of truth. This tour walks the introspection surfaces: observation kinds, decision-first detail, and the three view modes.'
       placement: center
       kind: explain
       advance: next
@@ -36,7 +40,7 @@ tour:
       route: any
       target: decide-verdict
       title: Decision-first detail
-      body: "Expand a decide call and the verdict leads: accept or reject, the chosen intent, and the runner-up moves that were on the table. The decision the judge reached is the first thing you read — not the last thing you scroll to."
+      body: 'Expand a decide call and the verdict leads: accept or reject, the chosen intent, and the runner-up moves that were on the table. The decision the judge reached is the first thing you read — not the last thing you scroll to.'
       placement: left
       kind: explain
       advance: next

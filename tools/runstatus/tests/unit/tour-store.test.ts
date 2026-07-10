@@ -96,6 +96,13 @@ describe("tour store", () => {
     expect(second.active).toBe(false);
   });
 
+  it("maybeAutoStart() stays quiet for an already-onboarded project", () => {
+    const tour = useTourStore();
+    tour.maybeAutoStart({ projectOnboarded: true });
+    expect(tour.active).toBe(false);
+    expect(tour.completed).toBe(false);
+  });
+
   it("start(true) replays even after completion", () => {
     localStorage.setItem(LS_KEY, "1");
     const tour = useTourStore();

@@ -26,6 +26,9 @@ import (
 //     can render the "what can I do right now" surface inline in view: prose.
 //     Shape: {"primary": [{intent, display, reason, destination_hint, primary}],
 //     "blocked": [...]}.
+//   - Prerequisites map[string]any — computed room prerequisites, populated by
+//     view-render call sites. Shape:
+//     {"all": [...], "unmet": [...], "met": [...], "has_unmet": bool}.
 //
 // View-render call sites should call PopulateMenuHelpers after assembling
 // Slots/World/Menu so the helper functions (available, blocked,
@@ -33,13 +36,14 @@ import (
 // helpers are exposed as function-typed fields on Env so expr-lang resolves
 // bare names like `available(...)` to method-style calls on the env value.
 type Env struct {
-	Slots  map[string]any `expr:"slots"`
-	World  map[string]any `expr:"world"`
-	Event  map[string]any `expr:"event"`
-	Run    RunCtx         `expr:"run"`
-	Args   map[string]any `expr:"args"`
-	Menu   map[string]any `expr:"menu"`
-	Result map[string]any `expr:"result"`
+	Slots         map[string]any `expr:"slots"`
+	World         map[string]any `expr:"world"`
+	Event         map[string]any `expr:"event"`
+	Run           RunCtx         `expr:"run"`
+	Args          map[string]any `expr:"args"`
+	Menu          map[string]any `expr:"menu"`
+	Prerequisites map[string]any `expr:"prerequisites"`
+	Result        map[string]any `expr:"result"`
 
 	// Helper functions for view templates. Bound at view-render time by
 	// PopulateMenuHelpers. When Menu is unset (effect evaluation, guard
@@ -187,17 +191,18 @@ var allowedBuiltins = map[string]bool{
 // allowedRoots is the set of top-level identifier names that may appear in
 // expressions. Member access chains must start with one of these.
 var allowedRoots = map[string]bool{
-	"slots":     true,
-	"world":     true,
-	"event":     true,
-	"run":       true,
-	"args":      true, // handler-local args (host invocations, prompt files)
-	"menu":      true, // computed menu (primary/blocked intents) for view templates
-	"item":      true, // current element inside a {{ range expr }} block
-	"proposal":  true, // $proposal compound-state slot
-	"inbox":     true, // $inbox compound-state slot
-	"workspace": true, // $workspace compound-state slot
-	"result":    true, // host-call Result.Data, exposed to templated `bind:` values
+	"slots":         true,
+	"world":         true,
+	"event":         true,
+	"run":           true,
+	"args":          true, // handler-local args (host invocations, prompt files)
+	"menu":          true, // computed menu (primary/blocked intents) for view templates
+	"prerequisites": true, // computed room prerequisite status for view templates
+	"item":          true, // current element inside a {{ range expr }} block
+	"proposal":      true, // $proposal compound-state slot
+	"inbox":         true, // $inbox compound-state slot
+	"workspace":     true, // $workspace compound-state slot
+	"result":        true, // host-call Result.Data, exposed to templated `bind:` values
 	// Boolean literals, which appear as identifiers in some expr-lang versions.
 	"true":  true,
 	"false": true,

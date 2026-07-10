@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kitsoki.dev/schemas/kit/v1.json",
+  "title": "Kit manifest (kit/v1)",
+  "description": "A named, semver-versioned, distributable bundle of stories: kit.yaml. See docs/proposals/kits.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "kit", "namespace", "version", "provides"],
+  "properties": {
+    "schema": { "const": "kit/v1" },
+    "kit": {
+      "type": "string",
+      "description": "Kit name (kebab-case), e.g. iso-9001.",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "namespace": {
+      "type": "string",
+      "description": "Publisher/org namespace, e.g. constructorfabric. Full identity is @<namespace>/<kit>.",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "version": {
+      "type": "string",
+      "description": "Semver version of this kit.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "title": { "type": "string" },
+    "summary": { "type": "string", "contentMediaType": "text/markdown" },
+
+    "requires": {
+      "type": "object",
+      "description": "Host engine version constraint(s) this kit needs.",
+      "additionalProperties": false,
+      "properties": {
+        "kitsoki": {
+          "type": "string",
+          "description": "Semver constraint on the kitsoki engine, e.g. \">=0.1.0\"."
+        }
+      }
+    },
+
+    "extends": {
+      "type": "array",
+      "description": "Kits this kit specializes (single-parent-per-entry contract extension).",
+      "items": { "$ref": "#/$defs/kitDependency" }
+    },
+    "composes": {
+      "type": "array",
+      "description": "Kits this kit folds together (multi-kit composition, no shared contract implied).",
+      "items": { "$ref": "#/$defs/kitDependency" }
+    },
+
+    "parameters": {
+      "type": "object",
+      "description": "The kit's specialization surface — named parameters an implementation binds (epic lean 6: profiles become named presets).",
+      "additionalProperties": { "$ref": "#/$defs/parameter" }
+    },
+
+    "provides": {
+      "type": "object",
+      "description": "What this kit contributes.",
+      "additionalProperties": false,
+      "required": ["stories"],
+      "properties": {
+        "stories": {
+          "type": "array",
+          "description": "Standalone-runnable story names this kit provides, each resolvable under stories/<name>/app.yaml relative to the kit root.",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "schemas": {
+          "type": "array",
+          "description": "Data-management artifact schema ids this kit registers, e.g. nonconformity/v1.",
+          "items": { "type": "string" }
+        },
+        "interfaces": {
+          "type": "array",
+          "description": "Named host_interfaces (capability contracts) this kit's stories declare or depend on.",
+          "items": { "type": "string" }
+        },
+        "ui": {
+          "type": "array",
+          "description": "Kit-contributed UI module entry points. Either a bare entry-path string (S3c's original shape) or {id, title, entry, nav} (S5/D3's full shape, needed for a nav link).",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["entry"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "title": { "type": "string" },
+                  "entry": { "type": "string" },
+                  "nav": { "type": "boolean" }
+                }
+              }
+            ]
+          }
+        },
+        "onboarding": {
+          "type": "string",
+          "description": "Entry intent for install/setup, e.g. qms.onboard."
+        },
+        "story_dirs": {
+          "type": "object",
+          "description": "Overrides the default `stories/<name>` resolution for one or more provides.stories entries, keyed by story name, value a kit-root-relative directory (e.g. \".\" for a kit.yaml that sits directly beside its story's own app.yaml). S6 root-generalization escape hatch (docs/proposals/kits.md).",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+
+    "root": {
+      "type": "object",
+      "description": "Declares one of this kit's provides.stories as a valid 'blessed root' a synthesized instance may import (D6, S6) -- manifest-driven replacement for the old hardcoded RootStoryName const + duplicated five-interface allow-list.",
+      "additionalProperties": false,
+      "required": ["story", "entry", "host_interfaces"],
+      "properties": {
+        "story": { "type": "string", "description": "Which provides.stories entry is enterable as root." },
+        "entry": { "type": "string", "description": "The root story's initial state when synthesized as the implicit root." },
+        "host_interfaces": {
+          "type": "array",
+          "description": "Allow-list of host_interfaces names an `overrides.bindings.<iface>` may rebind.",
+          "items": { "type": "string" }
+        },
+        "hosts": {
+          "type": "array",
+          "description": "Fixed host allow-list the synthesized root declares (hosts: declared) for this root story's subtree.",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "conformance": {
+      "type": "object",
+      "description": "The kit's no-LLM contract suite, re-run against downstream extensions (S4).",
+      "additionalProperties": false,
+      "properties": {
+        "flows": {
+          "type": "array",
+          "description": "Glob patterns for flow/cassette fixtures under the kit root.",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "compat": {
+      "type": "object",
+      "description": "Migration hints an absorber applies mechanically when this kit revs (S7).",
+      "additionalProperties": false,
+      "properties": {
+        "renamed": {
+          "type": "object",
+          "description": "Rename hints grouped by category (exits, intents, world, ...).",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "kitDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kit"],
+      "properties": {
+        "kit": {
+          "type": "string",
+          "description": "Fully-qualified dependency, e.g. @constructorfabric/iso-ms."
+        },
+        "constraint": {
+          "type": "string",
+          "description": "Semver constraint, e.g. ^2 or >=1.2.0 <2."
+        }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["string", "int", "float", "bool", "object", "list"] },
+        "required": { "type": "boolean", "default": false },
+        "default": {},
+        "description": { "type": "string" }
+      }
+    }
+  }
+}

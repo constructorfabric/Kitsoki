@@ -1,0 +1,35 @@
+diff --git a/stories/dev-story-mining/rooms/mine.yaml b/stories/dev-story-mining/rooms/mine.yaml
+index 1aa1111..2bb2222 100644
+--- a/stories/dev-story-mining/rooms/mine.yaml
++++ b/stories/dev-story-mining/rooms/mine.yaml
+@@ -17,13 +17,30 @@ states:
+       - banner:
+           text:     "MINE"
+           subtitle: "Phase 2 / 6  -  intent/idea mining over prepared sources"
+           color:    "#06B6D4"
+-      - prose: "{{ world.job }} - cycle {{ world.cycle }} - judge {{ world.judge_mode }} - sources {{ world.transcript_sources }}"
++      - prose: "{{ world.job }} - judge {{ world.judge_mode }} - sources {{ world.transcript_sources }}"
+       - kv:
+           pairs:
+-            Brief:    '{{ world.mine_artifact.brief_path|default:"(pending)" }}'
+-            Intents:  '{{ world.mine_artifact.intent_count|default:"(pending)" }}'
+-            Split:    'green {{ world.mine_artifact.deterministic|default:"-" }} - yellow {{ world.mine_artifact.agent_gated|default:"-" }} - red {{ world.mine_artifact.irreducible|default:"-" }}'
++            Brief: '{{ world.mine_artifact.brief_path|default:"(pending)" }}'
++            "Conversations reviewed": '{{ world.mine_artifact.conversation_count_display|default:"(pending)" }}'
++            "Messages reviewed": '{{ world.mine_artifact.message_count_display|default:"(pending)" }}'
++            "Tokens reviewed": '{{ world.mine_artifact.token_count_display|default:"(pending)" }}'
++            "Total intents mined": '{{ world.mine_artifact.intent_count_display|default:"(pending)" }}'
++      - heading: "Per-harness review"
++      - template: '{{ world.mine_artifact.source_breakdown_markdown|default:"(pending - miner has not returned yet)" }}'
++      - heading: "Determinism split"
++      - list:
++          items:
++            - label: "Green - deterministic / defaultable"
++              hint: '{{ world.mine_artifact.deterministic_display|default:"(pending)" }} intents; rule, script, or story can own the common case'
++            - label: "Yellow - agent-gated"
++              hint: '{{ world.mine_artifact.agent_gated_display|default:"(pending)" }} intents; LLM or human still handles edge cases'
++            - label: "Red - irreducible"
++              hint: '{{ world.mine_artifact.irreducible_display|default:"(pending)" }} intents; leave as judgment'
+       - heading: "Brief"
+-      - code: '{{ world.mine_artifact.summary_markdown|default:"(pending - miner has not returned yet)" }}'
++      - template: '{{ world.mine_artifact.summary_markdown|default:"(pending - miner has not returned yet)" }}'

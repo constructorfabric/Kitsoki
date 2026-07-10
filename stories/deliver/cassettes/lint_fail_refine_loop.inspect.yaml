@@ -1,0 +1,33 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/deliver/decomposition.yaml
+    out: "false"
+  # 1. First lint invoke: slice-1 references a dangling dep — lint fails.
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: slice-1
+          brief: Implement slice 1 so that go test ./... passes.
+          gate_command: go test ./...
+          deps: [slice-0]
+  # 2. Second lint invoke (after the refine loop re-arms decompose): the
+  #    dangling dep is fixed — lint passes.
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: slice-1
+          brief: Implement slice 1 so that go test ./... passes.
+          gate_command: go test ./...
+          deps: []
+  # 3. fleet.load's own read of the same (now-passing) manifest.
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: slice-1
+          brief: Implement slice 1 so that go test ./... passes.
+          gate_command: go test ./...
+          deps: []

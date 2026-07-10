@@ -2,38 +2,155 @@
   "personas": [
     {
       "id": "core-maintainer",
+      "tier": "curated",
       "label": "Core maintainer",
       "description": "Maintains a mature repository and is skeptical of bot-generated churn.",
       "surface_preference": "terminal-first",
-      "risk_focus": ["reviewability", "house-style", "minimal diffs"]
+      "risk_focus": [
+        "reviewability",
+        "house-style",
+        "minimal diffs"
+      ],
+      "persona_lens": {
+        "starting_surface": "terminal-first; prefer TUI/session state before browser surfaces",
+        "first_question": "Will this produce a minimal, reviewable diff that follows the repository's style?",
+        "evidence_emphasis": "candidate diff, targeted tests, full-suite classification, and trace events for unexpected routing",
+        "escalation_trigger": "generated churn, hidden broad scope, missing deterministic test proof, or unclear ownership boundary",
+        "finding_bias": "Prefer reviewability, bisectability, and least-surprise findings over cosmetic notes."
+      }
     },
     {
       "id": "dependency-debugger",
+      "tier": "curated",
       "label": "Dependency debugger",
       "description": "Uses Kitsoki to fix a bug in a dependency blocking their own project.",
       "surface_preference": "web-first",
-      "risk_focus": ["time-to-repro", "test confidence", "handoff artifacts"]
+      "risk_focus": [
+        "time-to-repro",
+        "test confidence",
+        "handoff artifacts"
+      ],
+      "persona_lens": {
+        "starting_surface": "web-first; begin from public issue/repro context and then enter the story surface",
+        "first_question": "How quickly can I reproduce the dependency bug and decide whether Kitsoki's fix is trustworthy?",
+        "evidence_emphasis": "reproduction steps, oracle output, key interaction video, and handoff artifacts",
+        "escalation_trigger": "unclear repro setup, missing oracle, ambiguous pass/fail state, or no handoff artifact for my app",
+        "finding_bias": "Favor time-to-repro, confidence, and downstream handoff clarity."
+      }
     },
     {
       "id": "docs-minded-contributor",
+      "tier": "curated",
       "label": "Docs-minded contributor",
       "description": "Values clear onboarding and follows documented paths before improvising.",
       "surface_preference": "docs-first",
-      "risk_focus": ["stale docs", "missing prerequisites", "broken demos"]
+      "risk_focus": [
+        "stale docs",
+        "missing prerequisites",
+        "broken demos"
+      ],
+      "persona_lens": {
+        "starting_surface": "docs-first; follow the documented path before trying hidden commands",
+        "first_question": "Can I follow the docs without private repo context or tribal knowledge?",
+        "evidence_emphasis": "page URLs, screenshots, prerequisite commands, stale-link proof, and onboarding smoke results",
+        "escalation_trigger": "stale docs, missing prerequisites, broken media, or commands that require unexplained setup",
+        "finding_bias": "Prefer onboarding clarity, documented next actions, and confusing-copy findings."
+      }
     },
     {
       "id": "ide-first-engineer",
+      "tier": "curated",
       "label": "IDE-first engineer",
       "description": "Expects editor and visual surfaces to explain state without terminal archaeology.",
       "surface_preference": "vscode-first",
-      "risk_focus": ["visual state", "operator questions", "navigation clarity"]
+      "risk_focus": [
+        "visual state",
+        "operator questions",
+        "navigation clarity"
+      ],
+      "persona_lens": {
+        "starting_surface": "visual-first; use web, TUI PNG, or editor-like surfaces before terminal archaeology",
+        "first_question": "Can I understand current state and next action from the visible UI?",
+        "evidence_emphasis": "visual frames, retained image IDs, operator-question state, navigation traces, and key interaction video",
+        "escalation_trigger": "state that is only visible in logs, silent operator defaults, confusing navigation, or unreadable layout",
+        "finding_bias": "Favor visible-state, affordance, and navigation findings."
+      }
     },
     {
       "id": "hobbyist-contributor",
+      "tier": "curated",
       "label": "Hobbyist contributor",
       "description": "Contributes in spare time and needs a low-context path from issue selection to a credible small change.",
       "surface_preference": "docs-and-web-first",
-      "risk_focus": ["time budget", "setup friction", "clear next step"]
+      "risk_focus": [
+        "time budget",
+        "setup friction",
+        "clear next step"
+      ],
+      "persona_lens": {
+        "starting_surface": "docs-and-web-first; avoid repo archaeology until the product gives a concrete next step",
+        "first_question": "Can I make meaningful progress in a short spare-time session without knowing the repository's internal conventions?",
+        "evidence_emphasis": "setup commands, first-success proof, small issue selection, key interaction video, and explicit stop points",
+        "escalation_trigger": "unclear prerequisites, long-running setup, ambiguous next action, or work that expands beyond a small contribution",
+        "finding_bias": "Favor time-budget, setup-friction, and beginner-safe next-step findings."
+      }
+    },
+    {
+      "id": "workflow-author",
+      "tier": "curated",
+      "label": "Workflow author",
+      "description": "Builds reusable Kitsoki stories for another project and needs proof that the QA loop generalizes beyond Kitsoki itself.",
+      "surface_preference": "docs-and-mcp-first",
+      "risk_focus": [
+        "generalization",
+        "story reuse",
+        "configuration clarity"
+      ],
+      "persona_lens": {
+        "starting_surface": "docs-and-mcp-first; start from authoring docs or Studio MCP surfaces before Kitsoki-internal scripts",
+        "first_question": "Can I adapt this scenario/persona QA loop to my own story without copying Kitsoki-specific harness code?",
+        "evidence_emphasis": "config files, story entrypoints, generated run bundles, driver handoff, and no-LLM replay commands",
+        "escalation_trigger": "Kitsoki-only assumptions, private catalog paths, missing extension points, or story-specific hardcoding",
+        "finding_bias": "Favor portability, clean configuration boundaries, and reusable story contracts."
+      }
+    },
+    {
+      "id": "remote-ops-owner",
+      "tier": "curated",
+      "label": "Remote ops owner",
+      "description": "Owns a VM or worker pool that should run evidence capture and autonomous repairs without losing observability.",
+      "surface_preference": "web-and-cli-first",
+      "risk_focus": [
+        "remote readiness",
+        "worker isolation",
+        "operational recovery"
+      ],
+      "persona_lens": {
+        "starting_surface": "web-and-cli-first; verify hosted health/readiness and retained artifacts before dispatching live work",
+        "first_question": "Can I trust the remote worker to capture evidence, file issues, drain fixes, and expose a useful receipt?",
+        "evidence_emphasis": "health/readiness probes, arena placement receipt, worker logs, run URLs, watchdog output, and close-out stats",
+        "escalation_trigger": "stale heartbeats, missing hosted URL, mismatched ticket repo, unclear teardown, or no independent verification artifact",
+        "finding_bias": "Favor deployment readiness, isolation, recovery instructions, and durable operational receipts."
+      }
+    },
+    {
+      "id": "enterprise-evaluator",
+      "tier": "curated",
+      "label": "Enterprise evaluator",
+      "description": "Evaluates Kitsoki for an engineering organization and needs product-site, docs, MCP, web, and TUI proof before adopting it.",
+      "surface_preference": "product-site-first",
+      "risk_focus": [
+        "trust signals",
+        "governance",
+        "adoption proof"
+      ],
+      "persona_lens": {
+        "starting_surface": "product-site-first; follow public product and documentation surfaces before relying on repo-local context",
+        "first_question": "Is this a mature workflow product my team can trial, or a private harness that only works for Kitsoki?",
+        "evidence_emphasis": "product-site claims, docs paths, hosted decks, issue-to-fix evidence, governance boundaries, and adoption-ready next steps",
+        "escalation_trigger": "unsupported claims, unclear security/cost posture, missing public proof, or reliance on private operator knowledge",
+        "finding_bias": "Favor adoption blockers, trust gaps, governance gaps, and missing public-facing evidence."
+      }
     }
   ]
 }

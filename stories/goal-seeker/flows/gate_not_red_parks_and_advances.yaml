@@ -1,0 +1,106 @@
+# gate_not_red_parks_and_advances — DETERMINISM GUARANTEE 3 continued: RED-first must
+# not just refuse a not-RED change, it must PARK it (park_reason=gate_not_red) and
+# self-escape to the NEXT ready change. Without this, redcheck(green) → needs_human →
+# retry → evaluate → deciding → dispatch → redcheck(green) → … loops forever, because
+# gs_ledger's fold deterministically re-derives the SAME first ready change every pass
+# (see flows/red_first_refuses.yaml for the single-change park case — this fixture
+# proves the stronger claim: with a SECOND ready change available, the loop advances
+# to it instead of dead-ending or re-picking the parked one).
+#
+# Two disjoint-scope, dependency-free changes (C1, C2). C1's redcheck is stubbed
+# green (exit 0 — not RED), so it parks; the ledger's ready_id must become C2, and a
+# further pass through dispatch must target C2 (never re-picking C1).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: start
+initial_world:
+  goal_slug: goal-seeker-two-ready
+  goal_dir:  stories/goal-seeker/testdata/two-ready
+  work_dir:  .artifacts/goal/flow-gate-not-red
+  reset_log: true
+
+host_handlers:
+  # The evaluate decide-gate is ADVISORY only; its (stale, always-C1) advice is
+  # rejected once C1 is parked and ready_id has moved to C2 (deciding_gate falls back
+  # to ready_id whenever the advice doesn't name it).
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: not_done
+            summary: "dispatch the ledger's ready change."
+            next_instruction:
+              change_id: "C1"
+              action: "implement the ready change"
+              pipeline: "implementation"
+              gate: { class: "G-FLOW", cmd: "true" }
+  # C1's gate ALREADY PASSES (exit 0) — it is not RED.
+  host.run:
+    by_call:
+      redcheck: { data: { ok: true, exit_code: 0, stdout: "PASS" } }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: start
+  - intent: { name: advance, slots: {} }        # start → bootstrap (reset log)
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok → evaluate (fold: both ready, C1 first)
+    expect_state: evaluate
+    expect_world: { remaining: 2, ready_id: "C1" }
+  - intent: { name: advance, slots: {} }        # evaluate → deciding
+    expect_state: deciding
+  - intent: { name: advance, slots: {} }        # decide (advisory not_done) → dispatch C1
+    expect_state: dispatch
+    expect_world: { next_change_id: "C1" }
+  - intent: { name: advance, slots: {} }        # gs_manifest → RED-first check
+    expect_state: redcheck
+  # C1's gate already passes (exit 0) — PARK it (gate_not_red); do NOT dead-end at
+  # needs_human.
+  - intent: { name: advance, slots: {} }
+    expect_state: park
+    expect_not_state: needs_human
+    expect_world: { red_exit: 0, next_change_id: "C1" }
+  - intent: { name: look, slots: {} }
+    expect_view_matches: "gate_not_red"
+  # gs_append settles → re-fold: C1 is now parked (excluded from ready), so C2 —
+  # a DIFFERENT change — becomes the ledger's ready_id. Still not needs_human.
+  - intent: { name: advance, slots: {} }
+    expect_state: evaluate
+    expect_not_state: needs_human
+    expect_world: { remaining: 2, ready_id: "C2" }
+  - intent: { name: advance, slots: {} }        # evaluate → deciding (second pass)
+    expect_state: deciding
+  # decide's advice is still the stale "C1" — deciding_gate rejects it (doesn't match
+  # ready_id) and falls back to the ledger's ready_id: C2 is dispatched next, never C1
+  # again.
+  - intent: { name: advance, slots: {} }
+    expect_state: dispatch
+    expect_world: { next_change_id: "C2" }
+
+# The log reflects the park: C1 parked with park_reason=gate_not_red (never
+# integrated — a green gate here is a triage signal, not a verified completion).
+#
+# SEAM PROOF (real gs_manifest.star, not stubbed — only host.agent.decide and
+# host.run are stubbed in this fixture): the punch-list manifest dispatch writes
+# for C1 (and, on the second pass, C2) must carry the change's ticket_id + a
+# `world_in` block, and a synthetic file-backed ticket record must exist for
+# `iface.ticket.get` — the seam that lets punch-list's driver seed the target
+# session's `initial_world` instead of driving off free text alone.
+expect_files:
+  - path: ../../../.artifacts/goal/flow-gate-not-red/log.jsonl
+    content_matches: '"change_id":"C1".*"park_reason":"gate_not_red".*"state":"parked"'
+  - path: ../../../.artifacts/goal/flow-gate-not-red/manifests/C1.json
+    content_matches: '"ticket_id":\s*"C1".*"world_in":\s*\{"ticket_id":\s*"C1"'
+  - path: ../../../.artifacts/goal/flow-gate-not-red/tickets/issues/features/C1.md
+    content_matches: 'title:\s*"First disjoint change"'
+  - path: ../../../.artifacts/goal/flow-gate-not-red/manifests/C2.json
+    content_matches: '"ticket_id":\s*"C2".*"world_in":\s*\{"ticket_id":\s*"C2"'
+  - path: ../../../.artifacts/goal/flow-gate-not-red/tickets/issues/features/C2.md
+    content_matches: 'title:\s*"Second disjoint change"'
+
+expect_no_errors: true

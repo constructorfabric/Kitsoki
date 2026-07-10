@@ -77,6 +77,29 @@ def is_llm_spending_command(cmd: str) -> bool:
     return any(re.search(p, lowered) for p in patterns)
 
 
+def valid_ladder_policy(value: Any) -> tuple[bool, str]:
+    if not isinstance(value, dict):
+        return False, "harness_ladder.models must be a non-empty list"
+    models = value.get("models") or []
+    if not isinstance(models, list) or not models:
+        return False, "harness_ladder.models must be a non-empty list"
+    for idx, model in enumerate(models):
+        if not isinstance(model, dict):
+            return False, f"harness_ladder.models[{idx}].model is required"
+        if not str(model.get("model") or "").strip():
+            return False, f"harness_ladder.models[{idx}].model is required"
+        backend = str(model.get("backend") or "").strip()
+        if backend not in {"", "claude", "codex", "copilot"}:
+            return False, f"harness_ladder.models[{idx}].backend is invalid: {backend}"
+    efforts = value.get("efforts") or []
+    if not isinstance(efforts, list):
+        return False, "harness_ladder.efforts must be a list"
+    for effort in efforts:
+        if str(effort) not in {"low", "medium", "high", "xhigh", "max"}:
+            return False, f"harness_ladder.efforts contains invalid value: {effort}"
+    return True, ""
+
+
 def normalize_manifest(doc: dict[str, Any], run_id: str | None = None) -> tuple[list[dict[str, Any]], list[str], dict[str, Any]]:
     errors: list[str] = []
     if not isinstance(doc, dict):
@@ -141,8 +164,12 @@ def normalize_manifest(doc: dict[str, Any], run_id: str | None = None) -> tuple[
         if impl_story and not story_path_exists(impl_story):
             errors.append(f"{item_id}: implementation_story path does not exist: {impl_story}")
 
-        live_impl = normalized.get("harness") == "live" and (impl_story or normalized.get("mode") == "drive")
-        if live_impl and normalized.get("require_gpt55", True):
+        live_impl = normalized.get("harness") in {"live", "ladder"} and (impl_story or normalized.get("mode") == "drive")
+        if live_impl and normalized.get("harness") == "ladder":
+            ok, msg = valid_ladder_policy(normalized.get("harness_ladder") or {})
+            if not ok:
+                errors.append(f"{item_id}: {msg}")
+        if live_impl and normalized.get("harness") == "live" and normalized.get("require_gpt55", True):
             if normalized.get("profile") != "codex-native":
                 errors.append(f"{item_id}: live work must use profile codex-native")
             if normalized.get("model") != "gpt-5.5":

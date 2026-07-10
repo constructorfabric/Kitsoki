@@ -20,6 +20,9 @@ states:
         id: enrich_user
         with:
           script: scripts/enrich_user.star
+          capabilities:
+            http:
+              methods: [GET]
           inputs:
             user_id: "{{ world.user_id }}"
             api_base: "https://jsonplaceholder.typicode.com"

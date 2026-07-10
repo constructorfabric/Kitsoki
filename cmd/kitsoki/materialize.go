@@ -89,7 +89,7 @@ func runMaterialize(repoRoot, configPath, nameFlag string) (string, error) {
 	// Synthesize first — never emit an un-loadable tree. A bad root: block fails
 	// here before any file is touched.
 	rootSpec := webCfg.Root.RootSpec()
-	if _, synthErr := app.SynthesizeRoot(rootSpec, repoRoot); synthErr != nil {
+	if _, synthErr := app.SynthesizeRootWithResolver(rootSpec, repoRoot, buildImportResolver()); synthErr != nil {
 		return "", fmt.Errorf("synthesize implicit root: %w", synthErr)
 	}
 
@@ -98,7 +98,7 @@ func runMaterialize(repoRoot, configPath, nameFlag string) (string, error) {
 		return "", fmt.Errorf("%s already exists; this root is already materialized — edit it directly", outPath)
 	}
 
-	yamlBytes, err := emitRootYAML(rootSpec, slug)
+	yamlBytes, err := emitRootYAML(rootSpec, slug, repoRoot, buildImportResolver())
 	if err != nil {
 		return "", fmt.Errorf("emit app.yaml: %w", err)
 	}
@@ -174,16 +174,27 @@ type rootYAMLIntent struct {
 // the kitsoki-dev instance shape, prefixed with a provenance header. It reuses
 // app.BuildRootImporter so the emitted file is byte-faithful to what the loader
 // synthesizes — app.Load(emit(spec)) deep-equals app.SynthesizeRoot(spec).
-func emitRootYAML(spec *app.RootSpec, slug string) ([]byte, error) {
-	// repoRoot is irrelevant to the emitted text (the source is the portable
-	// @kitsoki/dev-story form); pass "." just to satisfy BuildRootImporter's
-	// validation of the spec (import / binding ifaces).
-	imp, _, err := app.BuildRootImporter(spec, ".")
+func emitRootYAML(spec *app.RootSpec, slug, repoRoot string, resolver app.ImportResolver) ([]byte, error) {
+	imp, absRoot, err := app.BuildRootImporterWithResolver(spec, repoRoot, resolver)
 	if err != nil {
 		return nil, err
 	}
 
 	importDef := imp.Imports[app.RootAlias]
+
+	var hostBindings map[string]string
+	if len(importDef.HostBindings) > 0 {
+		hostBindings = make(map[string]string, len(importDef.HostBindings))
+		for k, v := range importDef.HostBindings {
+			switch {
+			case v.Script != "":
+				hostBindings[k] = materializedScriptPath(v.Script, absRoot, slug)
+			default:
+				hostBindings[k] = v.Handler
+			}
+		}
+	}
+
 	doc := rootYAMLDoc{
 		App: rootYAMLApp{
 			ID:      slug,
@@ -197,10 +208,10 @@ func emitRootYAML(spec *app.RootSpec, slug string) ([]byte, error) {
 		Hosts:   imp.Hosts,
 		Imports: map[string]rootYAMLImport{
 			app.RootAlias: {
-				Source:       "@kitsoki/" + app.RootStoryName,
+				Source:       importDef.Source,
 				Entry:        importDef.Entry,
 				Hosts:        importDef.Hosts,
-				HostBindings: importDef.HostBindings,
+				HostBindings: hostBindings,
 				WorldIn:      importDef.WorldIn,
 			},
 		},
@@ -229,4 +240,17 @@ func emitRootYAML(spec *app.RootSpec, slug string) ([]byte, error) {
 		"# docs/stories/imports.md \"The blank root that grows\".\n",
 		time.Now().UTC().Format(time.RFC3339))
 	return append([]byte(header), body...), nil
+}
+
+func materializedScriptPath(script, repoRoot, slug string) string {
+	if filepath.IsAbs(script) {
+		return filepath.Clean(script)
+	}
+	absScript := filepath.Join(repoRoot, script)
+	appDir := filepath.Join(repoRoot, ".kitsoki", "stories", slug)
+	rel, err := filepath.Rel(appDir, absScript)
+	if err != nil {
+		return filepath.Clean(script)
+	}
+	return filepath.Clean(rel)
 }

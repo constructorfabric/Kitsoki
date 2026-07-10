@@ -290,6 +290,92 @@ func TestCustomBind_LastJobIDReplay(t *testing.T) {
 	require.True(t, foundLastJobID, "EffectApplied{set:{last_job_id:...}} must be in event log")
 }
 
+// TestBackgroundJob_ThreadsKitsokiSessionID guards the goal-seeker dogfood
+// blocker (2026-07-04): a `background: true` host effect must run with the parent
+// session id reachable via host.KitsokiSessionIDFromCtx, exactly like a foreground
+// turn. Before the fix the scheduler derived the job ctx via WithoutCancel(ctx)
+// but the dispatch ctx never carried the WithKitsokiSessionID seam (only
+// AgentCallCtx), and the studio process env has no KITSOKI_SESSION_ID — so the job
+// handler saw an empty session id. That silently disabled host.agent.task's
+// deterministic maker-seed backstop (RegisterPendingSeedFromTaskArgs bailed on the
+// empty id), stranding every background maker with an empty ticket_id. This runs a
+// real background job and asserts the handler sees the session id.
+func TestBackgroundJob_ThreadsKitsokiSessionID(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "bg-sid-test"},
+		Root:  "init",
+		Hosts: []string{"host.test.capture"},
+		World: map[string]app.VarDef{
+			"last_job_id": {Type: "string", Default: ""},
+		},
+		Intents: map[string]app.Intent{"enter": {Title: "Enter"}},
+		States: map[string]*app.State{
+			"init": {
+				View: app.LegacyView("init"),
+				On:   map[string][]app.Transition{"enter": {{Target: "work"}}},
+			},
+			"work": {
+				View: app.LegacyView("work"),
+				OnEnter: []app.Effect{
+					{
+						Invoke:     "host.test.capture",
+						Background: true,
+						Bind:       map[string]string{"last_job_id": "job_id"},
+					},
+				},
+			},
+		},
+	}
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	jobStore, err := jobs.NewJobStore(s.DB())
+	require.NoError(t, err)
+	sched := jobs.NewScheduler(jobStore)
+
+	// The background handler records the session id it observes on its ctx.
+	captured := make(chan string, 1)
+	reg := host.NewRegistry()
+	reg.Register("host.test.capture", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		captured <- host.KitsokiSessionIDFromCtx(ctx)
+		return host.Result{}, nil
+	})
+
+	// Guarantee the process env can't paper over a missing ctx seam.
+	t.Setenv("KITSOKI_SESSION_ID", "")
+
+	h := &staticHarness{intentName: "enter"}
+	orch := orchestrator.New(def, m, s, h,
+		orchestrator.WithHostRegistry(reg),
+		orchestrator.WithScheduler(sched),
+		orchestrator.WithJobStore(jobStore),
+	)
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	_, err = orch.Turn(ctx, sid, "enter")
+	require.NoError(t, err)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	require.NoError(t, sched.WaitIdle(waitCtx))
+
+	select {
+	case got := <-captured:
+		require.Equal(t, string(sid), got,
+			"a background host job must see the parent session id via host.KitsokiSessionIDFromCtx (needed by the maker-seed backstop)")
+	default:
+		t.Fatal("background handler never ran")
+	}
+}
+
 // TestOnComplete_SayText verifies P0-5: when an on_complete chain includes a
 // say: effect, it must appear as an EffectApplied{say:...} event in the event
 // log of the synthetic background_completion turn.

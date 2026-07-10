@@ -97,6 +97,51 @@ func TestSidecar_Inputs_WrongType(t *testing.T) {
 	}
 }
 
+// TestSidecar_Inputs_PresentNilOptional_TreatedAsAbsent asserts that a
+// non-required input passed as an explicit nil (the shape produced when an
+// effect's with.inputs block templates an undefined world var, e.g.
+// `"{{ world.trace_run_id }}"`) does NOT fail type validation. This is a
+// regression test for a real bug found via stories/goal-seeker/flows/loop.yaml:
+// punch-list's punch_load.star declares an optional `run_id: { type: string }`
+// input and defaults it internally via ctx.inputs.get("run_id", ""), but the
+// boundary check rejected the present-but-nil value with "expected string, got
+// <nil>" before the script ever ran.
+func TestSidecar_Inputs_PresentNilOptional_TreatedAsAbsent(t *testing.T) {
+	res, err := runWith(t,
+		"inputs:\n  run_id: { type: string }\noutputs:\n  seen: { type: string }\n",
+		"def main(ctx):\n    v = ctx.inputs.get(\"run_id\", \"fallback\")\n    if v == None:\n        v = \"was-none\"\n    return {\"seen\": v}\n",
+		map[string]any{"run_id": nil}, // present key, nil value
+	)
+	if err != nil {
+		t.Fatalf("Run: %v (want nil input to be treated as absent, not a type error)", err)
+	}
+	if got := res.Outputs["seen"]; got != "was-none" {
+		t.Fatalf("seen = %v, want %q (ctx.inputs.get should see the key present with None)", got, "was-none")
+	}
+}
+
+// TestSidecar_Inputs_PresentNilRequired_StillFailsAsMissing asserts a
+// required input passed as an explicit nil still fails — just with the
+// "missing required input" message rather than a type-mismatch message, since
+// nil is functionally indistinguishable from "not provided".
+func TestSidecar_Inputs_PresentNilRequired_StillFailsAsMissing(t *testing.T) {
+	_, err := runWith(t,
+		"inputs:\n  n: { type: string, required: true }\n",
+		"def main(ctx):\n    return {}\n",
+		map[string]any{"n": nil},
+	)
+	if err == nil {
+		t.Fatal("expected error for required input passed as nil")
+	}
+	msg, ok := starlarkhost.AsDomainError(err)
+	if !ok {
+		t.Fatalf("expected DomainError, got %T: %v", err, err)
+	}
+	if !strings.Contains(msg, "missing required input") || !strings.Contains(msg, `"n"`) {
+		t.Fatalf("error %q should say missing required input \"n\"", msg)
+	}
+}
+
 // TestSidecar_Outputs_MissingDeclared asserts that omitting a declared output is
 // a DomainError naming the missing output.
 func TestSidecar_Outputs_MissingDeclared(t *testing.T) {
@@ -157,6 +202,28 @@ func TestSidecar_Outputs_Undeclared(t *testing.T) {
 	}
 }
 
+func TestSidecar_RejectsReturnedReservedOutputKeys(t *testing.T) {
+	for _, key := range []string{starlarkhost.ExchangesOutputKey, starlarkhost.InspectionsOutputKey} {
+		t.Run(key, func(t *testing.T) {
+			_, err := runWith(t,
+				"outputs: {}\n",
+				"def main(ctx):\n    return {"+quoteForStar(key)+": []}\n",
+				nil,
+			)
+			if err == nil {
+				t.Fatal("expected error for returned reserved output")
+			}
+			msg, ok := starlarkhost.AsDomainError(err)
+			if !ok {
+				t.Fatalf("expected DomainError, got %T: %v", err, err)
+			}
+			if !strings.Contains(msg, key) || !strings.Contains(msg, "reserved output") {
+				t.Fatalf("error %q should reject reserved output %q", msg, key)
+			}
+		})
+	}
+}
+
 // TestSidecar_GoodContract_Passes confirms a script honouring its declared
 // contract runs clean and returns the typed outputs.
 func TestSidecar_GoodContract_Passes(t *testing.T) {
@@ -173,17 +240,25 @@ func TestSidecar_GoodContract_Passes(t *testing.T) {
 	}
 }
 
-// TestSidecar_RejectsReservedOutputKey confirms the engine enforces (not just
-// documents) the reservation of the __http_exchanges output name: declaring it
+func quoteForStar(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
+}
+
+// TestSidecar_RejectsReservedOutputKeys confirms the engine enforces (not just
+// documents) the reservation of the trace-summary output names: declaring either
 // in a sidecar fails the parse with an actionable message, so an author cannot
-// shadow the HTTP-exchange summaries the adapter injects under that key.
-func TestSidecar_RejectsReservedOutputKey(t *testing.T) {
-	src := "outputs:\n  " + starlarkhost.ExchangesOutputKey + ": { type: list }\n"
-	_, err := starlarkhost.ParseSidecar([]byte(src))
-	if err == nil {
-		t.Fatal("ParseSidecar(reserved output) = nil, want error")
-	}
-	if !strings.Contains(err.Error(), starlarkhost.ExchangesOutputKey) || !strings.Contains(err.Error(), "reserved") {
-		t.Fatalf("error %q should name the reserved key and say it is reserved", err)
+// shadow the summaries the adapter injects under those keys.
+func TestSidecar_RejectsReservedOutputKeys(t *testing.T) {
+	for _, key := range []string{starlarkhost.ExchangesOutputKey, starlarkhost.InspectionsOutputKey} {
+		t.Run(key, func(t *testing.T) {
+			src := "outputs:\n  " + key + ": { type: list }\n"
+			_, err := starlarkhost.ParseSidecar([]byte(src))
+			if err == nil {
+				t.Fatal("ParseSidecar(reserved output) = nil, want error")
+			}
+			if !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "reserved") {
+				t.Fatalf("error %q should name the reserved key and say it is reserved", err)
+			}
+		})
 	}
 }

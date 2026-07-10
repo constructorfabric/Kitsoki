@@ -1,54 +1,88 @@
-# driving — drive the inner kitsoki pipeline LIVE over the current case. Tracked.
+# driving — drive the configured inner workflow LIVE over the current case. Tracked.
 #
-# DELEGATION (the heart of the dogfood method): a real marathon drives the inner
-# pipeline through the kitsoki-mcp-driver agent — session_new harness:live, an
-# explicit profile: (the maker model), an explicit trace: path (else the trace
-# lands in a random temp file and the cost/token evidence is lost — SKILL.md
-# gotcha #12), base = the case's baseline SHA (gotcha #11), a scoped test_cmd
-# (gotcha #13), and a FRESH per-case worktree (never shared — gotcha #1). Here
-# that whole live drive is modeled as ONE host.agent.task (driver persona) that
-# returns the pipeline's terminal exit + the worktree/branch + the trace path for
-# cost/token accounting. Under flow/no-LLM tests it is stubbed by id.
+# DELEGATION: a real marathon drives the configured inner workflow through the
+# selected live driver with an explicit profile/model, trace path, baseline,
+# scoped verification command, and isolated per-case workspace. Here that whole
+# live drive is modeled as ONE host.agent.task (driver persona) that returns the
+# workflow terminal exit + workspace/branch + trace path for cost/token accounting.
+# Under flow/no-LLM tests it is stubbed by id.
 #
 # CRITICAL HONESTY CONTROL: the drive result is NOT the grade. The driver does not
-# self-grade — the verifying room runs the operator's OWN oracle on the produced
-# worktree and gates on that (SKILL.md: "never trust the maker's self-report").
+# self-grade — the recording room runs the operator's OWN oracle on the produced
+# workspace and gates on that (never trust the maker's self-report).
 
 states:
 
   driving:
-    description: "Driving the inner pipeline live over the current case (tracked)."
-    relevant_world: [current_case, inner_pipeline, profile, drive_result]
+    description: "Driving the configured inner workflow live over the current case (tracked)."
+    relevant_world: [current_case, inner_pipeline, profile, model, run_dir, journal_path, drive_result, drive_job_id, results, last_result]
     view:
-      - heading: "Dogfood marathon · driving"
+      - heading: "Case {{ world.case_index + 1 }} / {{ world.backlog.items|length }} · driving · {{ world.current_case.id }}"
       - kv:
           pairs:
             Case:     '{{ world.current_case.id }}'
-            Pipeline: '{{ world.inner_pipeline }}'
+            Title:    '{{ world.current_case.title|default:"—" }}'
+            Source:   '{{ world.current_case.source_url|default:world.current_case.source_path|default:world.current_case.source_repo|default:"—" }}'
+            Baseline: '{{ world.current_case.baseline|default:"—" }}'
+            Repro:    '{{ world.current_case.repro_command|default:"(none supplied)" }}'
+            Recorded: '{{ world.results.items|length }}'
+            Workflow: '{{ world.inner_pipeline }}'
             Profile:  '{{ world.profile }}'
+            Model:    '{{ world.model }}'
             Exit:     '{{ world.drive_result.exit|default:"(driving…)" }}'
+            Summary:  '{{ world.drive_result.summary|default:"(pending)" }}'
+            Workspace: '{{ world.drive_result.worktree|default:"(pending)" }}'
+            Fix ref:  '{{ world.drive_result.fix_ref|default:world.drive_result.branch|default:"(pending)" }}'
             Trace:    '{{ world.drive_result.trace|default:"—" }}'
-      - prose: "Driving the inner pipeline to its terminal exit. The exit, worktree/branch, and trace are captured for the independent verify and cost/token accounting — the maker's self-report is NOT the grade."
+            Job:      '{{ world.drive_job_id|default:"(starting)" }}'
+            Run dir:  '{{ world.run_dir|default:"(derived)" }}'
+      - prose: '{{ world.current_case.body_excerpt|default:"Driving the configured inner workflow on this case." }}'
+      - heading: "Last recorded"
+        when: "world.last_result.case_id"
+      - kv:
+          pairs:
+            Case:   '{{ world.last_result.case_id|default:"—" }}'
+            Title:  '{{ world.last_result.title|default:"—" }}'
+            Source: '{{ world.last_result.source_url|default:world.last_result.source_path|default:world.last_result.source_repo|default:"—" }}'
+            Exit:   '{{ world.last_result.exit|default:"—" }}'
+            Verify: '{{ world.last_result.verify_status|default:"—" }}'
+            Tokens: '{{ world.last_result.tokens_display|default:"0" }}'
+            Time:   '{{ world.last_result.wall_s_display|default:"0" }}s'
+            Trace:  '{{ world.last_result.trace|default:"—" }}'
+        when: "world.last_result.case_id"
+      - prose: "Driving the configured inner workflow to its terminal exit. The exit, workspace/branch, and trace are captured for the independent verify and cost/token accounting — the maker's self-report is NOT the grade."
     on_enter:
       - invoke: host.agent.task
         id: drive_case
+        when: "world.drive_job_id == '' && (world.drive_result.exit ?? '') == ''"
+        background: true
         with:
           agent: driver
           acceptance:
             schema: schemas/drive_result.json
+          # Prompt variables MUST live under context.args and be referenced
+          # as {{ args.<key> }} — the prompt renderer only exposes the args
+          # namespace; keys directly under context: silently render as empty.
           context:
             prompt: prompts/drive_case.md
-            case:           "{{ world.current_case }}"
-            inner_pipeline: "{{ world.inner_pipeline }}"
-            profile:        "{{ world.profile }}"
-            baseline_policy: "{{ world.baseline_policy }}"
+            args:
+              case_json:       "{{ world.current_case_json }}"
+              inner_pipeline:  "{{ world.inner_pipeline }}"
+              profile:         "{{ world.profile }}"
+              model:           "{{ world.model }}"
+              baseline_policy: "{{ world.baseline_policy }}"
+              run_id:          "{{ world.run_id }}"
+              run_dir:         "{{ world.run_dir }}"
+              journal_path:    "{{ world.journal_path }}"
         bind:
-          drive_result: submitted
+          drive_job_id: job_id
+        on_complete:
+          - set:
+              drive_result: "{{ world.last_job_result.submitted }}"
+          - target: verifying
         on_error: verifying   # a dead/failed driver can still have landed edits — verify anyway
-      - when: "world.drive_result.exit != ''"
-        emit_intent: drive_done
     on:
       drive_done:
-        - target: verifying
+        - target: recording
       look:
         - target: .

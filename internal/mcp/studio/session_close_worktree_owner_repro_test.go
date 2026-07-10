@@ -4,7 +4,7 @@ package studio_test
 // 2026-06-25T074726Z-session-close-leaks-worktree-owner:
 //
 //   studio MCP session.close releases the trace flock but NOT the
-//   worktree owner marker. A session that created a worktree via
+//   workspace owner marker. A session that created a workspace via
 //   host.git_worktree stamps it with .kitsoki-owner pinned to that
 //   session id; session.close leaves the marker behind, so every
 //   later session that targets the same workspace bounces with:
@@ -29,7 +29,6 @@ package studio_test
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -37,6 +36,7 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 
+	"kitsoki/internal/capsuletest"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
 	studio "kitsoki/internal/mcp/studio"
@@ -50,7 +50,7 @@ const worktreeReproStoryYAML = `
 app:
   id: worktree-repro
   version: 0.1.0
-  title: "Worktree owner repro"
+  title: "Workspace owner repro"
 
 hosts:
   - host.git_worktree
@@ -72,6 +72,7 @@ states:
           repo:       "{{ world.repo }}"
           id:         "{{ world.workspace_id }}"
           name:       "{{ world.workspace_id }}"
+          base:       main
           session_id: "{{ world.session_id }}"
         on_error: idle
     view:
@@ -82,26 +83,7 @@ states:
 // A committed file is required so git will accept worktree add operations.
 func initWorktreeReproRepo(t *testing.T) string {
 	t.Helper()
-	repo := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = repo
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %v in %s: %v\n%s", args, repo, err, out)
-		}
-	}
-	run("init", "--quiet", "--initial-branch=main")
-	run("config", "user.email", "repro@test.invalid")
-	run("config", "user.name", "Repro")
-	seed := filepath.Join(repo, "seed.txt")
-	if err := os.WriteFile(seed, []byte("seed\n"), 0o644); err != nil {
-		t.Fatalf("write seed file: %v", err)
-	}
-	run("add", "-A")
-	run("commit", "--quiet", "-m", "init")
-	return repo
+	return capsuletest.Open(t, "worktree-repro-repo")
 }
 
 // worktreeReproHarness is a no-LLM harness for the worktree repro test.
@@ -136,8 +118,8 @@ func TestMCPSessionClose_ReleasesWorktreeOwnerForRerun(t *testing.T) {
 	// ── Session A ─────────────────────────────────────────────────────────────
 	// initial_world seeds session_id, repo, and workspace_id before on_enter.
 	// on_enter fires host.git_worktree create, which:
-	//   1. runs git worktree add .worktrees/reusable-worktree
-	//   2. writes .worktrees/reusable-worktree/.kitsoki-owner = "closed-session"
+	//   1. creates .capsules/workspaces/reusable-worktree
+	//   2. writes .capsules/workspaces/reusable-worktree/.kitsoki-owner = "closed-session"
 	sh, err := sess.OpenDrivingSession(ctx, studio.OpenDrivingSessionParams{
 		StoryPath: storyPath,
 		TracePath: t.TempDir() + "/trace.jsonl",
@@ -150,7 +132,7 @@ func TestMCPSessionClose_ReleasesWorktreeOwnerForRerun(t *testing.T) {
 	require.NoError(t, err, "session A must open successfully")
 
 	// Confirm the owner sentinel was stamped with "closed-session".
-	sentinelPath := filepath.Join(repo, ".worktrees", "reusable-worktree", ".kitsoki-owner")
+	sentinelPath := filepath.Join(repo, ".capsules", "workspaces", "reusable-worktree", ".kitsoki-owner")
 	raw, err := os.ReadFile(sentinelPath)
 	require.NoError(t, err, ".kitsoki-owner must exist after worktree create")
 	require.Equal(t, "closed-session", strings.TrimSpace(string(raw)),
@@ -164,21 +146,22 @@ func TestMCPSessionClose_ReleasesWorktreeOwnerForRerun(t *testing.T) {
 
 	// ── Second create (different session) ─────────────────────────────────────
 	// After a correct close, "next-session" must be able to reuse the same
-	// worktree. The worktree already exists on disk; the idempotency path in
-	// worktreeCreate checks .kitsoki-owner — if it still names "closed-session"
+	// workspace. The workspace already exists on disk; the idempotency path in
+	// the scripted provider checks .kitsoki-owner — if it still names "closed-session"
 	// (the bug), the create is refused.
 	r, herr := host.GitWorktreeHandler(ctx, map[string]any{
 		"op":         "create",
 		"repo":       repo,
 		"id":         "reusable-worktree",
 		"name":       "reusable-worktree",
+		"base":       "main",
 		"session_id": "next-session",
 	})
 	require.NoError(t, herr)
 	// GATING ASSERTION — RED on the unfixed tree:
 	//   r.Error = `workspace.create: "reusable-worktree" is already checked out
 	//              by session "closed-session"; refusing to share — concurrent
-	//              sessions on the same ticket must use distinct worktrees`
+	//              sessions on the same ticket must use distinct workspaces`
 	// GREEN after any fix that makes CloseSession release the owner marker.
 	require.Empty(t, r.Error,
 		"after session.close, the closed session must not squat the worktree owner marker; got: %s",

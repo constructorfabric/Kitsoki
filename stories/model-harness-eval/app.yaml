@@ -15,7 +15,6 @@ agents:
     tools: [Read, Grep, Glob, Bash, Edit, Write]
     bash_profile:
       commands: [bash, go, mkdir, python3, sed, find, rg]
-    external_side_effect: false
 
 world:
   question:        { type: string, default: "" }

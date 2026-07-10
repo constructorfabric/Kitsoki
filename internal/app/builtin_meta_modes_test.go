@@ -4,11 +4,13 @@ import (
 	"os"
 	"testing"
 
+	"kitsoki/internal/reportcontract"
+
 	"github.com/stretchr/testify/require"
 )
 
 // TestInjectBuiltinMetaModes_FillsStoryBuiltinsWhenAbsent asserts the
-// injection step adds the three story.* builtins when the app didn't
+// injection step adds the story.* builtins when the app didn't
 // declare any of them.
 func TestInjectBuiltinMetaModes_FillsStoryBuiltinsWhenAbsent(t *testing.T) {
 	def := &AppDef{}
@@ -28,7 +30,15 @@ func TestInjectBuiltinMetaModes_FillsStoryBuiltinsWhenAbsent(t *testing.T) {
 	require.Equal(t, "ask", storyAsk.Trigger)
 	require.Equal(t, "story", storyAsk.Group)
 	require.False(t, storyAsk.Default)
-	require.Equal(t, []string{"Read", "Glob", "Grep"}, storyAsk.Tools)
+	require.Equal(t, reportcontract.ReadOnlyTools(), storyAsk.Tools)
+
+	storyImprove, ok := def.MetaModes["story.improve"]
+	require.True(t, ok, "story.improve builtin must be injected")
+	require.Equal(t, "story-improver", storyImprove.Agent)
+	require.Equal(t, "improve", storyImprove.Trigger)
+	require.Equal(t, "story", storyImprove.Group)
+	require.False(t, storyImprove.Default)
+	require.Equal(t, reportcontract.ReadOnlyTools(), storyImprove.Tools)
 
 	storyBug, ok := def.MetaModes["story.bug"]
 	require.True(t, ok, "story.bug builtin must be injected")
@@ -36,6 +46,7 @@ func TestInjectBuiltinMetaModes_FillsStoryBuiltinsWhenAbsent(t *testing.T) {
 	require.Equal(t, "bug", storyBug.Trigger)
 	require.Equal(t, "story", storyBug.Group)
 	require.False(t, storyBug.Default)
+	require.Equal(t, reportcontract.BugFilerTools(), storyBug.Tools)
 }
 
 // TestInjectBuiltinMetaModes_AppOverrideWins asserts that an app-declared
@@ -81,6 +92,8 @@ func TestInjectBuiltinMetaModes_KitsokiGroupRequiresEnvVar(t *testing.T) {
 	require.False(t, hasEdit, "kitsoki.edit must NOT be injected when KITSOKI_REPO is unset")
 	_, hasAsk := def.MetaModes["kitsoki.ask"]
 	require.False(t, hasAsk, "kitsoki.ask must NOT be injected when KITSOKI_REPO is unset")
+	_, hasImprove := def.MetaModes["kitsoki.improve"]
+	require.False(t, hasImprove, "kitsoki.improve must NOT be injected when KITSOKI_REPO is unset")
 	_, hasBug := def.MetaModes["kitsoki.bug"]
 	require.False(t, hasBug, "kitsoki.bug must NOT be injected when KITSOKI_REPO is unset")
 
@@ -100,13 +113,21 @@ func TestInjectBuiltinMetaModes_KitsokiGroupRequiresEnvVar(t *testing.T) {
 	kAsk, ok := def.MetaModes["kitsoki.ask"]
 	require.True(t, ok, "kitsoki.ask MUST be injected when KITSOKI_REPO is set")
 	require.Equal(t, "kitsoki-explainer", kAsk.Agent)
-	require.Equal(t, []string{"Read", "Glob", "Grep"}, kAsk.Tools)
+	require.Equal(t, reportcontract.ReadOnlyTools(), kAsk.Tools)
 	require.False(t, kAsk.Default)
+
+	kImprove, ok := def.MetaModes["kitsoki.improve"]
+	require.True(t, ok, "kitsoki.improve MUST be injected when KITSOKI_REPO is set")
+	require.Equal(t, "kitsoki-improver", kImprove.Agent)
+	require.Equal(t, "${KITSOKI_REPO}", kImprove.Cwd)
+	require.Equal(t, reportcontract.ReadOnlyTools(), kImprove.Tools)
+	require.False(t, kImprove.Default)
 
 	kBug, ok := def.MetaModes["kitsoki.bug"]
 	require.True(t, ok, "kitsoki.bug MUST be injected when KITSOKI_REPO is set")
 	require.Equal(t, "kitsoki-bug-reporter", kBug.Agent)
 	require.Equal(t, "${KITSOKI_REPO}", kBug.Cwd)
+	require.Equal(t, reportcontract.BugFilerTools(), kBug.Tools)
 }
 
 // TestInjectBuiltinMetaModes_LegacyKeysAbsent asserts the

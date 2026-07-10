@@ -3,10 +3,10 @@
 # Proves that a repo-local issue-migration step actually landed: GitHub now
 # lists at least `expected_min` issues for the resolved repo. It does it the
 # read-only way the inspection capability is meant to be used — a single
-# allow-listed probe (`gh.issue.list`) plus deterministic reshaping — no shell,
-# no filesystem write, no clock, no randomness, so a recorded run replays
+# allow-listed native GitHub probe (`gh.issue.list`) plus deterministic reshaping
+# — no shell, no filesystem write, no clock, no randomness, so a recorded run replays
 # byte-for-byte from an inspect cassette and a flow test injects a ReplayInspector
-# (no real `gh` call, honoring the no-LLM / no-cost test rule).
+# (no live GitHub call, honoring the no-LLM / no-cost test rule).
 #
 # ── Interface (authoritative copy lives in issues_migrated.star.yaml) ─────────
 # These INPUTS/OUTPUTS dicts are documentation for the reader; the engine
@@ -24,8 +24,7 @@ def main(ctx):
     expected_min = ctx.inputs.get("expected_min", 1)
     repo = ctx.inputs["repo"]
 
-    # ONLY an allow-listed read-only probe — never a shell. `gh.issue.list`
-    # resolves to `gh issue list --repo {0} --json number,title,state --limit 200`.
+    # ONLY an allow-listed read-only native GitHub probe — never a shell.
     res = ctx.probe("gh.issue.list", [repo])
     out = res["out"]
 
@@ -34,7 +33,7 @@ def main(ctx):
     if res["exit"] != 0:
         return {
             "ok": False,
-            "reason": "gh issue list for %s failed (exit %d) — cannot confirm migration." % (repo, res["exit"]),
+            "reason": "GitHub issue list for %s failed (exit %d) — cannot confirm migration." % (repo, res["exit"]),
         }
 
     issues = json.decode(out) if out else []

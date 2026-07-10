@@ -1,0 +1,65 @@
+test_kind: flow
+app: ../app.yaml
+use_orchestrator: true
+initial_state: lobby
+initial_world:
+  operator_user: Brad.Smith
+  protected_root: /Users/Brad.Smith/code/kitsoki
+
+host_handlers:
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: "ok: delegated account, wrappers, sudoers, capsule permissions, and write-deny probe passed"
+
+turns:
+  - intent:
+      name: edit
+      slots: {}
+    expect_state: configuring
+    expect_view_matches: "Setup values"
+
+  - intent:
+      name: configure
+      slots:
+        agent_user: kitsoki-reviewer
+        group_name: kitsoki_room_review
+        sample_capsule: room-456-review
+    expect_state: lobby
+    expect_world:
+      agent_user: kitsoki-reviewer
+      group_name: kitsoki_room_review
+      status: "ready to apply"
+    expect_view_matches: "kitsoki-reviewer"
+
+  - intent:
+      name: plan
+      slots: {}
+    expect_state: details
+    expect_world:
+      setup_summary: "This setup creates or reuses a Standard macOS account named kitsoki-reviewer as the delegated coding-agent user.\nKitsoki still owns the deterministic harness and merge/integration operations.\nThe backend CLIs run through root-owned wrappers as kitsoki-reviewer, so OS permissions can deny writes to /Users/Brad.Smith/code/kitsoki."
+      status: "details ready"
+    expect_host_calls:
+      - handler: host.starlark.run
+    expect_view_matches: "Deterministic apply path"
+
+  - intent:
+      name: accept
+      slots: {}
+    expect_state: ready
+    expect_world:
+      status: applied successfully
+      apply_ok: true
+    expect_view_matches: "Setup complete[\\s\\S]*Installed and verified[\\s\\S]*run_as_user setup receipt"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: apply_run_as_user_setup }
+
+  - intent:
+      name: quit
+      slots: {}
+    expect_state: ended
+
+expect_terminal: true
+expect_no_errors: true

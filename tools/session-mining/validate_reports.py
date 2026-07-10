@@ -17,6 +17,7 @@ Exit 0 if all valid, non-zero with a diagnostic otherwise.
 import argparse
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -35,10 +36,9 @@ def _require_jsonschema():
         return Draft202012Validator
     except ImportError:
         sys.stderr.write(
-            "error: jsonschema not installed — `pip3 install --user jsonschema`\n"
-            "       (the report spine itself is stdlib-only; this validator is the "
-            "optional strict gate)\n")
-        sys.exit(3)
+            "note: jsonschema not installed — using stdlib schema subset validator\n"
+            "       (install jsonschema for full Draft 2020-12 diagnostics)\n")
+        return None
 
 
 def validate_report(report_path, schema_path):
@@ -46,11 +46,129 @@ def validate_report(report_path, schema_path):
     Validator = _require_jsonschema()
     schema = _load(schema_path)
     doc = _load(report_path)
+    if Validator is None:
+        return _validate_schema_subset(doc, schema, os.path.basename(report_path))
     v = Validator(schema)
     errs = []
     for e in sorted(v.iter_errors(doc), key=lambda e: list(e.path)):
         loc = "/".join(str(p) for p in e.path) or "(root)"
         errs.append("%s: %s @ %s" % (os.path.basename(report_path), e.message, loc))
+    return errs
+
+
+def _validate_schema_subset(doc, schema, report_name):
+    """Validate against the JSON Schema subset used by this tool's report schemas.
+
+    This is intentionally small, but it is still a gate: missing required fields,
+    wrong primitive types, const/enum/pattern violations, array bounds, numeric
+    minimums, additionalProperties=false, additionalProperties schemas, and
+    local #/$defs references all fail without the optional jsonschema package.
+    """
+    defs = schema.get("$defs", {})
+    errs = []
+
+    def add(path, msg):
+        loc = "/".join(str(p) for p in path) or "(root)"
+        errs.append("%s: %s @ %s" % (report_name, msg, loc))
+
+    def resolve(s, path):
+        seen = set()
+        while isinstance(s, dict) and "$ref" in s:
+            ref = s["$ref"]
+            if ref in seen:
+                add(path, "cyclic schema reference %r" % ref)
+                return {}
+            seen.add(ref)
+            prefix = "#/$defs/"
+            if not ref.startswith(prefix):
+                add(path, "unsupported schema reference %r" % ref)
+                return {}
+            name = ref[len(prefix):]
+            if name not in defs:
+                add(path, "unresolved schema reference %r" % ref)
+                return {}
+            s = defs[name]
+        return s
+
+    def type_ok(value, typ):
+        if typ == "object":
+            return isinstance(value, dict)
+        if typ == "array":
+            return isinstance(value, list)
+        if typ == "string":
+            return isinstance(value, str)
+        if typ == "integer":
+            return isinstance(value, int) and not isinstance(value, bool)
+        if typ == "number":
+            return isinstance(value, (int, float)) and not isinstance(value, bool)
+        if typ == "boolean":
+            return isinstance(value, bool)
+        if typ == "null":
+            return value is None
+        return True
+
+    def check(value, s, path):
+        s = resolve(s, path)
+        if not isinstance(s, dict):
+            return
+
+        if "const" in s and value != s["const"]:
+            add(path, "%r was expected" % s["const"])
+            return
+        if "enum" in s and value not in s["enum"]:
+            add(path, "%r is not one of %r" % (value, s["enum"]))
+
+        declared_type = s.get("type")
+        if declared_type is not None:
+            types = declared_type if isinstance(declared_type, list) else [declared_type]
+            if not any(type_ok(value, typ) for typ in types):
+                add(path, "%r is not of type %s" % (value, "|".join(types)))
+                return
+
+        if isinstance(value, dict):
+            properties = s.get("properties", {})
+            for key in s.get("required", []):
+                if key not in value:
+                    add(path, "%r is a required property" % key)
+
+            additional = s.get("additionalProperties", True)
+            if additional is False:
+                allowed = set(properties.keys())
+                for key in sorted(value.keys()):
+                    if key not in allowed:
+                        add(path + [key], "additional properties are not allowed (%r was unexpected)" % key)
+            elif isinstance(additional, dict):
+                for key in sorted(value.keys()):
+                    if key not in properties:
+                        check(value[key], additional, path + [key])
+
+            for key, subschema in properties.items():
+                if key in value:
+                    check(value[key], subschema, path + [key])
+
+        if isinstance(value, list):
+            if "minItems" in s and len(value) < s["minItems"]:
+                add(path, "has too few items")
+            if "maxItems" in s and len(value) > s["maxItems"]:
+                add(path, "has too many items")
+            if "items" in s:
+                for i, item in enumerate(value):
+                    check(item, s["items"], path + [i])
+
+        if isinstance(value, str):
+            if "minLength" in s and len(value) < s["minLength"]:
+                add(path, "is too short")
+            pattern = s.get("pattern")
+            if pattern and re.search(pattern, value) is None:
+                add(path, "%r does not match %r" % (value, pattern))
+
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if "minimum" in s and value < s["minimum"]:
+                add(path, "%r is less than the minimum of %r" % (value, s["minimum"]))
+            if "maximum" in s and value > s["maximum"]:
+                add(path, "%r is greater than the maximum of %r" % (value, s["maximum"]))
+
+    check(doc, schema, [])
     return errs
 
 

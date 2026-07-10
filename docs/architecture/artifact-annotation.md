@@ -15,6 +15,23 @@ contracts**, so kitsoki never learns a producer's internals:
   interactive producer that owns its own surface (the **slidey deck** — the
   reference example).
 
+## Operator workflow
+
+In a live browser session, annotation is reached from the media artifact itself:
+
+1. Click `Pin` on the artifact to keep it mounted beside the chat in the
+   [session media workbench](../web/session-media-workbench.md).
+2. Click `Annotate` on the pinned artifact.
+3. Point at the rendered artifact, then type the instruction for that spot.
+4. Click `Send` for a read-only anchored note, or `Send & refine` when the story
+   provided an `AnnotateIntent`.
+
+Pinning is not required for the anchor contract, but it is the ergonomic path for
+long-lived review: the artifact stays stable while chat, streaming replies,
+trace/graph devtools, and follow-up turns continue beside it. For plain video
+review, the media element also links to `/review`, where an operator can flag a
+time range and ask the older spatial oracle about the selected frame.
+
 ## The anchor union
 
 Every pick — a drawn box, a video time-range, a resolved DOM node, a slidey scene
@@ -34,7 +51,8 @@ AnnotationAnchor {
     | frame           { frame_handle, t_ms? }               // a still → treated as png
     | dom_node        { selector, role, text, bbox }        // rrweb / html / live DOM
     | region          { shape: box|freeform|highlight, path[], bbox }  // png / frame draw
-    | semantic_element{ plugin, ref, bbox? }                // slidey & future plugins
+    | semantic_element{ plugin, ref, label?, selector?, text?, value?, data?, bbox? }
+                                                            // sidecar/embed fields
 }
 ```
 
@@ -51,10 +69,10 @@ sibling fields.
 
 | media kind | substrate | targets the picker emits |
 |---|---|---|
-| **png** | `<img>` + canvas overlay | `region` (box / freeform / highlight) |
+| **png** | `<img>` + canvas overlay | `semantic_element` from sidecar, or `region` |
 | **mp4** | `<video>` + timeline + frame-grab | `time_range`; grab a frame → `frame` → `region` |
-| **rrweb** | rrweb Replayer iframe ([ReplayFrame](../tui/spatial-capture.md)) | `time_range`, `dom_node`, or `region` |
-| **html** | sandboxed iframe (frozen) | `dom_node` or `region` |
+| **rrweb** | rrweb Replayer iframe ([ReplayFrame](../tui/spatial-capture.md)) | `semantic_element` from sidecar, `time_range`, `dom_node`, or `region` |
+| **html** | static iframe (frozen) | `semantic_element` from sidecar, `dom_node`, or `region` |
 | **slidey** | the **live interactive deck** ([embed protocol](#the-embed-protocol-live-producer-surfaces)) | `semantic_element` (`<scene>/<el>` picked on the real slide) |
 
 rrweb/html/slidey resolve a DOM root the *same* way (`elementFromPoint`); png/frame
@@ -72,27 +90,41 @@ artifact. Kitsoki is strictly producer-**agnostic**: it parses the envelope and
 round-trips each element's `ref` **verbatim** — it never interprets it.
 
 ```json
-{ "plugin": "slidey", "schema_version": 1,
+{ "plugin": "html-data", "schema_version": 1,
+  "viewport": { "width": 900, "height": 500 },
   "elements": [
-    { "ref": "1/card_0", "label": "Scene 1 · card 0",
-      "selector": "[data-slidey-el='1/card_0']", "bbox": [140,518,535,114], "t_ms": 3200 }
+    { "ref": "issue.status", "kind": "field", "label": "Status",
+      "selector": "[data-field='status']", "text": "Blocked",
+      "data": { "path": "issue.status" } }
   ] }
 ```
 
-Only `plugin` + `elements[].ref` are load-bearing for kitsoki; `label` / `selector`
-/ `bbox` / `t_ms` are optional picker hints. `ref` is an **opaque string** (slidey
-uses `<sceneIndex>/<el>`, the same value as its `data-slidey-el` stamp, so the
-generic `dom_node` resolver also works when no sidecar is present). A missing
-sidecar is **not** an error — the artifact simply has no declared semantics and
-the annotator falls back to the pixel/DOM picker (the graceful
-[FrameResolver](visual-ambient.md) posture).
+Only `plugin` + `elements[].ref` are identity-bearing for kitsoki; `ref` is an
+**opaque string**. The other fields are context and overlay hints:
+
+- `label`, `kind`, `description` name what the operator clicked.
+- `selector` lets DOM-backed artifacts (`html`, `rrweb`) resolve the current
+  box/text from the iframe/replay at annotation time when no baked `bbox` exists.
+- `text`, `value`, and `data` describe the represented object field, so feedback
+  can target *the issue status value* or *the wireframe submit control* rather
+  than only an HTML node.
+- `bbox` and `t_ms` remain optional baked placement hints.
+
+This is the general path for mockups, demos, object/detail views, and bug rrweb
+playbacks. A producer can describe either the **HTML structure** being reviewed
+(`selector`/`dom_node`) or the **data represented** (`ref`/`data`/`value`) without
+Kitsoki learning that producer's schema. A missing sidecar is **not** an error —
+the artifact simply has no declared semantics and the annotator falls back to the
+pixel/DOM picker (the graceful [FrameResolver](visual-ambient.md) posture).
 
 - **Reader (Go):** `host.SemanticSidecar` / `DiskSemanticSidecarReader`
   (`internal/host/semantic_sidecar.go`), DI-mirroring `FrameResolver`. Pairing
-  rule: `out.mp4` → `out.semantic.json` (`SemanticSidecarPath`).
+  rule: `out.mp4` → `out.semantic.json` (`SemanticSidecarPath`). The reader
+  preserves optional `viewport`, selector, text/value, and structured `data`.
 - **Client registry (web):** `lib/semanticPlugins.ts` maps `plugin` → an optional
-  label formatter; an absent entry renders generically. This is the *only* plugin
-  surface — everything else is data.
+  label formatter; an absent entry renders generically. It also resolves
+  selector-only elements against the current DOM/replay root when available. This
+  is the *only* plugin surface — everything else is data.
 
 This static contract suits a **baked, frozen** artifact (an mp4-rendered deck, a
 diagram PNG). An *interactive* producer like the slidey HTML deck instead owns its

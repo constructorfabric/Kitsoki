@@ -60,6 +60,7 @@
           class="surface__transcript"
           :transcript="store.chatEntries"
           @rewind="onRewind"
+          @feedback="onFeedback"
         />
         <!-- Streaming thinking bubble: visible while a turn is in flight —
              whether it was sent from the input bar (local `pending`) or
@@ -92,7 +93,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useRunStore } from "../stores/run.js";
+import { useRunStore, type TranscriptEntry } from "../stores/run.js";
 import { createDataSource } from "../data/source.js";
 import type { DataSource } from "../data/source.js";
 import { LiveSource } from "../data/live-source.js";
@@ -260,6 +261,13 @@ function onIntent(name: string, slots: Record<string, unknown>, displayLabel?: s
 function onRewind(decisionId: string): void {
   if (!source || !sessionId.value) return;
   void runTurn(() => store.rewindRoute(source!, sessionId.value!, decisionId));
+}
+
+// Routing-feedback thumbs up/down (WS-C C4): fire-and-forget, no in-flight
+// guard needed since it never advances the turn.
+function onFeedback(entry: TranscriptEntry, verdict: "up" | "down"): void {
+  if (!source || !sessionId.value) return;
+  void store.sendRoutingFeedback(source, sessionId.value!, entry, verdict);
 }
 
 function errMsg(e: unknown): string {

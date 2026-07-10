@@ -50,7 +50,7 @@ func TestImports_ParentFold(t *testing.T) {
 }
 
 // TestImports_PromptPathsRebasedToChildDir verifies that relative
-// `prompt:` and `schema:` args in an imported child's effects are
+// `prompt:`, `schema:`, and Starlark `script:` args in an imported child's effects are
 // rewritten to absolute paths rooted at the child's own directory.
 //
 // At runtime, host.agent.ask_with_mcp's resolvePromptPath joins
@@ -78,30 +78,40 @@ func TestImports_PromptPathsRebasedToChildDir(t *testing.T) {
 	require.True(t, ok, "c.work_executing should exist")
 	require.NotEmpty(t, work.OnEnter, "c.work_executing should have on_enter")
 
-	var promptArg, schemaArg string
+	var promptArg, schemaArg, scriptArg string
 	for _, eff := range work.OnEnter {
 		if eff.Invoke == "host.agent.ask" {
 			promptArg, _ = eff.With["prompt"].(string)
 			schemaArg, _ = eff.With["schema"].(string)
 		}
+		if eff.Invoke == "host.starlark.run" {
+			scriptArg, _ = eff.With["script"].(string)
+		}
 	}
 	require.NotEmpty(t, promptArg, "prompt arg should be set on the host.agent.ask invoke")
+	require.NotEmpty(t, scriptArg, "script arg should be set on the host.starlark.run invoke")
 
 	// The rewritten path must be absolute.
 	require.True(t, filepath.IsAbs(promptArg),
 		"prompt arg must be rebased to absolute; got %q", promptArg)
 	require.True(t, filepath.IsAbs(schemaArg),
 		"schema arg must be rebased to absolute; got %q", schemaArg)
+	require.True(t, filepath.IsAbs(scriptArg),
+		"script arg must be rebased to absolute; got %q", scriptArg)
 
 	// And it must point at the CHILD's directory, not the parent's.
 	require.Contains(t, promptArg, "/imports_prompt_rebase/child/prompts/work.md",
 		"prompt must resolve under the child's directory; got %q", promptArg)
 	require.Contains(t, schemaArg, "/imports_prompt_rebase/child/schemas/result.json",
 		"schema must resolve under the child's directory; got %q", schemaArg)
+	require.Contains(t, scriptArg, "/imports_prompt_rebase/child/scripts/probe.star",
+		"script must resolve under the child's directory; got %q", scriptArg)
 
 	// The rebased file must actually exist on disk (sanity).
 	_, statErr := os.Stat(promptArg)
 	require.NoError(t, statErr, "rebased prompt file must exist on disk")
+	_, statErr = os.Stat(scriptArg)
+	require.NoError(t, statErr, "rebased starlark script file must exist on disk")
 }
 
 // TestImports_StateRewriting asserts that child state bodies have their
@@ -307,6 +317,61 @@ func TestImports_Cycle(t *testing.T) {
 	_, err := Load("../../testdata/apps/imports_smoke/cycle_a/app.yaml")
 	require.Error(t, err, "cycle should be rejected")
 	require.Contains(t, err.Error(), "cycle detected")
+}
+
+func TestImports_FoldsOperationPolicies(t *testing.T) {
+	root := t.TempDir()
+	childDir := mkdirT(t, root, "child")
+	mustWrite(t, childDir, "app.yaml", `app: { id: child, version: 0.1.0 }
+world:
+  done_artifact: { type: map, default: {} }
+intents:
+  go: {}
+operations:
+  demo_run:
+    title: "Demo run"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [done_artifact]
+root: idle
+states:
+  idle:
+    on:
+      go:
+        - target: done
+          operation: demo_run
+  done:
+    terminal: true
+`)
+
+	parentDir := mkdirT(t, root, "parent")
+	mustWrite(t, parentDir, "app.yaml", `app: { id: parent, version: 0.1.0 }
+world: {}
+intents:
+  run: {}
+imports:
+  bf:
+    source: ../child
+    entry: idle
+root: start
+states:
+  start:
+    on:
+      run:
+        - target: bf
+`)
+
+	def, err := Load(filepath.Join(parentDir, "app.yaml"))
+	require.NoError(t, err)
+	require.Contains(t, def.Operations, "bf__demo_run")
+	require.Equal(t, "bf__done_artifact", def.Operations["bf__demo_run"].TerminalArtifact)
+	require.Equal(t, []string{"bf__done_artifact"}, def.Operations["bf__demo_run"].PhaseSummary.From)
+
+	idle := def.States["bf"].States["idle"]
+	require.Equal(t, "bf__demo_run", idle.On["bf__go"][0].Operation)
 }
 
 // TestImports_MultiLayerIfaceComposition exercises multi-layer iface composition:

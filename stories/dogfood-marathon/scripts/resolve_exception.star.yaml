@@ -1,0 +1,7 @@
+inputs:
+  exceptions: { type: object, required: false }
+  case_id:    { type: string, required: false }
+  status:     { type: string, required: false }
+  answer:     { type: string, required: false }
+outputs:
+  exceptions: { type: object }

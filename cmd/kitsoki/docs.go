@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"kitsoki/docs/embedded"
+	"kitsoki/internal/extdocs"
 )
 
 // docTopic is one embedded document.
@@ -43,6 +44,7 @@ Examples:
   kitsoki docs llm-guide     # condensed LLM operator guide
   kitsoki docs app-schema    # full app.yaml schema reference
   kitsoki docs all           # print every topic, concatenated
+  kitsoki docs index --root . --json-out .artifacts/docs/extensions-index.json
 
 Pipe into a pager:
   kitsoki docs llm-guide | less
@@ -61,6 +63,59 @@ Or pipe into a model as context:
 			return printDocTopic(cmd.OutOrStdout(), topic)
 		},
 	}
+	cmd.AddCommand(docsIndexCmd())
+	return cmd
+}
+
+func docsIndexCmd() *cobra.Command {
+	var (
+		root        string
+		jsonOut     string
+		markdownOut string
+	)
+	cmd := &cobra.Command{
+		Use:   "index",
+		Short: "Generate a deterministic extension documentation index",
+		Long: `Generate the first-slice extension documentation index from source files.
+
+The index is file-only and no-LLM: it discovers in-tree kits, standalone
+stories, optional kitsoki.docs/v1 docs.yaml sidecars, and generated component
+inventory from kit.yaml and app.yaml. JSON output is intended for the future
+site/library UI; Markdown output is a human review report.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			idx, err := extdocs.BuildIndex(extdocs.IndexOptions{Root: root})
+			if err != nil {
+				return err
+			}
+			if jsonOut != "" {
+				if err := extdocs.WriteJSON(idx, jsonOut); err != nil {
+					return fmt.Errorf("write json index: %w", err)
+				}
+			}
+			if markdownOut != "" {
+				if err := extdocs.WriteMarkdown(idx, markdownOut); err != nil {
+					return fmt.Errorf("write markdown report: %w", err)
+				}
+			}
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "indexed %d package(s), %d story/stories, %d component(s), %d doc node(s)\n", len(idx.Packages), len(idx.Stories), len(idx.Components), len(idx.Docs))
+			if jsonOut != "" {
+				fmt.Fprintf(out, "json: %s\n", jsonOut)
+			}
+			if markdownOut != "" {
+				fmt.Fprintf(out, "markdown: %s\n", markdownOut)
+			}
+			if jsonOut == "" && markdownOut == "" {
+				_, err := io.WriteString(out, "\n"+extdocs.Markdown(idx))
+				return err
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&root, "root", ".", "repository or project root to index")
+	cmd.Flags().StringVar(&jsonOut, "json-out", "", "write extensions-index.json to this path")
+	cmd.Flags().StringVar(&markdownOut, "markdown-out", "", "write a Markdown review report to this path")
 	return cmd
 }
 

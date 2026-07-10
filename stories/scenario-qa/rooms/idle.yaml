@@ -1,0 +1,355 @@
+states:
+
+  idle:
+    description: "Waiting to check a scenario across one or more transports."
+    relevant_world: [scenario_ref, scenario_description, transport_arg, persona, target, seed, pause, parallel, suite_status, suite_leg_count, suite_skipped_count, suite_summary, suite_plan, run_id, run_dir, last_error, status]
+    default_intent: check_request
+    view:
+      - banner:
+          text: "SCENARIO QA"
+          subtitle: "Check a scenario across TUI / web / VS Code / CLI transports."
+          color: "#0EA5E9"
+      - kv:
+          pairs:
+            Scenario: '{{ world.scenario_ref|default:"(none)" }}'
+            Description: '{{ world.scenario_description|default:"(none)" }}'
+            Transport: "{{ world.transport_arg }}"
+            Persona: '{{ world.persona|default:"(default)" }}'
+            Target: '{{ world.target|default:"(default)" }}'
+            Pause mode: '{{ world.pause|default:"auto" }}'
+            Parallel: '{{ world.parallel|default:"false" }}'
+            Preview: '{{ world.suite_summary|default:"(not previewed)" }}'
+            Last run: '{{ world.run_id|default:"(none yet)" }}'
+            Capsule workspace: '{{ world.scenario_workspace_root|default:"(none yet)" }}'
+            Status: "{{ world.status }}"
+      - heading: "Previewed transport checks"
+        when: "world.suite_plan != ''"
+      - code: "{{ world.suite_plan }}"
+        when: "world.suite_plan != ''"
+      - prose: "{{ world.last_error }}"
+        when: "world.last_error != ''"
+      - prose: "Describe the behavior to check. Add qualifiers such as transport=all|tui|web|vscode|cli, persona=<id>, target=<project>, seed=<id>, profile=<profile>, pause=each-leg (default pause=auto drains every transport leg into one report; pause=each-leg pauses for an explicit \"next transport\" per leg), or parallel=true (opt-in: drives every transport check concurrently through arena's persona-qa job type instead of one leg per turn — always zero-LLM-spend). Use scenario=<id> only when you want a catalog scenario instead of an ad-hoc behavior check."
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "check a scenario request"
+              hint: "plain prose or key=value qualifiers"
+              intent: check_request
+              param:
+                slot: request
+                type: string
+                placeholder: "e.g. settings validation persists transport=web"
+                required: true
+            - label: "preview transport checks"
+              hint: "dry-run a plain-language request; no run created"
+              intent: preview_request
+              param:
+                slot: request
+                type: string
+                placeholder: "e.g. required user input affordance transport=web,tui"
+                required: true
+            - label: "report"
+              hint: "(re)build report.md for the last run, if any"
+              intent: report
+              when: "world.run_dir != ''"
+            - label: "status"
+              intent: status
+            - label: "look"
+              intent: look
+    on_enter:
+      # Surface a bounce back to idle from any later room (a failed host.run /
+      # host.starlark.run invoke redirects here) — never a silent bounce. The
+      # status value named by whichever room bounced gives the operator a hint
+      # at where it failed without needing the trace.
+      - when: "world.last_error == '' && world.status != 'idle'"
+        set:
+          last_error: "Bounced back to idle from '{{ world.status }}' — check the trace for the host-call error, then try again."
+          status: "idle"
+    on:
+      check_request:
+        - when: "(slots.request ?? '') == ''"
+          target: .
+          effects:
+            - set:
+                last_error: "check needs a scenario request."
+        - when: "hasPrefix(lower(trim(slots.request ?? '')), 'preview ') || lower(trim(slots.request ?? '')) == 'preview'"
+          target: .
+          effects:
+            - emit_intent: preview_request
+              slots:
+                request: "{{ slots.request }}"
+        - target: plan
+          effects:
+            - set:
+                last_error: ""
+                suite_summary: ""
+                suite_plan: ""
+                status: "parsing_request"
+            - invoke: host.starlark.run
+              id: parse_check_request
+              with:
+                script: scripts/parse_request.star
+                inputs:
+                  request: "{{ slots.request }}"
+                  default_transport: "{{ world.transport_arg }}"
+                  default_persona: "{{ world.persona }}"
+                  default_target: "{{ world.target }}"
+                  default_seed: "{{ world.seed }}"
+                  default_profile: "{{ world.live_profile }}"
+                  default_live_budget_minutes: "{{ world.live_budget_minutes }}"
+                  default_pause: "{{ world.pause }}"
+                  default_parallel: "{{ world.parallel }}"
+              bind:
+                scenario_ref: scenario_ref
+                scenario_description: scenario_description
+                transport_arg: transport_arg
+                persona: persona
+                target: target
+                seed: seed
+                live_profile: live_profile
+                live_budget_minutes: live_budget_minutes
+                pause: pause
+                parallel: parallel
+                mode: mode
+                request_status: request_status
+              on_error: idle
+            - set:
+                status: "planning"
+                leg_index: 0
+                leg_count: 0
+                legs: {}
+                plan_status: {}
+                current_leg: {}
+                current_leg_id: ""
+                drive_result: {}
+                judge_result: {}
+                leg_results: { items: [] }
+                live_authorization_summary: []
+                parallel_records: []
+                record_status: {}
+                scenario_workspace: {}
+                scenario_workspace_root: ""
+                scenario_workspace_id: ""
+                pass_count: 0
+                fail_count: 0
+                degraded_count: 0
+                report_path: ""
+                deck_path: ""
+                deck_error: ""
+      check:
+        - when: "(slots.scenario ?? '') == '' && (slots.description ?? '') == ''"
+          target: .
+          effects:
+            - set:
+                last_error: "check needs a scenario id or a free-text description."
+        - target: plan
+          effects:
+            - set:
+                scenario_ref: "{{ join(split((slots.scenario ?? ''), ' '), '-') }}"
+                scenario_description: "{{ slots.description ?? '' }}"
+                transport_arg: "{{ slots.transport ?? world.transport_arg }}"
+                persona: "{{ join(split((slots.persona ?? world.persona), ' '), '-') }}"
+                target: "{{ join(split((slots.target ?? world.target), ' '), '-') }}"
+                seed: "{{ slots.seed ?? world.seed }}"
+                live_profile: "{{ slots.profile ?? world.live_profile }}"
+                live_budget_minutes: "{{ slots.live_budget_minutes ?? world.live_budget_minutes }}"
+                pause: "{{ slots.pause ?? world.pause }}"
+                parallel: "{{ slots.parallel ?? world.parallel }}"
+                mode: "{{ (slots.description ?? '') != '' ? 'adhoc' : 'catalog' }}"
+                last_error: ""
+                suite_summary: ""
+                suite_plan: ""
+                status: "planning"
+                leg_index: 0
+                leg_count: 0
+                legs: {}
+                plan_status: {}
+                current_leg: {}
+                current_leg_id: ""
+                drive_result: {}
+                judge_result: {}
+                leg_results: { items: [] }
+                live_authorization_summary: []
+                parallel_records: []
+                record_status: {}
+                scenario_workspace: {}
+                scenario_workspace_root: ""
+                scenario_workspace_id: ""
+                pass_count: 0
+                fail_count: 0
+                degraded_count: 0
+                report_path: ""
+                deck_path: ""
+                deck_error: ""
+      preview:
+        - when: "(slots.scenario ?? '') == ''"
+          target: .
+          effects:
+            - set:
+                last_error: "preview needs a scenario id."
+        - target: .
+          effects:
+            - set:
+                scenario_ref: "{{ join(split((slots.scenario ?? world.scenario_ref), ' '), '-') }}"
+                scenario_description: ""
+                transport_arg: "{{ slots.transport ?? world.transport_arg }}"
+                mode: "catalog"
+                suite_status: ""
+                suite_leg_count: 0
+                suite_skipped_count: 0
+                suite_summary: ""
+                suite_plan: ""
+                transport_suite: {}
+                last_error: ""
+                status: "previewing"
+            - invoke: host.run
+              id: preview_transport_suite
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --transport-suite
+                  - --scenarios
+                  - "{{ join(split((slots.scenario ?? world.scenario_ref), ' '), '-') }}"
+                  - --transport
+                  - "{{ slots.transport ?? world.transport_arg }}"
+                  - --live-profile
+                  - "{{ world.live_profile }}"
+                  - --json-output
+                cwd: "."
+                fail_on_error: true
+              bind:
+                last_result: stdout_json
+                transport_suite: stdout_json
+                suite_status: "stdout_json.status"
+                suite_leg_count: "stdout_json.summary.leg_count"
+                suite_skipped_count: "stdout_json.summary.skipped_count"
+              on_error: idle
+            - invoke: host.starlark.run
+              id: summarize_transport_suite
+              with:
+                script: scripts/summarize_transport_suite.star
+                inputs:
+                  suite: "{{ world.transport_suite }}"
+                  scenario_ref: "{{ world.scenario_ref }}"
+                  scenario_description: "{{ world.scenario_description }}"
+                  mode: "{{ world.mode }}"
+                  transport: "{{ world.transport_arg }}"
+              bind:
+                suite_summary: suite_summary
+                suite_plan: suite_plan
+              on_error: idle
+            - set:
+                status: "preview_ready"
+      preview_request:
+        - when: "(slots.request ?? '') == ''"
+          target: .
+          effects:
+            - set:
+                last_error: "preview needs a scenario request."
+        - target: .
+          effects:
+            - set:
+                last_error: ""
+                suite_status: ""
+                suite_leg_count: 0
+                suite_skipped_count: 0
+                suite_summary: ""
+                suite_plan: ""
+                transport_suite: {}
+                status: "parsing_preview"
+            - invoke: host.starlark.run
+              id: parse_check_request
+              with:
+                script: scripts/parse_request.star
+                inputs:
+                  request: "{{ slots.request }}"
+                  default_transport: "{{ world.transport_arg }}"
+                  default_persona: "{{ world.persona }}"
+                  default_target: "{{ world.target }}"
+                  default_seed: "{{ world.seed }}"
+                  default_profile: "{{ world.live_profile }}"
+                  default_live_budget_minutes: "{{ world.live_budget_minutes }}"
+                  default_pause: "{{ world.pause }}"
+              bind:
+                scenario_ref: scenario_ref
+                scenario_description: scenario_description
+                transport_arg: transport_arg
+                persona: persona
+                target: target
+                seed: seed
+                live_profile: live_profile
+                live_budget_minutes: live_budget_minutes
+                pause: pause
+                mode: mode
+                request_status: request_status
+              on_error: idle
+            - set:
+                status: "previewing"
+            - invoke: host.run
+              id: preview_transport_suite
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --transport-suite
+                  - --scenarios
+                  - "{{ world.mode == 'adhoc' ? 'bugfix' : world.scenario_ref }}"
+                  - --transport
+                  - "{{ world.transport_arg }}"
+                  - --live-profile
+                  - "{{ world.live_profile }}"
+                  - --json-output
+                cwd: "."
+                fail_on_error: true
+              bind:
+                last_result: stdout_json
+                transport_suite: stdout_json
+                suite_status: "stdout_json.status"
+                suite_leg_count: "stdout_json.summary.leg_count"
+                suite_skipped_count: "stdout_json.summary.skipped_count"
+              on_error: idle
+            - invoke: host.starlark.run
+              id: summarize_transport_suite
+              with:
+                script: scripts/summarize_transport_suite.star
+                inputs:
+                  suite: "{{ world.transport_suite }}"
+                  scenario_ref: "{{ world.scenario_ref }}"
+                  scenario_description: "{{ world.scenario_description }}"
+                  mode: "{{ world.mode }}"
+                  transport: "{{ world.transport_arg }}"
+              bind:
+                suite_summary: suite_summary
+                suite_plan: suite_plan
+              on_error: idle
+            - set:
+                status: "preview_ready"
+      report:
+        # Invariant: run_dir (absolute) and run_dir_rel (repo-relative — the
+        # SAME directory) are always bound together from the SAME site,
+        # plan.yaml's emit_scenario_qa_run invoke (stdout_json.run_dir /
+        # .run_dir_rel; plan_legs.star then re-derives run_dir_rel, still at
+        # the same on_enter cascade). Guarding on run_dir_rel alone made this
+        # an undocumented coupling: the "report" choice item above is only
+        # offered `when: "world.run_dir != ''"`, so a future refactor that
+        # stopped (re)binding run_dir_rel at one call site — while leaving
+        # run_dir populated — would silently detach this guard from the menu
+        # item's own visibility, letting the operator click a visible
+        # "report" action into a "No run to report yet" bounce. Accept
+        # EITHER var (fire "no run" only when both are empty) so the guard
+        # can never diverge from the menu item it gates.
+        - when: "world.run_dir == '' && world.run_dir_rel == ''"
+          target: .
+          effects:
+            - set:
+                last_error: "No run to report yet — run check first."
+        - target: report
+          effects:
+            - set:
+                status: "reporting"
+      status:
+        - target: .
+      look:
+        - target: .

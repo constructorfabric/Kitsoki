@@ -56,11 +56,12 @@ type OperatorQuestion struct {
 // blocks until the operator answers (or the wait is cancelled / times out).
 //
 // The returned map mirrors AskUserQuestion's answer shape: it is keyed by each
-// question's Question text, and each value is the chosen Option.Label (a string)
-// or, for a MultiSelect question, the chosen labels ([]string). A returned error
-// means no usable answer was obtained (operator cancelled, timed out, ctx done,
-// or the surface detached) — the dispatch layer surfaces that to the model as a
-// tool error so the agent proceeds without the input rather than hanging.
+// question's Question text, and each value is the chosen Option.Label or a
+// custom single-select answer (a string), or, for a MultiSelect question, the
+// chosen labels ([]string). A returned error means no usable answer was obtained
+// (operator cancelled, timed out, ctx done, or the surface detached) — the
+// dispatch layer surfaces that to the model as a tool error so the agent
+// proceeds without the input rather than hanging.
 //
 // Concurrency contract: Ask is called from the host handler's per-call socket
 // listener goroutine and MUST honour ctx cancellation (the agent call, and thus

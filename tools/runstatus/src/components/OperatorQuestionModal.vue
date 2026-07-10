@@ -48,25 +48,48 @@ const active = computed(() => store.active);
 // pending count beyond the active one, surfaced as a "N more queued" hint.
 const morePending = computed(() => Math.max(0, store.pending - 1));
 
-// selections[questionText] = chosen label (single) or Set of labels (multi).
+// selections[questionText] = chosen label/custom text (single) or labels (multi).
 // Reset whenever the active question_id changes so a fresh frame starts clean.
 const selections = ref<Record<string, string | string[]>>({});
+const customSelected = ref<Record<string, boolean>>({});
+const customDrafts = ref<Record<string, string>>({});
 
 watch(
   () => active.value?.question_id,
   () => {
     selections.value = {};
+    customSelected.value = {};
+    customDrafts.value = {};
   }
 );
 
 /** Single-select: record the chosen label. */
 function selectOne(questionText: string, label: string): void {
+  customSelected.value[questionText] = false;
   selections.value[questionText] = label;
 }
 
 /** True when this single-select option is the current pick. */
 function isPicked(questionText: string, label: string): boolean {
-  return selections.value[questionText] === label;
+  return !customSelected.value[questionText] && selections.value[questionText] === label;
+}
+
+/** Single-select: allow an answer outside the model-provided choices. */
+function selectCustom(questionText: string): void {
+  customSelected.value[questionText] = true;
+  selections.value[questionText] = (customDrafts.value[questionText] || "").trim();
+}
+
+function updateCustom(questionText: string, event: Event): void {
+  const value = (event.target as HTMLInputElement).value;
+  customDrafts.value[questionText] = value;
+  if (customSelected.value[questionText]) {
+    selections.value[questionText] = value.trim();
+  }
+}
+
+function isCustomPicked(questionText: string): boolean {
+  return customSelected.value[questionText] === true;
 }
 
 /** Multi-select: toggle the label in/out of the list. */
@@ -92,7 +115,7 @@ const canSubmit = computed(() => {
   return frame.questions.every((q) => {
     const sel = selections.value[q.question];
     if (q.multiSelect) return Array.isArray(sel) && sel.length > 0;
-    return typeof sel === "string" && sel.length > 0;
+    return typeof sel === "string" && sel.trim().length > 0;
   });
 });
 
@@ -164,6 +187,33 @@ async function submit(): Promise<void> {
                   <span v-if="opt.description" class="oq-option__desc">{{ opt.description }}</span>
                 </span>
               </button>
+              <button
+                v-if="!q.multiSelect"
+                type="button"
+                class="oq-option oq-option--custom"
+                :class="{ 'oq-option--picked': isCustomPicked(q.question) }"
+                :data-testid="`oq-option-${qi}-custom`"
+                @click="selectCustom(q.question)"
+              >
+                <span class="oq-option__mark">{{ isCustomPicked(q.question) ? "◉" : "○" }}</span>
+                <span class="oq-option__text">
+                  <span class="oq-option__label">Custom answer</span>
+                  <span class="oq-option__desc">Send a short answer that is not listed above.</span>
+                </span>
+              </button>
+              <label
+                v-if="!q.multiSelect && isCustomPicked(q.question)"
+                class="oq-custom-answer"
+              >
+                <span class="oq-custom-answer__label">Answer</span>
+                <input
+                  class="oq-custom-answer__input"
+                  :data-testid="`oq-custom-answer-${qi}`"
+                  type="text"
+                  :value="customDrafts[q.question] || ''"
+                  @input="updateCustom(q.question, $event)"
+                />
+              </label>
             </div>
           </fieldset>
         </div>
@@ -283,6 +333,9 @@ async function submit(): Promise<void> {
   border-color: var(--k-border-focus, #2563eb);
   background: var(--k-bg-selection, #15314f);
 }
+.oq-option--custom {
+  border-style: dashed;
+}
 .oq-option__mark {
   font-size: 0.95rem;
   line-height: 1.3;
@@ -302,6 +355,32 @@ async function submit(): Promise<void> {
   font-size: 0.72rem;
   color: var(--k-fg-muted, #94a3b8);
   margin-top: 0.1rem;
+}
+.oq-custom-answer {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+}
+.oq-custom-answer__label {
+  color: var(--k-fg-muted, #94a3b8);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.oq-custom-answer__input {
+  flex: 1;
+  min-width: 0;
+  background: var(--k-bg-input, #11243a);
+  border: 1px solid var(--k-border-focus, #2563eb);
+  border-radius: 6px;
+  color: var(--k-fg, #e2e8f0);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.42rem 0.55rem;
+}
+.oq-custom-answer__input:focus {
+  outline: 2px solid color-mix(in srgb, var(--k-border-focus, #2563eb) 35%, transparent);
+  outline-offset: 1px;
 }
 
 .oq-footer {

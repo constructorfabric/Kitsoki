@@ -1,0 +1,12 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+turns:
+  - intent: { name: quit, slots: {} }
+    expect_state: __exit__abandoned
+    expect_world:
+      status: abandoned
+
+expect_terminal: true
+expect_no_errors: true

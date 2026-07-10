@@ -44,6 +44,7 @@ world:
   main_worktree_path: { type: string, default: "." } # where integrate/verify/cleanup run
   workspace_id:     { type: string, default: "ship-it" }   # .worktrees/<id>
   workspace_branch: { type: string, default: "ship-it/run" } # branch the worktree holds
+  auto_start:       { type: bool, default: false }    # parent imports can seed brief+gate and launch without a second operator turn
   worktree_path:    { type: string, default: "" }    # bound back from cherny's exit
   build_check_disabled: { type: bool, default: false }
 
@@ -83,6 +84,17 @@ exits:
   shipped:     { requires: [shipped_sha] }
   needs-human: { requires: [last_error] }
 
+operations:
+  ship_it:
+    title: "Ship brief"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [needs-human, host-error, gate-failed, conflict, budget-exhausted, policy-denied]
+    pause_on: [operator-ask, protected-branch-approval]
+    phase_summary:
+      from: [worktree_path, integrated_sha, shipped_sha, last_error]
+
 # Intents a parent (fleet) may lift into its own table when importing ship-it.
 # fleet drives `integrate_existing` to advance a brief's ship-it through its
 # deterministic delivery half to @exit:shipped|needs-human.
@@ -104,6 +116,7 @@ imports:
       goal_text:        "{{ world.brief }}"
       gate_command:     "{{ world.gate_command }}"
       gate_mode:        "script"
+      baseline_green_policy: "needs-human"
       workspace_id:     "{{ world.workspace_id }}"
       workspace_branch: "{{ world.workspace_branch }}"
       workspace_base:   "{{ world.base_branch }}"
@@ -118,12 +131,12 @@ imports:
       exhausted:
         to: "@exit:needs-human"
         set:
-          last_error: "maker exhausted ({{ world.terminal_reason }}): {{ world.last_gate_failure }}"
+          last_error: "maker exhausted ({{ world.maker__terminal_reason }}): {{ world.maker__last_gate_failure }}"
           status:     "needs-human"
       abandoned:
         to: "@exit:needs-human"
         set:
-          last_error: "maker abandoned ({{ world.terminal_reason }}): {{ world.last_gate_failure }}"
+          last_error: "maker abandoned ({{ world.maker__terminal_reason }}): {{ world.maker__last_gate_failure }}"
           status:     "needs-human"
 
   # The delivery tail — the shared neutral integrate → verify → cleanup → report

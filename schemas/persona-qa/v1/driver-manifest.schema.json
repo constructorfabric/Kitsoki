@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/persona-qa/v1/driver-manifest.schema.json",
+  "title": "Persona QA Driver Manifest",
+  "type": "object",
+  "required": ["id", "label", "app_kind", "capabilities"],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "type": "string" },
+    "label": { "type": "string" },
+    "app_kind": { "type": "string", "enum": ["kitsoki-mcp", "web", "cli"] },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "array"]
+      }
+    },
+    "launch": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "command": { "type": "string" },
+        "cwd": { "type": "string" },
+        "ready": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "http": { "type": "string" },
+            "timeout_s": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "affordances": { "type": "object", "additionalProperties": true },
+    "evidence_contract": { "type": "object", "additionalProperties": true },
+    "oracles": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -4,9 +4,14 @@
 // An Agent is a named system prompt (and optional model override) declared in
 // the app's top-level `agents:` block (internal/app/types.go AgentDef). Effects
 // reference an agent by name via the `agent: <name>` key in the effect's
-// `with:` map; this package then looks up the agent in the per-session context
-// and threads its system_prompt onto the claude CLI via
-// `--append-system-prompt` (and `--model` when Model is set).
+// `with:` map; this package then looks up the agent in the per-session context.
+// SystemPrompt becomes the Layer-3 (task) body composed by
+// composeAgentSystemPrompt (sysprompt.go): kitsoki → project → task, joined
+// stable-prefix-first and forwarded via `--system-prompt`, which REPLACES
+// Claude Code's default (and `--model` when Model is set). The older
+// `--append-system-prompt`-onto-Claude's-default posture survives only behind
+// the explicit per-agent `inherit_claude_default` escape hatch — see
+// appendComposedSystemPrompt for both paths.
 //
 // Defined here (not in internal/app) so the host package stays free of an app
 // import; the orchestrator builds a map[string]Agent from app.AppDef.Agents and
@@ -20,6 +25,7 @@ import (
 	"strings"
 
 	"kitsoki/internal/bashprofile"
+	"kitsoki/internal/effect"
 )
 
 // BashProfileKind is an alias for bashprofile.Kind. The canonical enum lives in
@@ -48,7 +54,9 @@ type BashProfile struct {
 }
 
 // Agent is the per-call configuration applied when a host.agent.* invocation
-// names an agent. SystemPrompt is forwarded to `claude --append-system-prompt`;
+// names an agent. SystemPrompt becomes the Layer-3 (task) body composed by
+// composeAgentSystemPrompt and forwarded via `claude --system-prompt` (default
+// path) or `--append-system-prompt` (inherit_claude_default escape hatch);
 // Model, when non-empty, is forwarded to `claude -p --model`. Description on
 // the app-side AgentDef is documentation-only and intentionally not threaded
 // through here.
@@ -64,10 +72,18 @@ type BashProfile struct {
 // DefaultCwd, when non-empty, is used as the working directory for claude when
 // the effect's working_dir arg is absent.
 //
-// ExternalSideEffect declares whether this agent may mutate external state
-// (Mode C). Nil means the value was inferred
-// from the tool surface at loader time. True → Mode C (not replayable);
-// false → Mode A/B (deterministically replayable from diff).
+// Effect carries the agent's RESOLVED effect class (internal/app's loader
+// populates this from AgentDecl.Effect after resolving the taxonomy's
+// declared-vs-tool-surface-join invariants — see resolveAgentEffect).
+// Empty means "not populated by the loader" (a hand-constructed Agent, e.g.
+// in a unit test); resolveAgentEffect falls back to ExternalSideEffect and
+// then to a Write default in that case — see resolveAgentEffect below.
+//
+// ExternalSideEffect is a DEPRECATED alias mirroring whether this agent may
+// mutate external state (Mode C). Nil means neither Effect nor
+// ExternalSideEffect was populated. True ⟺ Effect == external (Mode C, not
+// replayable); false ⟺ Effect <= write (Mode A/B, deterministically
+// replayable from diff).
 type Agent struct {
 	SystemPrompt string
 	Model        string
@@ -76,9 +92,14 @@ type Agent struct {
 	// it per call; empty leaves the CLI default.
 	Effort             string
 	Tools              []string
+	Toolbox            string
+	MCPTools           []string
+	MCPServers         map[string]any
 	BashProfile        *BashProfile
 	DefaultCwd         string
+	Effect             effect.Effect
 	ExternalSideEffect *bool
+	Permissions        AgentPermissions
 	// InheritClaudeDefault, when true, opts this agent out of the layered
 	// system prompt: its persona is appended (--append-system-prompt) onto
 	// Claude Code's default rather than composed under the kitsoki + project
@@ -91,16 +112,34 @@ type Agent struct {
 	// An effect's `with: { provider: <name> }` arg overrides this per call.
 	// Empty means the ambient environment (today's behavior).
 	Provider string
+	Harness  string
+
+	// TokenBudget overrides the per-verb default pre-dispatch budget-gate
+	// thresholds (see budget_gate.go) for this agent. Mirrors the
+	// Toolbox/BashProfile declaration pattern: nil means "use the built-in
+	// per-verb default"; a non-nil value that fails validation (WarnTokens
+	// <= 0, or RefuseTokens < WarnTokens) makes every dispatch through this
+	// agent refuse closed rather than silently falling back to the default —
+	// an author-declared budget is trusted at face value or not at all.
+	TokenBudget *BudgetThresholds
 }
 
-// Provider is a backend profile applied to the `claude` subprocess for an
-// agent invocation: Env entries are merged onto the process environment
-// (overriding ambient values of the same key) and Model, when non-empty,
-// supplies the --model default for an invocation whose agent declares no
-// explicit model. It is the host-side translation of app.ProviderDecl, kept
-// here so the host package needs no app import.
+// AgentPermissions is the resolved permission posture for one agent contract.
+// Mode accepts the kitsoki-facing values ask, bypassPermissions, denyAll plus
+// Claude CLI permission modes. DisallowedTools are appended as a hard-deny set.
+type AgentPermissions struct {
+	Mode            string
+	DisallowedTools []string
+}
+
+// Provider is a backend profile applied to one agent invocation. Backend
+// selects the coding-agent CLI adapter, Env entries are merged onto the process
+// environment, and Model/Effort supply defaults unless the call explicitly
+// selected this provider. It is the host-side translation of app.ProviderDecl,
+// kept here so the host package needs no app import.
 type Provider struct {
-	Model string
+	Backend string
+	Model   string
 	// Effort supplies the --effort default for an invocation whose agent (and
 	// effect) declare no explicit effort. Empty leaves the agent/CLI default.
 	Effort string
@@ -184,7 +223,21 @@ func AgentProviderEnvFromCtx(ctx context.Context) map[string]string {
 // a runtime miss only happens on test scaffolding that skips the app loader,
 // where falling back to ambient is the safe behavior.
 func applyProvider(ctx context.Context, args map[string]any, agent Agent) (context.Context, Agent) {
-	name, _ := args["provider"].(string)
+	explicitProvider := false
+	name, _ := args["harness"].(string)
+	if strings.TrimSpace(name) != "" {
+		explicitProvider = true
+	}
+	if strings.TrimSpace(name) == "" {
+		name, _ = args["provider"].(string)
+	}
+	if strings.TrimSpace(name) != "" {
+		name = strings.TrimSpace(name)
+		explicitProvider = true
+	}
+	if name == "" {
+		name = agent.Harness
+	}
 	if name == "" {
 		name = agent.Provider
 	}
@@ -212,10 +265,13 @@ func applyProvider(ctx context.Context, args map[string]any, agent Agent) (conte
 	if !ok {
 		return ctx, agent
 	}
-	if strings.TrimSpace(agent.Model) == "" && strings.TrimSpace(prov.Model) != "" {
+	if strings.TrimSpace(prov.Backend) != "" {
+		ctx = WithAgentBackendNamed(ctx, prov.Backend)
+	}
+	if (explicitProvider || strings.TrimSpace(agent.Model) == "") && strings.TrimSpace(prov.Model) != "" {
 		agent.Model = prov.Model
 	}
-	if strings.TrimSpace(agent.Effort) == "" && strings.TrimSpace(prov.Effort) != "" {
+	if (explicitProvider || strings.TrimSpace(agent.Effort) == "") && strings.TrimSpace(prov.Effort) != "" {
 		agent.Effort = prov.Effort
 	}
 	ctx = WithAgentProviderEnv(ctx, prov.Env)
@@ -298,15 +354,74 @@ func AgentsFromContext(ctx context.Context) map[string]Agent {
 // happens on test scaffolding that skips the app loader.
 func resolveAgent(ctx context.Context, args map[string]any) (Agent, bool) {
 	name, _ := args["agent"].(string)
-	if name == "" {
-		return Agent{}, false
+	var base Agent
+	ok := false
+	if name != "" {
+		agents := AgentsFromContext(ctx)
+		if agents != nil {
+			base, ok = agents[name]
+		}
 	}
-	agents := AgentsFromContext(ctx)
-	if agents == nil {
-		return Agent{}, false
+	if contract, hasContract := agentContractArg(args); hasContract {
+		return mergeAgentContract(base, contract), true
 	}
-	a, ok := agents[name]
-	return a, ok
+	return base, ok
+}
+
+func agentContractArg(args map[string]any) (map[string]any, bool) {
+	raw, ok := args["agent_contract"]
+	if !ok || raw == nil {
+		return nil, false
+	}
+	m, ok := raw.(map[string]any)
+	return m, ok
+}
+
+func mergeAgentContract(base Agent, c map[string]any) Agent {
+	if s, _ := c["system_prompt"].(string); s != "" {
+		base.SystemPrompt = s
+	}
+	if s, _ := c["model"].(string); s != "" {
+		base.Model = s
+	}
+	if s, _ := c["effort"].(string); s != "" {
+		base.Effort = s
+	}
+	if s, _ := c["cwd"].(string); s != "" {
+		base.DefaultCwd = s
+	}
+	if s, _ := c["provider"].(string); s != "" {
+		base.Provider = s
+	}
+	if s, _ := c["harness"].(string); s != "" {
+		base.Harness = s
+	}
+	if tools := stringSliceArg(c, "tools"); len(tools) > 0 {
+		base.Tools = tools
+	}
+	if s, _ := c["toolbox"].(string); s != "" {
+		base.Toolbox = s
+	}
+	if mcp, ok := c["mcp"].(map[string]any); ok {
+		if servers, ok := mcp["servers"].(map[string]any); ok {
+			base.MCPServers = cloneAnyMap(servers)
+		}
+		if tools := stringSliceArg(mcp, "tools"); len(tools) > 0 {
+			base.MCPTools = tools
+		}
+	}
+	if perms, ok := c["permissions"].(map[string]any); ok {
+		if s, _ := perms["mode"].(string); s != "" {
+			base.Permissions.Mode = s
+		}
+		if tools := stringSliceArg(perms, "disallowed_tools"); len(tools) > 0 {
+			base.Permissions.DisallowedTools = tools
+		}
+	}
+	if v, ok := c["external_side_effect"].(bool); ok {
+		base.ExternalSideEffect = &v
+	}
+	return base
 }
 
 // effectiveSystemPrompt merges the call-site `system_prompt` arg (when set)
@@ -363,15 +478,72 @@ func effectiveTools(ctx context.Context, args map[string]any, agent Agent) []str
 	if len(perCall) > 0 && len(agent.Tools) > 0 {
 		slog.WarnContext(ctx, "per-call tools: overrides agent.Tools (D5); agent.Tools ignored",
 			"per_call_tools", perCall, "agent_tools", agent.Tools)
-		return perCall
+		return appendMCPTools(perCall, args, agent)
 	}
 	if len(perCall) > 0 {
-		return perCall
+		return appendMCPTools(perCall, args, agent)
 	}
 	if len(agent.Tools) > 0 {
-		return agent.Tools
+		return appendMCPTools(agent.Tools, args, agent)
 	}
-	return nil
+	return appendMCPTools(nil, args, agent)
+}
+
+func appendMCPTools(tools []string, args map[string]any, agent Agent) []string {
+	out := append([]string(nil), tools...)
+	out = append(out, agent.MCPTools...)
+	if mcp, ok := args["mcp"].(map[string]any); ok {
+		out = append(out, stringSliceArg(mcp, "tools")...)
+	}
+	return dedupeStrings(out)
+}
+
+func effectiveMCPServers(args map[string]any, agent Agent) map[string]any {
+	out := cloneAnyMap(agent.MCPServers)
+	mergeServers := func(raw any) {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			return
+		}
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	if mcp, ok := args["mcp"].(map[string]any); ok {
+		mergeServers(mcp["servers"])
+	}
+	mergeServers(args["mcp_servers"])
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func cloneAnyMap(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func dedupeStrings(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }
 
 // appendAllowedToolsFlag appends --allowedTools <csv> to cliArgs when tools is
@@ -395,6 +567,61 @@ func appendDisallowedToolsFlag(cliArgs []string, tools []string) []string {
 	return append(cliArgs, "--disallowedTools", strings.Join(tools, ","))
 }
 
+func setPermissionMode(cliArgs []string, mode string) []string {
+	if strings.TrimSpace(mode) == "" {
+		return cliArgs
+	}
+	out := append([]string(nil), cliArgs...)
+	for i := 0; i < len(out)-1; i++ {
+		if out[i] == "--permission-mode" {
+			out[i+1] = mode
+			return out
+		}
+	}
+	return append(out, "--permission-mode", mode)
+}
+
+func effectivePermissionMode(args map[string]any, agent Agent, fallback string) string {
+	mode, _ := args["permission_mode"].(string)
+	if mode == "" {
+		if p, ok := args["permissions"].(map[string]any); ok {
+			mode, _ = p["mode"].(string)
+		}
+	}
+	if mode == "" {
+		mode = agent.Permissions.Mode
+	}
+	if mode == "" {
+		mode = fallback
+	}
+	switch mode {
+	case "ask":
+		return "default"
+	case "denyAll":
+		return "default"
+	default:
+		return mode
+	}
+}
+
+func effectiveDisallowedTools(args map[string]any, agent Agent) []string {
+	var out []string
+	out = append(out, agent.Permissions.DisallowedTools...)
+	if p, ok := args["permissions"].(map[string]any); ok {
+		out = append(out, stringSliceArg(p, "disallowed_tools")...)
+		if mode, _ := p["mode"].(string); mode == "denyAll" {
+			out = append(out, readOnlyDeniedTools...)
+		}
+	}
+	if mode, _ := args["permission_mode"].(string); mode == "denyAll" {
+		out = append(out, readOnlyDeniedTools...)
+	}
+	if agent.Permissions.Mode == "denyAll" {
+		out = append(out, readOnlyDeniedTools...)
+	}
+	return dedupeStrings(out)
+}
+
 // readOnlyDeniedTools are the repo-mutating / arbitrary-exec tools a converse
 // agent that declares external_side_effect:false must never run. Bash is in
 // the set because it is arbitrary code execution — a "read-only" agent with
@@ -403,6 +630,21 @@ func appendDisallowedToolsFlag(cliArgs []string, tools []string) []string {
 // denied: they read external state, which a read-only agent may legitimately
 // do.
 var readOnlyDeniedTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"}
+
+// readOnlyAgentVerbDeniedTools are denied for ask/decide's read-only posture.
+// Unlike converse, ask/decide may allow Bash when the agent declares a
+// BashProfile; the Bash MCP wrapper applies the profile before any shell runs.
+var readOnlyAgentVerbDeniedTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit"}
+
+// fileMutationTools are the built-in durable file mutators. They are not the
+// ask/decide enforcement path; enforceToolbox owns that. The task durability
+// barrier and the extract LLM tier still need this small classifier.
+var fileMutationTools = map[string]bool{
+	"Edit":         true,
+	"Write":        true,
+	"MultiEdit":    true,
+	"NotebookEdit": true,
+}
 
 // alwaysDeniedTools are tools denied on EVERY agent subprocess regardless of
 // agent posture or permission mode.
@@ -448,11 +690,133 @@ func withAlwaysDenied(disallowed []string) []string {
 	return out
 }
 
-// agentIsReadOnly reports whether an agent has explicitly declared
-// external_side_effect: false. Unset (nil) is treated as write-capable so the
-// posture only tightens for agents that opted into read-only.
+// resolveAgentEffect returns a's classified effect for enforcement decisions
+// that only see the Agent value itself (no separately-resolved call-site tool
+// list — contrast inferReplayMode in agent_task_replay.go, which does get one
+// and uses effect.FromTools directly on it). Precedence:
+//
+//  1. a.Effect, when the loader populated it (every agent loaded through
+//     internal/app's resolveAgentEffect always sets this — see the Effect
+//     field doc on the Agent struct above).
+//  2. The deprecated a.ExternalSideEffect, mapped through
+//     effect.FromLegacyBool against a.Tools.
+//  3. effect.Write — the safe "no classification info at all" default this
+//     package used before the taxonomy existed (a hand-constructed Agent in
+//     a unit test, or legacy test scaffolding that bypasses the loader
+//     entirely). This deliberately does NOT fall back to effect.FromTools:
+//     an agent with no tools declared is not necessarily an agent with no
+//     capability (host.agent.task, for one, runs unrestricted regardless of
+//     Tools), so "unknown" defaults to write-capable, not to the taxonomy's
+//     formal (and here misleading) tool-less-surface-is-Pure join.
+func resolveAgentEffect(a Agent) effect.Effect {
+	if a.Effect != "" && a.Effect.Valid() {
+		return a.Effect
+	}
+	if a.ExternalSideEffect != nil {
+		return effect.FromLegacyBool(*a.ExternalSideEffect, a.Tools)
+	}
+	return effect.Write
+}
+
+// agentIsReadOnly reports whether an agent's resolved effect class is
+// read-only (pure or read). Unclassified agents default to write-capable (see
+// resolveAgentEffect) so the posture only tightens for agents that are
+// actually read/pure.
 func agentIsReadOnly(a Agent) bool {
-	return a.ExternalSideEffect != nil && !*a.ExternalSideEffect
+	return resolveAgentEffect(a).LessEqual(effect.Read)
+}
+
+type ToolboxEnforcement struct {
+	CLIMode      string
+	AllowedTools []string
+	DeniedTools  []string
+	Toolbox      string
+	Effect       effect.Effect
+}
+
+type ToolboxEnforcementOptions struct {
+	// EffectCeiling, when set, caps the enforced effect class for verbs whose
+	// contract is narrower than the agent's full capability. ask/decide use
+	// this to stay read-only even if legacy per-call tools try to widen them.
+	EffectCeiling effect.Effect
+	// ReadOnlyDeniedTools overrides the default read-only deny set. ask/decide
+	// use the Bash-profile-aware set; converse uses the stricter default.
+	ReadOnlyDeniedTools []string
+}
+
+func enforceToolbox(ctx context.Context, args map[string]any, agent Agent, fallbackMode string, opts ...ToolboxEnforcementOptions) ToolboxEnforcement {
+	var opt ToolboxEnforcementOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+	allowed := effectiveTools(ctx, args, agent)
+	class := effect.Join(resolveAgentEffect(agent), effect.FromTools(allowed))
+	if opt.EffectCeiling.Valid() && !class.LessEqual(opt.EffectCeiling) {
+		class = opt.EffectCeiling
+	}
+	mode := effectivePermissionMode(args, agent, fallbackMode)
+	var denied []string
+	if class.LessEqual(effect.Read) {
+		readOnlyDeny := readOnlyDeniedTools
+		if opt.ReadOnlyDeniedTools != nil {
+			readOnlyDeny = opt.ReadOnlyDeniedTools
+		}
+		mode = "default"
+		denied = withAlwaysDenied(readOnlyDeny)
+	} else {
+		denied = withAlwaysDenied(effectiveDisallowedTools(args, agent))
+	}
+	return ToolboxEnforcement{
+		CLIMode:      mode,
+		AllowedTools: allowed,
+		DeniedTools:  denied,
+		Toolbox:      agent.Toolbox,
+		Effect:       class,
+	}
+}
+
+// noToolsDispatchContract is appended to the persona of a dispatch whose
+// resolved toolset is EMPTY. On the claude backend the empty allowlist is
+// mechanically enforced; on backends whose intrinsic tools cannot be removed
+// (codex must run with the approvals/sandbox bypass so the validator submit
+// MCP tool can execute, and its shell survives that), this contract is the
+// enforcement. Live-proven cost: a tools:[] judge on codex re-ran the full
+// test suite its validator had just run, tripling the call's marginal tokens
+// (see .context/llm-usage-audit-bugfix-qs1.md).
+const noToolsDispatchContract = "TOOLING CONTRACT: this dispatch grants you NO workspace tools. " +
+	"Do not run shell commands, read or write files, or explore the repository — " +
+	"any workspace tool use violates your toolbox declaration and wastes the call. " +
+	"Everything you need is already in the prompt; act on the provided material " +
+	"alone and submit your structured answer directly (the submit/question tools " +
+	"provided to you are the only permitted tool calls)."
+
+// applyNoToolsContract returns the agent with the no-tools contract folded
+// into its persona when the enforced toolset is empty. Static text appended
+// to the persona (task) layer, so prompt-prefix stability is preserved.
+func applyNoToolsContract(agent Agent, policy ToolboxEnforcement) Agent {
+	if len(policy.AllowedTools) != 0 {
+		return agent
+	}
+	if agent.SystemPrompt != "" {
+		agent.SystemPrompt += "\n\n"
+	}
+	agent.SystemPrompt += noToolsDispatchContract
+	return agent
+}
+
+func (p ToolboxEnforcement) WithAllowed(tools []string) ToolboxEnforcement {
+	p.AllowedTools = dedupeStrings(tools)
+	return p
+}
+
+func (p ToolboxEnforcement) AgentCalledFields(payload AgentCalledPayload) AgentCalledPayload {
+	payload.Toolbox = p.Toolbox
+	payload.AllowedTools = append([]string(nil), p.AllowedTools...)
+	payload.DeniedTools = append([]string(nil), p.DeniedTools...)
+	if p.Effect != "" {
+		payload.Effect = string(p.Effect)
+	}
+	return payload
 }
 
 // converseToolPolicy computes the CLI permission posture for a converse call:
@@ -482,26 +846,8 @@ func agentIsReadOnly(a Agent) bool {
 // A write-capable agent (external_side_effect unset or true) gets only the
 // vocabulary translation.
 func converseToolPolicy(permMode string, agent Agent) (cliMode string, disallowed []string) {
-	switch permMode {
-	case "denyAll":
-		cliMode, disallowed = "default", readOnlyDeniedTools
-	case "ask":
-		cliMode = "default"
-	default: // bypassPermissions
-		cliMode = permMode
-	}
-
-	if agentIsReadOnly(agent) {
-		if cliMode == "bypassPermissions" {
-			cliMode = "default"
-		}
-		disallowed = readOnlyDeniedTools
-	}
-	// AskUserQuestion is denied on every converse turn too — same headless
-	// auto-resolve hazard (see alwaysDeniedTools). Merge so we never emit a
-	// duplicate --disallowedTools entry alongside readOnlyDeniedTools.
-	disallowed = withAlwaysDenied(disallowed)
-	return cliMode, disallowed
+	policy := enforceToolbox(context.Background(), map[string]any{"permission_mode": permMode}, agent, permMode)
+	return policy.CLIMode, policy.DeniedTools
 }
 
 // agentSettingSources is the --setting-sources value applied to every agent

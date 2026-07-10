@@ -1,0 +1,25 @@
+{
+  "id": "kitsoki-mcp",
+  "label": "Kitsoki MCP/Studio surface",
+  "app_kind": "kitsoki-mcp",
+  "capabilities": {
+    "visual.open": ["mcp__kitsoki__visual_open"],
+    "visual.observe": ["mcp__kitsoki__visual_observe"],
+    "visual.act": ["mcp__kitsoki__visual_act"],
+    "session.open": ["mcp__kitsoki__session_new", "mcp__kitsoki__session_attach"],
+    "session.status": ["mcp__kitsoki__session_status"],
+    "session.submit": ["mcp__kitsoki__session_submit", "mcp__kitsoki__session_drive"],
+    "session.drive": ["mcp__kitsoki__session_drive"],
+    "session.inspect": ["mcp__kitsoki__session_inspect", "mcp__kitsoki__session_world", "mcp__kitsoki__session_trace"],
+    "session.trace": ["mcp__kitsoki__session_trace"],
+    "render.tui": ["mcp__kitsoki__render_tui", "mcp__kitsoki__render_tui_png"]
+  },
+  "affordances": {},
+  "evidence_contract": {
+    "tui": {"primary_tool": "render.tui_png", "evidence_kind": "rendered_tui_frame", "level": "frame-level"},
+    "web": {"primary_tool": "visual.snapshot", "evidence_kind": "browser_screenshot", "level": "frame-level"},
+    "vscode": {"primary_tool": "visual.open (kind=vscode)", "evidence_kind": "screenshot_or_tui_png", "level": "bridge-level"},
+    "cli": {"primary_tool": "command transcript", "evidence_kind": "command_output", "level": "terminal-level"}
+  },
+  "oracles": []
+}

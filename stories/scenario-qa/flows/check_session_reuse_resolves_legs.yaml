@@ -1,0 +1,166 @@
+# check_session_reuse_resolves_legs — regression coverage for a live bug: a
+# SECOND `check` intent in the same session (e.g. re-running from `report`,
+# which has its own `check` handler mirroring idle's) instantly bounced to
+# `legs_unresolved` instead of resolving legs, even though the run would have
+# resolved cleanly. Root cause: idle.yaml's/report.yaml's `check` handlers
+# reset leg_count/legs to their zero defaults on every check, but never reset
+# `plan_status` — so on a second check in the same session, `plan_status`
+# still holds `{resolved: true}` left over from the FIRST run. plan.yaml's
+# `legs_unresolved` guard (`plan_status.resolved == true && leg_count == 0`)
+# relies on reading `.resolved` off a still-empty `plan_status` map to error
+# at machine-time (see plan.yaml's header comment) so the guard defers until
+# plan_legs's own bind lands. With `plan_status` left stale, that read no
+# longer errors — the guard decides IMMEDIATELY, before this turn's
+# emit_scenario_qa_run/plan_legs invokes have even returned, using the
+# previous run's `resolved: true` combined with this turn's freshly-reset
+# `leg_count: 0`, so it always fires `legs_unresolved` on any re-check
+# regardless of what the real run would have resolved.
+#
+# This fixture drives `check` TWICE in one session with a stub that always
+# resolves exactly 1 leg — the first check must reach `report`, and (the
+# regression) the second check, from `report`, must ALSO reach `report` via a
+# freshly resolved leg rather than bouncing straight back to `idle`.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-reuse-run
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-reuse-run
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-reuse-run/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-reuse-run/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-reuse-run/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-reuse-run
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-reuse-run/deck.slidey.json
+            leg_count: 1
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 0
+            summary: "1 / 1 transport checks passed."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "bugfix::tui"
+                scenario: "bugfix"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+                primary_story: "stories/bugfix/app.yaml"
+                success_criteria: ["Hidden oracle passes."]
+                natural_utterances: []
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-reuse-run"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "bugfix::tui"
+            scenario: "bugfix"
+            transport: "tui"
+            visual_surface: "tui"
+            evidence_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            natural_utterances: []
+          current_leg_id: "bugfix::tui"
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "bugfix::tui"
+                scenario: "bugfix"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_level: "frame-level"
+                driver_status: "captured"
+                natural_utterance_count: 0
+                natural_utterance_example: ""
+                natural_utterance_sources: []
+                evidence_refs: ["render_tui_png:frame-1"]
+                verdict: "pass"
+                verdict_summary: "TUI frame confirms the fix state."
+                frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+          pass_count: 1
+          fail_count: 0
+          degraded_count: 0
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-reuse-run/report.md"
+          report_summary: "1 / 1 transport checks passed."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["render_tui_png:frame-1"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            blockers: []
+            summary: "Captured a render.tui_png frame showing the fixed state."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "TUI frame confirms the fix state."
+            cited_frames: ["frame-1.png"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+    expect_state: report
+    expect_world:
+      run_id: scenario-qa-reuse-run
+      leg_count: 1
+      last_error: ""
+
+  # The regression: a second `check` from `report` must resolve the same
+  # single leg again (report -> plan -> execute -> ... -> report), NOT bounce
+  # straight back to idle with "No transport checks resolved" because of stale
+  # plan_status left over from the first check.
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow-2
+    expect_state: report
+    expect_world:
+      run_id: scenario-qa-reuse-run
+      leg_count: 1
+      pass_count: 1
+      last_error: ""
+
+expect_no_errors: true

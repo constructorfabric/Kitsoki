@@ -43,6 +43,60 @@ never lands in the calling session's context — the caller gets back only a sho
 recap. Use it for "catch me up" / "remind me where we left off", optionally
 `--grep`-focused on a topic.
 
+### Codex adapter (a second source, same intermediate shapes)
+
+Everything above assumes Claude Code transcripts. `codex_adapter.py` +
+`codex_prep.py` + `codex_outcomes.py` parse `~/.codex/sessions/**/*.jsonl`
+rollouts (codex CLI/TUI) into the SAME two intermediate shapes prep.py/
+outcomes.py produce for Claude Code — a distilled `traces/<sid>.txt` (identical
+`USER:`/`AI:`/`  > Tool: arg` line grammar) and an `outcomes.json` (identical
+`{schema_version, sessions: {sid: {join, tool_outcomes}}}` shape) — so
+`ground.py`, `tag_score.py`, `emit.py` (incl. `--outcomes`), and `redact.py` run
+**completely unchanged** against a codex-sourced job:
+
+```sh
+cd tools/session-mining
+python3 codex_prep.py ~/.codex/sessions --cwd <your-project-dir-name> --redact --job codex-demo
+python3 codex_outcomes.py --raw .artifacts/session-mining/codex-demo/raw \
+    --out .artifacts/session-mining/codex-demo/outcomes.json
+# then the SAME ground.py -> tag_score.py -> emit.py --outcomes spine, pointed at
+# codex-demo/{traces,raw} instead of a Claude Code project dir.
+```
+
+Differences from the Claude Code path, each driven by the real corpus shape
+(not guessed — see `tests/test_codex_adapter.py` for hand-verified fixtures and
+this task's calibration notes for a real-corpus spot-check):
+
+- codex rollouts nest by date (`YYYY/MM/DD/rollout-*.jsonl`) under one root
+  that serves every project on the box, not one dir per project — hence
+  `--cwd <substring>` (repeatable) instead of pointing at a project dir.
+- codex's headless-dispatched-agent filter (the self-cannibalism guard) keys
+  on `payload.originator` (`codex_exec`/`exec`), not Claude Code's
+  `entrypoint`; same default-drop / `--keep-agent-sessions` semantics.
+  Several `codex_exec` rollouts in this corpus were kitsoki's own dispatched
+  sub-agents — mining them back in would be the same self-cannibalism problem
+  `prep.py` already guards against.
+- codex's tool-call/result pairing carries a real `call_id`, so the outcomes
+  join is always `"id"` (no positional fallback needed the way Claude Code
+  sometimes requires).
+- KNOWN GAP: `emit.py`'s verbatim-recovery and lexical-satisfaction helpers
+  (`raw_user_turns`) only recognize Claude Code's raw `type=="user"` shape.
+  Against a codex `raw/<sid>.jsonl` they harmlessly return `[]` — verbatim
+  `user_text` gracefully falls back to the (600-char-truncated) distilled trace
+  line, and the lexical satisfaction tier (`followup_text_head`) stays empty;
+  the *structural* satisfaction tier (a grounded corrective git op in the next
+  span) is unaffected and still fires correctly. Nothing crashes or
+  fabricates data, but the lexical signal is silently weaker for codex jobs
+  until `emit.py` grows a codex-aware raw reader.
+- no `costs.json` sidecar yet (codex's `token_count` events aren't wired into
+  `cost_extract.py`'s pricing model) — real per-session $ for codex jobs is a
+  follow-up, not covered by this task.
+
+Codex-sourced jobs feed the **Scenario Foundry** exactly like Claude-Code-
+sourced ones (same `emit.py --outcomes` output, same `scenario_compiler.py`
+input) — see [`docs/tracing/scenario-foundry.md`](../../docs/tracing/scenario-foundry.md)
+for the mined `kind: conversation` IR and its downstream compilers.
+
 ---
 
 ## Quickstart (pattern mining)
@@ -481,6 +535,9 @@ merges mixed `vocab_version`s. The extractor prompt is a versioned artifact
 ```
 distill.jq              raw JSONL transcript -> compact action trace
 prep.py                 distill + (optional --redact) + bin-pack into byte-balanced batches; one command, all modes (--job targets .artifacts/ for intent mining). Drops dispatched headless agent/agent transcripts (entrypoint!=cli) by default; --keep-agent-sessions to include them
+codex_adapter.py        parse codex CLI/TUI rollouts (~/.codex/sessions/**/*.jsonl) into the SAME distilled-trace + outcomes-join shapes prep.py/outcomes.py produce, so ground/tag_score/emit/redact run unchanged
+codex_prep.py           codex analogue of prep.py: recurses the nested rollout root, filters codex_exec/exec (originator) agent runs + --cwd, stages a flat raw/<sid>.jsonl, bin-packs traces/batches/manifest.json
+codex_outcomes.py       codex analogue of outcomes.py: id-keyed (call_id) tool-outcome recovery from a flat raw/ dir of codex rollouts, same outcomes.json schema
 redact.py               deterministic scrubber; `--report` scrubs a report's free-text, `--scan` is the share-gate
 report.py               render a pattern-mining aggregate into an actionable BRIEF.md (verdict + gates + skeleton + first step)
 focus_brief.py          render a focused idea-mining synthesis JSON into a ranked themed Markdown brief (idea-mining mode)
@@ -492,6 +549,10 @@ schema/report.schema.json     JSON Schema for one contributor's report (aggregat
 schema/aggregate.schema.json  JSON Schema for a merged report (aggregate.py output; re-aggregatable)
 schema/intents.schema.json    JSON Schema for REPORT 1 (the intents catalog)
 schema/analysis.schema.json   JSON Schema for REPORT 2 (the per-instance recipes)
+schema/scenario_ir.schema.json  JSON Schema for the SCENARIO FOUNDRY `kind: conversation` IR (docs/proposals/scenario-foundry.md); see examples/scenario-ir.example.json
+scenario_compiler.py    SCENARIO FOUNDRY — compiles emit.py --outcomes' intents.json+analysis.json into one kind:conversation IR document per goal-bounded, calibration-worthy span (corrections folded in as extra turns, unresolved endings marked abandoned); pure/deterministic, no LLM
+flow_fixture_compiler.py  SCENARIO FOUNDRY — projects a kind:conversation IR document onto a runnable `kitsoki test flows` flow fixture + host cassette (stories/scenario-foundry-harness/); pure/deterministic
+product_journey_compiler.py  SCENARIO FOUNDRY — projects mined kind:conversation IR documents into tools/product-journey/{personas,scenarios}.json entries tagged source:mined; pure/deterministic
 aggregate.py            merge + score + promotion gate (stdlib only; associative)
 intents.workflow.js     INTENT MINING step B — the one strictly-validated agent pass (schema-constrained)
 intent_common.py        shared helpers for the intent-mining spine (trace/vocab/io primitives)
@@ -506,6 +567,7 @@ tests/                  fixture + no-LLM end-to-end tests (intent C->F pipeline;
 examples/report.example.json   a real redacted report (reference run)
 examples/merge/         two reports + their merged output (worked aggregation)
 examples/git-ops/       STORY COVERAGE MINING flagship — committed corpus + run.sh demo + worked coverage.worked.md (the worked answer to "how does coverage mining work?")
+examples/scenario-ir.example.json  documented example of the kind:conversation scenario IR (hand-written, matches docs/proposals/scenario-foundry.md#scenario-ir)
 ```
 
 ## Limitations

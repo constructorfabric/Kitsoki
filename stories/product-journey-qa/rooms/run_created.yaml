@@ -1,7 +1,10 @@
 states:
   run_created:
     description: "A product-journey QA run bundle exists; waiting for captured evidence."
-    relevant_world: [project, persona, seed, run_id, run_dir, deck_path, execution_plan_path, driver_plan_path, driver_journal_path, agent_brief_path, driver_handoff_path, media_manifest_path, scenario_outcomes_path, persona_starting_surface, persona_first_question, persona_evidence_emphasis, persona_escalation_trigger, persona_finding_bias, proof_evidence_count, demo_evidence_count, finding_total_count, strength_count, weakness_count, issue_count, fix_count, blocked_count, missing_evidence_count, missing_proof_evidence_count, proof_minimum_evidence_count, minimum_evidence_count, missing_proof_summary, driver_contract_summary, next_driver_capture, next_driver_attach_command, next_driver_blocker_command, scenario, evidence_kind, evidence_path, evidence_source, finding_kind, finding_title, driver_event_id, dispatch_mode, driver_status, driver_summary, review_status, review_summary, review_passed_count, review_failed_count, review_warning_count, review_total_count, review_backlog_summary, validation_status, validation_errors, validation_warnings, validation_issue_summary, status]
+    relevant_world: [project, persona, seed, campaign_id, campaign_status, campaign_summary, campaign_scenarios, scenario_scope, run_scenario_count, live_budget_minutes, run_id, run_dir, deck_path, execution_plan_path, driver_plan_path, driver_journal_path, agent_brief_path, driver_handoff_path, media_manifest_path, scenario_outcomes_path, persona_starting_surface, persona_first_question, persona_evidence_emphasis, persona_escalation_trigger, persona_finding_bias, proof_evidence_count, demo_evidence_count, finding_total_count, strength_count, weakness_count, weakness_route_count, weakness_route_summary, prd_design_intake_path, prd_design_intake_count, prd_design_intake_summary, issue_count, fix_count, blocked_count, missing_evidence_count, missing_proof_evidence_count, proof_minimum_evidence_count, minimum_evidence_count, missing_proof_summary, driver_contract_summary, next_driver_capture, next_driver_attach_command, next_driver_blocker_command, scenario, evidence_kind, evidence_path, evidence_source, finding_kind, finding_title, ticket_repo, campaign_finding_sink, filing_sink, filing_status, filing_dry_run, findings_filed_count, findings_skipped_count, findings_failed_count, findings_unfiled_count, filed_issue_summary, filing_summary, autonomous_marathon_status, autonomous_marathon_summary, autonomous_marathon_report_path, autonomous_driver_mode, autonomous_driver_live_profile, autonomous_driver_status, autonomous_driver_summary, autonomous_driver_evidence_count, autonomous_driver_issue_count, autonomous_driver_dispatch_markdown_path, autonomous_driver_dispatch_trace, autonomous_control_status, autonomous_control_summary, autonomous_control_path, autonomous_control_markdown_path, autonomous_watchdog_status, autonomous_watchdog_summary, autonomous_watchdog_path, autonomous_watchdog_markdown_path, autonomous_watchdog_age_minutes, autonomous_fix_status, autonomous_fix_report_path, autonomous_gate_summary, independent_verify_status, independent_verify_summary, issue_closeout_status, issue_closeout_count, issue_closeout_summary, gh_agent_health_status, gh_agent_health_summary, gh_agent_readiness_status, gh_agent_readiness_summary, gh_agent_enqueue_status, gh_agent_enqueued_count, gh_agent_skipped_count, gh_agent_job_summary, gh_agent_claim_status, gh_agent_claim_count, gh_agent_claim_summary, gh_agent_drain_status, gh_agent_drained_count, gh_agent_done_count, gh_agent_failed_count, gh_agent_active_count, gh_agent_run_summary, gh_agent_fix_evidence_count, gh_agent_missing_evidence_count, gh_agent_triage_evidence_count, gh_agent_missing_triage_count, gh_agent_independent_verify_count, gh_agent_missing_verify_count, gh_agent_missing_run_url_count, gh_agent_fix_evidence_summary, gh_agent_missing_evidence_summary, gh_agent_triage_evidence_summary, gh_agent_missing_triage_summary, gh_agent_independent_verify_summary, gh_agent_missing_verify_summary, stats_status, stats_root, stats_output, stats_summary, issue_state_status, issue_state_output, issue_state_count, issue_state_summary, stats_gate_status, stats_gate_summary, stats_current_run_scanned, stats_runs_scanned, stats_found_count, stats_filed_count, stats_fixed_count, stats_reopened_count, stats_unknown_state_count, stats_similar_pair_count, driver_event_id, dispatch_mode, driver_status, driver_summary, review_status, review_summary, review_passed_count, review_failed_count, review_warning_count, review_total_count, review_backlog_summary, validation_status, validation_errors, validation_warnings, validation_issue_summary, status]
+    on_enter:
+      - when: "(world.autonomous_driver_mode == 'record' || world.autonomous_driver_mode == 'live') && world.autonomous_driver_status == 'ready_for_dispatch'"
+        emit_intent: dispatch_driver
     view:
       - banner:
           text: "RUN CREATED"
@@ -12,6 +15,11 @@ states:
             Run: '{{ world.run_id|default:"(pending)" }}'
             Project: "{{ world.project }}"
             Persona: "{{ world.persona }}"
+            Campaign: '{{ world.campaign_status|default:"(not planned)" }}'
+            Campaign summary: '{{ world.campaign_summary|default:"(none)" }}'
+            Scenario scope: '{{ world.scenario_scope|default:"all" }}'
+            Scenario count: "{{ world.run_scenario_count }}"
+            Live budget: "{{ world.live_budget_minutes }} min/scenario"
             Run dir: '{{ world.run_dir|default:"(pending)" }}'
             Deck: '{{ world.deck_path|default:"(pending)" }}'
             Execution plan: '{{ world.execution_plan_path|default:"(pending)" }}'
@@ -29,10 +37,50 @@ states:
             Proof evidence: "{{ world.proof_evidence_count }} attached; minimum {{ world.proof_minimum_evidence_count }} / {{ world.minimum_evidence_count }}"
             Demo evidence: "{{ world.demo_evidence_count }}"
             Finding matrix: "{{ world.finding_total_count }} total; strength {{ world.strength_count }}, weakness {{ world.weakness_count }}, issue {{ world.issue_count }}, fix {{ world.fix_count }}, blocked {{ world.blocked_count }}"
+            PRD intake: "{{ world.prd_design_intake_count }} routed; {{ world.prd_design_intake_summary }}"
+            PRD intake artifact: '{{ world.prd_design_intake_path|default:"(not generated)" }}'
             Missing evidence: "{{ world.missing_evidence_count }}"
             Missing proof: "{{ world.missing_proof_evidence_count }}"
             Last evidence: '{{ world.scenario|default:"(none)" }} / {{ world.evidence_kind|default:"" }}'
             Last finding: '{{ world.finding_kind|default:"(none)" }} / {{ world.finding_title|default:"" }}'
+            Ticket repo: '{{ world.ticket_repo|default:"(not set)" }}'
+            Campaign worker: '{{ world.campaign_worker_backend|default:"(not set)" }} / {{ world.campaign_worker_id|default:"" }} / {{ world.campaign_worker_status|default:"(not checked)" }}'
+            Worker readiness: '{{ world.campaign_worker_ready_status|default:"(not checked)" }}: {{ world.campaign_worker_summary|default:"" }}'
+            Worker receipt: '{{ world.campaign_worker_receipt_markdown_path|default:"(not generated)" }}'
+            Worker artifacts: '{{ world.campaign_worker_artifact_import_status|default:"(not imported)" }}: {{ world.campaign_worker_imported_artifact_count }}'
+            Autonomous fix: '{{ world.autonomous_fix_status|default:"(not run)" }}'
+            Autonomous report: '{{ world.autonomous_fix_report_path|default:"(not generated)" }}'
+            Autonomous gates: '{{ world.autonomous_gate_summary|default:"(not run)" }}'
+            Independent verify: '{{ world.independent_verify_status|default:"(not checked)" }}: {{ world.independent_verify_summary|default:"" }}'
+            Issue close-out: '{{ world.issue_closeout_status|default:"(not run)" }}: closed {{ world.issue_closeout_count }}'
+            Autonomous marathon: '{{ world.autonomous_marathon_status|default:"(not run)" }}'
+            Marathon report: '{{ world.autonomous_marathon_report_path|default:"(not generated)" }}'
+            Autonomous driver: '{{ world.autonomous_driver_mode|default:"pending" }} / {{ world.autonomous_driver_status|default:"(not run)" }}: evidence {{ world.autonomous_driver_evidence_count }}, issues {{ world.autonomous_driver_issue_count }}'
+            Driver live profile: '{{ world.autonomous_driver_live_profile|default:"(not set)" }}'
+            Driver receipt: '{{ world.autonomous_driver_dispatch_markdown_path|default:"(not generated)" }}'
+            Driver trace: '{{ world.autonomous_driver_dispatch_trace|default:"(not reported)" }}'
+            Marathon control: '{{ world.autonomous_control_status|default:"(not armed)" }}: {{ world.autonomous_control_summary|default:"" }}'
+            Control artifact: '{{ world.autonomous_control_path|default:"(not generated)" }}'
+            Marathon watchdog: '{{ world.autonomous_watchdog_status|default:"(not checked)" }}: {{ world.autonomous_watchdog_summary|default:"" }}'
+            Watchdog age: "{{ world.autonomous_watchdog_age_minutes }} min"
+            Watchdog report: '{{ world.autonomous_watchdog_markdown_path|default:"(not generated)" }}'
+            Filing sink: '{{ world.filing_sink|default:"(not filed)" }} (default local-artifact; finding_sink=github for an explicit GitHub handoff)'
+            Issue filing: '{{ world.filing_status|default:"(not filed)" }}: filed {{ world.findings_filed_count }}, skipped {{ world.findings_skipped_count }}, failed {{ world.findings_failed_count }}, unfiled {{ world.findings_unfiled_count }}'
+            GH-agent fixes: '{{ world.gh_agent_enqueue_status|default:"(not queued)" }}: queued {{ world.gh_agent_enqueued_count }}, skipped {{ world.gh_agent_skipped_count }}'
+            GH-agent health: '{{ world.gh_agent_health_status|default:"(not checked)" }}: {{ world.gh_agent_health_summary|default:"" }}'
+            GH-agent readiness: '{{ world.gh_agent_readiness_status|default:"(not checked)" }}: {{ world.gh_agent_readiness_summary|default:"" }}'
+            GH-agent claims: '{{ world.gh_agent_claim_status|default:"(not claimed)" }}: claimed {{ world.gh_agent_claim_count }}'
+            GH-agent jobs: '{{ world.gh_agent_job_summary|default:"(none)" }}'
+            GH-agent drain: '{{ world.gh_agent_drain_status|default:"(not drained)" }}: drained {{ world.gh_agent_drained_count }}, done {{ world.gh_agent_done_count }}, failed {{ world.gh_agent_failed_count }}, active {{ world.gh_agent_active_count }}'
+            GH-agent evidence: "{{ world.gh_agent_fix_evidence_count }} attached; {{ world.gh_agent_missing_evidence_count }} missing; triage {{ world.gh_agent_triage_evidence_count }} attached / {{ world.gh_agent_missing_triage_count }} missing; {{ world.gh_agent_independent_verify_count }} verified; {{ world.gh_agent_missing_verify_count }} missing verification; {{ world.gh_agent_missing_run_url_count }} missing run URLs"
+            GH-agent triage: '{{ world.gh_agent_triage_evidence_summary|default:"(none)" }}'
+            GH-agent runs: '{{ world.gh_agent_run_summary|default:"(none)" }}'
+            Issue state: '{{ world.issue_state_status|default:"(cached/offline)" }}: {{ world.issue_state_count }} refreshed'
+            Derived stats: '{{ world.stats_status|default:"(not derived)" }}: found {{ world.stats_found_count }}, filed {{ world.stats_filed_count }}, fixed {{ world.stats_fixed_count }}, reopened {{ world.stats_reopened_count }}, similar {{ world.stats_similar_pair_count }}'
+            Stats gate: '{{ world.stats_gate_status|default:"(not checked)" }}: {{ world.stats_gate_summary|default:"" }}; current run scanned {{ world.stats_current_run_scanned|default:"unknown" }}'
+            Stats runs: "{{ world.stats_runs_scanned }} scanned; unknown state {{ world.stats_unknown_state_count }}"
+            Stats artifact: '{{ world.stats_output|default:"(not written)" }}'
+            Issue state artifact: '{{ world.issue_state_output|default:"(not refreshed)" }}'
             Last driver event: '{{ world.driver_event_id|default:"(none)" }} / {{ world.driver_status|default:"" }}'
             Review: '{{ world.review_status|default:"(not reviewed)" }}'
             Review checks: "{{ world.review_passed_count }} / {{ world.review_total_count }} passed; {{ world.review_failed_count }} failed; {{ world.review_warning_count }} warnings"
@@ -46,7 +94,20 @@ states:
       - prose: '{{ world.next_driver_capture|default:"No next proof capture is queued; run review or open scenario-outcomes.md." }}'
       - prose: '{{ world.next_driver_attach_command|default:"No next proof attach command is queued." }}'
       - prose: '{{ world.next_driver_blocker_command|default:"No next proof blocker command is queued." }}'
+      - prose: '{{ world.filing_summary|default:"Use autonomous_fix ticket_repo=owner/repo gh_agent_public_base_url=<url> for the full issue-to-fix loop; file_findings is only for preview/debug filing." }}'
+      - prose: '{{ world.filed_issue_summary|default:"" }}'
+      - prose: 'Use file_findings ticket_repo=owner/repo mode=dry-run for preview/debug filing; real filing/fixing goes through autonomous_fix.'
+      - prose: '{{ world.gh_agent_fix_evidence_summary|default:"GH-agent fix evidence assets appear here after autonomous_fix." }}'
+      - prose: '{{ world.gh_agent_triage_evidence_summary|default:"GH-agent triage preflight assets appear here after autonomous_fix." }}'
+      - prose: '{{ world.gh_agent_independent_verify_summary|default:"GH-agent independent verification assets appear here after autonomous_fix." }}'
+      - prose: '{{ world.gh_agent_missing_evidence_summary|default:"" }}'
+      - prose: '{{ world.gh_agent_missing_triage_summary|default:"" }}'
+      - prose: '{{ world.gh_agent_missing_verify_summary|default:"" }}'
+      - prose: '{{ world.issue_state_summary|default:"Use refresh_issue_state=true on stats to refresh GitHub issue state through native kitsoki gitops." }}'
+      - prose: '{{ world.stats_summary|default:"Use stats to derive filed/fixed/reopened/similar issue counts from run bundles and cached issue state." }}'
       - prose: '{{ world.review_backlog_summary|default:"Run review to see actionable review checks." }}'
+      - prose: '⚠ Action failed: {{ world.last_error }}'
+        when: "world.last_error != ''"
       - choice:
           mode: single
           prompt: "Actions"
@@ -54,6 +115,12 @@ states:
             - label: "attach scenario=... evidence_kind=... evidence_path=..."
               hint: "mark one scenario evidence slot captured and regenerate the deck"
               intent: attach
+            - label: "campaign_attach scenario=... evidence_kind=... evidence_path=..."
+              hint: "attach campaign evidence and update the campaign deck summary"
+              intent: campaign_attach
+            - label: "campaign_worker backend=local worker_id=..."
+              hint: "record local, arena, or VM worker readiness and artifact-import receipt"
+              intent: campaign_worker
             - label: "record finding_kind=... title=... summary=..."
               hint: "record a strength, weakness, issue, or fix for the review deck"
               intent: record
@@ -63,6 +130,30 @@ states:
             - label: "driver_event scenario=... summary=..."
               hint: "append a reusable-driver attempt to driver-journal.md"
               intent: driver_event
+            - label: "dispatch_driver"
+              hint: "launch the story-owned record/live product-journey driver, then finalize through native gates"
+              intent: dispatch_driver
+            - label: "autonomous_fix ticket_repo=owner/repo gh_agent_public_base_url=<url>"
+              hint: "file credible issues, drain gh-agent fixes, refresh review artifacts, and validate in one gate"
+              intent: autonomous_fix
+            - label: "campaign_issue_fix"
+              hint: "default finding_sink=local-artifact files local .artifacts/issues/bugs tickets; pass finding_sink=github ticket_repo=owner/repo gh_agent_public_base_url=<url> for an explicit GitHub handoff"
+              intent: campaign_issue_fix
+            - label: "autonomous_marathon ticket_repo=owner/repo gh_agent_public_base_url=<url>"
+              hint: "finalize this run through autonomous fix, review, validation, weakness routing, and stats"
+              intent: autonomous_marathon
+            - label: "autonomous_watchdog"
+              hint: "check marathon heartbeat and fail closed before spend when stale"
+              intent: autonomous_watchdog
+            - label: "file_findings ticket_repo=owner/repo mode=dry-run"
+              hint: "preview issue filing; real filing/fixing goes through autonomous_fix"
+              intent: file_findings
+            - label: "stats"
+              hint: "derive filed/fixed/reopened/similar issue counts from run bundles"
+              intent: stats
+            - label: "campaign_stats"
+              hint: "refresh campaign-level issue and fix statistics"
+              intent: campaign_stats
             - label: "seed_demo"
               hint: "populate representative evidence and findings for deck review"
               intent: seed_demo
@@ -72,6 +163,9 @@ states:
             - label: "review"
               hint: "score whether the bundle is ready for human review"
               intent: review
+            - label: "campaign_deck_refresh"
+              hint: "regenerate the campaign Slidey deck and readiness summary"
+              intent: campaign_deck_refresh
             - label: "validate"
               hint: "check schema and cross-file consistency without rewriting artifacts"
               intent: validate
@@ -83,6 +177,77 @@ states:
             - label: "look"
               intent: look
     on:
+      dispatch_driver:
+        - when: "!(world.autonomous_driver_mode == 'record' || world.autonomous_driver_mode == 'live') || world.autonomous_driver_status != 'ready_for_dispatch'"
+          target: run_created
+          effects:
+            - set:
+                autonomous_driver_summary: "No live or record driver is ready for dispatch."
+                status: "driver_dispatch_not_ready"
+        - target: run_created
+          effects:
+            - set:
+                status: "dispatching_autonomous_driver"
+            - invoke: host.agent.task
+              id: autonomous_product_journey_driver
+              with:
+                agent: autonomous_driver
+                acceptance:
+                  schema: schemas/autonomous_driver_result.json
+                context:
+                  prompt: prompts/autonomous_driver.md
+                  args:
+                    run_dir: "{{ world.run_dir }}"
+                    project: "{{ world.project }}"
+                    persona: "{{ world.persona }}"
+                    scenario_scope: "{{ world.scenario_scope }}"
+                    autonomous_driver_mode: "{{ world.autonomous_driver_mode }}"
+                    live_profile: "{{ world.autonomous_driver_live_profile }}"
+                    live_budget_minutes: "{{ world.live_budget_minutes }}"
+                    ticket_repo: "{{ world.ticket_repo }}"
+                    gh_agent_public_base_url: "{{ world.gh_agent_public_base_url }}"
+                    autonomous_control_path: "{{ world.autonomous_control_path }}"
+                    autonomous_marathon_report_path: "{{ world.autonomous_marathon_report_path }}"
+              bind:
+                autonomous_driver_dispatch_result: submitted
+                autonomous_driver_status: submitted.status
+                autonomous_driver_summary: submitted.summary
+                autonomous_driver_evidence_count: submitted.evidence_count
+                autonomous_driver_issue_count: submitted.issue_count
+                autonomous_driver_dispatch_trace: submitted.trace
+              on_error: driver_dispatch_failed
+            - invoke: host.run
+              id: record_autonomous_product_journey_driver_dispatch
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --record-autonomous-driver-dispatch
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --dispatch-mode
+                  - "{{ world.autonomous_driver_mode }}"
+                  - --dispatch-status
+                  - "{{ world.autonomous_driver_status }}"
+                  - --summary
+                  - "{{ world.autonomous_driver_summary }}"
+                  - --autonomous-driver-evidence-count
+                  - "{{ world.autonomous_driver_evidence_count }}"
+                  - --autonomous-driver-issue-count
+                  - "{{ world.autonomous_driver_issue_count }}"
+                  - --driver-trace
+                  - "{{ world.autonomous_driver_dispatch_trace }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                autonomous_driver_dispatch_path: "stdout_json.autonomous_driver_dispatch_path"
+                autonomous_driver_dispatch_markdown_path: "stdout_json.autonomous_driver_dispatch_markdown_path"
+                autonomous_driver_dispatch_status: "stdout_json.autonomous_driver_dispatch_status"
+                autonomous_driver_dispatch_summary: "stdout_json.autonomous_driver_dispatch_summary"
+                autonomous_driver_dispatch_trace: "stdout_json.autonomous_driver_dispatch_trace"
+              on_error: run_created
+            - emit_intent: autonomous_marathon
       attach:
         - target: run_created
           guard_hint: "create a run before attaching evidence"
@@ -139,6 +304,11 @@ states:
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"
@@ -155,6 +325,145 @@ states:
               on_error: run_created
             - set:
                 status: "evidence_attached"
+      campaign_attach:
+        - target: run_created
+          effects:
+            - set:
+                scenario: "{{ slots.scenario }}"
+                evidence_kind: "{{ slots.evidence_kind }}"
+                evidence_path: "{{ slots.evidence_path }}"
+                evidence_source: "{{ slots.source ?? '' }}"
+                notes: "{{ slots.notes ?? '' }}"
+                campaign_status: "attaching_evidence"
+                campaign_summary: "Attaching campaign evidence through the shared product-journey evidence contract."
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "campaign_attaching"
+            - invoke: host.run
+              id: attach_product_journey_evidence
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --attach-evidence
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --scenario
+                  - "{{ slots.scenario }}"
+                  - --evidence-kind
+                  - "{{ slots.evidence_kind }}"
+                  - --evidence-path
+                  - "{{ slots.evidence_path }}"
+                  - --evidence-source
+                  - "{{ slots.source ?? '' }}"
+                  - --notes
+                  - "{{ slots.notes ?? '' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                persona_starting_surface: "stdout_json.persona_starting_surface"
+                persona_first_question: "stdout_json.persona_first_question"
+                persona_evidence_emphasis: "stdout_json.persona_evidence_emphasis"
+                persona_escalation_trigger: "stdout_json.persona_escalation_trigger"
+                persona_finding_bias: "stdout_json.persona_finding_bias"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+                evidence_source: "stdout_json.evidence_source"
+              on_error: run_created
+            - set:
+                campaign_status: "evidence_attached"
+                campaign_summary: "Campaign evidence attached; deck and handoff artifacts refreshed."
+                status: "campaign_evidence_attached"
+      campaign_worker:
+        - target: run_created
+          effects:
+            - set:
+                campaign_worker_backend: "{{ slots.backend ?? 'local' }}"
+                campaign_worker_id: "{{ slots.worker_id ?? '' }}"
+                campaign_worker_status: "{{ slots.status ?? 'ready' }}"
+                campaign_worker_ready_status: "{{ slots.ready_status ?? '' }}"
+                campaign_worker_summary: "{{ slots.summary ?? '' }}"
+                campaign_status: "worker_receipt"
+                campaign_summary: "Recording the campaign worker readiness receipt and imported artifact references."
+                status: "campaign_worker_recording"
+            - invoke: host.run
+              id: record_campaign_worker_receipt
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --campaign-worker
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --worker-backend
+                  - "{{ slots.backend ?? 'local' }}"
+                  - --worker-id
+                  - "{{ slots.worker_id ?? '' }}"
+                  - --worker-status
+                  - "{{ slots.status ?? 'ready' }}"
+                  - --worker-ready-status
+                  - "{{ slots.ready_status ?? '' }}"
+                  - --worker-ready-summary
+                  - "{{ slots.ready_summary ?? '' }}"
+                  - --worker-budget-minutes
+                  - "{{ slots.budget_minutes ?? world.live_budget_minutes }}"
+                  - --worker-receipt-source
+                  - "{{ slots.receipt_source ?? '' }}"
+                  - --worker-import-artifact
+                  - "{{ slots.import_artifacts ?? '' }}"
+                  - --summary
+                  - "{{ slots.summary ?? '' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                campaign_worker_backend: "stdout_json.campaign_worker_backend"
+                campaign_worker_id: "stdout_json.campaign_worker_id"
+                campaign_worker_status: "stdout_json.campaign_worker_status"
+                campaign_worker_ready_status: "stdout_json.campaign_worker_ready_status"
+                campaign_worker_summary: "stdout_json.campaign_worker_summary"
+                campaign_worker_receipt_path: "stdout_json.campaign_worker_receipt_path"
+                campaign_worker_receipt_markdown_path: "stdout_json.campaign_worker_receipt_markdown_path"
+                campaign_worker_imported_artifact_count: "stdout_json.campaign_worker_imported_artifact_count"
+                campaign_worker_artifact_import_status: "stdout_json.campaign_worker_artifact_import_status"
+                deck_path: "stdout_json.deck_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+              on_error: run_created
+            - set:
+                campaign_status: "worker_receipt_recorded"
+                campaign_summary: "{{ world.campaign_worker_summary }}"
+                status: "campaign_worker_recorded"
       record:
         - target: run_created
           effects:
@@ -213,6 +522,11 @@ states:
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"
@@ -282,6 +596,11 @@ states:
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"
@@ -297,7 +616,864 @@ states:
               on_error: run_created
             - set:
                 status: "blocker_recorded"
+      file_findings:
+        - when: "slots.ticket_repo == nil || slots.ticket_repo == ''"
+          target: run_created
+          guard_hint: "Provide ticket_repo=owner/repo so product-journey issues are filed in the intended repository."
+          effects:
+            - set:
+                ticket_repo: ""
+                filing_dry_run: "{{ slots.mode ?? 'dry-run' }}"
+                filing_status: "findings_filing_invalid"
+                filing_summary: "Product-journey finding filing requires ticket_repo=owner/repo."
+                validation_status: "invalid"
+                validation_errors: 1
+                validation_warnings: 0
+                validation_issue_summary: "ticket-repo-required"
+                gh_agent_fix_evidence_count: 0
+                gh_agent_missing_evidence_count: 0
+                gh_agent_triage_evidence_count: 0
+                gh_agent_missing_triage_count: 0
+                gh_agent_independent_verify_count: 0
+                gh_agent_missing_verify_count: 0
+                gh_agent_missing_run_url_count: 0
+                gh_agent_fix_evidence_summary: ""
+                gh_agent_missing_evidence_summary: "ticket_repo is required"
+                gh_agent_triage_evidence_summary: ""
+                gh_agent_missing_triage_summary: "ticket_repo is required"
+                gh_agent_independent_verify_summary: ""
+                gh_agent_missing_verify_summary: "ticket_repo is required"
+                status: "findings_filing_invalid"
+        - when: "(slots.mode ?? 'dry-run') != 'dry-run' && slots.debug_file != 'true'"
+          target: run_created
+          guard_hint: "Use autonomous_watchdog and autonomous_fix for real issue filing/fixing; file_findings mode=file is debug-only."
+          effects:
+            - set:
+                ticket_repo: "{{ slots.ticket_repo }}"
+                filing_dry_run: "{{ slots.mode ?? 'dry-run' }}"
+                filing_status: "findings_filing_invalid"
+                filing_summary: "Real product-journey filing is routed through autonomous_fix; file_findings mode=file requires debug_file=true for isolated diagnostics."
+                validation_status: "invalid"
+                validation_errors: 1
+                validation_warnings: 0
+                validation_issue_summary: "file-findings-debug-only"
+                gh_agent_enqueue_status: "not_run"
+                gh_agent_enqueued_count: 0
+                gh_agent_skipped_count: 0
+                gh_agent_drain_status: "not_run"
+                gh_agent_drained_count: 0
+                gh_agent_done_count: 0
+                gh_agent_failed_count: 0
+                gh_agent_active_count: 0
+                gh_agent_fix_evidence_count: 0
+                gh_agent_missing_evidence_count: 0
+                gh_agent_triage_evidence_count: 0
+                gh_agent_missing_triage_count: 0
+                gh_agent_independent_verify_count: 0
+                gh_agent_missing_verify_count: 0
+                gh_agent_missing_run_url_count: 0
+                gh_agent_fix_evidence_summary: ""
+                gh_agent_missing_evidence_summary: "file_findings mode=file is debug-only; use autonomous_fix for the full issue-to-fix loop"
+                gh_agent_triage_evidence_summary: ""
+                gh_agent_missing_triage_summary: "file_findings mode=file is debug-only; use autonomous_fix for the full issue-to-fix loop"
+                gh_agent_independent_verify_summary: ""
+                gh_agent_missing_verify_summary: "file_findings mode=file is debug-only; use autonomous_fix for the full issue-to-fix loop"
+                status: "findings_filing_invalid"
+        - target: run_created
+          effects:
+            - set:
+                ticket_repo: "{{ slots.ticket_repo }}"
+                filing_dry_run: "{{ slots.mode ?? 'dry-run' }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                gh_agent_fix_evidence_count: 0
+                gh_agent_missing_evidence_count: 0
+                gh_agent_triage_evidence_count: 0
+                gh_agent_missing_triage_count: 0
+                gh_agent_independent_verify_count: 0
+                gh_agent_missing_verify_count: 0
+                gh_agent_missing_run_url_count: 0
+                gh_agent_fix_evidence_summary: ""
+                gh_agent_missing_evidence_summary: ""
+                gh_agent_triage_evidence_summary: ""
+                gh_agent_missing_triage_summary: ""
+                gh_agent_independent_verify_summary: ""
+                gh_agent_missing_verify_summary: ""
+                status: "filing_findings"
+            - invoke: host.run
+              id: file_product_journey_findings
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --file-findings
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --ticket-repo
+                  - "{{ slots.ticket_repo }}"
+                  - --filing-mode
+                  - "{{ slots.mode ?? 'dry-run' }}"
+                  - --debug-file
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                filing_status: "stdout_json.status"
+                filing_dry_run: "stdout_json.dry_run"
+                findings_filed_count: "stdout_json.findings_filed_count"
+                findings_skipped_count: "stdout_json.findings_skipped_count"
+                findings_failed_count: "stdout_json.findings_failed_count"
+                findings_unfiled_count: "stdout_json.findings_unfiled_count"
+                filed_issue_summary: "stdout_json.filed_issue_summary"
+                filing_summary: "stdout_json.filing_summary"
+                gh_agent_health_status: "stdout_json.gh_agent_health_status"
+                gh_agent_health_summary: "stdout_json.gh_agent_health_summary"
+                gh_agent_readiness_status: "stdout_json.gh_agent_readiness_status"
+                gh_agent_readiness_summary: "stdout_json.gh_agent_readiness_summary"
+                gh_agent_enqueue_status: "stdout_json.gh_agent_enqueue_status"
+                gh_agent_enqueued_count: "stdout_json.gh_agent_enqueued_count"
+                gh_agent_skipped_count: "stdout_json.gh_agent_skipped_count"
+                gh_agent_job_summary: "stdout_json.gh_agent_job_summary"
+                gh_agent_claim_status: "stdout_json.gh_agent_claim_status"
+                gh_agent_claim_count: "stdout_json.gh_agent_claim_count"
+                gh_agent_claim_summary: "stdout_json.gh_agent_claim_summary"
+                gh_agent_drain_status: "stdout_json.gh_agent_drain_status"
+                gh_agent_drained_count: "stdout_json.gh_agent_drained_count"
+                gh_agent_done_count: "stdout_json.gh_agent_done_count"
+                gh_agent_failed_count: "stdout_json.gh_agent_failed_count"
+                gh_agent_active_count: "stdout_json.gh_agent_active_count"
+                gh_agent_run_summary: "stdout_json.gh_agent_run_summary"
+                gh_agent_fix_evidence_count: "stdout_json.gh_agent_fix_evidence_count"
+                gh_agent_missing_evidence_count: "stdout_json.gh_agent_missing_evidence_count"
+                gh_agent_triage_evidence_count: "stdout_json.gh_agent_triage_evidence_count"
+                gh_agent_missing_triage_count: "stdout_json.gh_agent_missing_triage_count"
+                gh_agent_independent_verify_count: "stdout_json.gh_agent_independent_verify_count"
+                gh_agent_missing_verify_count: "stdout_json.gh_agent_missing_verify_count"
+                gh_agent_missing_run_url_count: "stdout_json.gh_agent_missing_run_url_count"
+                gh_agent_fix_evidence_summary: "stdout_json.gh_agent_fix_evidence_summary"
+                gh_agent_missing_evidence_summary: "stdout_json.gh_agent_missing_evidence_summary"
+                gh_agent_triage_evidence_summary: "stdout_json.gh_agent_triage_evidence_summary"
+                gh_agent_missing_triage_summary: "stdout_json.gh_agent_missing_triage_summary"
+                gh_agent_independent_verify_summary: "stdout_json.gh_agent_independent_verify_summary"
+                gh_agent_missing_verify_summary: "stdout_json.gh_agent_missing_verify_summary"
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "findings_filing_complete"
+      autonomous_marathon:
+        - when: "world.issue_count > 0 && (slots.ticket_repo == nil || slots.ticket_repo == '') && (world.ticket_repo == nil || world.ticket_repo == '')"
+          target: run_created
+          effects:
+            - set:
+                autonomous_marathon_status: "autonomous_marathon_invalid"
+                autonomous_marathon_summary: "Autonomous marathon finalization requires ticket_repo while credible issue findings are present."
+                autonomous_fix_status: "not_run"
+                autonomous_gate_summary: "filing=fail, gh_agent=fail, independent_verify=fail, review=not_run, validation=fail"
+                independent_verify_status: "fail"
+                independent_verify_summary: "ticket_repo is required"
+                validation_status: "invalid"
+                validation_errors: 1
+                validation_warnings: 0
+                validation_issue_summary: "ticket-repo-required"
+                filing_summary: "ticket_repo is required for autonomous marathon finalization"
+                gh_agent_missing_evidence_summary: "ticket_repo is required"
+                gh_agent_missing_verify_summary: "ticket_repo is required"
+                status: "autonomous_marathon_invalid"
+        - when: "world.issue_count > 0 && (slots.gh_agent_public_base_url == nil || slots.gh_agent_public_base_url == '') && (world.gh_agent_public_base_url == nil || world.gh_agent_public_base_url == '')"
+          target: run_created
+          effects:
+            - set:
+                autonomous_marathon_status: "autonomous_marathon_invalid"
+                autonomous_marathon_summary: "Autonomous marathon finalization requires gh_agent_public_base_url while credible issue findings are present."
+                autonomous_fix_status: "not_run"
+                autonomous_gate_summary: "filing=not_run, gh_agent=fail, independent_verify=fail, review=not_run, validation=fail"
+                independent_verify_status: "fail"
+                independent_verify_summary: "gh_agent_public_base_url is required"
+                validation_status: "invalid"
+                validation_errors: 1
+                validation_warnings: 0
+                validation_issue_summary: "gh-agent-public-base-url"
+                filing_summary: "gh_agent_public_base_url is required for autonomous marathon finalization"
+                gh_agent_missing_evidence_summary: "gh_agent_public_base_url is required"
+                gh_agent_missing_verify_summary: "gh_agent_public_base_url is required"
+                status: "autonomous_marathon_invalid"
+        - target: run_created
+          effects:
+            - set:
+                ticket_repo: "{{ slots.ticket_repo ?? world.ticket_repo }}"
+                gh_agent_public_base_url: "{{ slots.gh_agent_public_base_url ?? world.gh_agent_public_base_url }}"
+                autonomous_marathon_status: "running"
+                autonomous_marathon_summary: ""
+                autonomous_marathon_report_path: ""
+                autonomous_control_path: ""
+                autonomous_control_markdown_path: ""
+                autonomous_control_status: ""
+                autonomous_control_summary: ""
+                independent_verify_status: ""
+                independent_verify_summary: ""
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "running_autonomous_marathon"
+            - invoke: host.run
+              id: autonomous_product_journey_marathon_finalize
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --autonomous-marathon
+                  - --json-output
+                  - --report-invalid-autonomous-marathon
+                  - --run-dir
+                  - "{{ slots.run_dir ?? world.run_dir }}"
+                  - --autonomous-cadence-hours
+                  - "{{ slots.autonomous_cadence_hours ?? 24 }}"
+                  - --autonomous-heartbeat-minutes
+                  - "{{ slots.autonomous_heartbeat_minutes ?? 15 }}"
+                  - --autonomous-watchdog-minutes
+                  - "{{ slots.autonomous_watchdog_minutes ?? 45 }}"
+                  - --ticket-repo
+                  - "{{ slots.ticket_repo ?? world.ticket_repo }}"
+                  - --gh-agent-db
+                  - "{{ slots.gh_agent_db ?? (world.run_dir + '/gh-agent-jobs.sqlite') }}"
+                  - --gh-agent-story
+                  - "{{ slots.gh_agent_story ?? 'stories/bugfix' }}"
+                  - --gh-agent-public-base-url
+                  - "{{ slots.gh_agent_public_base_url ?? world.gh_agent_public_base_url }}"
+                  - --gh-agent-project-root
+                  - "{{ slots.gh_agent_project_root ?? '' }}"
+                  - --gh-agent-incident-repo
+                  - "{{ slots.gh_agent_incident_repo ?? '' }}"
+                  - --gh-agent-asset-dir
+                  - "{{ slots.gh_agent_asset_dir ?? '' }}"
+                  - --gh-agent-comment-mode
+                  - "{{ slots.gh_agent_comment_mode ?? 'none' }}"
+                  - --issue-state-file
+                  - "{{ slots.issue_state_file ?? '' }}"
+                  - --stats-root
+                  - "{{ slots.stats_root ?? '.artifacts/product-journey' }}"
+                  - --stats-output
+                  - "{{ slots.stats_output ?? (world.run_dir + '/autonomous-marathon-stats.json') }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                autonomous_marathon_status: "stdout_json.autonomous_marathon_status"
+                autonomous_marathon_summary: "stdout_json.autonomous_marathon_summary"
+                autonomous_marathon_report_path: "stdout_json.autonomous_marathon_report_path"
+                autonomous_driver_mode: "stdout_json.autonomous_driver_mode"
+                autonomous_driver_status: "stdout_json.autonomous_driver_status"
+                autonomous_driver_summary: "stdout_json.autonomous_driver_summary"
+                autonomous_driver_evidence_count: "stdout_json.autonomous_driver_evidence_count"
+                autonomous_driver_issue_count: "stdout_json.autonomous_driver_issue_count"
+                autonomous_control_path: "stdout_json.autonomous_control_path"
+                autonomous_control_markdown_path: "stdout_json.autonomous_control_markdown_path"
+                autonomous_control_status: "stdout_json.autonomous_control_status"
+                autonomous_control_summary: "stdout_json.autonomous_control_summary"
+                autonomous_watchdog_status: "stdout_json.autonomous_watchdog_status"
+                autonomous_watchdog_summary: "stdout_json.autonomous_watchdog_summary"
+                autonomous_watchdog_path: "stdout_json.autonomous_watchdog_path"
+                autonomous_watchdog_markdown_path: "stdout_json.autonomous_watchdog_markdown_path"
+                autonomous_watchdog_age_minutes: "stdout_json.autonomous_watchdog_age_minutes"
+                autonomous_fix_status: "stdout_json.autonomous_fix_status"
+                autonomous_fix_report_path: "stdout_json.autonomous_fix_report_path"
+                autonomous_gate_summary: "stdout_json.autonomous_gate_summary"
+                independent_verify_status: "stdout_json.independent_verify_status"
+                independent_verify_summary: "stdout_json.independent_verify_summary"
+                issue_closeout_status: "stdout_json.issue_closeout_status"
+                issue_closeout_count: "stdout_json.issue_closeout_count"
+                issue_closeout_summary: "stdout_json.issue_closeout_summary"
+                filing_status: "stdout_json.filing_status"
+                filing_dry_run: "stdout_json.dry_run"
+                findings_filed_count: "stdout_json.findings_filed_count"
+                findings_skipped_count: "stdout_json.findings_skipped_count"
+                findings_failed_count: "stdout_json.findings_failed_count"
+                findings_unfiled_count: "stdout_json.findings_unfiled_count"
+                filed_issue_summary: "stdout_json.filed_issue_summary"
+                filing_summary: "stdout_json.filing_summary"
+                gh_agent_health_status: "stdout_json.gh_agent_health_status"
+                gh_agent_health_summary: "stdout_json.gh_agent_health_summary"
+                gh_agent_readiness_status: "stdout_json.gh_agent_readiness_status"
+                gh_agent_readiness_summary: "stdout_json.gh_agent_readiness_summary"
+                gh_agent_enqueue_status: "stdout_json.gh_agent_enqueue_status"
+                gh_agent_enqueued_count: "stdout_json.gh_agent_enqueued_count"
+                gh_agent_skipped_count: "stdout_json.gh_agent_skipped_count"
+                gh_agent_job_summary: "stdout_json.gh_agent_job_summary"
+                gh_agent_claim_status: "stdout_json.gh_agent_claim_status"
+                gh_agent_claim_count: "stdout_json.gh_agent_claim_count"
+                gh_agent_claim_summary: "stdout_json.gh_agent_claim_summary"
+                gh_agent_drain_status: "stdout_json.gh_agent_drain_status"
+                gh_agent_drained_count: "stdout_json.gh_agent_drained_count"
+                gh_agent_done_count: "stdout_json.gh_agent_done_count"
+                gh_agent_failed_count: "stdout_json.gh_agent_failed_count"
+                gh_agent_active_count: "stdout_json.gh_agent_active_count"
+                gh_agent_run_summary: "stdout_json.gh_agent_run_summary"
+                gh_agent_fix_evidence_count: "stdout_json.gh_agent_fix_evidence_count"
+                gh_agent_missing_evidence_count: "stdout_json.gh_agent_missing_evidence_count"
+                gh_agent_triage_evidence_count: "stdout_json.gh_agent_triage_evidence_count"
+                gh_agent_missing_triage_count: "stdout_json.gh_agent_missing_triage_count"
+                gh_agent_independent_verify_count: "stdout_json.gh_agent_independent_verify_count"
+                gh_agent_missing_verify_count: "stdout_json.gh_agent_missing_verify_count"
+                gh_agent_missing_run_url_count: "stdout_json.gh_agent_missing_run_url_count"
+                gh_agent_fix_evidence_summary: "stdout_json.gh_agent_fix_evidence_summary"
+                gh_agent_missing_evidence_summary: "stdout_json.gh_agent_missing_evidence_summary"
+                gh_agent_triage_evidence_summary: "stdout_json.gh_agent_triage_evidence_summary"
+                gh_agent_missing_triage_summary: "stdout_json.gh_agent_missing_triage_summary"
+                gh_agent_independent_verify_summary: "stdout_json.gh_agent_independent_verify_summary"
+                gh_agent_missing_verify_summary: "stdout_json.gh_agent_missing_verify_summary"
+                stats_status: "stdout_json.stats_status"
+                stats_root: "stdout_json.stats_root"
+                stats_output: "stdout_json.stats_output"
+                stats_summary: "stdout_json.stats_summary"
+                stats_runs_scanned: "stdout_json.stats_runs_scanned"
+                stats_found_count: "stdout_json.stats_found_count"
+                stats_filed_count: "stdout_json.stats_filed_count"
+                stats_fixed_count: "stdout_json.stats_fixed_count"
+                stats_reopened_count: "stdout_json.stats_reopened_count"
+                stats_unknown_state_count: "stdout_json.stats_unknown_state_count"
+                stats_similar_pair_count: "stdout_json.stats_similar_pair_count"
+                stats_gate_status: "stdout_json.stats_gate_status"
+                stats_gate_summary: "stdout_json.stats_gate_summary"
+                stats_current_run_scanned: "stdout_json.stats_current_run_scanned"
+                review_status: "stdout_json.review_status"
+                review_summary: "stdout_json.review_summary"
+                review_passed_count: "stdout_json.review_passed_count"
+                review_failed_count: "stdout_json.review_failed_count"
+                review_warning_count: "stdout_json.review_warning_count"
+                review_total_count: "stdout_json.review_total_count"
+                review_backlog_summary: "stdout_json.review_backlog_summary"
+                validation_status: "stdout_json.validation_status"
+                validation_errors: "stdout_json.validation_errors"
+                validation_warnings: "stdout_json.validation_warnings"
+                validation_issue_summary: "stdout_json.validation_issue_summary"
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "autonomous_marathon_complete"
+      autonomous_watchdog:
+        - target: run_created
+          effects:
+            - set:
+                autonomous_watchdog_status: "running"
+                autonomous_watchdog_summary: ""
+                autonomous_watchdog_path: ""
+                autonomous_watchdog_markdown_path: ""
+                autonomous_watchdog_age_minutes: 0
+                status: "checking_autonomous_watchdog"
+            - invoke: host.run
+              id: autonomous_product_journey_marathon_watchdog
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --autonomous-marathon-watchdog
+                  - --json-output
+                  - --report-blocked-autonomous-watchdog
+                  - --run-dir
+                  - "{{ slots.run_dir ?? world.run_dir }}"
+                  - --watchdog-now
+                  - "{{ slots.watchdog_now ?? '' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                autonomous_watchdog_status: "stdout_json.autonomous_watchdog_status"
+                autonomous_watchdog_summary: "stdout_json.autonomous_watchdog_summary"
+                autonomous_watchdog_path: "stdout_json.autonomous_watchdog_path"
+                autonomous_watchdog_markdown_path: "stdout_json.autonomous_watchdog_markdown_path"
+                autonomous_watchdog_age_minutes: "stdout_json.autonomous_watchdog_age_minutes"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "autonomous_watchdog_checked"
+      autonomous_fix:
+        - when: "(slots.ticket_repo == nil || slots.ticket_repo == '') && (world.ticket_repo == nil || world.ticket_repo == '')"
+          target: run_created
+          guard_hint: "Provide ticket_repo=owner/repo so autonomous fixes are filed against the intended repository."
+          effects:
+            - set:
+                ticket_repo: ""
+                filing_dry_run: "file"
+                autonomous_fix_status: "autonomous_fix_invalid"
+                autonomous_fix_report_path: ""
+                autonomous_gate_summary: "filing=not_run, gh_agent=fail, independent_verify=fail, review=not_run, validation=fail"
+                independent_verify_status: "fail"
+                independent_verify_summary: "ticket_repo is required"
+                filing_status: "not_run"
+                filing_summary: "Autonomous product-journey fixes require ticket_repo=owner/repo."
+                validation_status: "invalid"
+                validation_errors: 1
+                validation_warnings: 0
+                validation_issue_summary: "ticket-repo-required"
+                gh_agent_fix_evidence_count: 0
+                gh_agent_missing_evidence_count: 0
+                gh_agent_triage_evidence_count: 0
+                gh_agent_missing_triage_count: 0
+                gh_agent_independent_verify_count: 0
+                gh_agent_missing_verify_count: 0
+                gh_agent_missing_run_url_count: 0
+                gh_agent_fix_evidence_summary: ""
+                gh_agent_missing_evidence_summary: "ticket_repo is required"
+                gh_agent_triage_evidence_summary: ""
+                gh_agent_missing_triage_summary: "ticket_repo is required"
+                gh_agent_independent_verify_summary: ""
+                gh_agent_missing_verify_summary: "ticket_repo is required"
+                review_status: "not_run"
+                review_failed_count: 0
+                status: "autonomous_fix_invalid"
+        - when: "(slots.gh_agent_public_base_url == nil || slots.gh_agent_public_base_url == '') && (world.gh_agent_public_base_url == nil || world.gh_agent_public_base_url == '')"
+          target: run_created
+          guard_hint: "Provide gh_agent_public_base_url=<public agent URL> for autonomous fixes."
+          effects:
+            - set:
+                ticket_repo: "{{ slots.ticket_repo ?? world.ticket_repo }}"
+                gh_agent_public_base_url: "{{ slots.gh_agent_public_base_url ?? world.gh_agent_public_base_url }}"
+                filing_dry_run: "file"
+                autonomous_fix_status: "autonomous_fix_invalid"
+                autonomous_fix_report_path: ""
+                autonomous_gate_summary: "filing=not_run, gh_agent=fail, independent_verify=fail, review=not_run, validation=fail"
+                independent_verify_status: "fail"
+                independent_verify_summary: "gh_agent_public_base_url is required"
+                filing_status: "not_run"
+                filing_summary: "Autonomous product-journey fixes require gh_agent_public_base_url so gh-agent run evidence is reviewable."
+                validation_status: "invalid"
+                validation_errors: 1
+                validation_warnings: 0
+                validation_issue_summary: "gh-agent-public-base-url"
+                gh_agent_fix_evidence_count: 0
+                gh_agent_missing_evidence_count: 0
+                gh_agent_triage_evidence_count: 0
+                gh_agent_missing_triage_count: 0
+                gh_agent_independent_verify_count: 0
+                gh_agent_missing_verify_count: 0
+                gh_agent_missing_run_url_count: 1
+                gh_agent_fix_evidence_summary: ""
+                gh_agent_missing_evidence_summary: "gh_agent_public_base_url is required"
+                gh_agent_triage_evidence_summary: ""
+                gh_agent_missing_triage_summary: "gh_agent_public_base_url is required"
+                gh_agent_independent_verify_summary: ""
+                gh_agent_missing_verify_summary: "gh_agent_public_base_url is required"
+                review_status: "not_run"
+                review_failed_count: 0
+                status: "autonomous_fix_invalid"
+        - target: run_created
+          effects:
+            - set:
+                ticket_repo: "{{ slots.ticket_repo ?? world.ticket_repo }}"
+                filing_dry_run: "file"
+                autonomous_fix_status: "running"
+                autonomous_fix_report_path: ""
+                autonomous_gate_summary: ""
+                independent_verify_status: ""
+                independent_verify_summary: ""
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                gh_agent_fix_evidence_count: 0
+                gh_agent_missing_evidence_count: 0
+                gh_agent_triage_evidence_count: 0
+                gh_agent_missing_triage_count: 0
+                gh_agent_independent_verify_count: 0
+                gh_agent_missing_verify_count: 0
+                gh_agent_missing_run_url_count: 0
+                gh_agent_fix_evidence_summary: ""
+                gh_agent_missing_evidence_summary: ""
+                gh_agent_triage_evidence_summary: ""
+                gh_agent_missing_triage_summary: ""
+                gh_agent_independent_verify_summary: ""
+                gh_agent_missing_verify_summary: ""
+                status: "running_autonomous_fix"
+            - invoke: host.run
+              id: autonomous_product_journey_fix
+              with:
+                cmd: go
+                args:
+                  - run
+                  - ./cmd/kitsoki
+                  - gitops
+                  - autonomous-fix
+                  - --json
+                  - --report-invalid-autonomous-fix
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --ticket-repo
+                  - "{{ slots.ticket_repo ?? world.ticket_repo }}"
+                  - --agent-db
+                  - "{{ slots.gh_agent_db ?? (world.run_dir + '/gh-agent-jobs.sqlite') }}"
+                  - --agent-story
+                  - "{{ slots.gh_agent_story ?? 'stories/bugfix' }}"
+                  - --public-base-url
+                  - "{{ slots.gh_agent_public_base_url ?? world.gh_agent_public_base_url }}"
+                  - --project-root
+                  - "{{ slots.gh_agent_project_root ?? '' }}"
+                  - --incident-repo
+                  - "{{ slots.gh_agent_incident_repo ?? '' }}"
+                  - --asset-dir
+                  - "{{ slots.gh_agent_asset_dir ?? '' }}"
+                  - --comment-mode
+                  - "{{ slots.gh_agent_comment_mode ?? 'none' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                autonomous_fix_status: "stdout_json.autonomous_fix_status"
+                autonomous_fix_report_path: "stdout_json.autonomous_fix_report_path"
+                autonomous_gate_summary: "stdout_json.autonomous_gate_summary"
+                autonomous_watchdog_status: "stdout_json.autonomous_watchdog_status"
+                autonomous_watchdog_summary: "stdout_json.autonomous_watchdog_summary"
+                autonomous_watchdog_path: "stdout_json.autonomous_watchdog_path"
+                autonomous_watchdog_markdown_path: "stdout_json.autonomous_watchdog_markdown_path"
+                autonomous_watchdog_age_minutes: "stdout_json.autonomous_watchdog_age_minutes"
+                independent_verify_status: "stdout_json.independent_verify_status"
+                independent_verify_summary: "stdout_json.independent_verify_summary"
+                issue_closeout_status: "stdout_json.issue_closeout_status"
+                issue_closeout_count: "stdout_json.issue_closeout_count"
+                issue_closeout_summary: "stdout_json.issue_closeout_summary"
+                filing_status: "stdout_json.filing_status"
+                filing_dry_run: "stdout_json.dry_run"
+                findings_filed_count: "stdout_json.findings_filed_count"
+                findings_skipped_count: "stdout_json.findings_skipped_count"
+                findings_failed_count: "stdout_json.findings_failed_count"
+                findings_unfiled_count: "stdout_json.findings_unfiled_count"
+                filed_issue_summary: "stdout_json.filed_issue_summary"
+                filing_summary: "stdout_json.filing_summary"
+                gh_agent_health_status: "stdout_json.gh_agent_health_status"
+                gh_agent_health_summary: "stdout_json.gh_agent_health_summary"
+                gh_agent_readiness_status: "stdout_json.gh_agent_readiness_status"
+                gh_agent_readiness_summary: "stdout_json.gh_agent_readiness_summary"
+                gh_agent_enqueue_status: "stdout_json.gh_agent_enqueue_status"
+                gh_agent_enqueued_count: "stdout_json.gh_agent_enqueued_count"
+                gh_agent_skipped_count: "stdout_json.gh_agent_skipped_count"
+                gh_agent_job_summary: "stdout_json.gh_agent_job_summary"
+                gh_agent_claim_status: "stdout_json.gh_agent_claim_status"
+                gh_agent_claim_count: "stdout_json.gh_agent_claim_count"
+                gh_agent_claim_summary: "stdout_json.gh_agent_claim_summary"
+                gh_agent_drain_status: "stdout_json.gh_agent_drain_status"
+                gh_agent_drained_count: "stdout_json.gh_agent_drained_count"
+                gh_agent_done_count: "stdout_json.gh_agent_done_count"
+                gh_agent_failed_count: "stdout_json.gh_agent_failed_count"
+                gh_agent_active_count: "stdout_json.gh_agent_active_count"
+                gh_agent_run_summary: "stdout_json.gh_agent_run_summary"
+                gh_agent_fix_evidence_count: "stdout_json.gh_agent_fix_evidence_count"
+                gh_agent_missing_evidence_count: "stdout_json.gh_agent_missing_evidence_count"
+                gh_agent_triage_evidence_count: "stdout_json.gh_agent_triage_evidence_count"
+                gh_agent_missing_triage_count: "stdout_json.gh_agent_missing_triage_count"
+                gh_agent_independent_verify_count: "stdout_json.gh_agent_independent_verify_count"
+                gh_agent_missing_verify_count: "stdout_json.gh_agent_missing_verify_count"
+                gh_agent_missing_run_url_count: "stdout_json.gh_agent_missing_run_url_count"
+                gh_agent_fix_evidence_summary: "stdout_json.gh_agent_fix_evidence_summary"
+                gh_agent_missing_evidence_summary: "stdout_json.gh_agent_missing_evidence_summary"
+                gh_agent_triage_evidence_summary: "stdout_json.gh_agent_triage_evidence_summary"
+                gh_agent_missing_triage_summary: "stdout_json.gh_agent_missing_triage_summary"
+                gh_agent_independent_verify_summary: "stdout_json.gh_agent_independent_verify_summary"
+                gh_agent_missing_verify_summary: "stdout_json.gh_agent_missing_verify_summary"
+                review_status: "stdout_json.review_status"
+                review_summary: "stdout_json.review_summary"
+                review_passed_count: "stdout_json.review_passed_count"
+                review_failed_count: "stdout_json.review_failed_count"
+                review_warning_count: "stdout_json.review_warning_count"
+                review_total_count: "stdout_json.review_total_count"
+                review_backlog_summary: "stdout_json.review_backlog_summary"
+                validation_status: "stdout_json.validation_status"
+                validation_errors: "stdout_json.validation_errors"
+                validation_warnings: "stdout_json.validation_warnings"
+                validation_issue_summary: "stdout_json.validation_issue_summary"
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "autonomous_fix_complete"
+      campaign_issue_fix:
+        - when: "(slots.finding_sink ?? world.campaign_finding_sink) == 'github'"
+          target: run_created
+          effects:
+            - set:
+                ticket_repo: "{{ slots.ticket_repo ?? world.ticket_repo }}"
+                gh_agent_public_base_url: "{{ slots.gh_agent_public_base_url ?? world.gh_agent_public_base_url }}"
+                campaign_finding_sink: "github"
+                filing_sink: "github"
+                campaign_status: "issue_fixing"
+                campaign_summary: "Filing sink=github (explicit opt-in): running campaign issue filing, gh-agent repair, independent verification, review, and validation through the existing autonomous gate."
+                status: "campaign_issue_fixing"
+            - emit_intent: autonomous_fix
+        - target: run_created
+          effects:
+            - set:
+                campaign_finding_sink: "local-artifact"
+                filing_sink: "local-artifact"
+                campaign_status: "filing_local"
+                campaign_summary: "Filing sink=local-artifact (default): filing credible findings as local .artifacts/issues/bugs tickets. No GitHub filing or gh-agent repair is touched. Pass finding_sink=github ticket_repo=owner/repo gh_agent_public_base_url=<url> for an explicit GitHub handoff instead."
+                status: "campaign_filing_local"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+            - invoke: host.run
+              id: file_local_product_journey_findings
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --file-local-findings
+                  - --json-output
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                filing_status: "stdout_json.status"
+                filing_dry_run: "stdout_json.dry_run"
+                findings_filed_count: "stdout_json.findings_filed_count"
+                findings_skipped_count: "stdout_json.findings_skipped_count"
+                findings_failed_count: "stdout_json.findings_failed_count"
+                findings_unfiled_count: "stdout_json.findings_unfiled_count"
+                filed_issue_summary: "stdout_json.filed_issue_summary"
+                filing_summary: "stdout_json.filing_summary"
+                gh_agent_enqueue_status: "stdout_json.gh_agent_enqueue_status"
+                gh_agent_enqueued_count: "stdout_json.gh_agent_enqueued_count"
+                gh_agent_skipped_count: "stdout_json.gh_agent_skipped_count"
+                gh_agent_job_summary: "stdout_json.gh_agent_job_summary"
+                gh_agent_claim_status: "stdout_json.gh_agent_claim_status"
+                gh_agent_claim_count: "stdout_json.gh_agent_claim_count"
+                gh_agent_claim_summary: "stdout_json.gh_agent_claim_summary"
+                gh_agent_drain_status: "stdout_json.gh_agent_drain_status"
+                gh_agent_drained_count: "stdout_json.gh_agent_drained_count"
+                gh_agent_done_count: "stdout_json.gh_agent_done_count"
+                gh_agent_failed_count: "stdout_json.gh_agent_failed_count"
+                gh_agent_active_count: "stdout_json.gh_agent_active_count"
+                gh_agent_run_summary: "stdout_json.gh_agent_run_summary"
+                gh_agent_fix_evidence_count: "stdout_json.gh_agent_fix_evidence_count"
+                gh_agent_missing_evidence_count: "stdout_json.gh_agent_missing_evidence_count"
+                gh_agent_triage_evidence_count: "stdout_json.gh_agent_triage_evidence_count"
+                gh_agent_missing_triage_count: "stdout_json.gh_agent_missing_triage_count"
+                gh_agent_independent_verify_count: "stdout_json.gh_agent_independent_verify_count"
+                gh_agent_missing_verify_count: "stdout_json.gh_agent_missing_verify_count"
+                gh_agent_missing_run_url_count: "stdout_json.gh_agent_missing_run_url_count"
+                gh_agent_fix_evidence_summary: "stdout_json.gh_agent_fix_evidence_summary"
+                gh_agent_missing_evidence_summary: "stdout_json.gh_agent_missing_evidence_summary"
+                gh_agent_triage_evidence_summary: "stdout_json.gh_agent_triage_evidence_summary"
+                gh_agent_missing_triage_summary: "stdout_json.gh_agent_missing_triage_summary"
+                gh_agent_independent_verify_summary: "stdout_json.gh_agent_independent_verify_summary"
+                gh_agent_missing_verify_summary: "stdout_json.gh_agent_missing_verify_summary"
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+                proof_evidence_count: "stdout_json.proof_evidence_count"
+                demo_evidence_count: "stdout_json.demo_evidence_count"
+                finding_total_count: "stdout_json.finding_total_count"
+                strength_count: "stdout_json.strength_count"
+                weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
+                issue_count: "stdout_json.issue_count"
+                fix_count: "stdout_json.fix_count"
+                blocked_count: "stdout_json.blocked_count"
+                missing_evidence_count: "stdout_json.missing_evidence_count"
+                missing_proof_evidence_count: "stdout_json.missing_proof_evidence_count"
+                proof_minimum_evidence_count: "stdout_json.proof_minimum_evidence_count"
+                minimum_evidence_count: "stdout_json.minimum_evidence_count"
+                missing_proof_summary: "stdout_json.missing_proof_summary"
+                driver_contract_summary: "stdout_json.driver_contract_summary"
+                next_driver_capture: "stdout_json.next_driver_capture"
+                next_driver_attach_command: "stdout_json.next_driver_attach_command"
+                next_driver_blocker_command: "stdout_json.next_driver_blocker_command"
+              on_error: run_created
+            - set:
+                status: "campaign_filing_local_complete"
+                campaign_status: "filing_local_complete"
+      stats:
+        - target: run_created
+          effects:
+            - set:
+                stats_root: "{{ slots.stats_root ?? (world.stats_root ?? '.artifacts/product-journey') }}"
+                stats_output: "{{ slots.stats_output ?? world.stats_output }}"
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "deriving_stats"
+            - invoke: host.run
+              id: derive_product_journey_stats
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --stats
+                  - --json-output
+                  - --stats-root
+                  - "{{ slots.stats_root ?? (world.stats_root ?? '.artifacts/product-journey') }}"
+                  - --issue-state-file
+                  - "{{ slots.issue_state_file ?? '' }}"
+                  - --refresh-issue-state
+                  - "{{ slots.refresh_issue_state ?? '' }}"
+                  - --ticket-repo
+                  - "{{ slots.ticket_repo ?? world.ticket_repo }}"
+                  - --stats-output
+                  - "{{ slots.stats_output ?? world.stats_output }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                stats_status: "stdout_json.status"
+                stats_root: "stdout_json.stats_root"
+                stats_output: "stdout_json.stats_output"
+                stats_summary: "stdout_json.stats_summary"
+                issue_state_status: "stdout_json.issue_state_status"
+                issue_state_output: "stdout_json.issue_state_output"
+                issue_state_count: "stdout_json.issue_state_count"
+                issue_state_summary: "stdout_json.issue_state_summary"
+                stats_runs_scanned: "stdout_json.runs_scanned"
+                stats_found_count: "stdout_json.findings_found_count"
+                stats_filed_count: "stdout_json.findings_filed_count"
+                stats_fixed_count: "stdout_json.issues_fixed_count"
+                stats_reopened_count: "stdout_json.issues_reopened_count"
+                stats_unknown_state_count: "stdout_json.issues_unknown_state_count"
+                stats_similar_pair_count: "stdout_json.similar_pair_count"
+              on_error: run_created
+            - set:
+                status: "stats_derived"
+      campaign_stats:
+        - target: run_created
+          effects:
+            - set:
+                stats_root: "{{ slots.stats_root ?? (world.stats_root ?? '.artifacts/product-journey') }}"
+                stats_output: "{{ slots.stats_output ?? world.stats_output }}"
+                ticket_repo: "{{ slots.ticket_repo ?? world.ticket_repo }}"
+                campaign_status: "refreshing_stats"
+                campaign_summary: "Refreshing campaign issue and fix statistics from retained product-journey artifacts."
+                status: "campaign_stats_refreshing"
+            - emit_intent: stats
       driver_event:
+        - when: "(slots.dispatch_mode ?? 'replay') == 'live' && world.live_budget_minutes == 0 && (slots.driver_status ?? 'attempted') != 'blocked'"
+          target: run_created
+          effects:
+            - set:
+                scenario: "{{ slots.scenario }}"
+                dispatch_mode: "{{ slots.dispatch_mode ?? 'replay' }}"
+                driver_status: "{{ slots.driver_status ?? 'attempted' }}"
+                driver_summary: "{{ slots.summary }}"
+                validation_status: "invalid"
+                validation_errors: 1
+                validation_warnings: 0
+                validation_issue_summary: "live-dispatch-disabled"
+                status: "driver_event_invalid"
+                review_backlog_summary: "Live driver dispatch is disabled for this run; record a blocked driver event or create the run with a positive live_budget_minutes value."
         - target: run_created
           effects:
             - set:
@@ -357,6 +1533,11 @@ states:
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"
@@ -412,6 +1593,11 @@ states:
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"
@@ -474,6 +1660,11 @@ states:
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"
@@ -489,6 +1680,14 @@ states:
               on_error: run_created
             - set:
                 status: "reviewed"
+      campaign_deck_refresh:
+        - target: run_created
+          effects:
+            - set:
+                campaign_status: "refreshing_deck"
+                campaign_summary: "Refreshing the campaign Slidey deck and readiness summary from retained evidence."
+                status: "campaign_deck_refreshing"
+            - emit_intent: review
       handoff:
         - target: run_created
           effects:
@@ -529,6 +1728,11 @@ states:
                 finding_total_count: "stdout_json.finding_total_count"
                 strength_count: "stdout_json.strength_count"
                 weakness_count: "stdout_json.weakness_count"
+                weakness_route_count: "stdout_json.weakness_route_count"
+                weakness_route_summary: "stdout_json.weakness_route_summary"
+                prd_design_intake_path: "stdout_json.prd_design_intake_path"
+                prd_design_intake_count: "stdout_json.prd_design_intake_count"
+                prd_design_intake_summary: "stdout_json.prd_design_intake_summary"
                 issue_count: "stdout_json.issue_count"
                 fix_count: "stdout_json.fix_count"
                 blocked_count: "stdout_json.blocked_count"

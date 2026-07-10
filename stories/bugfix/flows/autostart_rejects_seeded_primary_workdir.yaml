@@ -1,0 +1,51 @@
+# autostart_rejects_seeded_primary_workdir — #118 safety guard.
+#
+# A headless/autonomous caller may seed ticket metadata, but must not be able to
+# steer mutating maker rooms onto the primary checkout by seeding workdir="." (or
+# any other externally chosen workspace identity). Non-triage autostart owns the
+# maker workspace and re-derives .worktrees/bf-* before dispatching the first
+# agent. This flow starts with the unsafe shape from #118 and proves the story
+# clears it before emitting `start`.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reproducing
+initial_world:
+  ticket_id:       "TKT-PRIMARY-BYPASS"
+  ticket_title:    "Seeded workdir points at the primary checkout"
+  session_id:      "session-1"
+  bugfix_mode:     "full"
+  judge_mode:      "human"
+  workspace_id:    "operator-seeded"
+  feature_branch:  "fix/operator-seeded"
+  workdir:         "."
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:       { data: { ok: true, id: "ib-1" } }
+  host.git_worktree:    { data: { ok: true, log: "created", path: ".worktrees/bf-TKT-PRIMARY-BYPASS-session-1" } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:        "Reproduced"
+        summary_markdown:     "Repro artifact body."
+        bug_verified:         true
+        involved_components:  []
+
+turns:
+  - intent: { name: restart_from, slots: { stage: reproducing } }
+    expect_state: reproducing
+    expect_world:
+      ticket_id: "TKT-PRIMARY-BYPASS"
+      bf_autostart_attempted: true
+      workspace_id: "bf-TKT-PRIMARY-BYPASS-session-1"
+      feature_branch: "fix/TKT-PRIMARY-BYPASS-session-1"
+      workdir: ".worktrees/bf-TKT-PRIMARY-BYPASS-session-1"
+    expect_host_calls:
+      - handler: host.agent.task
+        args:
+          working_dir: ".worktrees/bf-TKT-PRIMARY-BYPASS-session-1"
+
+expect_terminal: false
+expect_no_errors: true

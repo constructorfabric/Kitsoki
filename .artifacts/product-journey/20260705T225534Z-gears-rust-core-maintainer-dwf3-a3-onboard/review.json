@@ -1,0 +1,194 @@
+{
+  "checks": [
+    {
+      "detail": "",
+      "id": "required-files",
+      "status": "pass",
+      "summary": "All required bundle files exist."
+    },
+    {
+      "detail": "scenarios=1, evidence_slots=6",
+      "id": "scenario-contract",
+      "status": "pass",
+      "summary": "Scenario and evidence contracts are present."
+    },
+    {
+      "detail": "",
+      "id": "scenario-attempts",
+      "status": "pass",
+      "summary": "Every scenario has captured evidence or an explicit blocker."
+    },
+    {
+      "detail": "project-onboarding",
+      "id": "driver-journal-coverage",
+      "status": "fail",
+      "summary": "Every non-blocked scenario has a driver journal event."
+    },
+    {
+      "detail": "",
+      "id": "driver-evidence-linked",
+      "status": "pass",
+      "summary": "Captured driver journal evidence refs are attached as structured evidence."
+    },
+    {
+      "detail": "",
+      "id": "driver-live-budget",
+      "status": "pass",
+      "summary": "Live driver dispatch is used only when the run has live budget, otherwise it is recorded as blocked."
+    },
+    {
+      "detail": "",
+      "id": "driver-action-contract",
+      "status": "pass",
+      "summary": "Every scenario keeps the reusable driver action sequence and journal recording path."
+    },
+    {
+      "detail": "present=2, required=6",
+      "id": "captured-evidence",
+      "status": "pass",
+      "summary": "At least one captured or validated evidence artifact is attached."
+    },
+    {
+      "detail": "proof=1, demo=0",
+      "id": "non-demo-evidence",
+      "status": "pass",
+      "summary": "At least one captured evidence artifact is real, retained, external, or cassette-backed rather than seeded demo evidence."
+    },
+    {
+      "detail": "video_items=0",
+      "id": "key-video",
+      "status": "warn",
+      "summary": "At least one key interaction video is attached for Slidey playback."
+    },
+    {
+      "detail": "playback_items=0",
+      "id": "media-manifest",
+      "status": "warn",
+      "summary": "Captured visual media is listed in the playback manifest."
+    },
+    {
+      "detail": "",
+      "id": "playback-artifacts-resolve",
+      "status": "pass",
+      "summary": "Playback media references resolve locally or use retained/external IDs."
+    },
+    {
+      "detail": "playback_items=0, blocked_scenarios=0",
+      "id": "playback-or-blocker",
+      "status": "fail",
+      "summary": "The review deck has playback media or an explicit blocked-scenario reason for missing playback."
+    },
+    {
+      "detail": "",
+      "id": "playback-evidence-backed",
+      "status": "pass",
+      "summary": "Each scenario's playback-capable evidence slot (rrweb|trace-replay|flow-fixture|png-sequence) is backed by a real local file, not a cassette:// or other unbacked reference."
+    },
+    {
+      "detail": "findings=0",
+      "id": "findings-summary",
+      "status": "fail",
+      "summary": "Strengths, weaknesses, issues, or fixes are recorded."
+    },
+    {
+      "detail": "none",
+      "id": "balanced-findings",
+      "status": "warn",
+      "summary": "Findings include positive evidence and at least one gap or fix."
+    },
+    {
+      "detail": "observed=0, seeded=0, proof=1",
+      "id": "observed-findings",
+      "status": "fail",
+      "summary": "Runs with real proof evidence record at least one observed (non-seeded) finding."
+    },
+    {
+      "detail": "outcomes=1, with_findings=0",
+      "id": "scenario-outcomes",
+      "status": "pass",
+      "summary": "Each scenario has an outcome row for review and matrix rollups."
+    },
+    {
+      "detail": "project-onboarding (1/5)",
+      "id": "quality-gates",
+      "status": "fail",
+      "summary": "Every scenario satisfies its minimum proof gate or records an explicit blocker."
+    },
+    {
+      "detail": "rejected=0",
+      "id": "no-rejected-evidence",
+      "status": "pass",
+      "summary": "No attached evidence is marked rejected."
+    },
+    {
+      "detail": "routed=0/0 target=stories/prd",
+      "id": "weakness-routing",
+      "status": "pass",
+      "summary": "Open observed weakness findings are routed into the PRD/design pipeline rather than the bugfix queue."
+    },
+    {
+      "detail": "credible=0",
+      "id": "findings-filed",
+      "status": "pass",
+      "summary": "Every credible issue finding has a filed issue URL before review."
+    },
+    {
+      "detail": "gh-agent fixing not requested",
+      "id": "gh-agent-fixes",
+      "status": "pass",
+      "summary": "When gh-agent fixing was requested, queued fix jobs drain to reviewable terminal runs."
+    },
+    {
+      "detail": "gh-agent fixing not requested",
+      "id": "gh-agent-fix-evidence",
+      "status": "pass",
+      "summary": "Completed gh-agent fix jobs expose reviewable evidence assets."
+    },
+    {
+      "detail": "gh-agent fixing not requested",
+      "id": "gh-agent-triage-evidence",
+      "status": "pass",
+      "summary": "Completed gh-agent fix jobs expose the triage preflight verdict artifact."
+    },
+    {
+      "detail": "gh-agent fixing not requested",
+      "id": "gh-agent-independent-verify",
+      "status": "pass",
+      "summary": "Completed gh-agent fix jobs expose story-owned independent verification artifacts."
+    },
+    {
+      "detail": "gh-agent fixing not requested",
+      "id": "gh-agent-run-url",
+      "status": "pass",
+      "summary": "Completed gh-agent fix jobs expose public run URLs for human review."
+    },
+    {
+      "detail": "issue close-out not required",
+      "id": "issue-closeout",
+      "status": "pass",
+      "summary": "After autonomous fixes pass, filed GitHub issues receive kitsoki-fixed-in close-out comments and are closed."
+    },
+    {
+      "detail": "gh-agent fixing not requested",
+      "id": "autonomous-fix-report",
+      "status": "pass",
+      "summary": "Autonomous fixes produce a complete human-review report with filed issue, run, and evidence links."
+    },
+    {
+      "detail": "deck.slidey.json",
+      "id": "deck-generated",
+      "status": "pass",
+      "summary": "Slidey deck exists for review."
+    }
+  ],
+  "reviewed_at": "2026-07-05T22:56:01+00:00",
+  "run_id": "20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard",
+  "status": "needs_evidence",
+  "summary": "needs_evidence: 22/30 checks passed, 3 warnings, 5 failures",
+  "summary_counts": {
+    "failed": 5,
+    "passed": 22,
+    "total": 30,
+    "warned": 3
+  }
+}

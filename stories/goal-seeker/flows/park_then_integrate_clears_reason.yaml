@@ -1,0 +1,32 @@
+# park_then_integrate_clears_reason — a parked row can later be integrated.
+#
+# The ledger fold must not preserve the stale park_reason after a later
+# integrator entry moves the same change to integrated; otherwise the recovery
+# ledger reads as both "done" and "parked".
+
+test_kind: flow
+app: ../app.yaml
+initial_world:
+  goal_slug: park-integrated-test
+  goal_dir:  stories/goal-seeker/testdata/park-integrated
+  work_dir:  .artifacts/goal/flow-park-integrated
+  reset_log: true
+initial_state: start
+host_handlers:
+  host.run: { by_call: {} }
+  host.agent.decide: { by_call: { evaluate: { data: { ok: true, submitted: { verdict: done, summary: x, next_instruction: null } } } } }
+
+turns:
+  - intent: { name: advance, slots: {} }        # start → bootstrap
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok → evaluate (gs_ledger folds)
+    expect_state: evaluate
+    expect_world: { remaining: 0 }
+
+expect_files:
+  - path: ../../../.artifacts/goal/flow-park-integrated/ledger.json
+    content_matches: '"change_id":"C1".*?"park_reason":null.*?"state":"integrated"'
+
+expect_no_errors: true

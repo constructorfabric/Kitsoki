@@ -59,7 +59,7 @@ host_handlers:
             mcp_written: true
 
 turns:
-  - intent: { name: work, slots: { request: "onboard ~/code/acme-rust" } }
+  - intent: { name: landing_capture, slots: { request: "onboard ~/code/acme-rust" } }
     expect_state: init_discover
     expect_world:
       init_request: "onboard ~/code/acme-rust"

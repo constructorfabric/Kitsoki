@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/storyauthoring"
 )
 
 // RoomSummary is one entry in the BFS-ordered room list.
@@ -79,7 +80,7 @@ func topLevelRooms(a app.App) []string {
 	var order []string
 	add := func(id string) {
 		id = roomOf(id)
-		if id == "" || seen[id] {
+		if id == "" || seen[id] || storyauthoring.IsFrameworkRoom(id) {
 			return
 		}
 		if _, ok := a.LookupState(app.StatePath(id)); !ok {
@@ -179,23 +180,35 @@ func stateTargets(st *app.State) []string {
 		return nil
 	}
 	var out []string
-	var walk func(s *app.State)
-	walk = func(s *app.State) {
+	var walk func(path string, s *app.State)
+	walk = func(path string, s *app.State) {
 		if s == nil {
 			return
 		}
-		for _, transitions := range s.On {
+		for intent, transitions := range s.On {
+			if storyauthoring.IsFrameworkTransition(path, intent) {
+				continue
+			}
 			for _, tr := range transitions {
 				if tr.Target != "" {
 					out = append(out, tr.Target)
 				}
 			}
 		}
-		for _, child := range s.States {
-			walk(child)
+		childIDs := make([]string, 0, len(s.States))
+		for id := range s.States {
+			childIDs = append(childIDs, id)
+		}
+		sort.Strings(childIDs)
+		for _, id := range childIDs {
+			childPath := id
+			if path != "" {
+				childPath = path + "." + id
+			}
+			walk(childPath, s.States[id])
 		}
 	}
-	walk(st)
+	walk("", st)
 	return out
 }
 

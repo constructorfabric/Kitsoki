@@ -73,6 +73,657 @@ func TestSimpleLinearTransition(t *testing.T) {
 	require.True(t, found, "TransitionApplied event must be present")
 }
 
+func TestOperationRunEvents(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "operation-run-test"},
+		Root: "start",
+		Operations: map[string]*app.OperationPolicy{
+			"demo_run": {
+				Title:            "Demo run",
+				Mode:             "autonomous",
+				ExecutionMode:    "one-shot",
+				RunInBackground:  true,
+				StopOn:           []string{"needs-human", "host-error"},
+				TerminalArtifact: "done_artifact",
+			},
+		},
+		Intents: map[string]app.Intent{
+			"go": {},
+		},
+		States: map[string]*app.State{
+			"start": {
+				On: map[string][]app.Transition{
+					"go": {{
+						Target:    "done",
+						Operation: "demo_run",
+						Effects: []app.Effect{{
+							Set: map[string]any{"done_artifact": "done#abc123"},
+						}},
+					}},
+				},
+			},
+			"done": {Terminal: true},
+		},
+	}
+	m := mustNew(t, def)
+
+	res, err := m.Turn(context.Background(), "start", world.New(), intent.IntentCall{Intent: "go"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("done"), res.NewState)
+
+	var started, completed map[string]any
+	for _, ev := range res.Events {
+		switch ev.Kind {
+		case store.OperationRunStarted:
+			require.NoError(t, json.Unmarshal(ev.Payload, &started))
+		case store.OperationRunCompleted:
+			require.NoError(t, json.Unmarshal(ev.Payload, &completed))
+		}
+	}
+	require.Equal(t, map[string]any{
+		"entry_intent":      "go",
+		"execution_mode":    "one-shot",
+		"from":              "start",
+		"mode":              "autonomous",
+		"operation_id":      "demo_run",
+		"policy_id":         "demo_run",
+		"run_in_background": true,
+		"status":            "running",
+		"stop_on":           []any{"needs-human", "host-error"},
+		"title":             "Demo run",
+		"to":                "done",
+	}, started)
+	require.Equal(t, "completed", completed["status"])
+	require.Equal(t, "demo_run", completed["policy_id"])
+	require.Equal(t, "done", completed["terminal_state"])
+	require.Equal(t, "done_artifact", completed["terminal_artifact"])
+	require.Equal(t, "done#abc123", completed["terminal_artifact_handle"])
+
+	handle, ok := res.World.Vars[app.OperationRunWorldKey].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "completed", handle["status"])
+	require.Equal(t, "demo_run", handle["policy_id"])
+	require.Equal(t, "done", handle["terminal_state"])
+	require.Equal(t, "done_artifact", handle["terminal_artifact"])
+	require.Equal(t, "done#abc123", handle["terminal_artifact_handle"])
+}
+
+func TestOperationRunWaitsOnStopConditionTerminal(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "operation-run-waiting"},
+		Root: "start",
+		Operations: map[string]*app.OperationPolicy{
+			"demo_run": {
+				Title:           "Demo run",
+				Mode:            "autonomous",
+				ExecutionMode:   "one-shot",
+				RunInBackground: true,
+				StopOn:          []string{"needs-human", "host-error"},
+			},
+		},
+		Intents: map[string]app.Intent{
+			"go": {},
+		},
+		States: map[string]*app.State{
+			"start": {
+				On: map[string][]app.Transition{
+					"go": {{
+						Target:    "needs-human",
+						Operation: "demo_run",
+						Effects: []app.Effect{{
+							Set: map[string]any{
+								"status":             "needs-human",
+								"needs_human_reason": "Regression gate was never RED.",
+							},
+						}},
+					}},
+				},
+			},
+			"needs-human": {Terminal: true},
+		},
+	}
+	m := mustNew(t, def)
+
+	res, err := m.Turn(context.Background(), "start", world.New(), intent.IntentCall{Intent: "go"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("needs-human"), res.NewState)
+	requireEventKind(t, res.Events, store.OperationRunWaiting)
+	requireNoEventKind(t, res.Events, store.OperationRunCompleted)
+
+	var waiting map[string]any
+	for _, ev := range res.Events {
+		if ev.Kind == store.OperationRunWaiting {
+			require.NoError(t, json.Unmarshal(ev.Payload, &waiting))
+			break
+		}
+	}
+	require.Equal(t, "waiting", waiting["status"])
+	require.Equal(t, "needs-human", waiting["stop_reason"])
+	require.Equal(t, "Regression gate was never RED.", waiting["stop_detail"])
+	require.Equal(t, "needs-human", waiting["terminal_state"])
+
+	handle, ok := res.World.Vars[app.OperationRunWorldKey].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "waiting", handle["status"])
+	require.Equal(t, "needs-human", handle["stop_reason"])
+	require.Equal(t, "Regression gate was never RED.", handle["stop_detail"])
+
+	history := append([]store.Event{}, res.Events...)
+	replayed, err := store.BuildJourney(def, "start", world.New(), history)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("needs-human"), replayed.State)
+	requireOperationRunStatus(t, replayed.World, "waiting")
+}
+
+func TestOperationRunCompletesOnLaterTerminalTurn(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "operation-run-later-terminal"},
+		Root: "start",
+		Operations: map[string]*app.OperationPolicy{
+			"demo_run": {
+				Title:            "Demo run",
+				Mode:             "autonomous",
+				ExecutionMode:    "one-shot",
+				RunInBackground:  true,
+				TerminalArtifact: "done_artifact",
+			},
+		},
+		Intents: map[string]app.Intent{
+			"go":   {},
+			"done": {},
+		},
+		States: map[string]*app.State{
+			"start": {
+				On: map[string][]app.Transition{
+					"go": {{
+						Target:    "working",
+						Operation: "demo_run",
+					}},
+				},
+			},
+			"working": {
+				On: map[string][]app.Transition{
+					"done": {{Target: "done"}},
+				},
+			},
+			"done": {Terminal: true},
+		},
+	}
+	m := mustNew(t, def)
+
+	started, err := m.Turn(context.Background(), "start", world.New(), intent.IntentCall{Intent: "go"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("working"), started.NewState)
+	requireOperationRunStatus(t, started.World, "running")
+	requireEventKind(t, started.Events, store.OperationRunStarted)
+	requireNoEventKind(t, started.Events, store.OperationRunCompleted)
+
+	completed, err := m.Turn(context.Background(), "working", started.World, intent.IntentCall{Intent: "done"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("done"), completed.NewState)
+	requireOperationRunStatus(t, completed.World, "completed")
+	requireEventKind(t, completed.Events, store.OperationRunCompleted)
+	requireNoEventKind(t, completed.Events, store.OperationRunStarted)
+
+	history := append([]store.Event{}, started.Events...)
+	history = append(history, completed.Events...)
+	replayed, err := store.BuildJourney(def, "start", world.New(), history)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("done"), replayed.State)
+	requireOperationRunStatus(t, replayed.World, "completed")
+}
+
+func TestOperationRunCompletesOnImportedExitToNonTerminalParent(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "operation-run-import-exit"},
+		Root: "start",
+		Operations: map[string]*app.OperationPolicy{
+			"child__demo_run": {
+				Title:            "Demo run",
+				Mode:             "autonomous",
+				ExecutionMode:    "one-shot",
+				RunInBackground:  true,
+				TerminalArtifact: "child__done_artifact",
+			},
+		},
+		Intents: map[string]app.Intent{
+			"go":     {},
+			"finish": {},
+		},
+		States: map[string]*app.State{
+			"start": {
+				On: map[string][]app.Transition{
+					"go": {{
+						Target:    "child/working",
+						Operation: "child__demo_run",
+					}},
+				},
+			},
+			"child": {
+				Type:    "compound",
+				Initial: "working",
+				States: map[string]*app.State{
+					"working": {
+						On: map[string][]app.Transition{
+							"finish": {{
+								Target:                    "parent",
+								OperationExit:             "done",
+								OperationExitPolicyPrefix: "child__",
+								Effects: []app.Effect{{
+									Set: map[string]any{
+										"child__done_artifact": map[string]any{"summary_title": "done"},
+									},
+								}},
+							}},
+						},
+					},
+				},
+			},
+			"parent": {},
+		},
+	}
+	m := mustNew(t, def)
+
+	started, err := m.Turn(context.Background(), "start", world.New(), intent.IntentCall{Intent: "go"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("child.working"), started.NewState)
+	requireOperationRunStatus(t, started.World, "running")
+
+	completed, err := m.Turn(context.Background(), "child.working", started.World, intent.IntentCall{Intent: "finish"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("parent"), completed.NewState)
+	requireOperationRunStatus(t, completed.World, "completed")
+	requireEventKind(t, completed.Events, store.OperationRunCompleted)
+	requireNoEventKind(t, completed.Events, store.OperationRunStarted)
+	payloads := eventPayloads(t, completed.Events, store.OperationRunCompleted)
+	require.Len(t, payloads, 1)
+	require.Equal(t, "__exit__done", payloads[0]["terminal_state"])
+	require.Equal(t, "child__done_artifact", payloads[0]["terminal_artifact"])
+}
+
+func TestOperationRunPhaseProgressFromSummaryKeys(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "operation-run-phase-progress"},
+		Root: "start",
+		Operations: map[string]*app.OperationPolicy{
+			"demo_run": {
+				Title:           "Demo run",
+				Mode:            "autonomous",
+				ExecutionMode:   "one-shot",
+				RunInBackground: true,
+				PhaseSummary: app.OperationPhaseSummary{
+					From: []string{"draft_artifact", "review_artifact"},
+				},
+			},
+		},
+		Intents: map[string]app.Intent{
+			"go":   {},
+			"next": {},
+			"done": {},
+		},
+		States: map[string]*app.State{
+			"start": {
+				On: map[string][]app.Transition{
+					"go": {{
+						Target:    "drafting",
+						Operation: "demo_run",
+					}},
+				},
+			},
+			"drafting": {
+				On: map[string][]app.Transition{
+					"next": {{
+						Target: "reviewing",
+						Effects: []app.Effect{{
+							Set: map[string]any{
+								"draft_artifact": map[string]any{"summary_title": "draft ready"},
+							},
+						}},
+					}},
+				},
+			},
+			"reviewing": {
+				On: map[string][]app.Transition{
+					"done": {{
+						Target: "done",
+						Effects: []app.Effect{{
+							Set: map[string]any{
+								"review_artifact": "approved",
+							},
+						}},
+					}},
+				},
+			},
+			"done": {Terminal: true},
+		},
+	}
+	m := mustNew(t, def)
+
+	started, err := m.Turn(context.Background(), "start", world.New(), intent.IntentCall{Intent: "go"})
+	require.NoError(t, err)
+	startedPhases := eventPayloads(t, started.Events, store.OperationRunPhaseStarted)
+	require.Len(t, startedPhases, 1)
+	require.Equal(t, "draft_artifact", startedPhases[0]["phase"])
+	require.Equal(t, "running", startedPhases[0]["phase_status"])
+	require.EqualValues(t, 0, startedPhases[0]["phase_index"])
+	requireOperationRunPhase(t, started.World, "draft_artifact", "running")
+
+	progressed, err := m.Turn(context.Background(), "drafting", started.World, intent.IntentCall{Intent: "next"})
+	require.NoError(t, err)
+	completedPhases := eventPayloads(t, progressed.Events, store.OperationRunPhaseCompleted)
+	require.Len(t, completedPhases, 1)
+	require.Equal(t, "draft_artifact", completedPhases[0]["phase"])
+	require.Equal(t, "completed", completedPhases[0]["phase_status"])
+	nextPhases := eventPayloads(t, progressed.Events, store.OperationRunPhaseStarted)
+	require.Len(t, nextPhases, 1)
+	require.Equal(t, "review_artifact", nextPhases[0]["phase"])
+	requireOperationRunPhase(t, progressed.World, "review_artifact", "running")
+	handle := requireOperationRunHandle(t, progressed.World)
+	require.Equal(t, []string{"draft_artifact"}, handle["completed_phases"])
+
+	completed, err := m.Turn(context.Background(), "reviewing", progressed.World, intent.IntentCall{Intent: "done"})
+	require.NoError(t, err)
+	completedPhases = eventPayloads(t, completed.Events, store.OperationRunPhaseCompleted)
+	require.Len(t, completedPhases, 1)
+	require.Equal(t, "review_artifact", completedPhases[0]["phase"])
+	requireOperationRunPhase(t, completed.World, "review_artifact", "completed")
+	requireOperationRunStatus(t, completed.World, "completed")
+
+	history := append([]store.Event{}, started.Events...)
+	history = append(history, progressed.Events...)
+	history = append(history, completed.Events...)
+	replayed, err := store.BuildJourney(def, "start", world.New(), history)
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("done"), replayed.State)
+	requireOperationRunStatus(t, replayed.World, "completed")
+	requireOperationRunPhase(t, replayed.World, "review_artifact", "completed")
+}
+
+func requireOperationRunStatus(t *testing.T, w world.World, status string) {
+	t.Helper()
+	handle := requireOperationRunHandle(t, w)
+	require.Equal(t, status, handle["status"])
+}
+
+func requireOperationRunPhase(t *testing.T, w world.World, phase, phaseStatus string) {
+	t.Helper()
+	handle := requireOperationRunHandle(t, w)
+	require.Equal(t, phase, handle["phase"])
+	require.Equal(t, phaseStatus, handle["phase_status"])
+}
+
+func requireOperationRunHandle(t *testing.T, w world.World) map[string]any {
+	t.Helper()
+	handle, ok := w.Vars[app.OperationRunWorldKey].(map[string]any)
+	require.True(t, ok)
+	return handle
+}
+
+func eventPayloads(t *testing.T, events []store.Event, kind store.EventKind) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, ev := range events {
+		if ev.Kind != kind {
+			continue
+		}
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal(ev.Payload, &payload))
+		out = append(out, payload)
+	}
+	return out
+}
+
+func requireEventKind(t *testing.T, events []store.Event, kind store.EventKind) {
+	t.Helper()
+	for _, ev := range events {
+		if ev.Kind == kind {
+			return
+		}
+	}
+	require.Failf(t, "missing event kind", "expected %s", kind)
+}
+
+func requireNoEventKind(t *testing.T, events []store.Event, kind store.EventKind) {
+	t.Helper()
+	for _, ev := range events {
+		require.NotEqual(t, kind, ev.Kind)
+	}
+}
+
+func TestOperationScopeAbandonCommitReplay(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "op-test"},
+		Root: "hub",
+		World: map[string]app.VarDef{
+			"scratch":   {Type: "string", Default: ""},
+			"committed": {Type: "string", Default: ""},
+		},
+		Intents: map[string]app.Intent{
+			"begin":  {},
+			"back":   {},
+			"accept": {},
+		},
+		States: map[string]*app.State{
+			"hub": {
+				On: map[string][]app.Transition{
+					"begin": {{Target: "op"}},
+				},
+			},
+			"op": {
+				Operation: &app.OperationDecl{Scope: "demo"},
+				OnEnter: []app.Effect{{
+					Set: map[string]any{"scratch": "local"},
+				}},
+				On: map[string][]app.Transition{
+					"back": {{Target: "hub"}},
+					"accept": {{
+						Target: "hub",
+						Effects: []app.Effect{{
+							CommitOperation: &app.CommitOperationEffect{
+								World: map[string]any{"committed": "{{ world.scratch }}"},
+							},
+						}},
+					}},
+				},
+			},
+		},
+	}
+	m := mustNew(t, def)
+	initial := machine.WorldFromSchema(app.WorldSchema(def.World))
+
+	entered, err := m.Turn(context.Background(), "hub", initial, intent.IntentCall{Intent: "begin"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("op"), entered.NewState)
+	require.Equal(t, "local", entered.World.Vars["scratch"])
+	require.NotNil(t, entered.World.Operation)
+
+	abandoned, err := m.Turn(context.Background(), entered.NewState, entered.World, intent.IntentCall{Intent: "back"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("hub"), abandoned.NewState)
+	require.Nil(t, abandoned.World.Operation)
+	require.Equal(t, "", abandoned.World.Vars["scratch"], "abandoned overlay must not leak")
+
+	history := append([]store.Event{}, entered.Events...)
+	history = append(history, abandoned.Events...)
+	replayed, err := store.BuildJourney(def, "hub", initial, history)
+	require.NoError(t, err)
+	require.Equal(t, abandoned.NewState, replayed.State)
+	require.Equal(t, abandoned.World.Vars, replayed.World.Vars)
+
+	entered2, err := m.Turn(context.Background(), "hub", initial, intent.IntentCall{Intent: "begin"})
+	require.NoError(t, err)
+	committed, err := m.Turn(context.Background(), entered2.NewState, entered2.World, intent.IntentCall{Intent: "accept"})
+	require.NoError(t, err)
+	require.Nil(t, committed.World.Operation)
+	require.Equal(t, "local", committed.World.Vars["committed"])
+	require.Equal(t, "", committed.World.Vars["scratch"], "uncommitted scratch stays out of durable world")
+
+	history = append([]store.Event{}, entered2.Events...)
+	history = append(history, committed.Events...)
+	replayed, err = store.BuildJourney(def, "hub", initial, history)
+	require.NoError(t, err)
+	require.Equal(t, committed.World.Vars, replayed.World.Vars)
+}
+
+func TestOperationRunCompletesOnMatchingOperationCommit(t *testing.T) {
+	def := &app.AppDef{
+		App:  app.AppMeta{ID: "op-run-commit-test"},
+		Root: "hub",
+		World: map[string]app.VarDef{
+			"scratch":   {Type: "string", Default: ""},
+			"committed": {Type: "string", Default: ""},
+		},
+		Operations: map[string]*app.OperationPolicy{
+			"demo": {
+				Title:           "Demo operation",
+				Mode:            "supervised",
+				ExecutionMode:   "one-shot",
+				RunInBackground: true,
+			},
+		},
+		Intents: map[string]app.Intent{
+			"begin":  {},
+			"back":   {},
+			"accept": {},
+		},
+		States: map[string]*app.State{
+			"hub": {
+				On: map[string][]app.Transition{
+					"begin": {{
+						Target:    "op",
+						Operation: "demo",
+					}},
+				},
+			},
+			"op": {
+				Operation: &app.OperationDecl{Scope: "demo"},
+				OnEnter: []app.Effect{{
+					Set: map[string]any{"scratch": "local"},
+				}},
+				On: map[string][]app.Transition{
+					"back": {{Target: "hub"}},
+					"accept": {{
+						Target: "hub",
+						Effects: []app.Effect{{
+							CommitOperation: &app.CommitOperationEffect{
+								World: map[string]any{"committed": "{{ world.scratch }}"},
+							},
+						}},
+					}},
+				},
+			},
+		},
+	}
+	m := mustNew(t, def)
+	initial := machine.WorldFromSchema(app.WorldSchema(def.World))
+
+	started, err := m.Turn(context.Background(), "hub", initial, intent.IntentCall{Intent: "begin"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("op"), started.NewState)
+	requireOperationRunStatus(t, started.World, "running")
+
+	abandoned, err := m.Turn(context.Background(), started.NewState, started.World, intent.IntentCall{Intent: "back"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("hub"), abandoned.NewState)
+	require.Nil(t, abandoned.World.Operation)
+	require.Equal(t, "", abandoned.World.Vars["scratch"], "abandoned overlay must not leak")
+	requireOperationRunStatus(t, abandoned.World, "failed")
+	requireEventKind(t, abandoned.Events, store.OperationAbandoned)
+	requireEventKind(t, abandoned.Events, store.OperationRunFailed)
+	failedPayloads := eventPayloads(t, abandoned.Events, store.OperationRunFailed)
+	require.Len(t, failedPayloads, 1)
+	require.Equal(t, "demo", failedPayloads[0]["policy_id"])
+	require.Equal(t, "hub", failedPayloads[0]["terminal_state"])
+	require.Equal(t, "exit", failedPayloads[0]["reason"])
+
+	history := append([]store.Event{}, started.Events...)
+	history = append(history, abandoned.Events...)
+	replayed, err := store.BuildJourney(def, "hub", initial, history)
+	require.NoError(t, err)
+	require.Equal(t, abandoned.NewState, replayed.State)
+	require.Equal(t, abandoned.World.Vars, replayed.World.Vars)
+
+	started, err = m.Turn(context.Background(), "hub", initial, intent.IntentCall{Intent: "begin"})
+	require.NoError(t, err)
+	requireOperationRunStatus(t, started.World, "running")
+
+	completed, err := m.Turn(context.Background(), started.NewState, started.World, intent.IntentCall{Intent: "accept"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("hub"), completed.NewState)
+	require.Nil(t, completed.World.Operation)
+	require.Equal(t, "local", completed.World.Vars["committed"])
+	requireOperationRunStatus(t, completed.World, "completed")
+	requireEventKind(t, completed.Events, store.OperationCommitted)
+	requireEventKind(t, completed.Events, store.OperationRunCompleted)
+	payloads := eventPayloads(t, completed.Events, store.OperationRunCompleted)
+	require.Len(t, payloads, 1)
+	require.Equal(t, "demo", payloads[0]["policy_id"])
+	require.Equal(t, "hub", payloads[0]["terminal_state"])
+
+	history = append([]store.Event{}, started.Events...)
+	history = append(history, completed.Events...)
+	replayed, err = store.BuildJourney(def, "hub", initial, history)
+	require.NoError(t, err)
+	require.Equal(t, completed.NewState, replayed.State)
+	require.Equal(t, completed.World.Vars, replayed.World.Vars)
+}
+
+func TestOperationRunIgnoresMismatchedOperationCommit(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "op-run-mismatch-test"},
+		Root:  "hub",
+		World: map[string]app.VarDef{},
+		Operations: map[string]*app.OperationPolicy{
+			"demo": {
+				Title:           "Demo operation",
+				Mode:            "supervised",
+				ExecutionMode:   "one-shot",
+				RunInBackground: true,
+			},
+		},
+		Intents: map[string]app.Intent{
+			"begin":  {},
+			"accept": {},
+		},
+		States: map[string]*app.State{
+			"hub": {
+				On: map[string][]app.Transition{
+					"begin": {{
+						Target:    "op",
+						Operation: "demo",
+					}},
+				},
+			},
+			"op": {
+				Operation: &app.OperationDecl{Scope: "other"},
+				On: map[string][]app.Transition{
+					"accept": {{
+						Target: "hub",
+						Effects: []app.Effect{{
+							CommitOperation: &app.CommitOperationEffect{},
+						}},
+					}},
+				},
+			},
+		},
+	}
+	m := mustNew(t, def)
+	initial := machine.WorldFromSchema(app.WorldSchema(def.World))
+
+	started, err := m.Turn(context.Background(), "hub", initial, intent.IntentCall{Intent: "begin"})
+	require.NoError(t, err)
+	requireOperationRunStatus(t, started.World, "running")
+
+	completedOverlay, err := m.Turn(context.Background(), started.NewState, started.World, intent.IntentCall{Intent: "accept"})
+	require.NoError(t, err)
+	require.Equal(t, app.StatePath("hub"), completedOverlay.NewState)
+	require.Nil(t, completedOverlay.World.Operation)
+	requireOperationRunStatus(t, completedOverlay.World, "running")
+	requireEventKind(t, completedOverlay.Events, store.OperationCommitted)
+	requireNoEventKind(t, completedOverlay.Events, store.OperationRunCompleted)
+	requireNoEventKind(t, completedOverlay.Events, store.OperationRunFailed)
+}
+
 // ─── (b) first-guard-wins with multiple when: branches ───────────────────────
 
 func TestFirstGuardWins(t *testing.T) {
@@ -962,10 +1613,10 @@ func TestMenu_TemplateMapShape(t *testing.T) {
 // import-folding divergence where dev-story's `landing` rendered correctly
 // standalone but collapsed to just "Quick actions" when imported under
 // kitsoki-dev's `core` alias. The view gates its banner/intro/footer on
-// `world.last_error == ''`; standalone the room's own `last_error: {default:
+// `world.last_error == ”`; standalone the room's own `last_error: {default:
 // ""}` made that true, but import folding deliberately drops a child's
 // declaration of a reserved key (it stays bare at every depth), so the folded
-// app never seeded `last_error` and `nil == ''` suppressed every gated
+// app never seeded `last_error` and `nil == ”` suppressed every gated
 // element. WorldFromSchema now seeds the engine-owned string reserved keys to
 // "" regardless of declaration — the same discipline the cost vars already use.
 func TestWorldFromSchema_SeedsReservedStringGlobals(t *testing.T) {

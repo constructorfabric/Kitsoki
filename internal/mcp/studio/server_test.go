@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -93,6 +94,11 @@ func TestStudioPing(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &ok))
 	assert.True(t, ok.OK, "ping ok")
 	assert.Equal(t, studio.Version, ok.Version, "ping version")
+	assert.NotEmpty(t, ok.GoVersion, "ping should report Go build identity")
+	assert.NotEmpty(t, ok.Executable, "ping should identify the attached executable")
+	assert.NotEmpty(t, ok.WorkingDir, "ping should identify the attached working directory")
+	assert.NotEmpty(t, ok.Revision, "ping should identify the attached git revision")
+	assert.NotEmpty(t, ok.Modified, "ping should report whether the attached checkout is modified")
 }
 
 // TestStudioToolsListed confirms both server-core tools register under their
@@ -114,6 +120,7 @@ func TestStudioToolsListed(t *testing.T) {
 	assert.True(t, names["studio.handles"], "studio.handles registered (dotted name accepted)")
 	assert.True(t, names["studio.work"], "studio.work registered (dotted name accepted)")
 	assert.True(t, names["session.command"], "session.command registered (dotted name accepted)")
+	assert.True(t, names["session.drive_operation"], "session.drive_operation registered (dotted name accepted)")
 	assert.True(t, names["inbox.sync_github"], "inbox.sync_github registered (dotted name accepted)")
 	assert.True(t, names["story.write"], "story.write registered on a read-write server")
 }
@@ -136,6 +143,7 @@ func TestReadOnlyOmitsStoryWrite(t *testing.T) {
 	assert.True(t, names["story.read"], "story.read stays available in read-only mode")
 	assert.True(t, names["story.validate"], "story.validate stays available in read-only mode")
 	assert.True(t, names["session.drive"], "replay session driving stays available in read-only mode")
+	assert.True(t, names["session.drive_operation"], "operation driving stays available in read-only mode")
 }
 
 // ─── 2.2 handle lifecycle ────────────────────────────────────────────────────
@@ -187,6 +195,56 @@ func TestHandleLifecycle(t *testing.T) {
 	require.Error(t, cerr)
 	ccode, _ := studio.AsToolError(cerr)
 	assert.Equal(t, studio.ErrUnknownHandle, ccode)
+}
+
+func TestSnapshotDoesNotBlockWhileDrivingSessionOpens(t *testing.T) {
+	enteredBuild := make(chan struct{})
+	releaseBuild := make(chan struct{})
+	buildErr := errors.New("release blocked builder")
+	sess := studio.NewStudioSession(func(mode studio.HarnessMode, recordingPath, _ string) (harness.Harness, error) {
+		close(enteredBuild)
+		<-releaseBuild
+		return nil, buildErr
+	})
+
+	openDone := make(chan error, 1)
+	go func() {
+		_, err := sess.OpenDrivingSession(context.Background(), studio.OpenDrivingSessionParams{
+			Mode:          studio.HarnessReplay,
+			RecordingPath: "recording.yaml",
+			StoryPath:     "stories/bugfix/app.yaml",
+			TracePath:     "trace.jsonl",
+		})
+		openDone <- err
+	}()
+
+	select {
+	case <-enteredBuild:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("OpenDrivingSession did not reach the blocking harness builder")
+	}
+
+	snapshotDone := make(chan studio.HandlesSnapshot, 1)
+	go func() {
+		snapshotDone <- sess.Snapshot()
+	}()
+
+	select {
+	case snap := <-snapshotDone:
+		require.Len(t, snap.Sessions, 1)
+		assert.Equal(t, "s1", snap.Sessions[0].Handle)
+		assert.Equal(t, "replay", snap.Sessions[0].Mode)
+		assert.Equal(t, "trace.jsonl", snap.Sessions[0].TracePath)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("Snapshot blocked behind an in-progress session open")
+	}
+
+	close(releaseBuild)
+	err := <-openDone
+	require.Error(t, err)
+	code, msg := studio.AsToolError(err)
+	assert.Equal(t, studio.ErrHarness, code)
+	assert.Contains(t, msg, buildErr.Error())
 }
 
 // callHandles calls studio.handles and decodes the snapshot.

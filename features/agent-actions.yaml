@@ -3,7 +3,7 @@ id: agent-actions
 kind: feature
 title: Agent action transcripts
 tagline: Every agent call's full tool-use stream — captured once, replayed byte-identically.
-summary: "Every agent call — task, decide, ask, converse — runs a rich native execution stream of tool calls, reasoning, and MCP submissions. kitsoki captures that stream byte-verbatim to a per-call sidecar and renders it in the observer: typed rows with full tool I/O, a latency waterfall, running token/cost accrual, the decide guardrail arc, an honest cassette-vs-live diff, and a run-wide rollup."
+summary: 'Every agent call — task, decide, ask, converse — runs a rich native execution stream of tool calls, reasoning, and MCP submissions. kitsoki captures that stream byte-verbatim to a per-call sidecar and renders it in the observer: typed rows with full tool I/O, a latency waterfall, running token/cost accrual, the decide guardrail arc, an honest cassette-vs-live diff, and a run-wide rollup.'
 promo:
   order: 0
   highlight: true
@@ -13,6 +13,7 @@ related:
   - trace-features
   - trace-introspection
 demo:
+  format: rrweb
   spec: tests/playwright/agent-actions-video.spec.ts
   artifactDir: agent-actions
   videoBase: agent-actions-demo
@@ -20,6 +21,40 @@ demo:
   story: stories/bugfix
   flow: stories/bugfix/flows/happy_llm.yaml
   hostCassette: stories/bugfix/flows/demo.cassette.yaml
+qa:
+  scenarios:
+    - id: tour-runs
+      required: true
+      steps:
+        - A spotlight overlay with popover is visible on the home story library
+        - The tour navigates from home into a session and then the observer view
+        - A closing centered popover appears near the end of the video
+      title: The agent-actions tour overlay runs end to end
+    - id: drawer-typed-rows
+      required: true
+      steps:
+        - An 'Agent actions (N)' affordance is visible on an agent call's detail pane
+        - A drawer lists typed rows for tool calls and assistant reasoning
+        - At least one expanded row shows real tool input and output text
+      title: The per-call drawer shows typed rows with full tool I/O
+    - id: waterfall-and-accrual
+      required: true
+      steps:
+        - A waterfall view with horizontal duration bars is visible
+        - A header region shows token and cost figures
+      title: Waterfall latency view and running token/cost accrual are shown
+    - id: guardrail-arc
+      required: true
+      steps:
+        - A guardrail-styled row shows an accept/reject verdict
+        - A distinct nudge row appears between a rejection and a re-submission
+      title: The decide guardrail arc is legible
+    - id: session-rollup
+      required: true
+      steps:
+        - An Actions view groups agent calls by turn and room
+        - A rollup row expands into a full drawer
+      title: The run-wide Actions rollup lists every transcript-bearing call
 tour:
   export: AGENT_ACTIONS_TOUR_STEPS
   steps:
@@ -67,7 +102,7 @@ tour:
     - id: aa-welcome
       route: any
       title: Agent action transcripts
-      body: "Every agent call — task, decide, ask, converse — runs a rich native execution stream: tool calls, reasoning, MCP submissions. kitsoki captures that stream byte-verbatim to a per-call sidecar, renders it here, and replays it deterministically from the cassette. We lead with the one move a coding agent can't make, then walk the full per-call stream."
+      body: 'Every agent call — task, decide, ask, converse — runs a rich native execution stream: tool calls, reasoning, MCP submissions. kitsoki captures that stream byte-verbatim to a per-call sidecar, renders it here, and replays it deterministically from the cassette. We lead with the one move a coding agent can''t make, then walk the full per-call stream.'
       placement: center
       kind: explain
       advance: next
@@ -76,7 +111,7 @@ tour:
       route: any
       target: guardrail-row
       title: The decide guardrail arc
-      body: "Lead with the move no coding agent can make: the host overruling the model mid-call. In the decide call the model submits its verdict via mcp__validator__submit, typed as a GUARDRAIL row — accept/reject + confidence, not a generic tool call. Here the first submit is REJECTED on a schema violation: the runtime, not the model, is in charge."
+      body: 'Lead with the move no coding agent can make: the host overruling the model mid-call. In the decide call the model submits its verdict via mcp__validator__submit, typed as a GUARDRAIL row — accept/reject + confidence, not a generic tool call. Here the first submit is REJECTED on a schema violation: the runtime, not the model, is in charge.'
       placement: right
       kind: explain
       advance: next
@@ -96,7 +131,7 @@ tour:
       route: any
       target: agent-actions-affordance
       title: Agent actions, per call
-      body: "Beyond the guardrail, every call's full stream is here too. Take the autofix task: select it in the trace and its detail pane gains an 'Agent actions (N)' affordance — N is the captured event count, an 18-step Read / Grep / thinking / Edit / Bash arc. Click it to open the drawer."
+      body: 'Beyond the guardrail, every call''s full stream is here too. Take the autofix task: select it in the trace and its detail pane gains an ''Agent actions (N)'' affordance — N is the captured event count, an 18-step Read / Grep / thinking / Edit / Bash arc. Click it to open the drawer.'
       placement: left
       kind: action
       advance: click-target
@@ -106,7 +141,7 @@ tour:
       route: any
       target: agent-actions-drawer
       title: The execution timeline
-      body: "The drawer renders the native stream as typed rows: assistant reasoning, and each tool call's full input and output — the file Read, the Grep pattern, the Edit diff, the Bash command and its stdout. Every row collapses on its header, so a long arc stays scannable."
+      body: 'The drawer renders the native stream as typed rows: assistant reasoning, and each tool call''s full input and output — the file Read, the Grep pattern, the Edit diff, the Bash command and its stdout. Every row collapses on its header, so a long arc stays scannable.'
       placement: right
       kind: explain
       advance: next
@@ -185,42 +220,8 @@ tour:
     - id: aa-done
       route: any
       title: That's the full picture
-      body: "You've seen the complete agent-action-transcripts stack: per-call typed rows with full tool I/O, the latency waterfall, running cost accrual, the decide submit -> reject -> nudge -> accept guardrail arc, the honest cassette-vs-live diff, and the run-wide session rollup — all over data captured once and replayed deterministically. Hit '?' anytime to replay this tour."
+      body: 'You''ve seen the complete agent-action-transcripts stack: per-call typed rows with full tool I/O, the latency waterfall, running cost accrual, the decide submit -> reject -> nudge -> accept guardrail arc, the honest cassette-vs-live diff, and the run-wide session rollup — all over data captured once and replayed deterministically. Hit ''?'' anytime to replay this tour.'
       placement: center
       kind: explain
       advance: next
       dwellMs: 5500
-qa:
-  scenarios:
-    - id: tour-runs
-      title: The agent-actions tour overlay runs end to end
-      required: true
-      steps:
-        - A spotlight overlay with popover is visible on the home story library
-        - The tour navigates from home into a session and then the observer view
-        - A closing centered popover appears near the end of the video
-    - id: drawer-typed-rows
-      title: The per-call drawer shows typed rows with full tool I/O
-      required: true
-      steps:
-        - An 'Agent actions (N)' affordance is visible on an agent call's detail pane
-        - A drawer lists typed rows for tool calls and assistant reasoning
-        - At least one expanded row shows real tool input and output text
-    - id: waterfall-and-accrual
-      title: Waterfall latency view and running token/cost accrual are shown
-      required: true
-      steps:
-        - A waterfall view with horizontal duration bars is visible
-        - A header region shows token and cost figures
-    - id: guardrail-arc
-      title: The decide guardrail arc is legible
-      required: true
-      steps:
-        - A guardrail-styled row shows an accept/reject verdict
-        - A distinct nudge row appears between a rejection and a re-submission
-    - id: session-rollup
-      title: The run-wide Actions rollup lists every transcript-bearing call
-      required: true
-      steps:
-        - An Actions view groups agent calls by turn and room
-        - A rollup row expands into a full drawer

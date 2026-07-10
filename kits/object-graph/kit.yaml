@@ -1,0 +1,52 @@
+# @kitsoki/object-graph — the S5 proof-of-concept kit
+# (.context/kits-implementation-plan.md D4 / S5): the project object graph's
+# DOMAIN (type pack, endpoint declarations, viewer UI, conformance flows, a
+# seed example) extracted out of the engine. The generic substrate it binds
+# to (internal/graph, exposed as host.graph.*) stays in the engine per D1 —
+# "a kit ships data + declarations only, never Go."
+#
+# In-tree first (plan decision 2): this kit lives at kits/object-graph/ in
+# the kitsoki repo rather than a separate repo. A repo split is deferred to
+# a later slice, same as dev-story's own Phase A/B split (D5).
+schema: kit/v1
+kit: object-graph
+namespace: kitsoki
+version: 0.1.0
+title: Project object graph viewer
+summary: |
+  Views and validates a project object graph catalog (internal/graph's
+  envelope/type-registry/lint/diff/apply substrate, exposed by the engine as
+  host.graph.*): a `graph` interface for load/lint/diff/apply/project plus a
+  starlark-served `presentation` op (the layer taxonomy, as data — see
+  scripts/presentation.star), and a Vue viewer page (Cytoscape-based)
+  reachable at the kit's own UI route. kitsoki's own seed-objects.yaml
+  catalog is NOT shipped here — this kit is the domain-neutral viewer/editor;
+  seed-objects.yaml stays kitsoki-instance data (D4).
+requires:
+  kitsoki: ">=0.0.0"
+provides:
+  stories: [object-graph]
+  # The type pack this kit ships concretely (example/catalog.yaml's own
+  # type_registry: — core-node/actor/feature/requirement). This is
+  # intentionally a small demonstration pack, not kitsoki's own broader
+  # taxonomy (actor/agent/persona/site-page/feature/requirement/use-case/
+  # proposal/change/evidence/implementation/area) — that full vocabulary
+  # lives in kitsoki's own seed-objects.yaml type_registry, which is
+  # instance data (D4), not part of this kit. A project adopting this kit
+  # authors its own type_registry the same way kitsoki does; the "graph"
+  # interface and viewer work over ANY registry the loaded catalog declares,
+  # not just this pack.
+  schemas:
+    - graph/core-node/v0
+    - graph/actor/v0
+    - graph/feature/v0
+    - graph/requirement/v0
+  interfaces: [graph]
+  ui:
+    - id: graph
+      title: Object graph
+      entry: graph
+      nav: true
+  onboarding: start
+conformance:
+  flows: ["stories/object-graph/flows/*.yaml"]

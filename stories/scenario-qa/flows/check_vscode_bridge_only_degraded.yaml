@@ -1,0 +1,142 @@
+# check_vscode_bridge_only_degraded — P2.11 (vscode editor-level evidence)
+# regression: a vscode leg that captured BOTH the mandatory preflight and
+# post-drive BRIDGE frames (visual.open kind=vscode -- proving the runstatus
+# webview stand-in reflects the driven-forward state) but never reached the
+# opportunistic editor-level tier (no post-drive host.ide.* `ide.
+# context_captured` capture -- no real VS Code editor was linked/queried
+# during this drive) must be scored `degraded-evidence`, not `pass`, with an
+# honest `cause` naming the gap. Bridge-level alone is not what a user
+# selecting `transport=vscode` reasonably expects; see
+# docs/persona-qa.md's Transport Contract section and
+# stories/scenario-qa/scripts/record_leg_result.star's `_vscode_bridge_only`.
+#
+# host.starlark.run is left UNSTUBBED so plan_legs.star and
+# record_leg_result.star run for REAL against the driver-plan.json this
+# flow's starlark_inspect_cassette serves -- only the driver/judge agent
+# dispatch (host.agent.task) and the run.py subprocess calls (host.run) are
+# stubbed, mirroring check_degraded_leg_carries_cause.yaml.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+starlark_inspect_cassette: ../cassettes/check_vscode_editor_level.inspect.yaml
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-vscode-editor-run
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-vscode-editor-run/deck.slidey.json
+            leg_count: 1
+            pass_count: 0
+            fail_count: 0
+            degraded_count: 1
+            summary: "0 / 1 transport checks passed, 1 degraded-evidence."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs:
+              - "evidence/gears-rust--core-maintainer/bugfix/01-preflight-vscode-observe.json"
+              - "evidence/gears-rust--core-maintainer/bugfix/02-postdrive-vscode-observe.json"
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            blockers: []
+            post_drive_evidence_ref: "evidence/gears-rust--core-maintainer/bugfix/02-postdrive-vscode-observe.json"
+            post_drive_session_handle: "s2"
+            # no post_drive_editor_evidence_ref: no real VS Code editor was
+            # linked/queried during this drive -- honestly reported empty.
+            harness_used: "live"
+            profile_used: "claude-native"
+            summary: "Preflighted the vscode bridge, drove the bugfix pipeline live, then re-captured the bridge against the same session handle. No live VS Code editor was attached, so no host.ide.* editor-level capture was possible."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "post_drive_evidence_ref proves the bridge reflects the driven-forward state."
+            cited_frames: ["02-postdrive-vscode-observe.json"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: vscode
+        persona: core-maintainer
+        target: gears-rust
+        seed: scenario-qa
+        profile: claude-native
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-vscode-editor-run
+      live_profile: claude-native
+      leg_count: 1
+      leg_index: 0
+      pass_count: 0
+      fail_count: 0
+      degraded_count: 1
+      leg_results:
+        items:
+          - leg_id: "bugfix::vscode"
+            scenario: "bugfix"
+            transport: "vscode"
+            visual_surface: "vscode"
+            evidence_level: "bridge-level"
+            natural_utterance_count: 0
+            natural_utterance_example: ""
+            natural_utterance_sources: []
+            driver_status: "captured"
+            evidence_refs:
+              - "evidence/gears-rust--core-maintainer/bugfix/01-preflight-vscode-observe.json"
+              - "evidence/gears-rust--core-maintainer/bugfix/02-postdrive-vscode-observe.json"
+            post_drive_evidence_ref: "evidence/gears-rust--core-maintainer/bugfix/02-postdrive-vscode-observe.json"
+            post_drive_editor_evidence_ref: ""
+            harness_used: "live"
+            playback_path: ""
+            playback_caption: ""
+            verdict: "degraded-evidence"
+            verdict_summary: "post_drive_evidence_ref proves the bridge reflects the driven-forward state."
+            cause: "vscode leg is bridge-level only (visual.open kind=vscode proves the bridge, not a real editor) -- no post-drive host.ide.* editor-level capture (post_drive_editor_evidence_ref) was reported; see docs/persona-qa.md"
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+    expect_view_matches: "verdict=degraded-evidence driver=captured cause=vscode leg is bridge-level only"
+
+expect_no_errors: true

@@ -1,0 +1,40 @@
+# plan_run_error_bounces_idle — plan.yaml's FIRST invoke (host.run →
+# run.py --emit-run) fails: on_error: idle routes straight back to idle
+# without ever reaching plan_legs. The runtime itself writes the raw failure
+# into world.last_error the moment the on_error: arc fires (before idle's own
+# on_enter even runs) — idle.yaml's `- prose: "{{ world.last_error }}"` line
+# is what surfaces it, never a silent bounce. world.status is left exactly as
+# the failed room's `check` handler set it ("planning") — nothing resets it
+# back to "idle" on this path, so the operator can see which stage broke.
+# Exercises plan.yaml:93.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        error: "host.run: run.py --emit-run exited 1: project 'gears-rust' not found"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+    expect_state: idle
+    expect_world:
+      status: "planning"
+      last_error: "host.run: run.py --emit-run exited 1: project 'gears-rust' not found"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+    expect_no_host_calls: [host.starlark.run, host.agent.task]
+    expect_view_matches: "host.run: run.py --emit-run exited 1: project 'gears-rust' not found"
+
+expect_no_errors: true

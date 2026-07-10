@@ -1,6 +1,6 @@
 [mcp_servers.slidey]
-command = "node"
-args = ["/Users/brad/code/slidey/src/mcp.js", "--root", "/Users/brad/code/Kitsoki"]
+command = "/Users/Brad.Smith/.local/bin/slidey-mcp"
+args = ["--root", "/Users/Brad.Smith/code/kitsoki"]
 
 [mcp_servers.slidey.tools.slidey_scene_summary]
 approval_mode = "approve"
@@ -19,3 +19,11 @@ approval_mode = "approve"
 
 [mcp_servers.slidey.tools.slidey_audit]
 approval_mode = "approve"
+
+[mcp_servers.frontend-mockup]
+command = "node"
+args = ["tools/frontend-mockup-mcp/server.mjs"]
+
+[mcp_servers.frontend-mockup.env]
+KITSOKI_REPO = "."
+KITSOKI_AGENT_CMD = "kitsoki"

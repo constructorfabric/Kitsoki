@@ -2,8 +2,8 @@
 #
 # The baked world points at the pre-rendered explainer deck so `kitsoki tour`/web
 # can still drive straight in. `start` creates a fresh draft. `edit_existing`
-# preserves the operator-supplied spec path as source_deck while clearing deck so
-# drafting's once: author/edit pass runs.
+# resolves the operator-supplied spec path in a deterministic loading room before
+# rendering, so the render state sees the concrete deck path.
 
 states:
 
@@ -39,72 +39,61 @@ states:
         # go straight to the spatial-oracle review. NO authoring agent runs —
         # there is nothing to author until the operator gives feedback.
         - when: "hasPrefix(lower(trim(slots.feedback ?? '')), 'edit') || hasPrefix(lower(trim(slots.feedback ?? '')), 'revise ') || hasPrefix(lower(trim(slots.feedback ?? '')), 'open ')"
-          target: rendering
+          target: preparing_workspace
           effects:
-            - invoke: host.starlark.run
-              id: resolve_deck
-              with:
-                script: scripts/resolve_deck.star
-                inputs:
-                  spec_path: "{{ slots.feedback }}"
-                  decks_dir: "{{ world.decks_dir }}"
-              bind:
-                source_deck: source_deck
-                deck:        deck         # promoted = the existing spec, rendered in place
-                workspace:   workspace
             - set:
+                pending_deck_spec_path: "{{ slots.feedback }}"
+                pending_deck_summary: ""
                 draft_feedback: ""   # the verb-laden text was a deck selector, not edit direction
                 render_retries: 0
+                render_error_repairable: false
+                render_error_kind: ""
+                render_error_summary: ""
         # An existing deck is already loaded (operator ran edit_existing / an
         # "edit <deck>" instruction earlier). Plain `start` should render that
         # existing spec directly so review/feedback can begin — NOT re-author it
         # from scratch through the drafter. Promote source_deck → deck and skip
         # drafting straight to rendering.
         - when: "(world.source_deck.spec_path ?? '') != ''"
-          target: rendering
+          target: preparing_workspace
           effects:
             - set:
-                deck:
-                  spec_path: "{{ world.source_deck.spec_path }}"
-                  summary:   "{{ world.source_deck.summary }}"
+                pending_deck_spec_path: "{{ world.source_deck.spec_path }}"
+                pending_deck_summary: "{{ world.source_deck.summary }}"
                 draft_feedback: ""
                 render_retries: 0   # fresh render — reset the auto-fix budget
-        - target: drafting
+                render_error_repairable: false
+                render_error_kind: ""
+                render_error_summary: ""
+        - target: preparing_workspace
           effects:
             - set:
                 draft_feedback: "{{ slots.feedback ?? '' }}"
+                pending_deck_spec_path: ""
+                pending_deck_summary: ""
+                workspace: "{{ world.decks_dir }}"
                 # Clear the deck so drafting's once: author pass runs fresh
                 # (the baked default seeds idle's view; start re-authors).
                 deck: {}
                 source_deck: {}
                 render_retries: 0   # fresh deck — reset the auto-fix budget
+                render_error_repairable: false
+                render_error_kind: ""
+                render_error_summary: ""
       edit_existing:
         # An existing deck renders IN PLACE and goes straight to review — no
         # authoring agent. The deck already exists and works in the web viewer;
         # loading it must not re-author 36 scenes or strip its assets.
-        - target: rendering
+        - target: preparing_workspace
           effects:
-            # Resolve the operator's deck reference to a concrete spec_path.
-            # A bare name prefers <decks_dir>/<name>.slidey.json and falls back
-            # to .json only when the .slidey.json variant is absent (checked via
-            # ctx.fs.exists); a reference already ending in .json is verbatim.
-            # resolve_deck also promotes the spec into `deck` and sets the
-            # workspace to the deck's own dir so its sibling assets resolve.
-            - invoke: host.starlark.run
-              id: resolve_deck
-              with:
-                script: scripts/resolve_deck.star
-                inputs:
-                  spec_path: "{{ slots.spec_path }}"
-                  summary:   "{{ slots.summary ?? '' }}"
-                  decks_dir: "{{ world.decks_dir }}"
-              bind:
-                source_deck: source_deck
-                deck:        deck
-                workspace:   workspace
             - set:
+                pending_deck_spec_path: "{{ slots.spec_path }}"
+                pending_deck_summary: "{{ slots.summary ?? '' }}"
                 draft_feedback: "{{ slots.feedback ?? '' }}"
                 render_retries: 0   # fresh deck — reset the auto-fix budget
+                render_error_repairable: false
+                render_error_kind: ""
+                render_error_summary: ""
       quit:
         - target: "@exit:abandoned"
           effects:

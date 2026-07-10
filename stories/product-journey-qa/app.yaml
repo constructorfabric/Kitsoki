@@ -7,11 +7,45 @@ app:
 
 hosts:
   - host.run
+  - host.agent.task
+
+agents:
+  autonomous_driver:
+    system_prompt: >-
+      You are the reusable product-journey QA driver
+      (.agents/agents/product-journey-qa-driver.md). Drive the generated
+      product-journey run bundle through Kitsoki Studio MCP and visual MCP,
+      capture evidence, record findings and driver-journal events through the
+      product-journey story, then run the story-owned autonomous watchdog,
+      autonomous_fix, review, validate, and stats gates when the run has
+      credible issue findings. Do not call gh directly; the native
+      product-journey story/gitops/gh-agent gates own all GitHub filing,
+      fixing, evidence, close-out, and stats.
+    model: claude-sonnet-4-6
+    tools: [Read, Grep, Glob, Bash, mcp__kitsoki__studio_ping, mcp__kitsoki__studio_handles, mcp__kitsoki__session_new, mcp__kitsoki__session_attach, mcp__kitsoki__session_drive, mcp__kitsoki__session_submit, mcp__kitsoki__session_continue, mcp__kitsoki__session_answer, mcp__kitsoki__session_status, mcp__kitsoki__session_world, mcp__kitsoki__session_inspect, mcp__kitsoki__session_trace, mcp__kitsoki__session_close, mcp__kitsoki__render_tui, mcp__kitsoki__render_tui_png, mcp__kitsoki__render_web, mcp__kitsoki__visual_open, mcp__kitsoki__visual_observe, mcp__kitsoki__visual_act]
+    effect: external
 
 world:
   project:        { type: string, default: "gears-rust" }
   persona:        { type: string, default: "core-maintainer" }
   seed:           { type: string, default: "default" }
+  scenario_scope: { type: string, default: "" }
+  campaign_id:    { type: string, default: "" }
+  campaign_status: { type: string, default: "" }
+  campaign_summary: { type: string, default: "" }
+  campaign_scenarios: { type: string, default: "docs-to-mcp-first-run,agent-launch-experience,remote-worker-campaign,campaign-rollup-review" }
+  campaign_worker_backend: { type: string, default: "" }
+  campaign_worker_id: { type: string, default: "" }
+  campaign_worker_status: { type: string, default: "" }
+  campaign_worker_ready_status: { type: string, default: "" }
+  campaign_worker_summary: { type: string, default: "" }
+  campaign_worker_receipt_path: { type: string, default: "" }
+  campaign_worker_receipt_markdown_path: { type: string, default: "" }
+  campaign_worker_imported_artifact_count: { type: int, default: 0 }
+  campaign_worker_artifact_import_status: { type: string, default: "" }
+  campaign_finding_sink: { type: string, default: "local-artifact" }
+  filing_sink: { type: string, default: "" }
+  live_budget_minutes: { type: int, default: 20 }
   matrix_id:      { type: string, default: "" }
   matrix_dir:     { type: string, default: "" }
   matrix_personas: { type: string, default: "primary" }
@@ -28,6 +62,14 @@ world:
   target_proof_failed: { type: int, default: 0 }
   target_proof_errors: { type: int, default: 0 }
   target_proof_ready: { type: string, default: "" }
+  capture_preflight_status: { type: string, default: "" }
+  capture_preflight_id: { type: string, default: "" }
+  capture_preflight_dir: { type: string, default: "" }
+  capture_preflight_path: { type: string, default: "" }
+  capture_preflight_markdown_path: { type: string, default: "" }
+  capture_preflight_webshot_output: { type: string, default: "" }
+  capture_preflight_passed: { type: int, default: 0 }
+  capture_preflight_failed: { type: int, default: 0 }
   rollup_run_dir: { type: string, default: "" }
   rollup_path:    { type: string, default: "" }
   rollup_deck_path: { type: string, default: "" }
@@ -74,6 +116,9 @@ world:
   driver_replay_attached_evidence_count: { type: int, default: 0 }
   driver_replay_scenario_count: { type: int, default: 0 }
   driver_replay_playback_scenarios: { type: int, default: 0 }
+  driver_replay_readiness_status: { type: string, default: "" }
+  driver_replay_review_ready_count: { type: int, default: 0 }
+  driver_replay_review_needs_evidence_count: { type: int, default: 0 }
   driver_replay_media_manifest_path: { type: string, default: "" }
   driver_replay_journal_path: { type: string, default: "" }
   driver_replay_handoff_path: { type: string, default: "" }
@@ -90,6 +135,7 @@ world:
   driver_handoff_path: { type: string, default: "" }
   media_manifest_path: { type: string, default: "" }
   scenario_outcomes_path: { type: string, default: "" }
+  run_scenario_count: { type: int, default: 0 }
   persona_starting_surface: { type: string, default: "" }
   persona_first_question: { type: string, default: "" }
   persona_evidence_emphasis: { type: string, default: "" }
@@ -100,6 +146,11 @@ world:
   finding_total_count: { type: int, default: 0 }
   strength_count: { type: int, default: 0 }
   weakness_count: { type: int, default: 0 }
+  weakness_route_count: { type: int, default: 0 }
+  weakness_route_summary: { type: string, default: "" }
+  prd_design_intake_path: { type: string, default: "" }
+  prd_design_intake_count: { type: int, default: 0 }
+  prd_design_intake_summary: { type: string, default: "" }
   issue_count: { type: int, default: 0 }
   fix_count: { type: int, default: 0 }
   blocked_count: { type: int, default: 0 }
@@ -121,6 +172,149 @@ world:
   finding_title:  { type: string, default: "" }
   finding_summary: { type: string, default: "" }
   finding_severity: { type: string, default: "" }
+  ticket_repo:    { type: string, default: "" }
+  gh_agent_public_base_url: { type: string, default: "" }
+  filing_status:  { type: string, default: "" }
+  filing_dry_run: { type: string, default: "" }
+  findings_filed_count: { type: int, default: 0 }
+  findings_skipped_count: { type: int, default: 0 }
+  findings_failed_count: { type: int, default: 0 }
+  findings_unfiled_count: { type: int, default: 0 }
+  filed_issue_summary: { type: string, default: "" }
+  filing_summary: { type: string, default: "" }
+  autonomous_fix_status: { type: string, default: "" }
+  autonomous_fix_report_path: { type: string, default: "" }
+  independent_verify_status: { type: string, default: "" }
+  independent_verify_summary: { type: string, default: "" }
+  issue_closeout_status: { type: string, default: "" }
+  issue_closeout_count: { type: int, default: 0 }
+  issue_closeout_summary: { type: string, default: "" }
+  gh_agent_enqueue_status: { type: string, default: "" }
+  gh_agent_enqueued_count: { type: int, default: 0 }
+  gh_agent_skipped_count: { type: int, default: 0 }
+  gh_agent_job_summary: { type: string, default: "" }
+  gh_agent_claim_status: { type: string, default: "" }
+  gh_agent_claim_count: { type: int, default: 0 }
+  gh_agent_claim_summary: { type: string, default: "" }
+  gh_agent_drain_status: { type: string, default: "" }
+  gh_agent_drained_count: { type: int, default: 0 }
+  gh_agent_done_count: { type: int, default: 0 }
+  gh_agent_failed_count: { type: int, default: 0 }
+  gh_agent_active_count: { type: int, default: 0 }
+  gh_agent_run_summary: { type: string, default: "" }
+  gh_agent_fix_evidence_count: { type: int, default: 0 }
+  gh_agent_missing_evidence_count: { type: int, default: 0 }
+  gh_agent_triage_evidence_count: { type: int, default: 0 }
+  gh_agent_missing_triage_count: { type: int, default: 0 }
+  gh_agent_independent_verify_count: { type: int, default: 0 }
+  gh_agent_missing_verify_count: { type: int, default: 0 }
+  gh_agent_missing_run_url_count: { type: int, default: 0 }
+  gh_agent_fix_evidence_summary: { type: string, default: "" }
+  gh_agent_missing_evidence_summary: { type: string, default: "" }
+  gh_agent_triage_evidence_summary: { type: string, default: "" }
+  gh_agent_missing_triage_summary: { type: string, default: "" }
+  gh_agent_independent_verify_summary: { type: string, default: "" }
+  gh_agent_missing_verify_summary: { type: string, default: "" }
+  gh_agent_health_status: { type: string, default: "" }
+  gh_agent_health_summary: { type: string, default: "" }
+  gh_agent_readiness_status: { type: string, default: "" }
+  gh_agent_readiness_summary: { type: string, default: "" }
+  native_ghagent_status: { type: string, default: "" }
+  native_ghagent_summary: { type: string, default: "" }
+  native_ghagent_exit_code: { type: int, default: 0 }
+  native_ghagent_output: { type: string, default: "" }
+  autonomous_fix_smoke_status: { type: string, default: "" }
+  autonomous_fix_smoke_summary: { type: string, default: "" }
+  autonomous_fix_smoke_exit_code: { type: int, default: 0 }
+  autonomous_fix_smoke_output: { type: string, default: "" }
+  persona_autofix_smoke_status: { type: string, default: "" }
+  persona_autofix_smoke_summary: { type: string, default: "" }
+  persona_autofix_smoke_exit_code: { type: int, default: 0 }
+  persona_autofix_smoke_output: { type: string, default: "" }
+  autonomous_marathon_smoke_status: { type: string, default: "" }
+  autonomous_marathon_smoke_summary: { type: string, default: "" }
+  autonomous_marathon_smoke_exit_code: { type: int, default: 0 }
+  autonomous_marathon_smoke_output: { type: string, default: "" }
+  autonomous_marathon_smoke_project: { type: string, default: "" }
+  autonomous_marathon_smoke_cycle_count: { type: int, default: 0 }
+  autonomous_marathon_smoke_persona_count: { type: int, default: 0 }
+  autonomous_marathon_smoke_scenario_count: { type: int, default: 0 }
+  autonomous_marathon_smoke_run_count: { type: int, default: 0 }
+  autonomous_marathon_smoke_filed_issue_count: { type: int, default: 0 }
+  autonomous_marathon_smoke_done_count: { type: int, default: 0 }
+  autonomous_marathon_smoke_landing_count: { type: int, default: 0 }
+  autonomous_marathon_smoke_flawless_count: { type: int, default: 0 }
+  autonomous_marathon_smoke_success_rate: { type: string, default: "" }
+  autonomous_marathon_smoke_report_path: { type: string, default: "" }
+  autonomous_marathon_smoke_report_markdown_path: { type: string, default: "" }
+  marathon_smoke_ledger_validation_status: { type: string, default: "" }
+  marathon_smoke_ledger_validation_summary: { type: string, default: "" }
+  marathon_smoke_ledger_validation_errors: { type: int, default: 0 }
+  marathon_smoke_ledger_validation_warnings: { type: int, default: 0 }
+  marathon_smoke_ledger_validation_cycle_count: { type: int, default: 0 }
+  marathon_smoke_ledger_validation_min_cycle_count: { type: int, default: 0 }
+  marathon_smoke_ledger_validation_path: { type: string, default: "" }
+  marathon_smoke_ledger_validation_markdown_path: { type: string, default: "" }
+  autonomous_marathon_status: { type: string, default: "" }
+  autonomous_marathon_summary: { type: string, default: "" }
+  autonomous_marathon_report_path: { type: string, default: "" }
+  autonomous_due_status: { type: string, default: "" }
+  autonomous_due_summary: { type: string, default: "" }
+  autonomous_due_root: { type: string, default: "" }
+  autonomous_due_count: { type: int, default: 0 }
+  autonomous_due_upcoming_count: { type: int, default: 0 }
+  autonomous_due_blocked_count: { type: int, default: 0 }
+  autonomous_due_ignored_count: { type: int, default: 0 }
+  autonomous_due_total_count: { type: int, default: 0 }
+  autonomous_due_next_run_id: { type: string, default: "" }
+  autonomous_due_next_run_dir: { type: string, default: "" }
+  autonomous_due_next_command: { type: string, default: "" }
+  autonomous_due_next_story_intent: { type: string, default: "" }
+  autonomous_due_next_minutes_overdue: { type: int, default: 0 }
+  autonomous_due_advance_status: { type: string, default: "" }
+  autonomous_due_advance_summary: { type: string, default: "" }
+  autonomous_due_source_run_id: { type: string, default: "" }
+  autonomous_due_source_run_dir: { type: string, default: "" }
+  autonomous_driver_mode: { type: string, default: "" }
+  autonomous_driver_live_profile: { type: string, default: "" }
+  autonomous_driver_status: { type: string, default: "" }
+  autonomous_driver_summary: { type: string, default: "" }
+  autonomous_driver_evidence_count: { type: int, default: 0 }
+  autonomous_driver_issue_count: { type: int, default: 0 }
+  autonomous_driver_dispatch_result: { type: object, default: {} }
+  autonomous_driver_dispatch_trace: { type: string, default: "" }
+  autonomous_driver_dispatch_path: { type: string, default: "" }
+  autonomous_driver_dispatch_markdown_path: { type: string, default: "" }
+  autonomous_driver_dispatch_status: { type: string, default: "" }
+  autonomous_driver_dispatch_summary: { type: string, default: "" }
+  autonomous_control_path: { type: string, default: "" }
+  autonomous_control_markdown_path: { type: string, default: "" }
+  autonomous_control_status: { type: string, default: "" }
+  autonomous_control_summary: { type: string, default: "" }
+  autonomous_watchdog_status: { type: string, default: "" }
+  autonomous_watchdog_summary: { type: string, default: "" }
+  autonomous_watchdog_path: { type: string, default: "" }
+  autonomous_watchdog_markdown_path: { type: string, default: "" }
+  autonomous_watchdog_age_minutes: { type: int, default: 0 }
+  autonomous_gate_summary: { type: string, default: "" }
+  stats_status:   { type: string, default: "" }
+  stats_root:     { type: string, default: "" }
+  stats_output:   { type: string, default: "" }
+  stats_summary:  { type: string, default: "" }
+  issue_state_status: { type: string, default: "" }
+  issue_state_output: { type: string, default: "" }
+  issue_state_count: { type: int, default: 0 }
+  issue_state_summary: { type: string, default: "" }
+  stats_gate_status: { type: string, default: "" }
+  stats_gate_summary: { type: string, default: "" }
+  stats_current_run_scanned: { type: string, default: "" }
+  stats_runs_scanned: { type: int, default: 0 }
+  stats_found_count: { type: int, default: 0 }
+  stats_filed_count: { type: int, default: 0 }
+  stats_fixed_count: { type: int, default: 0 }
+  stats_reopened_count: { type: int, default: 0 }
+  stats_unknown_state_count: { type: int, default: 0 }
+  stats_similar_pair_count: { type: int, default: 0 }
   dispatch_mode:  { type: string, default: "" }
   driver_status:  { type: string, default: "" }
   driver_summary: { type: string, default: "" }
@@ -140,17 +334,20 @@ world:
   validation_warnings: { type: int, default: 0 }
   validation_issue_summary: { type: string, default: "" }
   last_result:    { type: object, default: {} }
+  last_error:     { type: string, default: "" }
   status:         { type: string, default: "idle" }
 
 intents:
   start:
     description: "Create a deterministic product-journey QA run bundle."
-    examples: ["start", "create a product journey run", "begin qa run"]
+    examples: ["start", "create a product journey run", "begin qa run", "start scenarios=core-use-cases live_budget_minutes=10"]
     priority: 90
     slots:
       project: { type: string, required: false }
       persona: { type: string, required: false }
       seed: { type: string, required: false }
+      scenarios: { type: string, required: false }
+      live_budget_minutes: { type: int, required: false }
   matrix:
     description: "Create a deterministic 10-repo GitHub product-journey matrix."
     examples: ["create github matrix", "plan ten repo sweep", "emit matrix with target proof"]
@@ -184,6 +381,125 @@ intents:
     description: "Validate the reusable personas, scenarios, and GitHub target catalog."
     examples: ["validate corpus", "check persona scenario catalog", "preflight journey corpus"]
     priority: 88
+  capture_preflight:
+    description: "Run no-LLM capture-toolchain preflight checks before live persona evidence capture."
+    examples: ["capture preflight", "check webshot capture", "preflight browser capture"]
+    priority: 88
+    slots:
+      seed: { type: string, required: false }
+  native_ghagent_smoke:
+    description: "Run a no-LLM native gh-agent queue/drain smoke through kitsoki commands."
+    examples: ["native ghagent smoke", "native gh-agent smoke", "prove gh-agent queue drain"]
+    priority: 88
+  autonomous_fix_smoke:
+    description: "Run a no-LLM full autonomous issue filing and gh-agent fix smoke."
+    examples: ["autonomous fix smoke", "prove autonomous issue to fix", "full autonomous fix smoke"]
+    priority: 88
+  persona_autofix_smoke:
+    description: "Run a no-LLM persona replay to filed issue to gh-agent fix smoke."
+    examples: ["persona autofix smoke", "prove persona qa autofix", "persona issue to fix smoke"]
+    priority: 89
+  autonomous_marathon_smoke:
+    description: "Run a no-LLM core-use-case persona sweep through autonomous fix and derived stats."
+    examples: ["autonomous marathon smoke", "prove persona qa marathon", "standing product qa smoke", "autonomous marathon smoke repeats=2"]
+    priority: 89
+    slots:
+      repeats: { type: int, required: false }
+  validate_marathon_smoke_ledger:
+    description: "Validate a retained autonomous marathon smoke ledger through the story surface."
+    examples: ["validate marathon smoke ledger", "check retained marathon ledger", "validate last marathon smoke", "validate marathon smoke ledger min_cycles=2"]
+    priority: 88
+    slots:
+      marathon_smoke_ledger: { type: string, required: false }
+      min_cycles: { type: int, required: false }
+  campaign_plan:
+    description: "Plan a reusable standing product QA campaign from project-owned personas and scenarios."
+    examples: ["campaign plan", "plan product qa campaign", "start universal qa campaign", "campaign plan scenarios=docs-to-mcp-first-run,agent-launch-experience"]
+    priority: 91
+    slots:
+      project: { type: string, required: false }
+      persona: { type: string, required: false }
+      seed: { type: string, required: false }
+      scenarios: { type: string, required: false }
+      live_budget_minutes: { type: int, required: false }
+  campaign_tick:
+    description: "Advance the next due standing campaign cycle through the story-owned autonomous loop."
+    examples: ["campaign tick", "run campaign tick", "advance campaign"]
+    priority: 90
+    slots:
+      stats_root: { type: string, required: false }
+      stats_output: { type: string, required: false }
+      issue_state_file: { type: string, required: false }
+      due_now: { type: string, required: false }
+      due_limit: { type: int, required: false }
+      gh_agent_db: { type: string, required: false }
+      gh_agent_story: { type: string, required: false }
+      gh_agent_project_root: { type: string, required: false }
+      gh_agent_incident_repo: { type: string, required: false }
+      gh_agent_asset_dir: { type: string, required: false }
+      gh_agent_comment_mode: { type: string, required: false }
+  autonomous_marathon:
+    description: "Create or finalize a standing persona-QA marathon through autonomous fix, review, validation, weakness routing, and stats."
+    examples: ["autonomous marathon", "start autonomous marathon scenarios=core-use-cases", "finalize autonomous marathon ticket_repo=bsacrobatix/Kitsoki"]
+    priority: 90
+    slots:
+      project: { type: string, required: false }
+      persona: { type: string, required: false }
+      seed: { type: string, required: false }
+      scenarios: { type: string, required: false }
+      live_budget_minutes: { type: int, required: false }
+      autonomous_driver_mode: { type: string, required: false }
+      autonomous_driver_live_profile: { type: string, required: false }
+      run_dir: { type: string, required: false }
+      ticket_repo: { type: string, required: false }
+      gh_agent_db: { type: string, required: false }
+      gh_agent_story: { type: string, required: false }
+      gh_agent_public_base_url: { type: string, required: false }
+      gh_agent_project_root: { type: string, required: false }
+      gh_agent_incident_repo: { type: string, required: false }
+      gh_agent_asset_dir: { type: string, required: false }
+      gh_agent_comment_mode: { type: string, required: false }
+      issue_state_file: { type: string, required: false }
+      stats_root: { type: string, required: false }
+      stats_output: { type: string, required: false }
+      autonomous_cadence_hours: { type: int, required: false }
+      autonomous_heartbeat_minutes: { type: int, required: false }
+      autonomous_watchdog_minutes: { type: int, required: false }
+  autonomous_marathon_due:
+    description: "Scan standing persona-QA marathon control artifacts and surface due fresh-cycle runs."
+    examples: ["autonomous marathon due", "check due marathons", "marathon due stats_root=.artifacts/product-journey"]
+    priority: 89
+    slots:
+      stats_root: { type: string, required: false }
+      due_now: { type: string, required: false }
+      due_limit: { type: int, required: false }
+  autonomous_marathon_advance_due:
+    description: "Advance the next due standing persona-QA marathon cycle without operator glue."
+    examples: ["advance due marathon", "run due marathon", "autonomous marathon advance due"]
+    priority: 90
+    slots:
+      stats_root: { type: string, required: false }
+      stats_output: { type: string, required: false }
+      issue_state_file: { type: string, required: false }
+      due_now: { type: string, required: false }
+      due_limit: { type: int, required: false }
+      gh_agent_db: { type: string, required: false }
+      gh_agent_story: { type: string, required: false }
+      gh_agent_project_root: { type: string, required: false }
+      gh_agent_incident_repo: { type: string, required: false }
+      gh_agent_asset_dir: { type: string, required: false }
+      gh_agent_comment_mode: { type: string, required: false }
+  dispatch_driver:
+    description: "Dispatch the story-owned record/live product-journey QA driver for a ready autonomous marathon run."
+    examples: ["dispatch driver", "run autonomous driver", "capture live persona evidence"]
+    priority: 88
+  autonomous_watchdog:
+    description: "Check a standing persona-QA marathon heartbeat against its watchdog control artifact."
+    examples: ["autonomous watchdog", "check marathon watchdog", "watchdog run_dir=.artifacts/product-journey/run-123"]
+    priority: 89
+    slots:
+      run_dir: { type: string, required: false }
+      watchdog_now: { type: string, required: false }
   refresh_targets:
     description: "Refresh GitHub open-bug proof for the 10-repo target catalog."
     examples: ["refresh github targets", "check target bug counts", "prove target matrix"]
@@ -220,6 +536,30 @@ intents:
       evidence_path: { type: string, required: true }
       source: { type: string, required: false }
       notes: { type: string, required: false }
+  campaign_attach:
+    description: "Attach campaign evidence to the current run and refresh the generated deck/artifact summary."
+    examples: ["campaign attach", "attach campaign evidence", "campaign attach scenario=docs-to-mcp-first-run evidence_kind=browser_screenshot"]
+    priority: 86
+    slots:
+      scenario: { type: string, required: true }
+      evidence_kind: { type: string, required: true }
+      evidence_path: { type: string, required: true }
+      source: { type: string, required: false }
+      notes: { type: string, required: false }
+  campaign_worker:
+    description: "Record or import a local, arena, or VM worker readiness receipt for the current campaign run."
+    examples: ["campaign worker backend=vm worker_id=persona-vm-1", "campaign worker backend=arena status=ready", "import campaign worker receipt"]
+    priority: 85
+    slots:
+      backend: { type: string, required: false }
+      worker_id: { type: string, required: false }
+      status: { type: string, required: false }
+      ready_status: { type: string, required: false }
+      ready_summary: { type: string, required: false }
+      budget_minutes: { type: int, required: false }
+      receipt_source: { type: string, required: false }
+      import_artifacts: { type: string, required: false }
+      summary: { type: string, required: false }
   record:
     description: "Record a strength, weakness, issue, or fix for the run summary deck."
     examples: ["record finding", "note a weakness", "record a fix", "add strength"]
@@ -240,6 +580,61 @@ intents:
       title: { type: string, required: true }
       summary: { type: string, required: true }
       evidence_path: { type: string, required: false }
+  file_findings:
+    description: "Dry-run product-journey issue filing for diagnostics; real filing belongs to autonomous_fix unless debug_file=true is explicit."
+    examples: ["file findings", "file findings ticket_repo=bsacrobatix/Kitsoki", "dry-run finding filing", "file findings mode=file debug_file=true"]
+    priority: 79
+    slots:
+      ticket_repo: { type: string, required: true }
+      mode: { type: string, required: false }
+      debug_file: { type: string, required: false }
+  autonomous_fix:
+    description: "File credible issue findings, drain gh-agent fixes, review, and validate as one no-operator reliability gate."
+    examples: ["autonomous fix", "run autonomous fix ticket_repo=bsacrobatix/Kitsoki", "file and fix findings", "auto fix findings"]
+    priority: 80
+    slots:
+      ticket_repo: { type: string, required: true }
+      gh_agent_db: { type: string, required: false }
+      gh_agent_story: { type: string, required: false }
+      gh_agent_public_base_url: { type: string, required: false }
+      gh_agent_project_root: { type: string, required: false }
+      gh_agent_incident_repo: { type: string, required: false }
+      gh_agent_asset_dir: { type: string, required: false }
+      gh_agent_comment_mode: { type: string, required: false }
+  campaign_issue_fix:
+    description: "File campaign findings through the declared finding-sink policy: local-artifact (default, no GitHub touched) or an explicit github opt-in with evidence-backed filing and gh-agent repair."
+    examples: ["campaign issue fix", "campaign issue fix finding_sink=local-artifact", "campaign fix findings finding_sink=github ticket_repo=owner/repo", "run campaign issue/fix"]
+    priority: 81
+    slots:
+      finding_sink: { type: string, required: false }
+      ticket_repo: { type: string, required: false }
+      gh_agent_db: { type: string, required: false }
+      gh_agent_story: { type: string, required: false }
+      gh_agent_public_base_url: { type: string, required: false }
+      gh_agent_project_root: { type: string, required: false }
+      gh_agent_incident_repo: { type: string, required: false }
+      gh_agent_asset_dir: { type: string, required: false }
+      gh_agent_comment_mode: { type: string, required: false }
+  stats:
+    description: "Derive filed/fixed/reopened/similar issue stats from product-journey run bundles and native/cached GitHub issue state."
+    examples: ["stats", "derive issue stats", "stats refresh_issue_state=true ticket_repo=owner/repo"]
+    priority: 78
+    slots:
+      stats_root: { type: string, required: false }
+      issue_state_file: { type: string, required: false }
+      refresh_issue_state: { type: string, required: false }
+      ticket_repo: { type: string, required: false }
+      stats_output: { type: string, required: false }
+  campaign_stats:
+    description: "Refresh campaign-level filed/fixed/reopened/similar issue statistics."
+    examples: ["campaign stats", "refresh campaign stats", "campaign stats refresh_issue_state=true"]
+    priority: 79
+    slots:
+      stats_root: { type: string, required: false }
+      issue_state_file: { type: string, required: false }
+      refresh_issue_state: { type: string, required: false }
+      ticket_repo: { type: string, required: false }
+      stats_output: { type: string, required: false }
   driver_event:
     description: "Record what the reusable driver actually attempted for a scenario."
     examples: ["record driver event", "driver attempted bugfix", "journal visual observe"]
@@ -264,6 +659,10 @@ intents:
     description: "Review the current product-journey bundle for readiness."
     examples: ["review run", "check readiness", "is this bundle reviewable"]
     priority: 76
+  campaign_deck_refresh:
+    description: "Regenerate the campaign review deck and readiness summary from retained run artifacts."
+    examples: ["campaign deck refresh", "refresh campaign deck", "update campaign summary"]
+    priority: 77
   validate:
     description: "Validate the current run bundle without rewriting artifacts."
     examples: ["validate run", "check artifact contract", "verify bundle"]
@@ -282,7 +681,7 @@ intents:
     priority: 10
 
 exports:
-  intents: [start, matrix, dogfood_smoke, driver_replay_smoke, driver_replay_sweep, validate_corpus, refresh_targets, load, rollup, validate_matrix, validate_matrix_strict, attach, record, blocker, driver_event, seed_demo, handoff, review, validate, accept, quit, look]
+  intents: [start, matrix, dogfood_smoke, driver_replay_smoke, driver_replay_sweep, validate_corpus, capture_preflight, native_ghagent_smoke, autonomous_fix_smoke, persona_autofix_smoke, autonomous_marathon_smoke, validate_marathon_smoke_ledger, campaign_plan, campaign_tick, autonomous_marathon, autonomous_marathon_due, autonomous_marathon_advance_due, dispatch_driver, autonomous_watchdog, refresh_targets, load, rollup, validate_matrix, validate_matrix_strict, attach, campaign_attach, campaign_worker, record, blocker, file_findings, autonomous_fix, campaign_issue_fix, stats, campaign_stats, driver_event, seed_demo, handoff, review, campaign_deck_refresh, validate, accept, quit, look]
 
 root: idle
 

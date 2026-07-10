@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "query-string-qs2-bugfix-test-repair"
+  },
+  "cell_id": "cost-bench-round1--kitsoki-codex-native--task:query-string-qs2-bugfix-test-repair",
+  "evidence_refs": [
+    "/workspace/kitsoki/tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs2-bugfix-test-repair",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/query-string-qs2-bugfix-test-repair--kitsoki--codex--gpt-5.5-score.json"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 0.520891,
+    "host": "local",
+    "tokens": 1145873,
+    "wall_s": 426.905
+  },
+  "notes": "drive.sh exit=0: {\"type\":\"thread.started\",\"thread_id\":\"019f2ff9-9ad9-7541-8224-04e231162b54\"}; cost_usd=0.520891 (cache-aware estimate over REAL trace usage: 243028 fresh input + 892288 cache-read input + 10557 output tokens; subscription auth reports no metered cost); [bench] query-string/qs2 oracle=pass suite=True -> solved",
+  "target_id": "cost-bench-round1",
+  "trace_ref": "",
+  "variant_id": "kitsoki-codex-native",
+  "verdict": "solved"
+}

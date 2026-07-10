@@ -1,0 +1,177 @@
+# check_dogfood_marathon_tui — the dogfood marathon demo is owned by the
+# universal scenario mechanism. The TUI bridge records evidence for this
+# scenario; it does not own the case list or proof contract.
+#
+# Every host call is stubbed by invoke id (no real run.py / LLM / MCP call
+# runs here). This fixture pins the scenario-qa control flow for the TUI leg.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-run-dogfood-marathon
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-dogfood-marathon
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-dogfood-marathon/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-run-dogfood-marathon/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-run-dogfood-marathon/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-run-dogfood-marathon
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-run-dogfood-marathon/deck.slidey.json
+            leg_count: 1
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 0
+            summary: "1 / 1 transport legs passed."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "dogfood-marathon-tui::tui"
+                scenario: "dogfood-marathon-tui"
+                label: "Dogfood marathon TUI supervision"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_dir: "evidence/gears-rust--core-maintainer/dogfood-marathon-tui"
+                primary_story: ".kitsoki/stories/kitsoki-dev/app.yaml"
+                success_criteria:
+                  - "The proof is one continuous kitsoki-dev TUI session."
+                  - "The kitsoki-dev and dogfood marathon choice widgets are exercised with real ArrowDown and ArrowUp keypresses."
+                  - "All 15 constructorfabric, bsacrobatix, and local cases appear with readable progress and result affordances."
+                natural_utterances:
+                  - text: "I want to do a dogfood marathon"
+                    source: "curated-corpus"
+                    source_ref: "dogfood-marathon-request"
+                  - text: "start the marathon"
+                    source: "curated-corpus"
+                    source_ref: "dogfood-marathon-start"
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-run-dogfood-marathon"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "dogfood-marathon-tui::tui"
+            scenario: "dogfood-marathon-tui"
+            label: "Dogfood marathon TUI supervision"
+            transport: "tui"
+            visual_surface: "tui"
+            evidence_dir: "evidence/gears-rust--core-maintainer/dogfood-marathon-tui"
+          current_leg_id: "dogfood-marathon-tui::tui"
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "dogfood-marathon-tui::tui"
+                scenario: "dogfood-marathon-tui"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_level: "frame-level"
+                driver_status: "captured"
+                natural_utterance_count: 2
+                natural_utterance_example: "I want to do a dogfood marathon"
+                natural_utterance_sources:
+                  - "dogfood-marathon-request"
+                  - "dogfood-marathon-start"
+                evidence_refs:
+                  - "video:dogfood-marathon-real-tui.mp4"
+                  - "png_sequence:frames.json"
+                  - "render_tui_png:connected-kitsoki-dev"
+                verdict: "pass"
+                verdict_summary: "The scenario-backed TUI recording shows one continuous 15-case marathon with arrow menus, exception review, and final report/deck evidence."
+                frames_dir: "evidence/gears-rust--core-maintainer/dogfood-marathon-tui"
+          pass_count: 1
+          fail_count: 0
+          degraded_count: 0
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-run-dogfood-marathon/report.md"
+          report_summary: "1 / 1 transport legs passed."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs:
+              - "video:dogfood-marathon-real-tui.mp4"
+              - "png_sequence:frames.json"
+              - "render_tui_png:connected-kitsoki-dev"
+            frames_dir: "evidence/gears-rust--core-maintainer/dogfood-marathon-tui"
+            blockers: []
+            summary: "Captured the scenario-backed xterm.js TUI recording for the 15-case dogfood marathon."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "The cited video and frame manifest prove the dogfood marathon TUI scenario without substituting a bridge-local fake."
+            cited_frames:
+              - "connected-kitsoki-dev.png"
+              - "exception-review.png"
+              - "done-report.png"
+            frames_dir: "evidence/gears-rust--core-maintainer/dogfood-marathon-tui"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: dogfood-marathon-tui
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: dogfood-real-tui
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-run-dogfood-marathon
+      leg_count: 1
+      leg_index: 0
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 0
+      report_path: ".artifacts/product-journey/scenario-qa-run-dogfood-marathon/report.md"
+      report_summary: "1 / 1 transport legs passed."
+      deck_path: "/repo/.artifacts/product-journey/scenario-qa-run-dogfood-marathon/deck.slidey.json"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+    expect_view_matches: "SCENARIO QA REPORT[\\s\\S]*1 / 1 transport legs passed[\\s\\S]*Scenario:\\s+dogfood-marathon-tui[\\s\\S]*tui \\[frame-level; natural_prompts=2\\] verdict=pass driver=captured"
+
+expect_no_errors: true

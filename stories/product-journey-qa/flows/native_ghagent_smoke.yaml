@@ -1,0 +1,33 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      native_product_journey_ghagent_smoke:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            summary: native gh-agent queue/drain smoke passed
+            exit_code: 0
+            output: "ok: native enqueue queued one job\nok: native drain completed\nok: native drain exposed fix artifacts\nok: native review is ready\nok: native validation is valid\nok: deck contains filed issue and native artifact links\nPASS"
+
+turns:
+  - intent:
+      name: native_ghagent_smoke
+      slots: {}
+    expect_state: idle
+    expect_world:
+      status: native_ghagent_smoke_checked
+      native_ghagent_status: passed
+      native_ghagent_summary: native gh-agent queue/drain smoke passed
+      native_ghagent_exit_code: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: native_product_journey_ghagent_smoke }
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Native gh-agent[\\s\\S]*passed[\\s\\S]*Status[\\s\\S]*native_ghagent_smoke_checked"
+
+expect_no_errors: true

@@ -97,4 +97,7 @@ turns:
       status: needs-human
 
 expect_terminal: true
+expect_operation_policy: bugfix_full
+expect_operation_status: waiting
+expect_stop_reason: needs-human
 expect_no_errors: true

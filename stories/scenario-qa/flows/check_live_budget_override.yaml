@@ -1,0 +1,85 @@
+# check_live_budget_override — a `check ... live_budget_minutes=<N>` slot MUST
+# reach the run.py `--emit-run --live-budget-minutes <N>` invoke, and omitting
+# it must fall back to the product default (20). A live confirmation rerun
+# of `check scenario=prd-design transport=all ... profile=claude-native`
+# found the tui leg driving the FULL PRD pipeline (fix: drive_leg.md now
+# drives to the scenario's declared quality_gate.minimum_evidence, not just
+# the first room transition) but hitting the default 20-minute live budget
+# before the design half could produce a design_artifact — there was no way
+# for a caller to size the budget to what a scenario actually needs. This
+# flow pins the rendered `--live-budget-minutes` arg on both paths so a
+# regression that drops the override, or changes the default, fails here.
+#
+# Every host call is stubbed by invoke id (no real runner / LLM call runs
+# here); this exercises the room-to-room control flow + CLI-arg rendering
+# only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-budget-run-1
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-budget-run-1
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-budget-run-1/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-budget-run-1/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-budget-run-1/agent-brief.md
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs: { items: [] }
+          leg_count: 0
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-budget-run-1"
+          plan_status: { resolved: true }
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: prd-design
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: scenario-qa
+        profile: claude-native
+        live_budget_minutes: 45
+    expect_state: idle
+    expect_world:
+      last_error: "No transport checks resolved for this scenario/transport combination — check scenario/transport values."
+    expect_host_calls:
+      - handler: host.run
+        args:
+          call: emit_scenario_qa_run
+          cmd: python3
+          args:
+            - tools/product-journey/run.py
+            - --emit-run
+            - --scenario-qa-workspace
+            - --project
+            - gears-rust
+            - --persona
+            - core-maintainer
+            - --seed
+            - scenario-qa
+            - --scenarios
+            - prd-design
+            - --transport
+            - tui
+            - --live-budget-minutes
+            - 45
+            - --json-output
+          cwd: "."
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+
+expect_no_errors: true

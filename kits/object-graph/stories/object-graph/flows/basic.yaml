@@ -1,0 +1,43 @@
+# basic.yaml — @kitsoki/object-graph's conformance flow (no-LLM/cassette-free:
+# every effect here reads real local files deterministically through
+# host.graph.*, so there is nothing to record/replay). Drives the story
+# against the kit's own small seed example (example/catalog.yaml), proving
+# the "graph" interface's load/lint ops resolve and produce sane data.
+#
+# catalog_path is repo-root-relative, matching the existing convention
+# `kitsoki graph lint <path>` / `make features` already use (both invoked
+# from the repo root) — run this flow (via `kitsoki kit verify
+# kits/object-graph` or the Go conformance test) from the repo root.
+test_kind: flow
+app: ../app.yaml
+# use_orchestrator: true — this flow exercises a REAL host.graph.* invoke
+# (not a stubbed one), which only the orchestrator-backed runner actually
+# dispatches against a live host.Registry; the legacy machine-only runner
+# treats invoke: as a recorded no-op.
+use_orchestrator: true
+# host_bindings here is an (identity) rebind, not a real override — its only
+# purpose is the testrunner's own registration rule (buildOrchestratorRig):
+# RegisterBuiltins only runs when a fixture declares host_bindings:, so an
+# unstubbed flow can't accidentally shell out via a real host.run/host.git.
+# This flow WANTS the real host.graph.* builtins (it reads a real local
+# catalog file, fully deterministic — no cassette needed), so it opts in via
+# a no-op rebind of the interface to its own already-declared default.
+host_bindings:
+  graph: host.graph
+initial_state: idle
+initial_world:
+  catalog_path: kits/object-graph/example/catalog.yaml
+turns:
+  - intent: { name: start }
+    expect_state: loaded
+    expect_world:
+      node_count: 3
+
+  - intent: { name: lint }
+    expect_state: linted
+    expect_world:
+      lint_clean: true
+      issue_count: 0
+
+  - intent: { name: finish }
+    expect_state: __exit__done

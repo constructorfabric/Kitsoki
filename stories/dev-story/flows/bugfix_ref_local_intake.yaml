@@ -1,0 +1,73 @@
+# bugfix_ref_local_intake -- landing can start bugfix from a referenced local
+# bug id and fetch the real local ticket metadata before entering the bugfix
+# child story.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  bugfix_mode: "triage"
+  judge_mode: "human"
+  repo_root: ".artifacts"
+
+host_handlers:
+  host.local_files.ticket:
+    by_op:
+      get:
+        data:
+          ok: true
+          id: "TKT-404"
+          title: "Run list stays stale after cleanup"
+          type: "bug"
+          source: "local"
+          url: ".artifacts/issues/bugs/TKT-404.md"
+          body: |
+            Steps:
+            1. Delete an old run.
+            2. Return to the run list.
+            Expected: the deleted run is gone.
+            Actual: it stays visible until restart.
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict: "STILL-LIVE"
+        confidence: 0.8
+        summary_title: "STILL-LIVE - local ticket body loaded"
+        evidence: "The local ticket body reached triage."
+        summary_markdown: "The provider-backed local ticket was fetched before triage."
+        suggested_action: "drive the full bugfix pipeline"
+        fixed_in_ref: null
+        involved_components: []
+      steps: []
+
+turns:
+  - intent:
+      name: bugfix_ref
+      slots:
+        id: "TKT-404"
+    expect_state: bf.triaging
+    expect_host_calls:
+      - handler: host.local_files.ticket.get
+        args:
+          root: ".artifacts"
+          id: "TKT-404"
+    expect_world:
+      bf__ticket_id: "TKT-404"
+      bf__ticket_title: "Run list stays stale after cleanup"
+      bf__ticket_source_mode: "local"
+      bf__ticket_source_ref: ".artifacts/issues/bugs/TKT-404.md"
+      bf__thread: ".artifacts/issues/bugs/TKT-404.md"
+      bf__ticket_body: |
+        Steps:
+        1. Delete an old run.
+        2. Return to the run list.
+        Expected: the deleted run is gone.
+        Actual: it stays visible until restart.
+    expect_events:
+      - kind: machine.say
+        effect:
+          text: "Bug reference TKT-404 resolved; entering bugfix with provider metadata."
+
+expect_no_errors: true

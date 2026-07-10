@@ -78,6 +78,15 @@ func (s *Server) dispatchEditor(method string, params map[string]any) (any, *rpc
 		}
 		return map[string]any{"rooms": graph.RoomList(a)}, nil, true
 
+	// runstatus.editor.graph {story_path} → kitsoki.graph/v1 room graph
+	case "runstatus.editor.graph":
+		a, _, rerr := s.resolveEditorApp(params)
+		if rerr != nil {
+			return nil, rerr, true
+		}
+		storyPath, _ := params["story_path"].(string)
+		return graph.RoomGraph(a, "story:"+storyPath+"#rooms"), nil, true
+
 	// runstatus.editor.room {story_path, room_id} → RoomDetail
 	case "runstatus.editor.room":
 		a, dir, rerr := s.resolveEditorApp(params)

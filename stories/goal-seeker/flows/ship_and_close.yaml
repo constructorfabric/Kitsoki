@@ -1,0 +1,55 @@
+# ship_and_close — the second half of the loop, no LLM: ship-it integration → record
+# (gs_append REAL) → deterministic done → retrospective → @exit:done.
+#
+# Warps to ship-it's configure (seeding the change's worktree handoff directly, since
+# the flow harness bypasses the integrate room's on_enter projection) and drives the
+# integrate_existing seam: delivery-tail integrate → re-verify green → cleanup →
+# shipped (all host.run stubbed). shipped maps to `record`, whose gs_append logs C1
+# as `integrated` by actor=integrator. advance re-folds (gs_ledger, REAL) → remaining
+# ==0 (deterministic done) → advance → retrospective → close → @exit:done.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: shipit.configure
+initial_world:
+  goal_slug: goal-seeker-test
+  goal_dir:  stories/goal-seeker/testdata/goal
+  work_dir:  .artifacts/goal/flow-ship
+  next_change_id: "C1"
+  # Seed the ship-it child handoff directly (integrate room's on_enter is bypassed on warp).
+  shipit__worktree_path: ".worktrees/gu-C1"
+  shipit__gate_command: "true"
+  shipit__base_branch: "main"
+  shipit__main_worktree_path: "."
+
+host_handlers:
+  host.run:
+    by_call:
+      integrate_exec: { data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "abc1234", last_op_ok: true, last_error: "" } } }
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok" } }
+      cleanup_exec: { data: { ok: true, exit_code: 0, stdout_json: { outcome: cleaned, last_op_ok: true, last_error: "" } } }
+
+turns:
+  # Drive the integrate_existing seam → the whole delivery-tail chain → shipped →
+  # record (gs_append logs C1 integrated). record pauses for advance.
+  - intent: { name: shipit__integrate_existing, slots: {} }
+    expect_state: record
+    expect_world: { shipped_sha: "abc1234" }
+  # advance: gs_append's write has settled → evaluate's gs_ledger folds C1 integrated →
+  # remaining==0. evaluate pauses.
+  - intent: { name: advance, slots: {} }
+    expect_state: evaluate
+    expect_world: { remaining: 0 }
+  # advance: remaining==0 (DETERMINISTIC done) → retrospective.
+  - intent: { name: advance, slots: {} }
+    expect_state: retrospective
+  # close → @exit:done.
+  - intent: { name: close, slots: {} }
+    expect_terminal: true
+
+# The log gs_append wrote records C1 as integrated by the integrator (reviewer-only-green).
+expect_files:
+  - path: ../../../.artifacts/goal/flow-ship/log.jsonl
+    content_matches: '"actor":"integrator".*"change_id":"C1".*"state":"integrated"'
+
+expect_no_errors: true

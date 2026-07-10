@@ -64,7 +64,37 @@ story.
 
 ### Run A Pure Kitsoki Driver
 
-For Claude, use the checked-in driver:
+**Claude — run the session *as* the driver agent (recommended).** The checked-in
+`.agents/agents/kitsoki-mcp-driver.md` definition (installed into
+`.claude/agents/`) carries the driver's persona, model (`opus`), and exact
+studio-only tool allowlist. The native `--agent` flag makes the whole session
+adopt that definition — its system prompt, model, and tool allowlist become the
+top-level loop — so you never hand-paste an `--allowedTools` list:
+
+```sh
+# interactive
+claude --agent kitsoki-mcp-driver
+
+# headless — keep the MCP flags (see caveat below)
+claude -p --agent kitsoki-mcp-driver \
+  --mcp-config .mcp.json --strict-mcp-config \
+  "$(cat .context/your-drive-brief.md)"
+```
+
+Make it the per-repo default so you can drop the flag — `.claude/settings.json`:
+
+```json
+{ "agent": "kitsoki-mcp-driver" }
+```
+
+**Caveat — `--agent` constrains, it does not attach.** The flag applies the
+agent's persona/model/tool allowlist, but the kitsoki MCP *server* must still be
+attached for the `mcp__kitsoki__*` tools to exist. An interactive `claude` from
+the repo root picks up the project `.mcp.json` automatically; for headless or
+scripted runs keep `--mcp-config .mcp.json --strict-mcp-config` so a stray
+worktree `.mcp.json` can't shadow or drop it (see MEMORY: maker-submit-strict-mcp).
+
+**Manual equivalent (only if you can't use `--agent`).** Spell out the allowlist:
 
 ```sh
 claude -p "$(cat .context/your-drive-brief.md)" \
@@ -73,19 +103,38 @@ claude -p "$(cat .context/your-drive-brief.md)" \
   --allowedTools "mcp__kitsoki__studio_ping,mcp__kitsoki__studio_handles,mcp__kitsoki__studio_work,mcp__kitsoki__story_read,mcp__kitsoki__story_write,mcp__kitsoki__story_validate,mcp__kitsoki__story_graph,mcp__kitsoki__story_test,mcp__kitsoki__session_new,mcp__kitsoki__session_attach,mcp__kitsoki__session_drive,mcp__kitsoki__session_submit,mcp__kitsoki__session_continue,mcp__kitsoki__session_answer,mcp__kitsoki__session_status,mcp__kitsoki__session_world,mcp__kitsoki__session_inspect,mcp__kitsoki__session_trace,mcp__kitsoki__session_close,mcp__kitsoki__render_tui,mcp__kitsoki__render_tui_png,mcp__kitsoki__render_web,mcp__kitsoki__issue_create"
 ```
 
-The helper `tools/mcp-drive/drive.sh` is convenient for headless Claude runs, but
-its default allowlist includes shell and read tools for some verification flows.
-For strict dogfood authenticity, override it:
+`tools/mcp-drive/drive.sh` wraps the headless form with retry/backoff and a
+backend switch (Claude or Codex); with `--agent` it no longer needs an
+`MCP_DRIVE_TOOLS` override, since the agent definition carries the allowlist.
 
-```sh
-MCP_DRIVE_TOOLS="mcp__kitsoki__studio_ping,mcp__kitsoki__studio_handles,mcp__kitsoki__studio_work,mcp__kitsoki__story_read,mcp__kitsoki__story_write,mcp__kitsoki__story_validate,mcp__kitsoki__story_graph,mcp__kitsoki__story_test,mcp__kitsoki__session_new,mcp__kitsoki__session_attach,mcp__kitsoki__session_drive,mcp__kitsoki__session_submit,mcp__kitsoki__session_continue,mcp__kitsoki__session_answer,mcp__kitsoki__session_status,mcp__kitsoki__session_world,mcp__kitsoki__session_inspect,mcp__kitsoki__session_trace,mcp__kitsoki__session_close,mcp__kitsoki__render_tui,mcp__kitsoki__render_tui_png,mcp__kitsoki__render_web,mcp__kitsoki__issue_create" \
-  tools/mcp-drive/drive.sh --prompt-file .context/your-drive-brief.md
+**Codex — spawn the mirrored subagent, not a whole-session role.** Codex has a
+subagent format that is the structural analog of the Claude agent file:
+`.codex/agents/kitsoki-mcp-driver.toml` (project-scoped; `~/.codex/agents/` for
+personal). It carries the same persona via `developer_instructions`, a `model`,
+a `sandbox_mode` (`read-only` — the MCP is the only write surface), and a
+`[mcp_servers.kitsoki]` block that scopes the role to just the kitsoki studio:
+
+```toml
+name = "kitsoki-mcp-driver"
+description = "Drive kitsoki through the studio MCP; the MCP is the only write surface."
+developer_instructions = "Use ONLY the kitsoki studio MCP — no shell/fs/git/gh …"
+model = "gpt-5.5"
+sandbox_mode = "read-only"
+
+[mcp_servers.kitsoki]
+command = "kitsoki"
+args = ["mcp", "--stories-dir", "stories"]
 ```
 
-For Codex, use the same constraint in the session prompt or agent wrapper: the
-driver may call only `mcp__kitsoki__...` tools. The supervising Codex session can
-still verify the result afterward with normal tools, but the delegated driver
-should not use shell, filesystem, git, or GitHub tools for the core workflow.
+The crucial difference from Claude: **Codex has no `codex --agent <name>` flag to
+run the *whole top-level* session as a role** — Codex roles are spawned as child
+tasks by a parent session. For whole-session Codex driving, use
+`kitsoki agent launch --agent kitsoki-mcp-driver --backend codex` or the
+headless `tools/mcp-drive/drive.sh --model gpt-5.5 …` wrapper. Both attach the
+studio MCP and pass Codex `--disable=shell_tool`, so the driver cannot use a
+shell while still calling `mcp__kitsoki__...` tools. The supervising session can
+verify the result afterward with normal tools, but the delegated driver should
+not use shell, filesystem, git, or GitHub tools for the core workflow.
 
 ### Drive The Story
 

@@ -1,0 +1,8 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: docs/proposals/.workspace/lmo
+    out: "false"
+  - op: exists
+    target: docs/proposals/lmo.md
+    out: "false"

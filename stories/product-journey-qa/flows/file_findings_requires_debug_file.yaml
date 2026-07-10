@@ -1,0 +1,54 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-777
+            run_dir: .artifacts/product-journey/run-777
+            project: vscode
+            persona: ide-first-engineer
+            seed: filing-demo
+            issue_count: 2
+            finding_total_count: 4
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-777
+    expect_state: run_created
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: file_findings
+      slots:
+        ticket_repo: bsacrobatix/Kitsoki
+        mode: file
+        gh_agent_public_base_url: https://agent.example
+    expect_state: run_created
+    expect_world:
+      status: findings_filing_invalid
+      ticket_repo: bsacrobatix/Kitsoki
+      filing_status: findings_filing_invalid
+      filing_dry_run: file
+      filing_summary: "Real product-journey filing is routed through autonomous_fix; file_findings mode=file requires debug_file=true for isolated diagnostics."
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: file-findings-debug-only
+      gh_agent_enqueue_status: not_run
+      gh_agent_drain_status: not_run
+      gh_agent_missing_evidence_summary: "file_findings mode=file is debug-only; use autonomous_fix for the full issue-to-fix loop"
+    expect_view_matches: "RUN CREATED[\\s\\S]*Issue filing[\\s\\S]*findings_filing_invalid[\\s\\S]*Validation issues[\\s\\S]*file-findings-debug-only[\\s\\S]*file_findings[\\s\\S]*mode=file requires debug_file=true"
+    expect_no_host_calls: [host.run]
+
+expect_no_errors: true

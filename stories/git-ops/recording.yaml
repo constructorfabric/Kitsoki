@@ -1,0 +1,210 @@
+# Replay recording for git-ops intent fixtures. Hand-authored from deterministic
+# command vocabulary plus real mined git interaction phrases; no live LLM in CI.
+kind: recording
+app_id: git-ops
+app_version: 0.1.0
+generated_at: "2026-07-05T00:00:00Z"
+generator: "hand-authored from session-mining/git-ops traces"
+min_confidence: 1.00
+
+entries:
+  - state: main_ops
+    input: "rebase onto main"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "rebase against main"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "sync with main"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "bring in the latest from main"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "pull in main"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "pull"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "git pull"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "pull from upstream"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "sync upstream"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "use gitops to pull & rebase against origin main"
+    intent: { name: pull, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "merge branch"
+    intent: { name: merge_branch, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "merge a branch"
+    intent: { name: merge_branch, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "merge into main"
+    intent: { name: merge_branch, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "merge work to main that's ready"
+    intent: { name: merge_branch, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "merge the feature branch into main"
+    intent: { name: merge_branch, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "review the existing worktrees"
+    intent: { name: worktree_list, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "list worktrees"
+    intent: { name: worktree_list, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "show worktrees"
+    intent: { name: worktree_list, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "worktree audit"
+    intent: { name: worktree_list, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "where is the project object graph worktree"
+    intent: { name: worktree_list, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "remove the worktree"
+    intent: { name: cleanup, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "clean up the worktrees"
+    intent: { name: cleanup, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "remove branch and worktree"
+    intent: { name: cleanup, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "remove the redundant branch/worktree so we don't get confused"
+    intent: { name: cleanup, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "get me to a clean git state"
+    intent: { name: cleanup, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "commit the staged fix"
+    intent: { name: commit, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "commit the staged work"
+    intent: { name: commit, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "commit the script"
+    intent: { name: commit, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "commit your work"
+    intent: { name: commit, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "commit everything"
+    intent: { name: commit, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "undo last commit"
+    intent: { name: undo, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "drop the commit"
+    intent: { name: undo, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "uncommit this"
+    intent: { name: undo, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "git reset"
+    intent: { name: undo, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "amend it without the generated mocks"
+    intent: { name: undo, slots: {} }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "fix it - i just want to rebase main again"
+    intent: { name: main_ops_discuss, slots: { message: "fix it - i just want to rebase main again" } }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "what happened with that rebase?"
+    intent: { name: main_ops_discuss, slots: { message: "what happened with that rebase?" } }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "why did it go to conflict?"
+    intent: { name: main_ops_discuss, slots: { message: "why did it go to conflict?" } }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "is a rebase still in progress?"
+    intent: { name: main_ops_discuss, slots: { message: "is a rebase still in progress?" } }
+    confidence: 1.00
+    majority_of: 1
+  - state: main_ops
+    input: "what should I do next?"
+    intent: { name: main_ops_discuss, slots: { message: "what should I do next?" } }
+    confidence: 1.00
+    majority_of: 1

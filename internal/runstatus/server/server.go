@@ -17,7 +17,10 @@
 //
 // # Endpoints
 //
-//	GET  /                                     → the bundled SPA (index.html)
+//	GET  /                                     → the bundled SPA (index.html;
+//	                                              installed-kit registry +
+//	                                              import map injected, S3c)
+//	GET  /kit/<namespace>/<kit>/ui/<rest...>   → an installed kit's UI assets (S3c)
 //	POST /rpc                                  → JSON-RPC 2.0 control
 //	GET  /rpc/events?subscription_id=<id>      → text/event-stream notifications
 //
@@ -25,7 +28,10 @@
 //
 //	runstatus.stories.list       {}                                  → []StoryHeader
 //	runstatus.stories.rescan     {}                                  → []StoryHeader
-//	runstatus.session.new        {story_path}                        → {session_id}
+//	runstatus.setup.status       {}                                  → {warnings}
+//	runstatus.kits.list          {}                                  → []KitHeader (S3b/c)
+//	kit.<kit>.<iface>.<op>       {...}                                → kit endpoint result (S3b fallback)
+//	runstatus.session.new        {story_path, initial_world?}        → {session_id}
 //	runstatus.session.reload     {session_id}                        → {ok, prev_state_exists}
 //	runstatus.session.staleness  {session_id}                        → {stale, diff}
 //	runstatus.sessions.list      {}                                  → []SessionHeader
@@ -40,6 +46,7 @@
 //	runstatus.session.turn       {session_id, input}                 → turnResult
 //	runstatus.session.submit     {session_id, intent, slots?}        → turnResult
 //	runstatus.session.continue   {session_id, slots?}               → turnResult
+//	runstatus.session.drive_operation {session_id}                   → turnResult
 //	runstatus.session.offpath    {session_id, input}                 → {answer}
 //	runstatus.session.subscribe  {session_id}                        → {subscription_id}
 //	runstatus.session.unsubscribe {subscription_id}                  → {ok: true}
@@ -76,6 +83,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,10 +91,12 @@ import (
 	"time"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/bugprivacy"
 	"kitsoki/internal/dynamicworkflow"
 	"kitsoki/internal/helpdocs"
 	"kitsoki/internal/host"
 	"kitsoki/internal/jobs"
+	"kitsoki/internal/kitendpoint"
 	"kitsoki/internal/orchestrator"
 	"kitsoki/internal/runstatus"
 	"kitsoki/internal/runstatus/harrec"
@@ -97,8 +107,8 @@ import (
 )
 
 // bugRecorderCapacity is the number of most-recent /rpc request/response pairs
-// the HAR ring buffer retains for a bug report. Sized to comfortably cover the
-// interactions leading up to a "report a bug" click without unbounded growth.
+// retained for direct-call fallback bug reports. Browser reports prefer the
+// client-observed HAR submitted during runstatus.bug.preview.
 const bugRecorderCapacity = 256
 
 // defaultPollInterval is how often the SSE stream re-reads the trace for newly
@@ -193,13 +203,13 @@ type Server struct {
 	// POSTs its visual bundle. Always non-nil.
 	points *pointHandoff
 
-	// recorder is the HAR ring buffer capturing the last N /rpc request/response
-	// pairs. runstatus.bug.report snapshots + scrubs it into the bug's artifacts.
-	// Always non-nil.
+	// recorder is the fallback HAR ring buffer capturing the last N /rpc
+	// request/response pairs when no browser-observed HAR is supplied. Always
+	// non-nil.
 	recorder *harrec.Recorder
 
 	// bugRoot is the repo root under which runstatus.bug.report writes
-	// issues/bugs/<id>.md (+ sibling <id>.artifacts/). Empty => resolved per
+	// .artifacts/issues/bugs/<id>.md (+ sibling <id>.artifacts/). Empty => resolved per
 	// request (story_path's repo dir, else cwd). Set via WithBugRoot by
 	// `kitsoki web`.
 	bugRoot string
@@ -207,8 +217,32 @@ type Server struct {
 	// ticketRepo, when set (WithTicketRepo / `kitsoki web --ticket-repo`), routes
 	// runstatus.bug.report to a GitHub issue on that owner/repo (via
 	// host.GitHubFileBug — evidence saved under .artifacts for developer-local
-	// review) INSTEAD of a local issues/bugs/<id>.md file.
+	// review) INSTEAD of a local .artifacts/issues/bugs/<id>.md file.
 	ticketRepo string
+
+	// agentEvidenceDir, when set (WithAgentEvidenceDir / `kitsoki web
+	// --agent-evidence-dir`), is the kitsoki github agent's evidence store root.
+	// After a GitHub bug filing, the captured rrweb + HAR are ALSO deposited here
+	// under bugdeck.DeckID(ticketRepo, issueNumber) so the agent already holds the
+	// evidence when its issues.opened webhook fires — it never re-downloads the
+	// assets from GitHub. Point this and `kitsoki gh-agent serve --evidence-dir`
+	// at the same directory (co-located, or a shared volume).
+	agentEvidenceDir string
+
+	// improveTicketProvider, when set, routes meta-improve evidence reports to a
+	// reusable ticket_provider/v1 script after first writing the local evidence
+	// bundle. This is for private stories or community story packs that want a
+	// non-GitHub destination while keeping the same HAR/rrweb/trace artifacts.
+	improveTicketProvider string
+
+	// bugPrivacyChecker, when set, runs the provider-backed bug report privacy
+	// gate after deterministic scrubbing and before any local/GitHub filing.
+	// Nil keeps deterministic scrubbing only; tests and replay surfaces stay
+	// no-LLM unless the caller explicitly injects a checker.
+	bugPrivacyChecker bugprivacy.Checker
+	// bugPrivacyCheckerResolver optionally builds a checker per bug report,
+	// using request/session context such as the current harness selection.
+	bugPrivacyCheckerResolver BugPrivacyCheckerResolver
 
 	// workflowRoot is the repo root dynamic workflow drafts should use for
 	// their scratch package and promotion/export defaults. Empty means the
@@ -234,6 +268,20 @@ type Server struct {
 	// Guarded by turnMu. See handleTurnStream / cancelActiveTurn.
 	turnMu      sync.Mutex
 	activeTurns map[string]*activeTurn
+
+	// kits is the installed-kit JSON-RPC/MCP dispatcher (S3b — see kits.go).
+	// Nil when the server was built without WithKits, in which case the
+	// `kit.<kit>.<iface>.<op>` fallback and `runstatus.kits.list` report
+	// codeMethodMissing / an empty list rather than panicking.
+	kits *kitendpoint.Dispatcher
+
+	// setupWarnings are session-independent first-start setup warnings the web
+	// home screen renders before an operator starts a story.
+	setupWarnings []SetupWarning
+
+	// projectOnboarded says the served checkout already has project-local
+	// Kitsoki onboarding markers.
+	projectOnboarded bool
 }
 
 // activeTurn is one in-flight streamed turn's cancel handle. Stored by pointer
@@ -253,6 +301,7 @@ type subscription struct {
 	sessionID string
 	mu        sync.Mutex
 	sent      int
+	seen      bool
 }
 
 // Option configures a Server. A few options (WithDriver) only apply when the
@@ -264,16 +313,23 @@ type Option func(*serverConfig)
 // serverConfig collects the options before the Server is built. The single-entry
 // constructors fold driver into the adapter; NewMulti ignores it.
 type serverConfig struct {
-	poll         time.Duration
-	driver       Driver
-	defaultActor string
-	bugRoot      string
-	ticketRepo   string
-	workflowRoot string
+	poll                      time.Duration
+	driver                    Driver
+	defaultActor              string
+	bugRoot                   string
+	ticketRepo                string
+	agentEvidenceDir          string
+	improveTicketProvider     string
+	bugPrivacyChecker         bugprivacy.Checker
+	bugPrivacyCheckerResolver BugPrivacyCheckerResolver
+	workflowRoot              string
+	kits                      *kitendpoint.Dispatcher
+	setupWarnings             []SetupWarning
+	projectOnboarded          bool
 }
 
 // WithBugRoot sets the repo root under which runstatus.bug.report writes
-// issues/bugs/<id>.md and the sibling <id>.artifacts/ dir. `kitsoki web` wires
+// .artifacts/issues/bugs/<id>.md and the sibling <id>.artifacts/ dir. `kitsoki web` wires
 // this to its primary stories repo root so web-filed bugs land in the same
 // repo the CLI `kitsoki bug` command targets. Empty (the default) means the
 // handler resolves a root per request: the story_path's directory when given,
@@ -284,10 +340,55 @@ func WithBugRoot(dir string) Option {
 
 // WithTicketRepo routes runstatus.bug.report to a GitHub issue on the given
 // owner/repo with evidence saved under .artifacts for developer-local review,
-// instead of a local issues/bugs/<id>.md file. Wired by `kitsoki web
-// --ticket-repo`. Empty (the default) keeps the local-file behaviour.
+// instead of a local .artifacts/issues/bugs/<id>.md file. Wired by `kitsoki web
+// --ticket-repo`. Empty (the default) keeps the local-artifact behaviour.
 func WithTicketRepo(repo string) Option {
 	return func(c *serverConfig) { c.ticketRepo = strings.TrimSpace(repo) }
+}
+
+// WithAgentEvidenceDir sets the kitsoki github agent's evidence store root. When
+// set (and a GitHub bug is filed via WithTicketRepo), the scrubbed rrweb + HAR
+// are deposited under <dir>/<DeckID(repo,issue)>/ so the agent already holds the
+// evidence when its issues.opened webhook fires — no GitHub asset re-download.
+// Wired by `kitsoki web --agent-evidence-dir`; point it at the agent's
+// `--evidence-dir`. Empty (the default) skips the deposit.
+func WithAgentEvidenceDir(dir string) Option {
+	return func(c *serverConfig) { c.agentEvidenceDir = strings.TrimSpace(dir) }
+}
+
+// WithImproveTicketProvider routes runstatus.meta.improve.report to a reusable
+// ticket_provider/v1 script. The handler still writes a local evidence bundle
+// first, then calls the provider's create op with title/body and artifact
+// paths. Empty (the default) uses WithTicketRepo when configured, otherwise the
+// local artifact sink.
+func WithImproveTicketProvider(script string) Option {
+	return func(c *serverConfig) { c.improveTicketProvider = strings.TrimSpace(script) }
+}
+
+// WithBugPrivacyChecker enables the provider-backed bug report privacy gate.
+// The checker is injected by live command surfaces that have harness/provider
+// configuration available; tests may inject a fake checker.
+func WithBugPrivacyChecker(checker bugprivacy.Checker) Option {
+	return func(c *serverConfig) { c.bugPrivacyChecker = checker }
+}
+
+// BugPrivacyContext is the non-secret report context supplied to
+// BugPrivacyCheckerResolver.
+type BugPrivacyContext struct {
+	Params    map[string]any
+	Selection orchestrator.ProfileSelection
+}
+
+// BugPrivacyCheckerResolver builds the provider-backed bug report privacy gate
+// for one report. It can use the current session's harness selection when the
+// report identifies a live session.
+type BugPrivacyCheckerResolver func(BugPrivacyContext) bugprivacy.Checker
+
+// WithBugPrivacyCheckerResolver enables session-aware provider-backed privacy
+// checks. A nil resolver or nil returned checker falls back to
+// WithBugPrivacyChecker, then deterministic scrubbing only.
+func WithBugPrivacyCheckerResolver(resolver BugPrivacyCheckerResolver) Option {
+	return func(c *serverConfig) { c.bugPrivacyCheckerResolver = resolver }
 }
 
 // WithWorkflowRoot sets the repo root dynamic workflow RPCs use for draft
@@ -295,6 +396,30 @@ func WithTicketRepo(repo string) Option {
 // family on this server.
 func WithWorkflowRoot(dir string) Option {
 	return func(c *serverConfig) { c.workflowRoot = strings.TrimSpace(dir) }
+}
+
+// WithKits attaches the installed-kit endpoint dispatcher (S3b —
+// .context/kits-implementation-plan.md design decision D2.2/2.3), enabling
+// the `kit.<kit>.<iface>.<op>` JSON-RPC fallback and `runstatus.kits.list`.
+// A nil dispatcher (the default, when this option is not passed) leaves that
+// surface reporting "unknown method" / an empty kit list — most instances
+// have no kits installed.
+func WithKits(d *kitendpoint.Dispatcher) Option {
+	return func(c *serverConfig) { c.kits = d }
+}
+
+// WithSetupWarnings sets first-start setup warnings for the web home screen.
+// Warnings are advisory and read-only; callers should compute them from local
+// config and never include secrets.
+func WithSetupWarnings(warnings []SetupWarning) Option {
+	return func(c *serverConfig) { c.setupWarnings = cleanSetupWarnings(warnings) }
+}
+
+// WithProjectOnboarded marks the served checkout as already project-onboarded.
+// The web shell uses this to suppress automatic first-run tour prompts while
+// keeping the manual tour button available.
+func WithProjectOnboarded(onboarded bool) Option {
+	return func(c *serverConfig) { c.projectOnboarded = onboarded }
 }
 
 // WithPollInterval overrides the SSE trace-poll interval.
@@ -368,21 +493,28 @@ func newConfig(opts []Option) serverConfig {
 
 func newServer(provider SessionProvider, cfg serverConfig) *Server {
 	return &Server{
-		provider:     provider,
-		poll:         cfg.poll,
-		defaultActor: cfg.defaultActor,
-		subs:         make(map[string]*subscription),
-		notifs:       newNotifBuffer(),
-		questions:    newQuestionBuffer(),
-		qreg:         newQuestionRegistry(),
-		current:      newCurrentBuffer(),
-		points:       newPointHandoff(),
-		recorder:     harrec.New(bugRecorderCapacity),
-		bugRoot:      cfg.bugRoot,
-		ticketRepo:   cfg.ticketRepo,
-		workflowRoot: cfg.workflowRoot,
-		captureStore: make(map[string]*capSnap),
-		activeTurns:  make(map[string]*activeTurn),
+		provider:                  provider,
+		poll:                      cfg.poll,
+		defaultActor:              cfg.defaultActor,
+		subs:                      make(map[string]*subscription),
+		notifs:                    newNotifBuffer(),
+		questions:                 newQuestionBuffer(),
+		qreg:                      newQuestionRegistry(),
+		current:                   newCurrentBuffer(),
+		points:                    newPointHandoff(),
+		recorder:                  harrec.New(bugRecorderCapacity),
+		bugRoot:                   cfg.bugRoot,
+		ticketRepo:                cfg.ticketRepo,
+		agentEvidenceDir:          cfg.agentEvidenceDir,
+		improveTicketProvider:     cfg.improveTicketProvider,
+		bugPrivacyChecker:         cfg.bugPrivacyChecker,
+		bugPrivacyCheckerResolver: cfg.bugPrivacyCheckerResolver,
+		workflowRoot:              cfg.workflowRoot,
+		captureStore:              make(map[string]*capSnap),
+		activeTurns:               make(map[string]*activeTurn),
+		kits:                      cfg.kits,
+		setupWarnings:             append([]SetupWarning(nil), cfg.setupWarnings...),
+		projectOnboarded:          cfg.projectOnboarded,
 	}
 }
 
@@ -532,8 +664,33 @@ func (s *Server) Handler() http.Handler {
 	// Embedded help-docs site (make site-embed). Serves an actionable
 	// placeholder when not staged — never an error (see internal/helpdocs).
 	mux.Handle("/help/", http.StripPrefix("/help/", helpdocs.Handler()))
+	// Installed-kit UI static assets (S3c vertical slice — see kit_ui.go).
+	mux.HandleFunc("/kit/", s.handleKitUI)
 	mux.HandleFunc("/", s.handleIndex)
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if kitPathHasTraversal(r) {
+			http.NotFound(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+}
+
+func kitPathHasTraversal(r *http.Request) bool {
+	rawPath := r.URL.EscapedPath()
+	decoded, err := url.PathUnescape(rawPath)
+	if err != nil {
+		return strings.HasPrefix(rawPath, kitUIPathPrefix)
+	}
+	if !strings.HasPrefix(decoded, kitUIPathPrefix) {
+		return false
+	}
+	for _, part := range strings.Split(decoded, "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 // ── Static SPA ────────────────────────────────────────────────────────────
@@ -549,6 +706,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+	// S3c: splice the installed-kit registry + a minimal import map into
+	// <head> when any kits are installed. See kit_ui.go's package doc for
+	// what this is (and is not) a vertical slice of.
+	index = s.injectKitRegistry(index)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(index)
 }
@@ -738,6 +899,12 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		}
 		return out, nil
 
+	case "runstatus.kits.list":
+		return s.listInstalledKits(), nil
+
+	case "runstatus.setup.status":
+		return s.setupStatus(), nil
+
 	case "runstatus.stories.list":
 		return s.provider.ListStories(), nil
 
@@ -753,7 +920,18 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		if storyPath == "" {
 			return nil, &rpcError{Code: codeServerError, Message: "session.new: missing 'story_path'"}
 		}
-		sid, err := s.provider.NewSession(ctx, storyPath)
+		initialWorld, hasInitialWorld := params["initial_world"].(map[string]any)
+		var sid string
+		var err error
+		if hasInitialWorld && len(initialWorld) > 0 {
+			seeded, ok := s.provider.(SeededSessionProvider)
+			if !ok {
+				return nil, readOnlyErr(method)
+			}
+			sid, err = seeded.NewSessionSeeded(ctx, storyPath, initialWorld)
+		} else {
+			sid, err = s.provider.NewSession(ctx, storyPath)
+		}
 		if err != nil {
 			// An invalid story is surfaced as a structured error so the UI can
 			// show it before navigating (decided lean).
@@ -1016,7 +1194,11 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		if err != nil {
 			return nil, serverErr(err)
 		}
-		return newTurnResult(out, entry.Driver), nil
+		drive, out, err := driveBackgroundOperationAfterTurn(ctx, entry.Driver, out)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return newTurnResultWithOperationDrive(out, entry.Driver, drive), nil
 
 	case "runstatus.session.submit":
 		entry, rerr := s.resolve(params)
@@ -1047,7 +1229,11 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		if err != nil {
 			return nil, serverErr(err)
 		}
-		return newTurnResult(out, entry.Driver), nil
+		drive, out, err := driveBackgroundOperationAfterTurn(ctx, entry.Driver, out)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return newTurnResultWithOperationDrive(out, entry.Driver, drive), nil
 
 	case "runstatus.session.continue":
 		entry, rerr := s.resolve(params)
@@ -1064,7 +1250,36 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		if err != nil {
 			return nil, serverErr(err)
 		}
-		return newTurnResult(out, entry.Driver), nil
+		drive, out, err := driveBackgroundOperationAfterTurn(ctx, entry.Driver, out)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return newTurnResultWithOperationDrive(out, entry.Driver, drive), nil
+
+	case "runstatus.session.drive_operation":
+		entry, rerr := s.resolve(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if entry.Driver == nil {
+			return nil, readOnlyErr(method)
+		}
+		driver, ok := entry.Driver.(OperationDriver)
+		if !ok {
+			return nil, &rpcError{Code: codeServerError, Message: "session.drive_operation: operation driving unavailable"}
+		}
+		drive, err := driver.DriveOperation(ctx)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		if drive != nil && drive.Final != nil {
+			return newTurnResultWithOperationDrive(drive.Final, entry.Driver, drive), nil
+		}
+		out, err := entry.Driver.View(ctx)
+		if err != nil {
+			return nil, serverErr(err)
+		}
+		return newTurnResultWithOperationDrive(out, entry.Driver, drive), nil
 
 	case "runstatus.session.patch_world":
 		// Demo/test tooling: inject world key-value overrides without advancing
@@ -1323,6 +1538,36 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		}
 		return newTurnResult(out, entry.Driver), nil
 
+	case "runstatus.session.routing_feedback":
+		// Web chat's thumbs-up/down control on a routed turn (WS-C C4). The
+		// browser recovers state/intent/tier/phrase from the turn's own trace
+		// events (readTurnRouting in stores/run.ts) and posts them here; this
+		// is a pure pass-through to the SAME journaled routing-feedback event
+		// the TUI's `/route up|down` command writes (Orchestrator.
+		// RecordRoutingFeedback / journal.KindRoutingFeedback) — no second
+		// schema. Never mutates session/world state, so no writer lock and no
+		// TurnOutcome to return.
+		entry, rerr := s.resolve(params)
+		if rerr != nil {
+			return nil, rerr
+		}
+		if entry.Driver == nil {
+			return nil, readOnlyErr(method)
+		}
+		statePath, _ := params["state"].(string)
+		intent, _ := params["intent"].(string)
+		phrase, _ := params["phrase"].(string)
+		tier, _ := params["tier"].(string)
+		verdictStr, _ := params["verdict"].(string)
+		verdict := orchestrator.RoutingFeedbackVerdict(verdictStr)
+		if verdict != orchestrator.RoutingFeedbackUp && verdict != orchestrator.RoutingFeedbackDown {
+			return nil, &rpcError{Code: codeServerError, Message: "session.routing_feedback: 'verdict' must be 'up' or 'down'"}
+		}
+		if err := entry.Driver.RecordRoutingFeedback(ctx, statePath, intent, phrase, tier, verdict); err != nil {
+			return nil, serverErr(err)
+		}
+		return map[string]any{"ok": true}, nil
+
 	case "runstatus.notifications.subscribe":
 		// Cross-session feed: no session_id — the browser home chrome opens one
 		// of these for the global badge/toast. Returns a subscription_id the
@@ -1456,6 +1701,9 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		}
 		return map[string]any{"messages": msgs}, nil
 
+	case "runstatus.meta.improve.report":
+		return s.metaImproveReportContext(ctx, params)
+
 	// ── Annotation sidecar ────────────────────────────────────────────────────
 	case "runstatus.annotation.add":
 		sid, rerr := sessionIDParam(params)
@@ -1533,11 +1781,11 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 			"note":          "replay dispatch not yet wired (v1 stub)",
 		}, nil
 
-	// ── Local file read (markdown preview) ───────────────────────────────────
-	// runstatus.file.read reads a local .md file by absolute path and returns its
-	// raw content. Only .md files are served; any other extension returns an error.
-	// This is intentionally unrestricted beyond the .md check — kitsoki web is a
-	// trusted localhost-only tool.
+	// ── Local file read (artifact preview) ───────────────────────────────────
+	// runstatus.file.read reads a local markdown/diff artifact by absolute path
+	// and returns its raw content. Only .md/.diff/.patch files are served; any
+	// other extension returns an error. This is intentionally unrestricted beyond
+	// the extension check — kitsoki web is a trusted localhost-only tool.
 	//
 	// Request params: {path}
 	// Response: {content}
@@ -1546,8 +1794,9 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		if filePath == "" {
 			return nil, &rpcError{Code: codeServerError, Message: "file.read: missing 'path'"}
 		}
-		if !strings.HasSuffix(strings.ToLower(filePath), ".md") {
-			return nil, &rpcError{Code: codeServerError, Message: "file.read: only .md files are served"}
+		ext := strings.ToLower(filepath.Ext(filePath))
+		if ext != ".md" && ext != ".diff" && ext != ".patch" {
+			return nil, &rpcError{Code: codeServerError, Message: "file.read: only .md, .diff, and .patch files are served"}
 		}
 		data, err := os.ReadFile(filepath.Clean(filePath))
 		if err != nil {
@@ -1618,8 +1867,11 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 	case "runstatus.bug.preview":
 		return s.bugPreview(params)
 
+	case "runstatus.bug.status":
+		return s.bugStatus(ctx)
+
 	case "runstatus.bug.report":
-		return s.bugReport(params)
+		return s.bugReportContext(ctx, params)
 
 	default:
 		// ── Story editor (per-story, no session) ─────────────────────────────
@@ -1627,6 +1879,15 @@ func (s *Server) dispatch(ctx context.Context, method string, params map[string]
 		// catalogue rather than a live session; dispatchEditor reports handled
 		// so unknown non-editor methods still fall through to method-missing.
 		if result, rerr, handled := s.dispatchEditor(method, params); handled {
+			return result, rerr
+		}
+		// runstatus.objectgraph.* (W5.0) is retired as of S5: the project
+		// object graph catalog moved behind host.graph.* + the
+		// @kitsoki/object-graph kit's "graph" interface, reached through the
+		// kit.<kit>.<iface>.<op> fallback below (e.g.
+		// kit.object-graph.graph.project) — see .context/kits-implementation-plan.md.
+		// ── Kit extension surface (S3b: kit.<kit>.<iface>.<op>) ──────────────
+		if result, rerr, handled := s.dispatchKit(ctx, method, params); handled {
 			return result, rerr
 		}
 		return nil, &rpcError{Code: codeMethodMissing, Message: "unknown method: " + method}
@@ -1738,6 +1999,31 @@ func appendWorkflowValidationEvent(receipt *dynamicworkflow.Receipt) error {
 		"errors":          receipt.Validation.Errors,
 		"warnings":        receipt.Validation.Warnings,
 	})
+}
+
+func driveBackgroundOperationAfterTurn(ctx context.Context, driver Driver, out *orchestrator.TurnOutcome) (*orchestrator.OperationDriveOutcome, *orchestrator.TurnOutcome, error) {
+	if driver == nil || out == nil || out.Mode != orchestrator.ModeTransitioned {
+		return nil, out, nil
+	}
+	bg, ok := driver.(BackgroundOperationDriver)
+	if !ok {
+		return nil, out, nil
+	}
+	drive, err := bg.DriveBackgroundOperation(ctx)
+	if err != nil {
+		return nil, out, err
+	}
+	if drive == nil {
+		return nil, out, nil
+	}
+	if drive.Final != nil {
+		return drive, drive.Final, nil
+	}
+	current, err := driver.View(ctx)
+	if err != nil {
+		return drive, out, err
+	}
+	return drive, current, nil
 }
 
 func readOnlyErr(method string) *rpcError {
@@ -1970,7 +2256,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	for {
-		s.streamNew(w, flusher, sub)
+		if done := s.streamNew(w, flusher, sub); done {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -1982,19 +2270,40 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 // streamNew emits a runstatus.event notification for every event appended to
 // the subscription's session since its last delivery, then advances the
 // watermark. The session's live [Source] is resolved per tick through the
-// provider, so a session created or reloaded after subscribe is still followed;
-// if the session has gone (unknown id) the tick is a no-op.
-func (s *Server) streamNew(w http.ResponseWriter, flusher http.Flusher, sub *subscription) {
+// provider, so a session created or reloaded after subscribe is still followed.
+// If a session that was previously resolving successfully has since vanished
+// (evicted — swarm-session-cap), streamNew emits one terminal
+// runstatus.session_gone frame and returns true so the caller closes the
+// stream instead of polling a dead session forever. A session that has never
+// resolved (subscribe raced session creation) is treated as a quiet no-op tick,
+// not a terminal condition.
+func (s *Server) streamNew(w http.ResponseWriter, flusher http.Flusher, sub *subscription) bool {
 	sub.mu.Lock()
 	defer sub.mu.Unlock()
 
 	entry, ok := s.provider.Get(sub.sessionID)
 	if !ok {
-		return
+		if sub.seen {
+			frame := map[string]any{
+				"jsonrpc": "2.0",
+				"method":  "runstatus.session_gone",
+				"params": map[string]any{
+					"subscription_id": sub.id,
+					"session_id":      sub.sessionID,
+				},
+			}
+			if b, err := json.Marshal(frame); err == nil {
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", b)
+				flusher.Flush()
+			}
+			return true
+		}
+		return false
 	}
+	sub.seen = true
 	events, err := entry.Source.Events()
 	if err != nil || len(events) <= sub.sent {
-		return
+		return false
 	}
 	for _, ev := range events[sub.sent:] {
 		frame := map[string]any{
@@ -2013,6 +2322,7 @@ func (s *Server) streamNew(w http.ResponseWriter, flusher http.Flusher, sub *sub
 	}
 	sub.sent = len(events)
 	flusher.Flush()
+	return false
 }
 
 // handleNotifications streams the cross-session notification feed as SSE. It

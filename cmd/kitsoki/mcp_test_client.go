@@ -23,16 +23,20 @@ import (
 // changes without reloading an attached LLM client.
 func mcpTestCmd() *cobra.Command {
 	var (
-		serverCommand string
-		serverArgs    []string
-		storiesDir    string
-		workspace     string
-		readOnly      bool
-		timeout       time.Duration
-		listTools     bool
-		toolName      string
-		toolArgsJSON  string
-		callsJSON     string
+		serverCommand          string
+		serverArgs             []string
+		storiesDir             string
+		workspace              string
+		readOnly               bool
+		timeout                time.Duration
+		listTools              bool
+		toolName               string
+		toolArgsJSON           string
+		toolExpectJSON         string
+		toolExpectContainsJSON string
+		toolExpectExistsCSV    string
+		toolExpectError        bool
+		callsJSON              string
 	)
 	cmd := &cobra.Command{
 		Use:   "mcp-test",
@@ -68,6 +72,26 @@ Examples:
 					return fmt.Errorf("mcp-test: --tool-args must be a JSON object: %w", err)
 				}
 			}
+			var toolExpect map[string]any
+			if toolExpectJSON != "" {
+				if err := json.Unmarshal([]byte(toolExpectJSON), &toolExpect); err != nil {
+					return fmt.Errorf("mcp-test: --expect must be a JSON object: %w", err)
+				}
+			}
+			var toolExpectContains map[string]string
+			if toolExpectContainsJSON != "" {
+				if err := json.Unmarshal([]byte(toolExpectContainsJSON), &toolExpectContains); err != nil {
+					return fmt.Errorf("mcp-test: --expect-contains must be a JSON object of string values: %w", err)
+				}
+			}
+			var toolExpectExists []string
+			if toolExpectExistsCSV != "" {
+				for _, part := range strings.Split(toolExpectExistsCSV, ",") {
+					if part = strings.TrimSpace(part); part != "" {
+						toolExpectExists = append(toolExpectExists, part)
+					}
+				}
+			}
 			var calls []studioMCPTestCall
 			if callsJSON != "" {
 				if toolName != "" {
@@ -92,12 +116,16 @@ Examples:
 				}
 			}
 			opts := studioMCPTestOptions{
-				ServerCommand: serverCommand,
-				ServerArgs:    studioMCPTestServerArgs(serverArgs, storiesDir, workspace, readOnly, os.TempDir()),
-				ListTools:     listTools,
-				ToolName:      toolName,
-				ToolArgs:      toolArgs,
-				Calls:         calls,
+				ServerCommand:      serverCommand,
+				ServerArgs:         studioMCPTestServerArgs(serverArgs, storiesDir, workspace, readOnly, os.TempDir()),
+				ListTools:          listTools,
+				ToolName:           toolName,
+				ToolArgs:           toolArgs,
+				ToolExpect:         toolExpect,
+				ToolExpectContains: toolExpectContains,
+				ToolExpectExists:   toolExpectExists,
+				ToolExpectError:    toolExpectError,
+				Calls:              calls,
 			}
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
@@ -123,18 +151,30 @@ Examples:
 		"single tool to call instead of the default studio.ping + studio.handles calls")
 	cmd.Flags().StringVar(&toolArgsJSON, "tool-args", "",
 		"JSON object arguments for --tool")
+	cmd.Flags().StringVar(&toolExpectJSON, "expect", "",
+		"JSON object of dot-path equality expectations for --tool")
+	cmd.Flags().StringVar(&toolExpectContainsJSON, "expect-contains", "",
+		"JSON object of dot-path substring expectations for --tool")
+	cmd.Flags().StringVar(&toolExpectExistsCSV, "expect-exists", "",
+		"comma-separated dot paths that must exist in the --tool result")
+	cmd.Flags().BoolVar(&toolExpectError, "expect-error", false,
+		"treat a structured MCP tool error from --tool as the expected outcome")
 	cmd.Flags().StringVar(&callsJSON, "calls", "",
 		"JSON array of sequential tool calls: [{\"tool\":\"session.new\",\"args\":{...}}, ...]")
 	return cmd
 }
 
 type studioMCPTestOptions struct {
-	ServerCommand string              `json:"server_command,omitempty"`
-	ServerArgs    []string            `json:"server_args,omitempty"`
-	ListTools     bool                `json:"list_tools"`
-	ToolName      string              `json:"tool,omitempty"`
-	ToolArgs      map[string]any      `json:"tool_args,omitempty"`
-	Calls         []studioMCPTestCall `json:"calls,omitempty"`
+	ServerCommand      string              `json:"server_command,omitempty"`
+	ServerArgs         []string            `json:"server_args,omitempty"`
+	ListTools          bool                `json:"list_tools"`
+	ToolName           string              `json:"tool,omitempty"`
+	ToolArgs           map[string]any      `json:"tool_args,omitempty"`
+	ToolExpect         map[string]any      `json:"tool_expect,omitempty"`
+	ToolExpectContains map[string]string   `json:"tool_expect_contains,omitempty"`
+	ToolExpectExists   []string            `json:"tool_expect_exists,omitempty"`
+	ToolExpectError    bool                `json:"tool_expect_error,omitempty"`
+	Calls              []studioMCPTestCall `json:"calls,omitempty"`
 }
 
 type studioMCPTestCall struct {
@@ -143,6 +183,7 @@ type studioMCPTestCall struct {
 	Expect         map[string]any    `json:"expect,omitempty"`
 	ExpectContains map[string]string `json:"expect_contains,omitempty"`
 	ExpectExists   []string          `json:"expect_exists,omitempty"`
+	ExpectError    bool              `json:"expect_error,omitempty"`
 	Save           map[string]string `json:"save,omitempty"`
 	Retries        int               `json:"retries,omitempty"`
 	IntervalMS     int               `json:"interval_ms,omitempty"`
@@ -215,6 +256,18 @@ func runStudioMCPTest(ctx context.Context, opts studioMCPTestOptions, out io.Wri
 	return nil
 }
 
+type studioMCPPlannedCall struct {
+	name           string
+	args           map[string]any
+	expect         map[string]any
+	expectContains map[string]string
+	expectExists   []string
+	expectError    bool
+	save           map[string]string
+	retries        int
+	intervalMS     int
+}
+
 func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts studioMCPTestOptions) (studioMCPTestReport, error) {
 	report := studioMCPTestReport{
 		OK:     true,
@@ -230,52 +283,23 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 		}
 	}
 
-	calls := []struct {
-		name           string
-		args           map[string]any
-		expect         map[string]any
-		expectContains map[string]string
-		expectExists   []string
-		save           map[string]string
-		retries        int
-		intervalMS     int
-	}{
+	calls := []studioMCPPlannedCall{
 		{name: "studio.ping"},
 		{name: "studio.handles"},
 	}
 	if opts.ToolName != "" {
-		calls = []struct {
-			name           string
-			args           map[string]any
-			expect         map[string]any
-			expectContains map[string]string
-			expectExists   []string
-			save           map[string]string
-			retries        int
-			intervalMS     int
-		}{{name: opts.ToolName, args: opts.ToolArgs}}
+		calls = []studioMCPPlannedCall{{
+			name:           opts.ToolName,
+			args:           opts.ToolArgs,
+			expect:         opts.ToolExpect,
+			expectContains: opts.ToolExpectContains,
+			expectExists:   opts.ToolExpectExists,
+			expectError:    opts.ToolExpectError,
+		}}
 	} else if len(opts.Calls) > 0 {
-		calls = make([]struct {
-			name           string
-			args           map[string]any
-			expect         map[string]any
-			expectContains map[string]string
-			expectExists   []string
-			save           map[string]string
-			retries        int
-			intervalMS     int
-		}, 0, len(opts.Calls))
+		calls = make([]studioMCPPlannedCall, 0, len(opts.Calls))
 		for _, call := range opts.Calls {
-			calls = append(calls, struct {
-				name           string
-				args           map[string]any
-				expect         map[string]any
-				expectContains map[string]string
-				expectExists   []string
-				save           map[string]string
-				retries        int
-				intervalMS     int
-			}{name: call.Name, args: call.Args, expect: call.Expect, expectContains: call.ExpectContains, expectExists: call.ExpectExists, save: call.Save, retries: call.Retries, intervalMS: call.IntervalMS})
+			calls = append(calls, studioMCPPlannedCall{name: call.Name, args: call.Args, expect: call.Expect, expectContains: call.ExpectContains, expectExists: call.ExpectExists, expectError: call.ExpectError, save: call.Save, retries: call.Retries, intervalMS: call.IntervalMS})
 		}
 	}
 	vars := map[string]string{}
@@ -307,7 +331,10 @@ func runStudioMCPTestSession(ctx context.Context, cs *mcpsdk.ClientSession, opts
 			Attempts: attempts,
 			Result:   result,
 		})
-		if isError {
+		switch {
+		case call.expectError && !isError:
+			return report, fmt.Errorf("mcp-test: %s expected a structured tool error, got success", call.name)
+		case !call.expectError && isError:
 			report.OK = false
 		}
 	}
@@ -377,7 +404,7 @@ func decodeMCPToolResult(name string, res *mcpsdk.CallToolResult) (map[string]in
 
 func assertMCPExpectations(name string, result map[string]interface{}, expect map[string]any) error {
 	for path, want := range expect {
-		got, ok := lookupDotPath(result, path)
+		got, ok := lookupMCPExpectationPath(result, path)
 		if !ok {
 			return fmt.Errorf("mcp-test: %s expectation %q missing", name, path)
 		}
@@ -390,7 +417,7 @@ func assertMCPExpectations(name string, result map[string]interface{}, expect ma
 
 func assertMCPContainsExpectations(name string, result map[string]interface{}, expect map[string]string) error {
 	for path, want := range expect {
-		got, ok := lookupDotPath(result, path)
+		got, ok := lookupMCPExpectationPath(result, path)
 		if !ok {
 			return fmt.Errorf("mcp-test: %s contains expectation %q missing", name, path)
 		}
@@ -410,11 +437,25 @@ func assertMCPExistsExpectations(name string, result map[string]interface{}, pat
 		if path == "" {
 			return fmt.Errorf("mcp-test: %s exists expectation path is empty", name)
 		}
-		if _, ok := lookupDotPath(result, path); !ok {
+		if _, ok := lookupMCPExpectationPath(result, path); !ok {
 			return fmt.Errorf("mcp-test: %s exists expectation %q missing", name, path)
 		}
 	}
 	return nil
+}
+
+func lookupMCPExpectationPath(result map[string]interface{}, path string) (any, bool) {
+	if got, ok := lookupDotPath(result, path); ok {
+		return got, true
+	}
+	if strings.HasPrefix(path, "structuredContent.") || path == "structuredContent" {
+		return nil, false
+	}
+	structured, ok := result["structuredContent"]
+	if !ok {
+		return nil, false
+	}
+	return lookupDotPath(structured, path)
 }
 
 func lookupDotPath(root any, path string) (any, bool) {

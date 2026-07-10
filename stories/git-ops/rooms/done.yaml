@@ -3,13 +3,36 @@
 states:
 
   done:
-    description: "git-ops session complete."
+    description: "git-ops session complete. Choose where to go next."
     view:
-      extends: "base"
-      blocks:
-        body:
-          - prose: "git-ops session complete. Branch: {{ world.current_branch|default:'(unknown)' }}."
-          - kv:
-              pairs:
-                Branch:      '{{ world.current_branch|default:"(unknown)" }}'
-                Integration: '{{ world.integration_branch }}'
+      - prose: "git-ops session complete. Where do you want to go next?"
+      - kv:
+          pairs:
+            Branch:      '{{ world.current_branch|default:"(unknown)" }}'
+            Integration: '{{ world.integration_branch }}'
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "back"
+              hint:  "return to the git-ops hub"
+              intent: back
+            - label: "main_room"
+              hint:  "return to the parent story's main room"
+              intent: main_room
+            - label: "quit"
+              hint:  "stay on this completed git-ops screen"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      back:
+        - when: "world.on_integration == true || world.current_branch == world.integration_branch"
+          target: main_ops
+        - target: branch_ops
+      main_room:
+        - target: "@exit:main"
+      quit:
+        - target: .
+      look:
+        - target: .

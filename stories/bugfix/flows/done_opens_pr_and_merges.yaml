@@ -1,0 +1,116 @@
+# done_opens_pr_and_merges — WS-C C3: the opt-in CI-watch/merge tail.
+#
+# bugfix_exit=open-PR-merge: `done`'s accept arc, instead of firing
+# @exit:done, seeds pr_title/pr_body from the done_artifact and enters the
+# IMPORTED pr-refinement compound (open_pr → ci_monitoring → merge) directly
+# — no parent hub required. Mirrors stories/dev-story/flows/bugfix_to_pr.yaml
+# (which drives the SAME pr-refinement import from a parent), confined here
+# to bugfix's own opt-in tail.
+#
+# The default bugfix_exit (open-PR) still hands off @exit:done unchanged —
+# see done_posts_fixed_in_comment.yaml / done_closes_github_issue.yaml for
+# that path, which this flow does not touch.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: validating
+initial_world:
+  ticket_id:      "TKT-MERGE-1"
+  ticket_title:   "Retry backoff double-fires on timeout"
+  thread:         "TKT-MERGE-1"
+  workdir:        ".worktrees/tkt-merge-1"
+  feature_branch: "fix/tkt-merge-1"
+  base_branch:    "main"
+  judge_mode:     "human"
+  bugfix_exit:    "open-PR-merge"
+  merge_strategy: "squash"
+  done_artifact:
+    summary_title:    "Retry backoff double-fire fixed"
+    summary_markdown: "Close-out body."
+  validate_artifact:
+    summary_title:    "Full validation passed"
+    summary_markdown: "Validation body."
+    outcome:          "pass"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:      { data: { ok: true, id: "ib-1" } }
+  host.run:
+    by_call:
+      done_clean_tree_check:
+        data: { ok: true, exit_code: 0, stdout_json: { dirty: false, files: "" } }
+      done_fixed_in_commit:
+        data: { ok: true, exit_code: 0, stdout_json: { commit: "f00dfeed1234" } }
+  host.local_files.ticket.comment:
+    data: { ok: true, comment_id: "comment-1" }
+  host.local_files.ticket.transition:
+    data: { ok: true }
+  # Single host.git stub satisfies iface.vcs.{open_pr,pr_status,merge} via
+  # prefix-fallback (same convention as dev-story's bugfix_to_pr.yaml).
+  host.git:
+    data:
+      ok:     true
+      url:    "https://example/pr/300"
+      pr_id:  "300"
+      state:  "success"
+      checks: ""
+      comments: ""
+      sha:    "e5f6a7b8"
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        summary_title:    "Retry backoff double-fire fixed"
+        summary_markdown: "Close-out body."
+
+turns:
+  # validating → done (a real transition; on_enter fires the postmortem
+  # agent, the clean-tree guard, and the fixed-in-commit capture).
+  - intent: { name: accept, slots: {} }
+    expect_state: done
+    expect_world:
+      fixed_in_commit: "f00dfeed1234"
+
+  # done's accept arc: bugfix_exit=open-PR-merge → post + resolve the local
+  # ticket, seed pr_title/pr_body from done_artifact, enter the `pr` import
+  # at open_pr (its world_in: projects pr_title/pr_body/workdir/etc into
+  # pr__<key>). NOT @exit:done.
+  - intent: { name: accept, slots: {} }
+    expect_state: pr.open_pr
+    expect_world:
+      pr_title: "Retry backoff double-fire fixed"
+      pr_body:  "Close-out body."
+      status:   "fixed"
+      pr__ticket_id:      "TKT-MERGE-1"
+      pr__pr_title:       "Retry backoff double-fire fixed"
+      pr__feature_branch: "fix/tkt-merge-1"
+    expect_host_calls:
+      - handler: host.local_files.ticket.transition
+        args: { id: "TKT-MERGE-1", to: "resolved" }
+
+  # pr.open_pr.on_enter ran iface.vcs.open_pr and bound pr_id / pr_url.
+  - intent: { name: pr__proceed, slots: {} }
+    expect_state: pr.ci_monitoring
+    expect_world:
+      pr__pr_id:  "300"
+      pr__pr_url: "https://example/pr/300"
+
+  # ci_monitoring saw state=success, pending_comments=0 → merge_executing.
+  - intent: { name: pr__proceed, slots: {} }
+    expect_state: pr.merge_executing
+  - intent: { name: pr__proceed, slots: {} }
+    expect_state: pr.merge_awaiting_reply
+    expect_world:
+      pr__merge_sha: "e5f6a7b8"
+
+  # accept → pr @exit:merged → bugfix's imports.pr.exits.merged projection
+  # lifts pr_url / merge_sha and fires bugfix's OWN @exit:merged.
+  - intent: { name: pr__accept, slots: {} }
+    expect_state: __exit__merged
+    expect_world:
+      status:    "merged"
+      pr_url:    "https://example/pr/300"
+      merge_sha: "e5f6a7b8"
+
+expect_terminal: true
+expect_no_errors: true

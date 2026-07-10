@@ -25,13 +25,11 @@ initial_world:
     items: []
   design_references_path: "docs/proposals/.workspace/lmo/003-references.json"
 
+starlark_inspect_cassette: ../cassettes/design_lmo_amend.inspect.yaml
+
 host_handlers:
   host.artifacts_dir:
     data: { ok: true, path: "docs/proposals/.workspace/lmo/out.md", message_id: "out#1" }
-  host.run:
-    by_call:
-      amend_workspace:
-        data: { ok: true, stdout_json: { slug: "lmo", workspace: "docs/proposals/.workspace/lmo" } }
   # Stubs for design_refine on_enter (advanced to by change_existing)
   host.ide.open_file:
     data: { ok: true, connected: true }
@@ -62,7 +60,7 @@ turns:
       design_change_target:    "docs/proposals/local-model-agent.md"
       design_workspace:        "docs/proposals/.workspace/lmo"
     expect_host_calls:
-      - handler: host.run
+      - handler: host.starlark.run
         args: { call: "amend_workspace" }
 
 expect_no_errors: true

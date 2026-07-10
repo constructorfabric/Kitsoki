@@ -144,6 +144,26 @@ func TestHostRun_NoTruncateWhenDisabled(t *testing.T) {
 	assert.Greater(t, len(got.Stdout), 4096, "full output returned when opted out")
 }
 
+func TestHostRun_CollapsesTerminalProgressRepaints(t *testing.T) {
+	ctx := context.Background()
+	cs := newStudioHostRunner(ctx, t)
+
+	res, err := callTool(ctx, cs, "host.run", map[string]any{
+		"dir": t.TempDir(),
+		"cmd": "printf 'clone 10%%\rclone 50%%\rclone 100%%\nDone\n'",
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, contentText(res))
+
+	var got studio.HostRunOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.True(t, got.OK)
+	assert.NotContains(t, got.Stdout, "clone 10%")
+	assert.NotContains(t, got.Stdout, "clone 50%")
+	assert.Contains(t, got.Stdout, "clone 100%")
+	assert.Contains(t, got.Stdout, "Done")
+}
+
 // TestHostRun_MissingDir rejects a call with no dir — a gate must name the tree
 // it gates, never silently run against the server's cwd. `dir` is a required
 // schema property, so the SDK rejects the call at the transport layer (the

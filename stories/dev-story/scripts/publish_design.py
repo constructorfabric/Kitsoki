@@ -52,6 +52,7 @@ lexical-sort prefix.
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -142,10 +143,13 @@ def file_feature_issue_github(slug: str, title: str, idea: str, design_rel: str,
     """Mint a GitHub feature issue on `repo` linking the published proposal,
     instead of an issues/features/<id>.md file.
 
-    Labels target:kitsoki + comp:proposal (the GitHub twin of the local
-    format's component: proposal). Returns (issue_number, issue_url). Mirrors
-    the Go host.gh.ticket create op: ensure the labels exist (best-effort), and
-    degrade to an unlabelled file if the caller lacks triage.
+    Labels target:<repo-name> + comp:proposal (the GitHub twin of the local
+    format's component: proposal). The target label derives from the repo
+    slug's name segment - never a hardcoded project - so an onboarded external
+    repo (e.g. acme/gears-rust -> target:gears-rust) gets its own vocabulary,
+    and a local project instance can keep its own target label convention.
+    Returns (issue_number, issue_url). Routes through Kitsoki's native GitHub
+    filing path instead of shelling out to gh.
     """
     ticket_title = title.strip() or slug
     body_idea = idea.strip()
@@ -157,25 +161,21 @@ def file_feature_issue_github(slug: str, title: str, idea: str, design_rel: str,
         "proposal carries the full Why / What changes / Impact spine — read it "
         "before starting implementation.\n"
     )
-    labels = ["target:kitsoki", "comp:proposal"]
-    for lab in labels:
-        color = "1d76db" if lab.startswith("target:") else "d4c5f9"
-        subprocess.run(
-            ["gh", "label", "create", lab, "--repo", repo, "--color", color, "--force"],
-            capture_output=True, text=True,
-        )
-    args = ["gh", "issue", "create", "--repo", repo, "--title", ticket_title, "--body", body]
-    for lab in labels:
-        args += ["--label", lab]
+    kitsoki = shlex.split(os.environ.get("KITSOKI_BIN", "go run ./cmd/kitsoki"))
+    repo_name = repo.rstrip("/").rsplit("/", 1)[-1].lower() or "project"
+    args = kitsoki + [
+        "bug", "create",
+        "--github", repo,
+        "--target", repo_name,
+        "--title", ticket_title,
+        "--body", body,
+        "--component", "proposal",
+        "--severity", "P3",
+        "--trace-ref", design_rel,
+    ]
     res = subprocess.run(args, capture_output=True, text=True)
     if res.returncode != 0:
-        # Degrade to an unlabelled issue (a fork contributor without triage).
-        res = subprocess.run(
-            ["gh", "issue", "create", "--repo", repo, "--title", ticket_title, "--body", body],
-            capture_output=True, text=True,
-        )
-        if res.returncode != 0:
-            raise RuntimeError("gh issue create failed: " + res.stderr.strip())
+        raise RuntimeError("kitsoki bug create --github failed: " + res.stderr.strip())
     url = res.stdout.strip().splitlines()[-1].strip()
     number = url.rstrip("/").rsplit("/", 1)[-1]
     return number, url
@@ -234,7 +234,7 @@ def main() -> None:
 
     # Mint the feature ticket that links back to the published proposal, so the
     # draft room can route straight into the implementation pipeline. Precedence:
-    #   ticket_repo set  → a GitHub feature issue (kitsoki-dev's GitHub cutover);
+    #   ticket_repo set  → a GitHub feature issue for the configured repo;
     #   ticket_dir set   → a local issues/features/<id>.md file (the default);
     #   both empty       → skip (an external target tracks work elsewhere).
     ticket_url = ""

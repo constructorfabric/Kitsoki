@@ -10,6 +10,14 @@ The shipped references are:
 - `query-string`: public, small, already reported with live GPT-5.5 results.
 - `gears-rust`: private/heavy Rust reference with four armable fixtures and a
   full no-cost smoke.
+- `kitsoki`: local self-dogfood bugs folded into the same manifest contract.
+
+Together those projects currently expose ten promoted repo-history capsules.
+List them with:
+
+```sh
+make repo-history-capsules
+```
 
 ## 1. Pick Armable Historical Bugs
 
@@ -43,7 +51,18 @@ Use the existing manifests as templates:
 - `tools/bugfix-bakeoff/external/projects/gears-rust/manifest.yaml`
 
 For private or heavy repos, set `project.local_only: true` and pass
-`HISTORY_REPO_DIR=/path/to/checkout` in the commands below.
+`HISTORY_REPO_DIR=/path/to/checkout` in the commands below. If the repo normally
+lives inside a meta checkout, also set:
+
+```yaml
+project:
+  repo_envs: [BUGFIX_BAKEOFF_REPO, BUGFIX_BAKEOFF_META_REPO]
+  repo_subdir: src/path/to/project
+```
+
+Then the same manifest works with either `BUGFIX_BAKEOFF_REPO=/path/to/project`
+or `HISTORY_REPO_DIR=/path/to/meta-checkout`; the harness resolves the subproject
+before checking historical commits.
 
 ## 3. Prove Setup Without Spending
 

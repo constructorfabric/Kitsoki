@@ -1,0 +1,37 @@
+schema: project-object-graph/seed-catalog/v0
+type_registry:
+  - id: core-node
+    schema: graph-type/v0
+  - id: area
+    schema: graph-type/v0
+    extends: core-node
+  - id: feature
+    schema: graph-type/v0
+    extends: core-node
+    edge_fields:
+      - id: in_area
+        target_type: area
+        cardinality: many
+nodes:
+  - schema: graph/area/v0
+    id: area-one
+    title: Area One
+    status: active
+    visibility: internal
+  - schema: graph/feature/v0
+    id: feature-orphan
+    title: Orphan Feature
+    status: active
+    visibility: public
+  - schema: graph/feature/v0
+    id: feature-homed
+    title: Homed Feature
+    status: active
+    visibility: public
+    edges:
+      in_area: ["area-one"]
+  - schema: graph/feature/v0
+    id: feature-internal-orphan
+    title: Internal Orphan Feature (not flagged, internal-only migration)
+    status: active
+    visibility: internal

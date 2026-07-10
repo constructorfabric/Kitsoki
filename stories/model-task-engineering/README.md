@@ -22,8 +22,9 @@ story through the bench manifest's `run` command and remain gated by
 
 ## Testing
 
-The flow fixture stubs `host.run`, so it does not call a provider and does not
-execute the shell command:
+The flow fixture runs the Starlark artifact-path derivation and stubs
+`host.run`, so it does not call a provider and does not execute the score
+command:
 
 ```sh
 go run ./cmd/kitsoki test flows stories/model-task-engineering/app.yaml

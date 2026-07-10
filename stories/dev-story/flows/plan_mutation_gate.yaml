@@ -38,7 +38,8 @@
 test_kind: flow
 app: ../app.yaml
 initial_state: landing
-initial_world: {}
+initial_world:
+  origin_repo: "acme/project"
 
 starlark_inspect_cassette: ../cassettes/issues_migrated_incomplete.inspect.yaml
 
@@ -62,7 +63,7 @@ host_handlers:
             reason: "Passes iff GitHub lists >= expected_min issues for the repo."
 
 turns:
-  - intent: { name: work, slots: { request: "import the issues folder in the repo to github" } }
+  - intent: { name: landing_capture, slots: { request: "import the issues folder in the repo to github" } }
     expect_state: landing
 
   # The load-bearing chain, every link pinned to the bound verify_ok:
@@ -76,6 +77,6 @@ turns:
     expect_world:
       verify_ok: false
       captured: 0
-      last_error: "Verify failed: Migration incomplete: GitHub lists 1 issue(s) for bsacrobatix/Kitsoki (< 3 expected)."
+      last_error: "Verify failed: Migration incomplete: GitHub lists 1 issue(s) for acme/project (< 3 expected)."
 
 expect_no_errors: true

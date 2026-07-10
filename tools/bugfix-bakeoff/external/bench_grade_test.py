@@ -102,6 +102,83 @@ def test_preflight_candidate_profile_and_local_repo_checks():
         assert "DEMO_REPO" in text
 
 
+def test_resolve_repo_dir_accepts_meta_repo_subdir_or_standalone_checkout():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        meta = root / "meta-repo"
+        sub = meta / "src" / "cyberfabric" / "gears-rust"
+        sub.mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", str(sub)], check=True)
+        (sub / "case.txt").write_text("baseline\n")
+        subprocess.run(["git", "-C", str(sub), "add", "case.txt"], check=True)
+        subprocess.run([
+            "git", "-C", str(sub),
+            "-c", "user.name=Test",
+            "-c", "user.email=test@example.com",
+            "commit", "-q", "-m", "baseline",
+        ], check=True)
+        baseline = subprocess.check_output(["git", "-C", str(sub), "rev-parse", "HEAD"], text=True).strip()
+        (sub / "case.txt").write_text("fix\n")
+        subprocess.run(["git", "-C", str(sub), "add", "case.txt"], check=True)
+        subprocess.run([
+            "git", "-C", str(sub),
+            "-c", "user.name=Test",
+            "-c", "user.email=test@example.com",
+            "commit", "-q", "-m", "fix",
+        ], check=True)
+        fix = subprocess.check_output(["git", "-C", str(sub), "rev-parse", "HEAD"], text=True).strip()
+        manifest = {
+            "project": {
+                "id": "gears-rust",
+                "local_only": True,
+                "repo_envs": ["BUGFIX_BAKEOFF_REPO", "BUGFIX_BAKEOFF_META_REPO"],
+                "repo_subdir": "src/cyberfabric/gears-rust",
+            },
+            "bugs": [{
+                "id": "bug1",
+                "baseline_sha": baseline,
+                "fix_sha": fix,
+            }],
+            "_dir": root,
+        }
+        resolved = bench.resolve_repo_dir(manifest, str(meta))
+        assert resolved["ok"] is True
+        assert resolved["path"] == str(sub)
+        assert resolved["repo_subdir"] == "src/cyberfabric/gears-rust"
+
+        standalone = root / "gears-rust"
+        subprocess.run(["git", "clone", "-q", str(sub), str(standalone)], check=True)
+        resolved = bench.resolve_repo_dir(manifest, str(standalone))
+        assert resolved["ok"] is True
+        assert resolved["path"] == str(standalone)
+
+        missing_submodule = root / "missing-submodule"
+        subprocess.run(["git", "init", "-q", str(missing_submodule)], check=True)
+        resolved = bench.resolve_repo_dir(manifest, str(missing_submodule))
+        assert resolved["ok"] is False
+        assert "repo_subdir does not exist" in resolved["errors"][0]
+
+
+def test_repo_history_capsule_catalog_has_the_promoted_ten():
+    projects = ["query-string", "gears-rust", "kitsoki"]
+    manifests = bench.load_project_manifests(projects)
+    capsules = [
+        bench.repo_history_capsule_record(m, bug)
+        for m in manifests
+        for bug in bench.selected_bugs(m)
+    ]
+    ids = {item["id"] for item in capsules}
+    assert len(capsules) == 10
+    assert {"query-string/qs1", "gears-rust/bug1", "kitsoki/bug9"} <= ids
+    gears = next(item for item in capsules if item["id"] == "gears-rust/bug1")
+    assert gears["capsule_ref"] == "repo-history/gears-rust/bug1"
+    assert gears["kind"] == "repo-history"
+    assert gears["materializer"] == "bugfix-bakeoff"
+    assert gears["repo_modes"] == ["single-repo", "meta-repo"]
+    assert gears["repo_envs"][:2] == ["BUGFIX_BAKEOFF_REPO", "BUGFIX_BAKEOFF_META_REPO"]
+    assert gears["green_red_green"][1].startswith("RED:")
+
+
 def test_preflight_scopes_to_selected_bugs():
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -565,6 +642,78 @@ def test_drive_cell_preflight_scopes_to_requested_bug():
             shutil.rmtree(manifest_dir, ignore_errors=True)
 
 
+def test_drive_cell_score_writes_completion_state_without_live_drive():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        repo = root / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        (repo / "lib.txt").write_text("baseline\n")
+        subprocess.run(["git", "add", "lib.txt"], cwd=repo, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "baseline"],
+            cwd=repo,
+            check=True,
+        )
+        baseline = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+
+        project = "drive-completion-demo"
+        manifest_dir = Path(HERE) / "projects" / project
+        cache = root / "cache"
+        completion_state = root / "completion-state.json"
+        try:
+            (manifest_dir / "oracles").mkdir(parents=True)
+            (manifest_dir / "oracles" / "bug1.txt").write_text("pass\n")
+            (manifest_dir / "manifest.yaml").write_text(
+                "project:\n"
+                f"  id: {project}\n"
+                "  repo: local\n"
+                "  local_only: true\n"
+                "  suite: false\n"
+                "  oracle:\n"
+                "    target: oracle.txt\n"
+                "    inject: write\n"
+                "    run: \"test \\\"$(cat {target})\\\" = pass\"\n"
+                "bugs:\n"
+                "  - id: bug1\n"
+                f"    baseline_sha: {baseline}\n"
+                f"    fix_sha: {baseline}\n"
+                "    oracle_test: oracles/bug1.txt\n"
+            )
+            env = {
+                **os.environ,
+                "EXTERNAL_BAKEOFF_CACHE": str(cache),
+                "EXTERNAL_BAKEOFF_FAKE_DRIVE_SUCCESS": "1",
+            }
+            r = subprocess.run(
+                [
+                    str(Path(HERE) / "drive_cell.sh"),
+                    "--project", project,
+                    "--bug", "bug1",
+                    "--candidate", "opus-4.8",
+                    "--repo-dir", str(repo),
+                    "--score",
+                    "--no-docker-score",
+                    "--completion-state", str(completion_state),
+                ],
+                cwd=Path(HERE).parents[2],
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            assert r.returncode == 0, r.stdout + r.stderr
+            payload = json_load(completion_state.read_text())
+            assert payload["schema_version"] == bench.COMPLETION_STATE_SCHEMA_VERSION
+            assert payload["verdict"] == "solved"
+            assert payload["health"] == "model:result"
+            assert payload["target_id"] == project
+            assert payload["variant_id"] == "opus-4.8"
+            assert payload["axis"] == {"bug": "bug1"}
+        finally:
+            shutil.rmtree(manifest_dir, ignore_errors=True)
+
+
 def test_prepare_handoffs_wraps_no_drive_and_audit():
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -755,6 +904,126 @@ def test_score_cli_exits_zero_on_failed_verdict():
     # The in-process function still surfaces the verdict for verify().
     # (oracle_pass=False ⇒ returns 1) — covered implicitly by verify()'s
     # RED/GREEN logic; here we only guard the CLI exit contract.
+
+
+def _write_trace(path, events):
+    path.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+
+
+def test_classify_cell_separates_infra_from_model():
+    bench = _load("bench_classify", os.path.join(HERE, "bench.py"))
+    with tempfile.TemporaryDirectory() as td:
+        tdp = Path(td)
+
+        # Worker never ran: no streams, no completed calls.
+        never = tdp / "never.jsonl"
+        _write_trace(never, [
+            {"kind": "session.header", "payload": {}},
+            {"kind": "harness.dispatched", "payload": {}},
+        ])
+        assert bench.classify_cell(str(never))["class"] == "infra:worker-never-ran"
+
+        # Silent stall: a start with no matching complete, no terminal, ends there.
+        stall = tdp / "stall.jsonl"
+        _write_trace(stall, [
+            {"kind": "agent.call.start", "call_id": "r1", "state_path": "bf.reproducing", "payload": {"agent": "bf__reproducer"}},
+            {"kind": "agent.stream", "state_path": "bf.reproducing", "payload": {}},
+            {"kind": "agent.call.complete", "call_id": "r1", "state_path": "bf.reproducing", "payload": {"agent": "bf__reproducer"}},
+            {"kind": "agent.call.start", "call_id": "j1", "state_path": "bf.reproducing", "payload": {"agent": "bf__judge"}},
+        ])
+        st = bench.classify_cell(str(stall))
+        assert st["class"] == "infra:stall", st
+        assert st["evidence"]["stalled_agent"] == "bf__judge", st
+
+        # Host/env error: complete calls then a git-identity commit failure, no terminal.
+        host = tdp / "host.jsonl"
+        _write_trace(host, [
+            {"kind": "agent.call.start", "call_id": "i1", "state_path": "bf.implementing", "payload": {"agent": "bf__implementer"}},
+            {"kind": "agent.stream", "state_path": "bf.implementing", "payload": {}},
+            {"kind": "agent.call.complete", "call_id": "i1", "state_path": "bf.implementing", "payload": {"agent": "bf__implementer"}},
+            {"kind": "harness.returned", "state_path": "bf.idle", "payload": {"error": "git.commit: Author identity unknown\n*** Please tell me who you are."}},
+        ])
+        h = bench.classify_cell(str(host))
+        assert h["class"] == "infra:host-error", h
+        assert h["evidence"]["error_label"] == "git-identity-missing", h
+
+        # Real model result: reached a terminal state with completed work.
+        model = tdp / "model.jsonl"
+        _write_trace(model, [
+            {"kind": "agent.call.start", "call_id": "i1", "state_path": "bf.implementing", "payload": {"agent": "bf__implementer"}},
+            {"kind": "agent.stream", "state_path": "bf.implementing", "payload": {}},
+            {"kind": "agent.call.complete", "call_id": "i1", "state_path": "bf.implementing", "payload": {"agent": "bf__implementer"}},
+            {"kind": "machine.state_entered", "state_path": "bf.done", "payload": {}},
+            {"kind": "machine.state_entered", "state_path": "finished", "payload": {}},
+        ])
+        assert bench.classify_cell(str(model))["class"] == "model:result"
+
+        # Absent trace.
+        assert bench.classify_cell(str(tdp / "nope.jsonl"))["class"] == "infra:no-trace"
+
+
+def test_mine_failures_aggregates_and_prioritizes(capsys=None):
+    bench = _load("bench_mine", os.path.join(HERE, "bench.py"))
+    with tempfile.TemporaryDirectory() as td:
+        tdp = Path(td)
+        cells = tdp / "results" / "cells"
+        traces = tdp / "traces"
+        cells.mkdir(parents=True)
+        traces.mkdir()
+
+        def cell(bug, cand, oracle_pass):
+            (cells / f"demo-{bug}-{cand}-kitsoki.json").write_text(json.dumps({
+                "project": "demo", "bug": bug, "candidate": cand,
+                "outcome": {"oracle_pass": oracle_pass},
+            }))
+
+        def trace(bug, cand, events):
+            (traces / f"demo-{bug}-{cand}.jsonl").write_text(
+                "\n".join(json.dumps(e) for e in events) + "\n")
+
+        # A genuine model miss (terminal + oracle fail).
+        cell("bug1", "glm", False)
+        trace("bug1", "glm", [
+            {"kind": "agent.call.start", "call_id": "i", "payload": {"agent": "impl"}},
+            {"kind": "agent.call.complete", "call_id": "i", "payload": {"agent": "impl"}},
+            {"kind": "machine.state_entered", "state_path": "bf.done", "payload": {}},
+        ])
+        # An infra host-error cell (must not count against the model).
+        cell("bug2", "glm", False)
+        trace("bug2", "glm", [
+            {"kind": "agent.call.start", "call_id": "i", "payload": {"agent": "impl"}},
+            {"kind": "agent.call.complete", "call_id": "i", "payload": {"agent": "impl"}},
+            {"kind": "harness.returned", "payload": {"error": "git.commit: Author identity unknown"}},
+        ])
+
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = bench.mine_failures(str(tdp / "results"), str(traces))
+        assert rc == 0
+        rep = json.loads(buf.getvalue())
+        assert rep["cells_scanned"] == 2, rep
+        assert rep["by_class"].get("model:result") == 1, rep
+        assert rep["by_class"].get("infra:host-error") == 1, rep
+        assert len(rep["model_misses"]) == 1 and rep["model_misses"][0]["bug"] == "bug1", rep
+        assert rep["host_error_labels"].get("git-identity-missing") == 1, rep
+        assert any("INFRASTRUCTURE" in a for a in rep["feedback_actions"]), rep
+
+
+def test_oracle_linter_flags_brittle_prose_not_messages():
+    bench = _load("bench_lint", os.path.join(HERE, "bench.py"))
+    # A brittle match on exact error prose — must be flagged.
+    brittle = 'if !strings.Contains(resB.Error, "already checked out by session") {'
+    # A behavior-style match on short synonyms + a failure MESSAGE with %q — must NOT be flagged.
+    good = (
+        'ok := strings.Contains(e, "in use by") || strings.Contains(e, "owned by")\n'
+        't.Fatalf("session B error did not name the owning session as expected: %q", e)\n'
+        'if !strings.Contains(e, "session-A") { t.Fatal("missing owner") }'
+    )
+    bf = bench._brittle_prose_literals(brittle)
+    assert len(bf) == 1 and "already checked out by session" in bf[0][1], bf
+    assert bench._brittle_prose_literals(good) == [], bench._brittle_prose_literals(good)
 
 
 def json_load(raw):

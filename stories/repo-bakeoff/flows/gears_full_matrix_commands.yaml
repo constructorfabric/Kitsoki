@@ -1,7 +1,7 @@
 # gears_full_matrix_commands — the gears-rust full armable corpus reaches running.
 #
 # The real cargo RED/GREEN proof for bug1/bug4/bug5/bug9 is covered by
-# `GEARS_RUST_REPO=... make gears-history-full-smoke`. This fixture locks the
+# `BUGFIX_BAKEOFF_REPO=... make gears-history-full-smoke`. This fixture locks the
 # repo-bakeoff story wrapper: selected bugs are passed through preflight/verify,
 # no-drive handoffs are audited, all four live drive commands are rendered, and
 # the operator lands in `running` with the full matrix visible.

@@ -359,7 +359,9 @@ func ticketSearch(root string, args map[string]any) (Result, error) {
 				continue
 			}
 		}
-		out = append(out, bugSummary(b))
+		row := bugSummary(b)
+		annotateLocalTicketPath(b, row)
+		out = append(out, row)
 		if limit > 0 && len(out) >= limit {
 			break
 		}
@@ -389,6 +391,7 @@ func ticketGet(root string, args map[string]any) (Result, error) {
 	}
 	bf.Kind = kind
 	data := bugSummary(bf)
+	annotateLocalTicketPath(bf, data)
 	data["body"] = bf.Body
 	cm := make([]map[string]any, 0, len(bf.Comments))
 	for i, c := range bf.Comments {
@@ -515,7 +518,9 @@ func ticketListMine(root string, args map[string]any) (Result, error) {
 		if filter != "" && !strings.Contains(assignee, filter) {
 			continue
 		}
-		out = append(out, bugSummary(b))
+		row := bugSummary(b)
+		annotateLocalTicketPath(b, row)
+		out = append(out, row)
 	}
 	return Result{Data: map[string]any{"tickets": out}}, nil
 }
@@ -553,6 +558,18 @@ func bugSummary(b *BugFile) map[string]any {
 		out["type"] = b.Kind
 	}
 	return out
+}
+
+func annotateLocalTicketPath(b *BugFile, row map[string]any) {
+	if b == nil || row == nil {
+		return
+	}
+	path := filepath.ToSlash(b.Path)
+	row["source"] = "local"
+	row["path"] = path
+	if strings.TrimSpace(fmt.Sprint(row["url"])) == "" {
+		row["url"] = path
+	}
 }
 
 // severityRank maps a P0–P3 severity tag to a 0–3 sort weight, with

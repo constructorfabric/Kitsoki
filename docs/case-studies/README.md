@@ -88,6 +88,12 @@ on prompt incantations to enforce structure.
   fix layer, oracles must assert behavior not prose, and every real run pays
   for itself in flushed-out bugs the green unit tests never saw.
 
+- **[bugswarm-glm52-bugfix-report.md](bugswarm-glm52-bugfix-report.md)** — the
+  interim GLM-5.2 comparison report. Separates the one committed
+  Kitsoki+GLM bugfix cell from missing raw-prompt GLM evidence, and records
+  BugSwarm as a reusable arena source rather than folding it into the existing
+  OSS oracle corpus without verification.
+
 Future studies (planned, not yet written):
 
 - **PR refinement.** The `pr-refinement` tail: watching CI, resolving

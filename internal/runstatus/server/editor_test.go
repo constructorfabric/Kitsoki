@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"kitsoki/internal/app"
+	appgraph "kitsoki/internal/app/graph"
 	"kitsoki/internal/runstatus/server"
 )
 
@@ -73,6 +74,22 @@ func TestEditor_Rooms(t *testing.T) {
 	assert.Equal(t, float64(0), out.Rooms[0].Distance)
 	assert.Equal(t, "work", out.Rooms[1].ID)
 	assert.True(t, out.Rooms[1].HasAgent)
+}
+
+func TestEditor_Graph(t *testing.T) {
+	ts, story := newEditorServer(t)
+	var out appgraph.KitsokiGraph
+	rpcCall(t, ts, "runstatus.editor.graph", map[string]any{"story_path": story}, &out)
+	assert.Equal(t, appgraph.SchemaV1, out.Schema)
+	assert.Equal(t, "story:"+story+"#rooms", out.GraphID)
+	assert.Equal(t, "room-state-machine", out.Kind)
+	assert.True(t, out.Directed)
+	assert.False(t, out.Cyclic)
+	require.Len(t, out.Nodes, 2)
+	require.Len(t, out.Edges, 1)
+	assert.Equal(t, "state:idle", out.Edges[0].Source)
+	assert.Equal(t, "state:work", out.Edges[0].Target)
+	assert.Equal(t, "go", out.Edges[0].Label)
 }
 
 func TestEditor_RoomDetail(t *testing.T) {

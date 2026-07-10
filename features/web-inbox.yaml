@@ -3,13 +3,14 @@ id: web-inbox
 kind: feature
 title: The async inbox
 tagline: Background work notifies you when it lands — toast, badge, jump back.
-summary: "A background host call launched from the chat composer completes while you're elsewhere: the runtime auto-posts a completion notification over SSE, the global inbox badge increments, a toast appears, and one click teleports the session back to the originating room."
+summary: 'A background host call launched from the chat composer completes while you''re elsewhere: the runtime auto-posts a completion notification over SSE, the global inbox badge increments, a toast appears, and one click teleports the session back to the originating room.'
 promo:
   order: 45
 demo:
+  format: rrweb
   spec: tests/playwright/web-inbox-video.spec.ts
   artifactDir: web-inbox
-  videoBase: web-inbox-demo
+  videoBase: web-inbox
   posterStep: wi-intro-home
   story: stories/inbox-demo
   flow: stories/inbox-demo/flows/background_notifies.yaml
@@ -80,7 +81,7 @@ tour:
       route: interactive
       target: inbox-item
       title: The inbox panel
-      body: "Opening the badge reveals the full inbox panel: prioritized active work first, then notification history. Notification-backed work, including matching job rows, offers a jump action backed by the same teleport target as the toast; failed subagent rows open focused chat context."
+      body: 'Opening the badge reveals the full inbox panel: prioritized active work first, then notification history. Notification-backed work, including matching job rows, offers a jump action backed by the same teleport target as the toast; failed subagent rows open focused chat context.'
       placement: left
       kind: explain
       advance: next

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/bugprivacy"
 	"kitsoki/internal/harness"
 	"kitsoki/internal/host"
 	"kitsoki/internal/kitrepo"
@@ -40,8 +42,11 @@ func studioImportResolver(storiesDir string) app.ImportResolver {
 		if override {
 			candidate := filepath.Join(storiesDir, name, "app.yaml")
 			if _, err := os.Stat(candidate); err != nil {
-				return "", fmt.Errorf("--stories-dir=%s: story %q not found (looked for %s): %w",
-					storiesDir, name, candidate, err)
+				// storiesDir is a project-story root, not a repo-wide override.
+				// Absence from it is not an error — delegate to base so that
+				// kitdev overrides, $KITSOKI_REPO, and the embedded library can
+				// satisfy @kitsoki/* imports that storiesDir does not cover.
+				return base(name, importerDir, override)
 			}
 			return candidate, nil
 		}
@@ -109,6 +114,7 @@ func mcpCmd() *cobra.Command {
 		harnessType string
 		workspace   string
 		flowPath    string
+		issueSink   string
 		readOnly    bool
 	)
 	cmd := &cobra.Command{
@@ -126,8 +132,9 @@ opt a session into a real LLM.
 Tools: the studio.ping liveness probe and studio.handles lister (server core);
 the deterministic story.read/write/validate/graph/test authoring tools; and the
 session.new/attach/drive/submit/continue/inspect/trace driving tools,
-render.tui/tui_png/web, and issue.create (file a GitHub issue via gh, bundling
-rendered assets + a handle's trace/inspect). Driving defaults to harness:replay (no LLM); render.tui
+render.tui/tui_png/web, and issue.create (file a local artifact ticket by
+default, or a GitHub issue via the native ticket provider when requested,
+bundling rendered assets + a handle's trace/inspect). Driving defaults to harness:replay (no LLM); render.tui
 and render.tui_png return the terminal Frame / PNG, while render.web screenshots
 the current browser view for a live handle when the local web-shot helper and
 Playwright dependencies are available.
@@ -140,7 +147,7 @@ docs land):
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			defer func() {
-				if err != nil {
+				if shouldWriteMCPStartupError(err) {
 					writeMCPStartupError(err, dbPath, storiesDir, workspace, flowPath)
 				}
 			}()
@@ -148,13 +155,15 @@ docs land):
 				dbPath = defaultDBPath()
 			}
 
-			// Export the resolved semantic-routing toggle so the studio's
-			// per-session orchestrators (internal/mcp/studio) pick it up: the
-			// studio reads KITSOKI_SEMANTIC_ROUTING (it can't see the cmd-layer
-			// flag), and exporting it here makes the LLM-only default and the
-			// --semantic-routing override apply to MCP-driven sessions just like
-			// every other CLI surface. See docs/architecture/semantic-routing.md.
-			_ = os.Setenv("KITSOKI_SEMANTIC_ROUTING", strconv.FormatBool(semanticRoutingEnabled()))
+			// Export the semantic-routing default so the studio's per-session
+			// orchestrators match the CLI: exact deterministic first, then the
+			// selected harness/model unless the operator opts the semantic stack
+			// back in.
+			if enabled, ok := semanticRoutingOverride(); ok {
+				_ = os.Setenv("KITSOKI_SEMANTIC_ROUTING", strconv.FormatBool(enabled))
+			} else if _, hadEnv := os.LookupEnv("KITSOKI_SEMANTIC_ROUTING"); !hadEnv {
+				_ = os.Setenv("KITSOKI_SEMANTIC_ROUTING", "false")
+			}
 
 			// Build the studio session with the live-capable production builder:
 			// replay stays no-LLM (DefaultHarnessBuilder), and harness:live
@@ -189,17 +198,22 @@ docs land):
 				})
 			}
 
-			// Seed operator-declared harness profiles (synthetic, codex, …) from
-			// the project webconfig so a session.new(profile:…) can route a live
-			// session's agent dispatch through a named backend — the studio twin of
-			// `kitsoki turn --profile`. Best-effort: a missing/invalid config leaves
-			// the session on the legacy default-backend path rather than aborting
-			// boot (a story.* / replay session needs no profiles).
-			if webCfg, cfgErr := webconfig.Load(webconfig.DefaultConfigFile); cfgErr == nil {
-				if profiles, defaultProfile := harnessProfilesFromConfig(webCfg); len(profiles) > 0 {
-					sess.SetHarnessProfiles(profiles, defaultProfile)
-				}
+			var studioBugPrivacyChecker bugprivacy.Checker
+			// Seed operator-declared harness profiles and launch policy from the
+			// project webconfig. A missing config contributes nothing; a present
+			// but invalid config is an operator error, and for launch policy must
+			// not silently drop a guard.
+			webCfg, cfgErr := webconfig.Load(webconfig.DefaultConfigFile)
+			if cfgErr != nil {
+				return fmt.Errorf("mcp: load %s: %w", webconfig.DefaultConfigFile, cfgErr)
 			}
+			if profiles, defaultProfile := harnessProfilesFromConfig(webCfg); len(profiles) > 0 {
+				sess.SetHarnessProfiles(profiles, defaultProfile)
+			}
+			if policy := agentLaunchPolicyFromConfig(webCfg); policy.Enabled {
+				sess.SetAgentLaunchPolicy(policy)
+			}
+			studioBugPrivacyChecker = bugPrivacyCheckerFromConfig(webCfg, "")
 
 			// Optionally bind an initial authoring workspace. Loading is
 			// best-effort: a load/validation error is cached on the handle (so a
@@ -216,13 +230,17 @@ docs land):
 				}
 			}
 
-			// Wire issue.create to file via gh (the operator's authenticated CLI)
-			// and write rendered assets under the default artifacts dir. The
-			// studio package stays exec/network-free; this is the only production
-			// seam that shells out.
+			// Wire issue.create to file via host.gh.ticket.create and write
+			// rendered assets under the default artifacts dir. The default sink is
+			// local-artifact so local dogfood does not burn GitHub issues; GitHub
+			// I/O remains available through the injected filer seam.
 			srvOpts := []studio.ServerOption{
 				studio.WithIssueFiler(ghIssueFiler),
+				studio.WithIssueSink(issueSink),
 				studio.WithImportResolver(studioImportResolver(storiesDir)),
+			}
+			if studioBugPrivacyChecker != nil {
+				srvOpts = append(srvOpts, studio.WithBugPrivacyChecker(studioBugPrivacyChecker))
 			}
 			if readOnly {
 				srvOpts = append(srvOpts, studio.ReadOnly())
@@ -249,9 +267,15 @@ docs land):
 		"optional initial authoring workspace (a story dir or app.yaml) bound as the workspace handle on boot")
 	cmd.Flags().StringVar(&flowPath, "flow", "",
 		"deterministic flow fixture whose host_handlers stub host.* calls for every driving session (no LLM)")
+	cmd.Flags().StringVar(&issueSink, "issue-sink", studio.IssueSinkLocalArtifact,
+		"default issue.create sink: local-artifact writes .artifacts/issues/bugs; github files through the native GitHub issue provider")
 	cmd.Flags().BoolVar(&readOnly, "read-only", false,
 		"omit the story-mutating tool (story.write); read + replay-driving tools stay available (the meta-mode Q&A surface)")
 	return cmd
+}
+
+func shouldWriteMCPStartupError(err error) bool {
+	return err != nil && !errors.Is(err, context.Canceled)
 }
 
 func writeMCPStartupError(err error, dbPath, storiesDir, workspace, flowPath string) {

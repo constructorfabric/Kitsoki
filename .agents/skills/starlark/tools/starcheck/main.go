@@ -10,7 +10,7 @@
 //   - references to a builtin a given capability *level* does not grant — by
 //     restricting the predeclared name set with -predeclared. This is the same
 //     "determinism enforced by injection" check an embedder runs at load time:
-//     a function that may only see {json, math} will fail to resolve if it
+//     a function that may only see {json, math, yaml} will fail to resolve if it
 //     mentions `http`.
 //
 // It never evaluates the module, so resolving cleanly does not prove the code
@@ -50,7 +50,7 @@ func main() {
 		recurse     = flag.Bool("r", false, "recurse into directories, validating every *.star / *.bzl / *.sky file")
 		quiet       = flag.Bool("q", false, "only print errors, not the per-file OK lines")
 		requireMain = flag.String("require-def", "", "require the file to define a top-level `def` with this name (e.g. main)")
-		kitsoki     = flag.Bool("kitsoki", false, "kitsoki host.starlark.run profile: predeclared={json,math}, strict dialect, requires def main(ctx). Mirrors internal/host/starlark exactly.")
+		kitsoki     = flag.Bool("kitsoki", false, "kitsoki host.starlark.run profile: predeclared={json,math,yaml}, strict dialect, requires def main(ctx). Mirrors internal/host/starlark exactly.")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: starcheck [flags] <file-or-dir>...\n\n")
@@ -67,9 +67,9 @@ func main() {
 	// `starcheck -kitsoki script.star` answers "would this load in kitsoki?"
 	// without booting an app. It overrides the individual dialect/predeclared
 	// flags rather than composing with them — see internal/host/starlark/run.go
-	// (predeclared = {json, math}; strict FileOptions) and run.go's mainFuncName.
+	// (predeclared = {json, math, yaml}; strict FileOptions) and run.go's mainFuncName.
 	if *kitsoki {
-		*predeclared = "json,math"
+		*predeclared = "json,math,yaml"
 		*allowWhile, *allowTLC, *allowSet, *allowReassign, *allowRecur = false, false, false, false, false
 		if *requireMain == "" {
 			*requireMain = "main"

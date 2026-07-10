@@ -1,0 +1,173 @@
+states:
+  driver_dispatch_failed:
+    description: "Records a failed autonomous driver dispatch before final gates."
+    relevant_world: [run_id, run_dir, autonomous_driver_mode, autonomous_driver_status, autonomous_driver_summary, autonomous_driver_evidence_count, autonomous_driver_issue_count, autonomous_driver_dispatch_markdown_path, autonomous_driver_dispatch_trace, last_error, status]
+    view:
+      - heading: "Product Journey QA · Driver Dispatch Failed"
+      - kv:
+          pairs:
+            Run: "{{ world.run_id }}"
+            Run dir: "{{ world.run_dir }}"
+            Driver mode: "{{ world.autonomous_driver_mode }}"
+            Last error: "{{ world.last_error }}"
+            Driver receipt: "{{ world.autonomous_driver_dispatch_markdown_path|default:\"(not generated)\" }}"
+      - prose: "The autonomous driver task failed before returning an accepted result. A failed dispatch receipt is recorded, then the normal autonomous marathon finalizer fails closed without issue filing, gh-agent work, watchdog, review, or stats."
+    on_enter:
+      - set:
+          status: "driver_dispatch_failed"
+          autonomous_driver_status: "failed"
+          autonomous_driver_summary: "{{ world.last_error }}"
+          autonomous_driver_evidence_count: 0
+          autonomous_driver_issue_count: 0
+          autonomous_driver_dispatch_trace: ""
+      - invoke: host.run
+        id: record_autonomous_product_journey_driver_dispatch_failure
+        with:
+          cmd: python3
+          args:
+            - tools/product-journey/run.py
+            - --record-autonomous-driver-dispatch
+            - --json-output
+            - --run-dir
+            - "{{ world.run_dir }}"
+            - --dispatch-mode
+            - "{{ world.autonomous_driver_mode }}"
+            - --dispatch-status
+            - failed
+            - --summary
+            - "{{ world.autonomous_driver_summary }}"
+            - --autonomous-driver-evidence-count
+            - "0"
+            - --autonomous-driver-issue-count
+            - "0"
+            - --driver-trace
+            - ""
+            - --blockers
+            - "{{ world.autonomous_driver_summary }}"
+          cwd: "."
+        bind:
+          last_result: stdout_json
+          autonomous_driver_dispatch_path: "stdout_json.autonomous_driver_dispatch_path"
+          autonomous_driver_dispatch_markdown_path: "stdout_json.autonomous_driver_dispatch_markdown_path"
+          autonomous_driver_dispatch_status: "stdout_json.autonomous_driver_dispatch_status"
+          autonomous_driver_dispatch_summary: "stdout_json.autonomous_driver_dispatch_summary"
+          autonomous_driver_dispatch_trace: "stdout_json.autonomous_driver_dispatch_trace"
+        on_error: run_created
+      - emit_intent: autonomous_marathon
+    on:
+      autonomous_marathon:
+        - target: run_created
+          effects:
+            - set:
+                autonomous_marathon_status: "running"
+                autonomous_marathon_summary: ""
+                autonomous_control_path: ""
+                autonomous_control_markdown_path: ""
+                autonomous_control_status: ""
+                autonomous_control_summary: ""
+                independent_verify_status: ""
+                independent_verify_summary: ""
+                validation_status: ""
+                validation_errors: 0
+                validation_warnings: 0
+                validation_issue_summary: ""
+                status: "running_autonomous_marathon"
+            - invoke: host.run
+              id: autonomous_product_journey_marathon_finalize
+              with:
+                cmd: python3
+                args:
+                  - tools/product-journey/run.py
+                  - --autonomous-marathon
+                  - --json-output
+                  - --report-invalid-autonomous-marathon
+                  - --run-dir
+                  - "{{ world.run_dir }}"
+                  - --autonomous-cadence-hours
+                  - "24"
+                  - --autonomous-heartbeat-minutes
+                  - "15"
+                  - --autonomous-watchdog-minutes
+                  - "45"
+                  - --ticket-repo
+                  - "{{ world.ticket_repo }}"
+                  - --gh-agent-db
+                  - "{{ world.run_dir + '/gh-agent-jobs.sqlite' }}"
+                  - --gh-agent-story
+                  - stories/bugfix
+                  - --gh-agent-public-base-url
+                  - "{{ world.gh_agent_public_base_url }}"
+                  - --gh-agent-project-root
+                  - ""
+                  - --gh-agent-incident-repo
+                  - ""
+                  - --gh-agent-asset-dir
+                  - ""
+                  - --gh-agent-comment-mode
+                  - none
+                  - --issue-state-file
+                  - ""
+                  - --stats-root
+                  - .artifacts/product-journey
+                  - --stats-output
+                  - "{{ world.run_dir + '/autonomous-marathon-stats.json' }}"
+                cwd: "."
+              bind:
+                last_result: stdout_json
+                autonomous_marathon_status: "stdout_json.autonomous_marathon_status"
+                autonomous_marathon_summary: "stdout_json.autonomous_marathon_summary"
+                autonomous_marathon_report_path: "stdout_json.autonomous_marathon_report_path"
+                autonomous_driver_mode: "stdout_json.autonomous_driver_mode"
+                autonomous_driver_status: "stdout_json.autonomous_driver_status"
+                autonomous_driver_summary: "stdout_json.autonomous_driver_summary"
+                autonomous_driver_evidence_count: "stdout_json.autonomous_driver_evidence_count"
+                autonomous_driver_issue_count: "stdout_json.autonomous_driver_issue_count"
+                autonomous_driver_dispatch_markdown_path: "stdout_json.autonomous_driver_dispatch_markdown_path"
+                autonomous_driver_dispatch_trace: "stdout_json.autonomous_driver_dispatch_trace"
+                autonomous_control_path: "stdout_json.autonomous_control_path"
+                autonomous_control_markdown_path: "stdout_json.autonomous_control_markdown_path"
+                autonomous_control_status: "stdout_json.autonomous_control_status"
+                autonomous_control_summary: "stdout_json.autonomous_control_summary"
+                autonomous_watchdog_status: "stdout_json.autonomous_watchdog_status"
+                autonomous_watchdog_summary: "stdout_json.autonomous_watchdog_summary"
+                autonomous_watchdog_path: "stdout_json.autonomous_watchdog_path"
+                autonomous_watchdog_markdown_path: "stdout_json.autonomous_watchdog_markdown_path"
+                autonomous_watchdog_age_minutes: "stdout_json.autonomous_watchdog_age_minutes"
+                autonomous_fix_status: "stdout_json.autonomous_fix_status"
+                autonomous_fix_report_path: "stdout_json.autonomous_fix_report_path"
+                autonomous_gate_summary: "stdout_json.autonomous_gate_summary"
+                independent_verify_status: "stdout_json.independent_verify_status"
+                independent_verify_summary: "stdout_json.independent_verify_summary"
+                filing_status: "stdout_json.filing_status"
+                findings_filed_count: "stdout_json.findings_filed_count"
+                findings_skipped_count: "stdout_json.findings_skipped_count"
+                findings_failed_count: "stdout_json.findings_failed_count"
+                findings_unfiled_count: "stdout_json.findings_unfiled_count"
+                filing_summary: "stdout_json.filing_summary"
+                gh_agent_enqueue_status: "stdout_json.gh_agent_enqueue_status"
+                gh_agent_drain_status: "stdout_json.gh_agent_drain_status"
+                gh_agent_drained_count: "stdout_json.gh_agent_drained_count"
+                gh_agent_done_count: "stdout_json.gh_agent_done_count"
+                gh_agent_failed_count: "stdout_json.gh_agent_failed_count"
+                gh_agent_active_count: "stdout_json.gh_agent_active_count"
+                stats_status: "stdout_json.stats_status"
+                stats_gate_status: "stdout_json.stats_gate_status"
+                stats_gate_summary: "stdout_json.stats_gate_summary"
+                stats_current_run_scanned: "stdout_json.stats_current_run_scanned"
+                review_status: "stdout_json.review_status"
+                review_failed_count: "stdout_json.review_failed_count"
+                validation_status: "stdout_json.validation_status"
+                validation_errors: "stdout_json.validation_errors"
+                validation_warnings: "stdout_json.validation_warnings"
+                validation_issue_summary: "stdout_json.validation_issue_summary"
+                deck_path: "stdout_json.deck_path"
+                execution_plan_path: "stdout_json.execution_plan_path"
+                driver_plan_path: "stdout_json.driver_plan_path"
+                driver_journal_path: "stdout_json.driver_journal_path"
+                agent_brief_path: "stdout_json.agent_brief_path"
+                driver_handoff_path: "stdout_json.driver_handoff_path"
+                media_manifest_path: "stdout_json.media_manifest_path"
+                scenario_outcomes_path: "stdout_json.scenario_outcomes_path"
+              on_error: run_created
+            - set:
+                status: "autonomous_marathon_complete"

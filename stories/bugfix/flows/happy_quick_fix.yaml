@@ -114,4 +114,7 @@ turns:
       bugfix_mode: "quick"
 
 expect_terminal: true
+expect_operation_policy: bugfix_quick
+expect_operation_status: completed
+expect_terminal_artifact: done_artifact
 expect_no_errors: true

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title":   "implementing_artifact",
-  "description": "Artifact produced by the implementing room: a record of the edits the agent applied to the bugfix worktree.",
+  "description": "Artifact produced by the implementing room: a record of the edits the agent applied to the bugfix workspace.",
   "type":    "object",
   "required": ["summary_title", "summary_markdown", "files_changed", "applied"],
   "properties": {
@@ -18,7 +18,7 @@
     "files_changed": {
       "type": "array",
       "minItems": 1,
-      "description": "Every file path the agent actually edited (or attempted to edit), relative to the worktree.",
+      "description": "Every file path the agent actually edited (or attempted to edit), relative to the workspace.",
       "items": {
         "type": "string",
         "pattern": "^[^/].+\\..+$"

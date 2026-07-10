@@ -1,0 +1,23 @@
+{
+  "axis": {
+    "task": "query-string-qs1-bugfix-test-repair"
+  },
+  "cell_id": "cost-bench-pilot--single-briefed-synthetic-claude--task:query-string-qs1-bugfix-test-repair",
+  "evidence_refs": [
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/tools/arena/corpus/cost-bench.manifest.yaml#query-string-qs1-bugfix-test-repair",
+    "/Users/brad/code/Kitsoki/.worktrees/generalized-usage-rebase/.artifacts/arena/paired-task-work/query-string-qs1-bugfix-test-repair--single-briefed--synthetic--claude-synthetic-score.json"
+  ],
+  "health": "model:result",
+  "job_type": "paired-task",
+  "metrics": {
+    "cost_usd": 0.0,
+    "host": "local",
+    "tokens": 0,
+    "wall_s": 7.71
+  },
+  "notes": "synthetic backend: no live model call; baseline scored directly; [bench] query-string/qs1 oracle=fail suite=False -> failed",
+  "target_id": "cost-bench-pilot",
+  "trace_ref": "",
+  "variant_id": "single-briefed-synthetic-claude",
+  "verdict": "failed"
+}

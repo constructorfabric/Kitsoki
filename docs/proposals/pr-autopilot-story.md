@@ -1,6 +1,12 @@
 # Story: PR autopilot
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v1. Nothing implemented yet — confirmed on a re-audit
+alongside the shipped `docs/architecture/github-agent.md` dispatch write-up: there is no
+`stories/pr-autopilot/` directory, and PR mentions still route through the
+honest stub path in `internal/ghagent` (`Stubbed: true`, never "Done"). The
+four `host.git`/`host.gh` gaps this story needs (wait-for-checks, `rebase`,
+force-push, thread `resolve`) are unchanged from the epic's "Decided (round
+1)" item 5.
 **Kind:**   story
 **Epic:**   kitsoki-github-agent.md
 

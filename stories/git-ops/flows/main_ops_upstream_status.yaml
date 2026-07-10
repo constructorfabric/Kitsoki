@@ -1,0 +1,28 @@
+# main_ops_upstream_status - the protected-main hub reports local main versus
+# its upstream remote, not main versus itself.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: main_ops
+initial_world:
+  integration_branch: main
+  current_branch:     main
+  on_integration:     true
+  working_dir:        "."
+  main_worktree_path: "."
+  commits_ahead:      33
+  commits_behind:     2
+  has_uncommitted:    false
+  merge_in_progress:  false
+  no_common_ancestor: false
+  upstream_tracking:  true
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: main_ops
+    expect_view_matches: "Status:\\s+⚔️ diverged from upstream[\\s\\S]*Ahead:\\s+⚔️ 33 commits ahead upstream[\\s\\S]*Behind:\\s+⚔️ 2 commits behind upstream"
+    expect_world:
+      commits_ahead:  33
+      commits_behind: 2
+
+expect_no_errors: true

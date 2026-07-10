@@ -1,0 +1,38 @@
+states:
+  idle:
+    description: "Ready to run the managed decomposition-update gate."
+    view:
+      - banner:
+          text: "Managed decomposition updates"
+          subtitle: "Run a deterministic, no-LLM transaction gate over accepted and rejected deltas."
+          color: "#2563EB"
+      - kv:
+          pairs:
+            Status: "{{ world.status }}"
+            Workdir: "{{ world.workdir }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "run"
+              intent: run
+            - label: "quit"
+              intent: quit
+            - label: "look"
+              intent: look
+    on:
+      run:
+        - target: review
+          effects:
+            - set:
+                status: "reviewing"
+                review_approved: false
+                review_summary: ""
+                review_findings: []
+                result_stdout: ""
+                result_exit_code: 0
+                result_ok: false
+      quit:
+        - target: "@exit:abandoned"
+      look:
+        - target: .

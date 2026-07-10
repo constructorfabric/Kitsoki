@@ -15,6 +15,7 @@ app:
 
 hosts:
   - host.run
+  - host.starlark.run
   - host.agent.task
 
 agents:
@@ -22,18 +23,25 @@ agents:
     system_prompt: "You are driving a punch-list item through Kitsoki Studio MCP like a human operator. Use the requested story, harness, profile, model, and explicit trace path. Prefer natural language turns. Record the final state, trace path, model evidence, findings, and any MCP/story friction. Do not self-grade implementation success; the verify room gates it."
     model: gpt-5.5
     tools: [Read, Grep, Glob, Bash, Edit, Write]
-    external_side_effect: false
+    effect: write
     bash_profile: { sandboxed_write: ".worktrees" }
   implementer:
     system_prompt: "You are running the implementation part of a punch-list item through the requested Kitsoki story. Use the requested profile/model policy and explicit trace. Return only concrete handoff data: status, story, trace_path, worktree, branch, model evidence, and findings. Verification happens separately."
     model: gpt-5.5
     tools: [Read, Grep, Glob, Bash, Edit, Write]
-    external_side_effect: false
+    effect: write
     bash_profile: { sandboxed_write: ".worktrees" }
 
 world:
   manifest_path:        { type: string, default: "" }
   state_path:           { type: string, default: "" }
+  # Threaded into punch_load.star's optional `run_id` input (rooms/load.yaml);
+  # declared here (rather than left implicit) so `{{ world.trace_run_id }}`
+  # always resolves to a typed default instead of an undefined-var nil, and so
+  # an importer (e.g. goal-seeker) can override it via world_in for a
+  # deterministic trace_root layout. Empty default → punch_load.star falls
+  # back to its own "deterministic" run id.
+  trace_run_id:         { type: string, default: "" }
   punch_items:          { type: list,   default: [] }
   item_count:           { type: string, default: "0" }
   current_item:         { type: object, default: {} }

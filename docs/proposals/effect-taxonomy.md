@@ -65,8 +65,11 @@ cannot be one enum.
 
 This slice owns the **classification**. The vocabulary that *grants* the tool
 surface a class is computed over (named `toolboxes:`) and the *enforcement*
-keyed on the class are [slice 2](toolbox-and-enforcement.md); the OS sandbox
-that jails the `write`/`external` tiers is [slice 3](task-fs-sandbox.md).
+keyed on the class are shipped in
+[`hosts.md`](../architecture/hosts.md#agent-declaration) and
+[`state-machine.md`](../stories/state-machine.md#agent-toolboxes); the secure agent
+runtime that confines the `write`/`external` tiers is
+[slice 3](task-fs-sandbox.md).
 
 ## Impact
 
@@ -108,9 +111,8 @@ agent tools [...,Write] → join → write
 agent tools [...,WebFetch/ext-MCP] → join → external
 ```
 
-The join is computed over whatever tool surface an agent presents — an inline
-`tools:` list today, or a named `toolbox:` once [slice 2](toolbox-and-enforcement.md)
-lands. Both axes are pure deterministic *classification* — no interpretive
+The join is computed over whatever tool surface an agent presents: an inline
+`tools:` list or a named `toolbox:`. Both axes are pure deterministic *classification* — no interpretive
 (LLM/human) decision is added, so the moat is untouched. The taxonomy only
 records what a call is; it adds no new decision point.
 
@@ -123,9 +125,8 @@ Three consumers read the pair:
 | replay strategy (host calls) | `deterministic && effect ≤ read` ⇒ may re-execute on replay; else serve from recording; `external` ⇒ never re-run | *(new — non-agent calls had none)* |
 | cache (future) | `pure`+det ⇒ memoize by input; `pure`/`read` non-det ⇒ cache by input signature (cf. `turncache`); `write`/`external` ⇒ never | *(new)* |
 
-The first two consumers are rewritten in earnest by [slice
-2](toolbox-and-enforcement.md), which unifies them with `ask`/`decide` into one
-policy; this slice supplies the class they switch on.
+The first two consumers now switch on this class through the shared
+`enforceToolbox` policy.
 
 ## Decision recording
 
@@ -220,11 +221,12 @@ value change), so flow fixtures pass unmodified.
 
 ## Non-goals
 
-- The toolbox vocabulary and the uniform enforcement keyed on these classes —
-  [`toolbox-and-enforcement.md`](toolbox-and-enforcement.md) (slice 2).
-- OS-level write confinement — [`task-fs-sandbox.md`](task-fs-sandbox.md)
+- The toolbox vocabulary and the uniform enforcement keyed on these classes;
+  that slice has shipped into [`hosts.md`](../architecture/hosts.md#agent-declaration)
+  and [`state-machine.md`](../stories/state-machine.md#agent-toolboxes).
+- Runtime-level write confinement — [`task-fs-sandbox.md`](task-fs-sandbox.md)
   (slice 3); the taxonomy *declares* intent (`write` is exactly the class the
-  sandbox jails), the sandbox *enforces* it.
+  runtime confines), the runtime *enforces* it.
 - Building the result cache itself — this slice supplies the classification a
   cache would key on; the cache is a future consumer.
 - Per-tool permission grading finer than the four-tier ladder.

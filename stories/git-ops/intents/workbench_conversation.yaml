@@ -1,0 +1,97 @@
+# workbench_conversation — real git interaction phrases should either hit a
+# concrete git-ops command or fall through to the assistant conversation lane.
+#
+# Sources:
+# - tools/session-mining/examples/git-ops/coverage.worked.md
+# - .artifacts/session-mining/gitops-workbench-examples/traces/*.txt
+# - the failing live git-ops trace from 2026-06-30:
+#   "fix it - i just want to rebase main again"
+#
+# The assistant cases are load-bearing: they are the phrases that previously
+# reached the main-turn LLM and could be misclassified into a room command,
+# causing another room re-render instead of a focused assistant reply.
+
+test_kind: intents
+app: ../app.yaml
+state: main_ops
+defaults:
+  runs: 1
+  min_pass_rate: 1.0
+
+fixtures:
+  - id: command-rebase-sync
+    intent: { name: pull }
+    inputs:
+      - "rebase onto main"
+      - "rebase against main"
+      - "sync with main"
+      - "bring in the latest from main"
+      - "pull in main"
+
+  - id: command-pull-sync
+    intent: { name: pull }
+    inputs:
+      - "pull"
+      - "git pull"
+      - "pull from upstream"
+      - "sync upstream"
+      - "use gitops to pull & rebase against origin main"
+
+  - id: command-merge
+    intent: { name: merge_branch }
+    inputs:
+      - "merge branch"
+      - "merge a branch"
+      - "merge into main"
+      - "merge work to main that's ready"
+      - "merge the feature branch into main"
+
+  - id: command-worktree
+    intent: { name: worktree_list }
+    inputs:
+      - "review the existing worktrees"
+      - "list worktrees"
+      - "show worktrees"
+      - "worktree audit"
+      - "where is the project object graph worktree"
+
+  - id: command-cleanup
+    intent: { name: cleanup }
+    inputs:
+      - "remove the worktree"
+      - "clean up the worktrees"
+      - "remove branch and worktree"
+      - "remove the redundant branch/worktree so we don't get confused"
+      - "get me to a clean git state"
+
+  - id: command-commit
+    intent: { name: commit }
+    inputs:
+      - "commit the staged fix"
+      - "commit the staged work"
+      - "commit the script"
+      - "commit your work"
+      - "commit everything"
+
+  - id: command-undo
+    intent: { name: undo }
+    inputs:
+      - "undo last commit"
+      - "drop the commit"
+      - "uncommit this"
+      - "git reset"
+      - "amend it without the generated mocks"
+
+  - id: assistant-followups
+    # `main_ops_discuss` is the intent the engine synthesizes for the room's
+    # agent_off_ramp.capture_free_text conversational lane; live surfaces
+    # divert it to a persistent per-room converse turn before the machine
+    # runs (see docs/architecture/room-workbench.md §"The conversational lane").
+    intent:
+      name: main_ops_discuss
+    inputs:
+      - "fix it - i just want to rebase main again"
+      - "what happened with that rebase?"
+      - "why did it go to conflict?"
+      - "is a rebase still in progress?"
+      - "what should I do next?"

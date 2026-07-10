@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/storyauthoring"
 )
 
 // NodeRef identifies the AppDef element behind one Mermaid node, so a UI that
@@ -124,6 +125,9 @@ func bannerComments(a *app.AppDef, opts FlowchartOptions) (string, error) {
 		if s == nil || len(s.States) > 0 {
 			return // compound — banners live on leaf states
 		}
+		if storyauthoring.IsFrameworkRoom(path) {
+			return
+		}
 		if !selectedSet[rooms.RoomOf[path]] {
 			return
 		}
@@ -187,6 +191,9 @@ func buildNodeMap(a *app.AppDef, detail DetailLevel, filter FlowchartFilter) (ma
 	walkAllStates(a.States, "", func(path string, s *app.State) {
 		if s == nil || len(s.States) > 0 {
 			return // compound — skip
+		}
+		if storyauthoring.IsFrameworkRoom(path) {
+			return
 		}
 		fromRoom := rooms.RoomOf[path]
 		if !selectedSet[fromRoom] {

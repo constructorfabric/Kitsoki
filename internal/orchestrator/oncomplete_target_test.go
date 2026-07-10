@@ -58,6 +58,15 @@ func TestOnCompleteTarget_HappyPath(t *testing.T) {
 		App:   app.AppMeta{ID: "target-happy"},
 		Root:  "init",
 		Hosts: []string{"host.test.echo"},
+		Operations: map[string]*app.OperationPolicy{
+			"demo_run": {
+				Title:            "Demo run",
+				Mode:             "autonomous",
+				ExecutionMode:    "one-shot",
+				RunInBackground:  true,
+				TerminalArtifact: "x",
+			},
+		},
 		World: map[string]app.VarDef{
 			"x":           {Type: "string", Default: ""},
 			"last_job_id": {Type: "string", Default: ""},
@@ -69,7 +78,7 @@ func TestOnCompleteTarget_HappyPath(t *testing.T) {
 			"init": {
 				View: app.LegacyView("init"),
 				On: map[string][]app.Transition{
-					"enter": {{Target: "executing"}},
+					"enter": {{Target: "executing", Operation: "demo_run"}},
 				},
 			},
 			"executing": {
@@ -144,11 +153,132 @@ func TestOnCompleteTarget_HappyPath(t *testing.T) {
 		"on_complete: target should have advanced session out of executing")
 	require.Equal(t, "applied-and-entered", finalJourney.World.Vars["x"],
 		"on_complete set: should apply, then target on_enter should overwrite")
+	handle, ok := finalJourney.World.Vars[app.OperationRunWorldKey].(map[string]any)
+	require.True(t, ok, "operation run handle should be present")
+	require.Equal(t, "completed", handle["status"])
+	require.Equal(t, "demo_run", handle["policy_id"])
+	require.Equal(t, "done", handle["terminal_state"])
+	require.Equal(t, "x", handle["terminal_artifact"])
+	require.Equal(t, "applied-and-entered", handle["terminal_artifact_handle"])
 
 	// Observer must have fired with NewState=done.
 	require.NotNil(t, obs.last(), "observer must be notified of background turn")
 	require.Equal(t, app.StatePath("done"), obs.last().NewState,
 		"observer NewState should reflect the on_complete target")
+}
+
+func TestOnCompleteTarget_ObserverCarriesTypedChoiceView(t *testing.T) {
+	def := &app.AppDef{
+		App:   app.AppMeta{ID: "target-typed-choice"},
+		Root:  "init",
+		Hosts: []string{"host.test.echo"},
+		World: map[string]app.VarDef{
+			"last_job_id": {Type: "string", Default: ""},
+		},
+		Intents: map[string]app.Intent{
+			"enter": {Title: "Enter"},
+			"ack":   {Title: "Acknowledge"},
+			"look":  {Title: "Look"},
+		},
+		States: map[string]*app.State{
+			"init": {
+				View: app.LegacyView("init"),
+				On: map[string][]app.Transition{
+					"enter": {{Target: "executing"}},
+				},
+			},
+			"executing": {
+				View: app.LegacyView("executing"),
+				OnEnter: []app.Effect{
+					{
+						Invoke:     "host.test.echo",
+						Background: true,
+						Bind:       map[string]string{"last_job_id": "job_id"},
+						OnComplete: []app.Effect{
+							{Target: "review"},
+						},
+					},
+				},
+			},
+			"review": {
+				View: app.View{Elements: []app.ViewElement{
+					{Kind: "heading", Source: "Review needed"},
+					{
+						Kind:         "choice",
+						ChoiceMode:   "single",
+						ChoicePrompt: "Resolve this checkpoint",
+						ChoiceItems: []app.ChoiceItem{
+							{Label: "acknowledge and continue", Intent: "ack"},
+							{Label: "look", Intent: "look"},
+						},
+					},
+				}},
+				On: map[string][]app.Transition{
+					"ack":  {{Target: "done"}},
+					"look": {{Target: "review"}},
+				},
+			},
+			"done": {View: app.LegacyView("done"), Terminal: true},
+		},
+	}
+
+	m, err := machine.New(def)
+	require.NoError(t, err)
+
+	s, err := store.OpenMemory()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
+
+	jobStore, err := jobs.NewJobStore(s.DB())
+	require.NoError(t, err)
+
+	sched := jobs.NewScheduler(jobStore)
+
+	reg := host.NewRegistry()
+	reg.Register("host.test.echo", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		return host.Result{Data: map[string]any{"ok": true}}, nil
+	})
+
+	h := &staticHarness{intentName: "enter"}
+	orch := orchestrator.New(def, m, s, h,
+		orchestrator.WithHostRegistry(reg),
+		orchestrator.WithScheduler(sched),
+		orchestrator.WithJobStore(jobStore),
+	)
+
+	obs := &captureObserver{}
+	orch.RegisterObserver(obs)
+
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	_, err = orch.Turn(ctx, sid, "enter")
+	require.NoError(t, err)
+
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	require.NoError(t, sched.WaitIdle(waitCtx))
+	require.NoError(t, orch.WaitListenerIdle(waitCtx, sid))
+
+	last := obs.last()
+	require.NotNil(t, last, "observer must be notified of background turn")
+	require.Equal(t, app.StatePath("review"), last.NewState)
+	require.Contains(t, last.View, "Review needed")
+	require.NotNil(t, last.TypedView,
+		"background observer outcomes must carry typed views so TUI choice widgets can open")
+
+	var choice app.ViewElement
+	for _, el := range last.TypedView.Elements {
+		if el.Kind == "choice" {
+			choice = el
+			break
+		}
+	}
+	require.Equal(t, "choice", choice.Kind)
+	require.Equal(t, "Resolve this checkpoint", choice.ChoicePrompt)
+	require.Len(t, choice.ChoiceItems, 2)
+	require.Equal(t, "acknowledge and continue", choice.ChoiceItems[0].Label)
 }
 
 func TestOnCompleteTarget_StaleCompletionDoesNotMutateAfterStateExit(t *testing.T) {

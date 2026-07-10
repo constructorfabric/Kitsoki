@@ -764,19 +764,21 @@ edits to the right file. Edits land by **direct file edit** (the
 controller diffs the story tree before/after and triggers an
 orchestrator reload); there is no propose/review step anymore.
 
-Kitsoki injects six builtin meta modes every app gets for free
+Kitsoki injects eight builtin meta modes every app gets for free
 (`internal/app/builtin_meta_modes.go`), grouped `group.verb`:
 
 | Mode | Agent | Surface |
 |---|---|---|
 | `story.edit` (default for bare `/meta story`) | `story-author` | full Claude toolset, edits the running story |
 | `story.ask` | `story-explainer` | read-only (`Read`/`Glob`/`Grep`), backed by `host.agent.ask` |
+| `story.improve` | `story-improver` | read-only introspection report for prompt/tool/script/flow-test improvements |
 | `story.bug` | `story-bug-reporter` | files a story bug via `kitsoki bug create` |
 | `kitsoki.edit` | `kitsoki-engineer` | edits the kitsoki repo (`${KITSOKI_REPO}`) |
 | `kitsoki.ask` | `kitsoki-explainer` | read-only Q&A about kitsoki source |
+| `kitsoki.improve` | `kitsoki-improver` | read-only introspection report for reusable engine improvements |
 | `kitsoki.bug` | `kitsoki-bug-reporter` | files a kitsoki bug |
 
-Bare verbs (`/meta ask`, `/meta bug`) resolve to the **story** group;
+Bare verbs (`/meta ask`, `/meta improve`, `/meta bug`) resolve to the **story** group;
 the whole `kitsoki.*` group is omitted when `${KITSOKI_REPO}` is unset.
 The mapping that ties meta back to the agent verbs: read-only metas use
 `host.agent.ask` (loader enforces the read-only tool surface);
@@ -1043,7 +1045,7 @@ flowchart TD
       direction TB
       idea(["operator: free-text idea"]):::human
       namer["design_namer<br/>agent.decide"]:::llm
-      uniq["design_workspace.py<br/>slug collision-proof"]:::det
+      uniq["design_workspace.star<br/>slug collision-proof"]:::det
       interv["proposal_interviewer<br/>agent.converse · ONE persistent thread"]:::llm
       writer["proposal_brief_writer<br/>agent.task · fresh session/turn"]:::llm
       brief[/"001-brief.md"/]:::art
@@ -1119,7 +1121,7 @@ Read it as the §12.2 inversion in practice:
   *same* discovery room (interviewer + brief-writer) are deliberately
   separate conversations with separate jobs.
 - **The glue between agents is deterministic and recorded.** Slug
-  uniqueness (`design_workspace.py`) and publish (`publish_design.py`)
+  uniqueness (`design_workspace.star`) and publish (`publish_design.py`)
   are plain `host.run` scripts, not LLM calls; the human gates resolve
   *enumerated* intents recorded as `GateDecided`. Nothing an agent emits
   advances the pipeline until a deterministic step or a declared gate

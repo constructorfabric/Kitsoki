@@ -1,0 +1,59 @@
+# toggle_dry_run — the planning room's dry-run toggle is a `set:` effect, not
+# an agent or host call, so this flow proves the deterministic world mutation
+# directly: `dry_run` starts false, one `toggle_dry_run` flips it to true, and
+# a second flips it back to false. Regression for a Pongo `{% if %}...{% endif
+# %}` conditional used inside a `set:` value (the `set:` grammar only expands
+# `{{ expr }}` — see resolveEffectValue in internal/machine/machine.go — so the
+# Pongo form silently set `dry_run` to that literal garbage string forever).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+# idle's on_enter (list_commits) is bypassed for the seeded initial state, so we
+# seed the post-classification world directly, then drive `proceed` to enter
+# planning (its agent runs in that next turn, seeing these commits).
+initial_world:
+  integration_branch: main
+  working_dir:        "."
+  repo:               o/r
+  remote:             origin
+  dry_run:            false
+  source_branch:      feat/x
+  commit_count:       1
+  commits:
+    rendered: "- aaaaaaa1 [core] fix core"
+    items:
+      - { sha: aaaaaaa1, subject: "fix core", files: "internal/x.go", concern: core, ambiguous: false }
+
+host_handlers:
+  host.agent.decide:
+    data:
+      ok: true
+      submitted:
+        buckets:
+          - { concern: core, title: "core: fix core", body: "Core fix.", shas: ["aaaaaaa1"] }
+  host.starlark.run:
+    by_call:
+      serialize_plan:
+        data:
+          ok: true
+          buckets_json: '{"buckets":[{"concern":"core","title":"core: fix core","body":"Core fix.","shas":["aaaaaaa1"]}]}'
+
+turns:
+  - intent: { name: proceed, slots: {} }
+    expect_state: planning
+    expect_world:
+      dry_run: false
+    expect_view_matches: "Dry run.*no"
+  - intent: { name: toggle_dry_run, slots: {} }
+    expect_state: planning
+    expect_world:
+      dry_run: true
+    expect_view_matches: "Dry run.*yes \\(plan only\\)"
+  - intent: { name: toggle_dry_run, slots: {} }
+    expect_state: planning
+    expect_world:
+      dry_run: false
+    expect_view_matches: "Dry run.*no"
+
+expect_no_errors: true

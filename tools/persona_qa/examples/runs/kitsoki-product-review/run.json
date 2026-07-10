@@ -1,0 +1,80 @@
+{
+  "run_id": "persona-qa-kitsoki-product-review",
+  "project": {
+    "id": "kitsoki",
+    "label": "Kitsoki"
+  },
+  "persona": {
+    "id": "software-architect",
+    "label": "Software architect",
+    "description": "Designs delivery systems and frequently presents technical decisions to engineers and leadership.",
+    "surface_preference": "web-first review with terminal verification",
+    "risk_focus": [
+      "evidence traceability",
+      "workflow legibility",
+      "operational handoff"
+    ],
+    "persona_lens": {
+      "starting_surface": "Open the product surface first, then inspect the generated artifacts.",
+      "first_question": "Can I explain the delivery loop to another architect without rerunning the system?",
+      "evidence_emphasis": "Recorded UI playback, scenario outcomes, review gates, and reproducible commands.",
+      "escalation_trigger": "A claim without playback or a workflow step that cannot be traced to source artifacts.",
+      "finding_bias": "Prefer findings that improve reviewability and presentation readiness."
+    }
+  },
+  "scenarios": [
+    {
+      "id": "explain-delivery-loop",
+      "label": "Explain the delivery loop",
+      "stage": "technical_presentation",
+      "task": "Create a technical presentation showing how Kitsoki turns a request into story execution, evidence, review, and handoff.",
+      "primary_story": "stories/product-journey-qa",
+      "required_mcp": [
+        "visual.open",
+        "session.trace"
+      ],
+      "evidence": [
+        "key_interaction_video",
+        "session_trace",
+        "review_summary"
+      ],
+      "success_criteria": [
+        "The presentation has a clear source run bundle.",
+        "The deck links scenario evidence to playback.",
+        "The next engineering action is visible."
+      ],
+      "status": "needs_evidence",
+      "evidence_status": "missing_playback"
+    },
+    {
+      "id": "verify-ui-evidence",
+      "label": "Verify UI evidence",
+      "stage": "evidence_review",
+      "task": "Inspect recorded UI playback and decide whether the evidence is enough for an engineering audience.",
+      "primary_story": "stories/review",
+      "required_mcp": [
+        "visual.observe"
+      ],
+      "evidence": [
+        "key_interaction_video",
+        "review_summary"
+      ],
+      "success_criteria": [
+        "The playback is linked from the deck.",
+        "Review gates distinguish proof from placeholder evidence."
+      ],
+      "status": "needs_evidence",
+      "evidence_status": "missing_playback"
+    }
+  ],
+  "stages": [
+    {
+      "id": "technical_presentation",
+      "status": "needs_evidence",
+      "scenarios": [
+        "explain-delivery-loop",
+        "verify-ui-evidence"
+      ]
+    }
+  ]
+}

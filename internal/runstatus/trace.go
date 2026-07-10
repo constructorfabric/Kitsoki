@@ -153,6 +153,7 @@ func SessionHeaderFromTrace(def *app.AppDef, events []TraceEvent, ov HeaderOverr
 		Turn:         maxTurn,
 		StartedAt:    startedAt,
 		Terminal:     isStateTerminal(def, currentState),
+		OperationRun: operationRunSummaryFromTraceEvents(events),
 	}
 }
 

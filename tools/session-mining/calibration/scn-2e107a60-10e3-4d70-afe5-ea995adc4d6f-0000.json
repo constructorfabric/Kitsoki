@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-2e107a60-10e3-4d70-afe5-ea995adc4d6f-0000",
+  "source": "mined",
+  "provenance": {
+    "corpus": "claude-code",
+    "session_id": "2e107a60-10e3-4d70-afe5-ea995adc4d6f",
+    "span_idx": 0
+  },
+  "persona": "explorer",
+  "goal": "i want to dogfood kitsoki to build a critical new feature - we need to create a standardized per-agent definition that can provide mcp, permissions, prompt, etc... some of that is already in the room, but each agent invocation (like agent.task for example) needs the ability to specify an agent with an exact set of mcps (tools too), permissions, model/harness, etc...",
+  "turns": [
+    {
+      "role": "user",
+      "text": "i want to dogfood kitsoki to build a critical new feature - we need to create a standardized per-agent definition that can provide mcp, permissions, prompt, etc... some of that is already in the room, but each agent invocation (like agent.task for example) needs the ability to specify an agent with an exact set of mcps (tools too), permissions, model/harness, etc...",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [
+    "mcp__kitsoki__story_graph: {<val>:<val>} completed",
+    "mcp__kitsoki__story_read: {<val>:<val>,<val>:<val>} completed",
+    "mcp__kitsoki__studio_handles: {} completed",
+    "mcp__kitsoki__studio_ping: {} completed"
+  ],
+  "abandoned": false
+}

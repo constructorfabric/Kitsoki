@@ -104,11 +104,9 @@ export interface TourStep {
   drive?: DriveAction[];
 
   /**
-   * When false, the step renders NO dimming backdrop — just the popover — so the
-   * UI underneath stays fully visible (e.g. watching a live conversation/loop).
-   * Defaults to true (the dimmed spotlight). For an anchorless (`target`-less)
-   * step, combine with `placement` to park the popover off to the side
-   * (e.g. "right") instead of centered over the content.
+   * Deprecated compatibility field. Tour overlays never dim the page now: a step
+   * renders its popover plus, when anchored, a highlight ring so the UI remains
+   * visible in demos. Existing hand-written manifests may still carry dim:false.
    */
   dim?: boolean;
 

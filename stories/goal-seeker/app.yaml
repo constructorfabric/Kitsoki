@@ -1,0 +1,270 @@
+# goal-seeker — the outer loop of the /goal goal-seeker.
+#
+# Drives a decomposition (a list of "changes", each with a deterministic gate) to
+# done, dogfooding kitsoki. The outer loop:
+#
+#   evaluate ─▶ dispatch ─▶ (punch-list) ─▶ integrate ─▶ (ship-it) ─▶ record ─▶ evaluate
+#      │  is the goal done? if not, what change next? (bounded-context decide gate)
+#      └─ done ─▶ retrospective ─▶ @exit:done
+#
+# It COMPOSES two existing stories rather than reinventing them:
+#   * punch-list — dispatch drives one change as a single-item punch-list/v1 manifest
+#     (load → policy → drive → verify → report → done).
+#   * ship-it    — integrate lands the change's branch lost-work-safely
+#     (integrate_existing seam → delivery-tail integrate → verify → cleanup → shipped).
+#
+# The expensive orchestrator context stays bounded because the deterministic backbone
+# (ledger fold, preamble build, manifest emit, log append) is host.starlark.run glue
+# (scripts/gs_*.star), NOT accumulated LLM history. goal.py is the golden reference
+# oracle those scripts are ported from.
+
+app:
+  id: goal-seeker
+  version: 0.1.0
+  title: "goal-seeker — the /goal outer loop"
+  author: "Kitsoki"
+  license: "CC0"
+
+# The parent invokes only these two directly. Imported children (punch-list,
+# ship-it and their transitive imports) carry their own host allow-lists.
+hosts:
+  - host.starlark.run
+  - host.agent.decide
+  - host.run          # the RED-first gate pre-check (dispatch)
+
+providers:
+  evaluator_claude:
+    backend: claude
+    model: opus
+    effort: high
+  evaluator_codex:
+    backend: codex
+    model: gpt-5.5
+    effort: high
+
+agents:
+  evaluator:
+    system_prompt: "You are the goal-seeker's bounded-context evaluator. Read the projected preamble and emit ONE small {verdict, summary, next_instruction} JSON. Never restate the preamble; open a detail pointer only if genuinely unsure."
+    # The decide gate's with.provider selects one of the evaluator_* profiles per
+    # invocation. The default remains codex so live sessions keep the maker's
+    # Studio MCP wiring; flows can override world.evaluator_provider to prove
+    # backend switching without changing the session harness.
+    tools: [Read, Grep, Glob]
+    external_side_effect: false
+
+world:
+  # ── Goal identity + locations ──────────────────────────────────────────────
+  # workdir defaults to "." (repo root) so host.starlark.run's inspector root
+  # resolves goal_dir/work_dir (both repo-root-relative by convention) against
+  # the checkout, not KITSOKI_APP_DIR (the app's OWN directory, stories/goal-
+  # seeker/ — the fallback internal/host/starlark_run.go consults when workdir
+  # is absent, which otherwise double-joins every repo-root-relative testdata
+  # path and breaks every flow's fixture lookup). Same convention several
+  # other stories already declare (e.g. stories/prd, stories/harness-parity-qa).
+  workdir:          { type: string, default: "." }
+  goal_slug:        { type: string, default: "generalized-usage" }
+  goal_dir:         { type: string, default: "docs/goals/generalized-usage" }   # GOAL.md + decomposition.yaml
+  work_dir:         { type: string, default: ".artifacts/goal/generalized-usage" } # log.jsonl + ledger.json
+  reset_log:        { type: bool,   default: false }   # true ⇒ bootstrap truncates the log (fresh run)
+  init_log_path:    { type: string, default: "" }
+  lint_route:       { type: string, default: "" }      # gs_lint verdict: ok | fail
+  lint_error:       { type: string, default: "" }
+
+  # ── Evaluate gate (folded + projected + decided) ───────────────────────────
+  ledger:           { type: object, default: {} }
+  counts:           { type: object, default: {} }
+  remaining:        { type: int,    default: 1 }    # changes not yet integrated; 0 ⇒ done (deterministic)
+  ready_id:         { type: string, default: "" }   # ledger's authoritative next ready change
+  preamble:         { type: string, default: "" }
+  evaluator_provider: { type: string, default: "evaluator_codex" }
+  verdict:          { type: string, default: "" }    # tri-state: "" pre-bind, then done|not_done|blocked
+  summary:          { type: string, default: "" }
+  decide_change_id: { type: string, default: "" }    # the evaluator's ADVISED pick (not trusted for done)
+  next_change_id:   { type: string, default: "" }
+  next_pipeline:    { type: string, default: "" }
+  next_action:      { type: string, default: "" }
+  next_gate_cmd:    { type: string, default: "" }
+  current_change:   { type: object, default: {} }
+
+  # ── Dispatch (punch-list) ──────────────────────────────────────────────────
+  manifest_path:    { type: string, default: "" }
+  change_gate_cmd:  { type: string, default: "" }   # the change's gate command (RED-first check)
+  red_exit:         { type: int,    default: -1 }   # RED-first gate exit code; 0 ⇒ already green ⇒ refuse
+
+  # ── Integrate (ship-it / delivery-tail) ────────────────────────────────────
+  worktree_path:    { type: string, default: "" }
+  workspace_branch: { type: string, default: "" }
+  workspace_id:     { type: string, default: "" }
+  gate_command:     { type: string, default: "" }
+  base_branch:      { type: string, default: "main" }
+  # "." resolves relative to whatever process is running the session (e.g. the MCP
+  # server's cwd), which is only correct when that process's cwd IS the goal's base
+  # worktree. This story carries no goal-specific info, so a caller driving a REAL
+  # (non-default) goal MUST override main_worktree_path via initial_world / the
+  # session launch to point at the goal's actual base worktree — used both by
+  # dispatch's redcheck (RED-first gate cwd) and by ship-it's integrate.
+  main_worktree_path: { type: string, default: "." }
+  shipped_sha:      { type: string, default: "" }
+
+  # ── Record ─────────────────────────────────────────────────────────────────
+  last_seq:         { type: string, default: "" }
+
+  # ── Report / PM deck hierarchy ─────────────────────────────────────────────
+  report_summary_path: { type: string, default: "" }
+  report_deck_path:    { type: string, default: "" }
+  report_change_count: { type: int,    default: 0 }
+  report_status:       { type: string, default: "" }
+
+  # ── Terminal / error ───────────────────────────────────────────────────────
+  last_error:       { type: string, default: "" }
+
+intents:
+  # Operator intents.
+  retry:
+    description: "Re-fold the ledger and re-run the evaluate gate."
+    examples: ["retry", "re-evaluate", "again"]
+    priority: 60
+  advance:
+    description: "Advance the goal-seeker one turn (the /goal driver's step)."
+    examples: ["advance", "next", "step", "go", "continue"]
+    priority: 65
+  close:
+    description: "Close out the goal from the retrospective room."
+    examples: ["close", "close out", "finish"]
+    priority: 60
+  report:
+    description: "Build deterministic goal report/deck artifacts from the current ledger."
+    examples: ["report", "build report", "deck", "summary deck"]
+    priority: 55
+  quit:
+    description: "Abandon the loop → needs-human."
+    examples: ["quit", "abandon", "stop"]
+    priority: 50
+  look:
+    description: "Re-render the current room."
+    examples: ["look", "status"]
+    priority: 5
+
+  # Internal routing intents (post-bind guarded emits — the cherny gating pattern).
+  begin:         { description: "(internal) lint ok + log initialized → evaluate.", priority: 1 }
+  dispatch_next: { description: "(internal) next ready change chosen → dispatch it.", priority: 1 }
+  go_blocked:    { description: "(internal) verdict=blocked → needs-human.", priority: 1 }
+  go_ship:       { description: "(internal) change projected → enter ship-it.", priority: 1 }
+  close_out:     { description: "(internal) retrospective assembled → @exit:done.", priority: 1 }
+
+exits:
+  done: {}
+  needs-human:
+    requires: [last_error]
+
+root: start
+
+imports:
+  # punch-list — dispatch drives ONE change as a single-item manifest through the
+  # load → policy → drive → verify → report loop. Entered at `load` with the manifest
+  # gs_manifest.star just wrote. Its exits map back into the outer loop.
+  punchlist:
+    source: ../punch-list
+    entry: load
+    world_in:
+      manifest_path: "{{ world.manifest_path }}"
+    exits:
+      done:
+        to: integrate
+      # A punch-list terminal that is NOT the verified-green `done` exit means the
+      # maker drive did not land the change — either punch-list's own needs-human
+      # retries were exhausted and the run quit, or it was abandoned outright. That
+      # is a park-and-advance signal (drive_failed), not a dead end: route to
+      # park_failed (a sibling of dispatch's gate_not_red `park`) instead of the
+      # outer needs_human, so the loop logs the park and advances to the next ready
+      # change rather than re-dispatching this same undrivable change forever.
+      needs-human:
+        to: park_failed
+        set:
+          last_error: "punch-list stopped on {{ world.next_change_id }}: {{ world.punchlist__last_error }}"
+      abandoned:
+        to: park_failed
+        set:
+          last_error: "punch-list abandoned change {{ world.next_change_id }}"
+    # punch-list is NOT import-safe: its @exit:done (requires report_path) and
+    # @exit:needs-human (requires last_error) transitions don't re-pin those keys in
+    # the exit arc's own effects, so the loader's import requires-check
+    # (internal/app/imports.go:840) rejects the import (it passes standalone because
+    # that check only runs on the import path). Until punch-list adopts the import-safe
+    # re-pin discipline (delivery-tail/report.yaml, bugfix/done, cherny/committing), we
+    # supply the re-pins from the parent side with whole-state overrides. This is a
+    # STANDING GAP TO FIX IN PUNCH-LIST — see this story's README "Limitations". Once
+    # punch-list re-pins report_path/last_error on its own exit arcs, delete this block.
+    overrides:
+      states:
+        done:
+          description: "Punch-list run complete."
+          relevant_world: [report_path, report_summary]
+          view:
+            - heading: "Punch-list · done"
+            - prose: "{{ world.report_summary }}"
+            - kv:
+                pairs:
+                  Report: "{{ world.report_path }}"
+          on:
+            look:
+              - target: .
+            report:
+              - target: "@exit:done"
+                effects:
+                  - set: { report_path: "{{ world.report_path }}" }
+        needs_human:
+          description: "The run needs operator input."
+          relevant_world: [last_error, current_item]
+          view:
+            - heading: "Punch-list · needs human"
+            - prose: "{{ world.last_error }}"
+            - choice:
+                mode: single
+                prompt: "Actions"
+                items:
+                  - { label: "retry", intent: retry }
+                  - { label: "skip", intent: skip_current }
+                  - { label: "quit", intent: quit }
+                  - { label: "look", intent: look }
+          on:
+            retry:
+              - target: board
+            skip_current:
+              - target: record
+                effects:
+                  - set:
+                      verify_result: { status: "skipped", summary: "{{ world.last_error }}" }
+                      verify_status: "skipped"
+            quit:
+              - target: "@exit:needs-human"
+                effects:
+                  - set: { last_error: "{{ world.last_error }}" }
+            look:
+              - target: .
+
+  # ship-it — integrate lands the change's branch lost-work-safely via the
+  # integrate_existing seam (worktree_path + gate_command pre-seeded → delivery-tail
+  # integrate → verify → cleanup → shipped). Entered at `configure`.
+  shipit:
+    source: ../ship-it
+    entry: configure
+    world_in:
+      worktree_path:      "{{ world.worktree_path }}"
+      gate_command:       "{{ world.gate_command }}"
+      workspace_branch:   "{{ world.workspace_branch }}"
+      workspace_id:       "{{ world.workspace_id }}"
+      base_branch:        "{{ world.base_branch }}"
+      main_worktree_path: "{{ world.main_worktree_path }}"
+    exits:
+      shipped:
+        to: record
+        set:
+          shipped_sha: "{{ world.shipit__shipped_sha }}"
+      needs-human:
+        to: needs_human
+        set:
+          last_error: "ship-it stopped integrating {{ world.next_change_id }}: {{ world.shipit__last_error }}"
+
+include:
+  - rooms/*.yaml

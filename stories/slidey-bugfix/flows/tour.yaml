@@ -15,6 +15,19 @@ initial_world:
   # This flow enters mid-import at bf.idle, bypassing the compound OnEnter that
   # runs the slidey-bugfix world_in projection — so seed bf's projected keys
   # directly. open-PR keeps the demo on the PR-ready close-out tail.
+  bf__workdir: ".worktrees/bf-slidey-128"
+  bf__workspace_id: "bf-slidey-128"
+  bf__feature_branch: "fix/cards-item-timing-drift"
+  bf__ticket_id: "slidey-128"
+  bf__ticket_title: "Grid `cards` scenes with more than 6 items desync narration (estimate vs render drift)"
+  bf__ticket_url: "https://github.com/bradleysmith/slidey/issues/128"
+  bf__ticket_repo: "bradleysmith/slidey"
+  bf__thread: "slidey-128"
+  bf__base_branch: "main"
+  bf__bugfix_mode: "full"
+  bf__judge_mode: "human"
+  bf__test_cmd: "node --test test/timing.test.js"
+  bf__bf_autostart_attempted: true
   bf__bugfix_exit: "open-PR"
 turns:
   - intent: { name: bf__start,  slots: {} }   # bf.idle -> bf.reproducing

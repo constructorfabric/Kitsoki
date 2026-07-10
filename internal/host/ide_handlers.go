@@ -124,9 +124,14 @@ func emitIDEContextCaptured(ctx context.Context, link IDELink, verb string, requ
 
 // IDEGetDiagnosticsHandler implements host.ide.get_diagnostics.
 //
-// Maps to the editor's getDiagnostics tool. When arg `path` is set it is sent
-// as `uri` (TODO(schema): the path→uri key is best-effort — pin via the manual
-// real-socket capture). Result.Data on success:
+// Maps to the editor's getDiagnostics tool. Arg `path` is sent through as
+// `path` (CONFIRMED: a real-socket capture against the vscode-kitsoki
+// extension's IdeTools.getDiagnostics — tools/vscode-kitsoki/src/ide-tools.ts,
+// which reads `args.path` — found the handler was sending `uri` instead, so
+// the narrowing arg was silently dropped every call; fixed here. See
+// tools/vscode-kitsoki/tests/vscode-bugfix-walk.e2e.spec.ts, whose walk drives
+// `validating`'s unconditional `host.ide.get_diagnostics` pull through a real
+// VS Code + real IdeServer). Result.Data on success:
 // {"diagnostics":[…],"connected":true}; not-connected:
 // {"connected":false,"diagnostics":[]}.
 func IDEGetDiagnosticsHandler(ctx context.Context, args map[string]any) (Result, error) {
@@ -136,10 +141,8 @@ func IDEGetDiagnosticsHandler(ctx context.Context, args map[string]any) (Result,
 	}
 
 	toolArgs := map[string]any{}
-	// TODO(schema): getDiagnostics' path→uri key is unverified — pin via manual
-	// capture (slice-1 task 2.5); the stub mirrors whatever it finds.
 	if p, ok := args["path"].(string); ok && p != "" {
-		toolArgs["uri"] = p
+		toolArgs["path"] = p
 	}
 
 	raw, err := link.CallTool(ctx, "getDiagnostics", toolArgs)

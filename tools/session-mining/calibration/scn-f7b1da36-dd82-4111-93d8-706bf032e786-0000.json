@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-f7b1da36-dd82-4111-93d8-706bf032e786-0000",
+  "source": "mined",
+  "provenance": {
+    "corpus": "claude-code",
+    "session_id": "f7b1da36-dd82-4111-93d8-706bf032e786",
+    "span_idx": 0
+  },
+  "persona": "verifier",
+  "goal": "i have a VM for the kitsoki-github-agent - gracefully shut it down",
+  "turns": [
+    {
+      "role": "user",
+      "text": "i have a VM for the kitsoki-github-agent - gracefully shut it down",
+      "corrected": false
+    }
+  ],
+  "expected_effects": [
+    "Bash: ls cmd/kitsoki/gh_agent* && echo <val> && grep -rl <val> --i completed",
+    "Bash: ssh -o ConnectTimeout=10 -o BatchMode=yes root@<IP> completed",
+    "Bash: ssh root@<IP> <val>--- stopping service (graceful completed",
+    "Bash: ssh root@<IP> <val>syncing disks<val>scheduling po completed",
+    "Read: <path> completed"
+  ],
+  "abandoned": false
+}

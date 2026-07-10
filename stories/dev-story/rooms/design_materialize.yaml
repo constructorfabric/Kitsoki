@@ -4,7 +4,7 @@
 # committed to a brand-new proposal (confirm with no overlap, or override_new
 # despite one). This is where the side-effects the scout gate deferred finally
 # happen:
-#   1. uniquify   — host.run mints the unique workspace folder on disk.
+#   1. uniquify   — host.starlark.run mints the unique workspace path.
 #   2. 002 write  — persist the scout's existing-state report into the folder.
 #   3. references — the design_researcher curates reference materials.
 #   4. 003 write  — persist references into the folder; this LAST step carries
@@ -60,17 +60,20 @@ states:
       #    design_workspace; design_slug is set at intake but
       #    design_workspace is empty on a fresh new-proposal entry, so the
       #    call runs (allBindTargetsSet is false until BOTH are set).
-      - invoke: host.run
+      - invoke: host.starlark.run
         once: true
         id: uniquify
         with:
-          cmd: python3
-          args:
-            - "stories/dev-story/scripts/design_workspace.py"
-            - "{{ world.design_slug }}"
+          script: scripts/design_workspace.star
+          capabilities:
+            fs:
+              read: ["**"]
+          inputs:
+            proposed:     "{{ world.design_slug }}"
+            durable_path: "{{ world.design_durable_path }}"
         bind:
-          design_slug:      "stdout_json.slug"
-          design_workspace: "stdout_json.workspace"
+          design_slug:      "slug"
+          design_workspace: "workspace"
         on_error: design_search
       # 2. Persist the scout's existing-state report into the new folder.
       #    once: keyed off design_existing_path.

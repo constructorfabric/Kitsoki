@@ -1,0 +1,164 @@
+states:
+  complete:
+    description: "Scenario-platform proof bundle emitted."
+    relevant_world: [feature_path, scenario_id, persona_id, target_arg, run_id, pack_summary, run_bundle, report_paths, site_path, status, last_error]
+    on_enter:
+      - invoke: host.starlark.run
+        id: build_first_acceptance
+        with:
+          script: scripts/build_first_acceptance.star
+          capabilities:
+            fs:
+              read: ["features/**", "tools/product-journey/**"]
+              write: [".artifacts/**"]
+          inputs:
+            feature_path: "{{ world.feature_path }}"
+            scenario_id: "{{ world.scenario_id }}"
+            persona_id: "{{ world.persona_id }}"
+            target_arg: "{{ world.target_arg }}"
+            run_id: "{{ world.run_id }}"
+            output_root: "{{ world.output_root }}"
+        bind:
+          pack_summary: pack_summary
+          run_bundle: run_bundle
+          report_paths: report_paths
+          site_path: site_path
+        on_error: failed
+      - set:
+          status: "complete"
+    view:
+      - banner:
+          text: "SCENARIO PLATFORM PROOF"
+          subtitle: "{{ world.run_bundle.summary|default:'(building — Starlark has not returned yet)' }}"
+          color: "#059669"
+      - kv:
+          pairs:
+            Feature: "{{ world.pack_summary.feature_id|default:world.feature_path }}"
+            Scenario: "{{ world.pack_summary.scenario_id|default:world.scenario_id }}"
+            Targets: "{{ world.run_bundle.targets|default:world.target_arg }}"
+            Verdict: "{{ world.run_bundle.verdict|default:'(pending)' }}"
+            Pack: "{{ world.report_paths.pack|default:'(pending)' }}"
+            Run bundle: "{{ world.report_paths.run_bundle|default:'(pending)' }}"
+            Report: "{{ world.report_paths.report|default:'(pending)' }}"
+            Deck: "{{ world.report_paths.deck|default:'(pending)' }}"
+            Release readiness: "{{ world.report_paths.release_readiness|default:'(pending)' }}"
+            Product learning: "{{ world.report_paths.product_learning|default:'(pending)' }}"
+            Site page: "{{ world.site_path|default:'(pending)' }}"
+      - heading: "What shipped in the bundle"
+      - list:
+          items:
+            - label: "scenario-pack/v1"
+              hint: "normalized feature, persona, scenario, target, evidence, and semantic-ref catalog"
+            - label: "three-target no-LLM run"
+              hint: "web + tui pass; vscode recorded honestly as bridge-level degraded evidence"
+            - label: "semantic reference resolution"
+              hint: "feature/tour/trace refs resolve to concrete per-target evidence records"
+            - label: "report products"
+              hint: "report.md, deck.slidey.json, Release Readiness, Product Learning, completion-state, arena rollup"
+            - label: "neutral site page"
+              hint: "generated from the pack rather than hardcoded Kitsoki product copy"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "build"
+              intent: build
+              hint: "rebuild or override feature/scenario/targets"
+            - label: "reset"
+              intent: reset
+              hint: "return to the setup view"
+            - label: "look"
+              intent: look
+            - label: "quit"
+              intent: quit
+              hint: "leave"
+    on:
+      build:
+        - target: complete
+          effects:
+            - set:
+                feature_path: "{{ slots.feature ?? world.feature_path }}"
+                scenario_id: "{{ slots.scenario ?? world.scenario_id }}"
+                persona_id: "{{ slots.persona ?? world.persona_id }}"
+                target_arg: "{{ slots.targets ?? world.target_arg }}"
+                run_id: "{{ slots.run_id ?? world.run_id }}"
+                output_root: "{{ slots.output_root ?? world.output_root }}"
+                pack_summary: {}
+                run_bundle: {}
+                report_paths: {}
+                site_path: ""
+                status: "building"
+                last_error: ""
+      reset:
+        - target: ready
+          effects:
+            - set:
+                pack_summary: {}
+                run_bundle: {}
+                report_paths: {}
+                site_path: ""
+                status: "idle"
+                last_error: ""
+      look:
+        - target: .
+      quit:
+        - target: ended
+
+  failed:
+    description: "Scenario-platform proof build failed."
+    relevant_world: [feature_path, scenario_id, run_id, output_root, last_error]
+    view:
+      - banner:
+          text: "SCENARIO PLATFORM ERROR"
+          subtitle: "The deterministic build script failed."
+          color: "#DC2626"
+      - kv:
+          pairs:
+            Feature: "{{ world.feature_path }}"
+            Scenario: "{{ world.scenario_id }}"
+            Run: "{{ world.run_id }}"
+            Output root: "{{ world.output_root }}"
+      - heading: "Error"
+      - code: "{{ world.last_error|default:'(none)' }}"
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "reset"
+              intent: reset
+              hint: "return to the setup view"
+            - label: "build"
+              intent: build
+              hint: "try again after correcting inputs"
+            - label: "look"
+              intent: look
+            - label: "quit"
+              intent: quit
+              hint: "leave"
+    on:
+      build:
+        - target: complete
+          effects:
+            - set:
+                feature_path: "{{ slots.feature ?? world.feature_path }}"
+                scenario_id: "{{ slots.scenario ?? world.scenario_id }}"
+                persona_id: "{{ slots.persona ?? world.persona_id }}"
+                target_arg: "{{ slots.targets ?? world.target_arg }}"
+                run_id: "{{ slots.run_id ?? world.run_id }}"
+                output_root: "{{ slots.output_root ?? world.output_root }}"
+                pack_summary: {}
+                run_bundle: {}
+                report_paths: {}
+                site_path: ""
+                status: "building"
+                last_error: ""
+      reset:
+        - target: ready
+          effects:
+            - set:
+                last_error: ""
+                status: "idle"
+      look:
+        - target: .
+      quit:
+        - target: ended

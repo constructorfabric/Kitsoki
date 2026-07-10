@@ -1,0 +1,24 @@
+goal_slug: goal-seeker-worker-brief
+# ONE change with a rich agent_brief + a mixed scope (an existing small file to
+# inline, a not-yet-created file, and a glob). Used only by
+# flows/worker_brief_dispatch.yaml to prove gs_manifest's dispatch prompt now
+# carries the WM.1 slim worker-brief projection (gate command + Task line +
+# in-scope files), not just the bare agent_brief.
+changes:
+  - id: "W1"
+    wall: WT
+    goal_ref: [G1]
+    title: "Worker brief fixture change"
+    pipeline: implementation
+    scope:
+      - "stories/goal-seeker/testdata/worker-brief/small_file.go"
+      - "stories/goal-seeker/testdata/worker-brief/not_yet_created.go"
+      - "stories/goal-seeker/testdata/worker-brief/subdir/*.md"
+    depends_on: []
+    agent_brief: "Update small_file.go per this brief and create not_yet_created.go with the described helper."
+    acceptance:
+      - "small_file.go is updated per the brief"
+      - "not_yet_created.go exists with the described helper"
+    gate:
+      class: G-FLOW
+      cmd: "true"

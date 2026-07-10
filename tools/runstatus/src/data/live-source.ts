@@ -528,6 +528,12 @@ export class LiveSource implements DataSource {
     });
   }
 
+  driveOperation(sessionId: string): Promise<TurnResult> {
+    return this.client.post<TurnResult>("runstatus.session.drive_operation", {
+      session_id: sessionId,
+    });
+  }
+
   offpath(
     sessionId: string,
     input: string,
@@ -654,6 +660,25 @@ export class LiveSource implements DataSource {
   cancelTurn(sessionId: string): Promise<{ cancelled: boolean }> {
     return this.client.post<{ cancelled: boolean }>("runstatus.session.cancel", {
       session_id: sessionId,
+    });
+  }
+
+  /**
+   * Record an operator up/down verdict on a routed turn (the web chat's
+   * thumbs-up/down control) via runstatus.session.routing_feedback — the same
+   * journaled event the TUI's `/route up|down` command writes.
+   */
+  async routingFeedback(
+    sessionId: string,
+    feedback: { state: string; intent: string; phrase: string; tier: string; verdict: "up" | "down" }
+  ): Promise<void> {
+    await this.client.post<{ ok: boolean }>("runstatus.session.routing_feedback", {
+      session_id: sessionId,
+      state: feedback.state,
+      intent: feedback.intent,
+      phrase: feedback.phrase,
+      tier: feedback.tier,
+      verdict: feedback.verdict,
     });
   }
 
@@ -830,6 +855,36 @@ export class LiveSource implements DataSource {
       .then((r) => r.messages ?? []);
   }
 
+  /**
+   * File/post an evidence-backed meta-improve report. The server reuses the
+   * bug-report artifact pipeline so the report carries scrubbed HAR, rrweb,
+   * console, and redacted trace evidence when available.
+   */
+  metaImproveReport(
+    params: MetaImproveReportParams
+  ): Promise<MetaImproveReportResult> {
+    return this.client.post<MetaImproveReportResult>(
+      "runstatus.meta.improve.report",
+      {
+        session_id: params.session_id,
+        mode: params.mode,
+        chat_id: params.chat_id,
+        title: params.title,
+        report: params.report,
+        guidance: params.guidance,
+        destination: params.destination,
+        capture_id: params.capture_id,
+        trace_ref: params.trace_ref,
+        filed_by: params.filed_by,
+        story_path: params.story_path,
+        target_dir: params.target_dir,
+        rrweb_events: params.rrweb_events,
+        console_logs: params.console_logs,
+        error_info: params.error_info,
+      }
+    );
+  }
+
   // ── Agent-action transcripts ──────────────────────────────────────────────
 
   /**
@@ -960,7 +1015,17 @@ export class LiveSource implements DataSource {
     return this.client.post<StoryHeader[]>("runstatus.stories.rescan", {});
   }
 
+  /** Read session-independent setup warnings for the home screen. */
+  setupStatus(): Promise<SetupStatusResult> {
+    return this.client.post<SetupStatusResult>("runstatus.setup.status", {});
+  }
+
   // ── Story editor (per-story static reads; no session) ─────────────────────
+
+  // Project object graph catalogs (W5.0's runstatus.objectgraph.load/diff)
+  // moved to @kitsoki/object-graph's own kit-rpc.ts (S5,
+  // .context/kits-implementation-plan.md D4) — kit.object-graph.graph.project,
+  // reached via that kit's own minimal RPC client, not this class.
 
   /** BFS-ordered room list for a story (runstatus.editor.rooms). */
   editorRooms(storyPath: string): Promise<EditorRoomSummary[]> {
@@ -1027,11 +1092,16 @@ export class LiveSource implements DataSource {
    * session id; the server fails fast with a structured error on an invalid
    * story so the UI can surface it before navigating.
    */
-  newSession(storyPath: string): Promise<string> {
+  newSession(
+    storyPath: string,
+    opts: { initialWorld?: Record<string, unknown> } = {}
+  ): Promise<string> {
+    const params: Record<string, unknown> = { story_path: storyPath };
+    if (opts.initialWorld && Object.keys(opts.initialWorld).length > 0) {
+      params.initial_world = opts.initialWorld;
+    }
     return this.client
-      .post<{ session_id: string }>("runstatus.session.new", {
-        story_path: storyPath,
-      })
+      .post<{ session_id: string }>("runstatus.session.new", params)
       .then((r) => r.session_id);
   }
 
@@ -1272,9 +1342,9 @@ export class LiveSource implements DataSource {
 
   /**
    * Answer a forwarded question, unblocking the parked agent turn. answers is
-   * keyed by each question's text; the value is the chosen option label
-   * (single-select) or an array of labels (multiSelect) — the same shape
-   * AskUserQuestion would have returned to the agent.
+   * keyed by each question's text; the value is the chosen option label or a
+   * custom answer (single-select) or an array of labels (multiSelect) — the
+   * same shape AskUserQuestion would have returned to the agent.
    */
   answerQuestion(
     questionId: string,
@@ -1287,10 +1357,9 @@ export class LiveSource implements DataSource {
   }
 
   /**
-   * File a bug report. The server attaches a scrubbed HAR of the last /rpc
-   * exchanges (recorded server-side) and, if provided, a screenshot. All params
-   * are optional — the backend defaults title/body. Returns the new issue id and
-   * its repo-relative path under issues/bugs/.
+   * File a bug report. The server attaches the held, scrubbed HAR from
+   * bugPreview when a capture_id is supplied; direct callers fall back to the
+   * server recorder. All params are optional — the backend defaults title/body.
    */
   reportBug(params: BugReportParams): Promise<BugReportResult> {
     return this.client.post<BugReportResult>("runstatus.bug.report", {
@@ -1312,18 +1381,35 @@ export class LiveSource implements DataSource {
   }
 
   /**
-   * Take a scrubbed preview snapshot to review before filing. Returns the
-   * held capture_id (pass back to reportBug), the scrubbed HAR, and ring-buffer
-   * depth/capacity. The held capture is consumed by the matching reportBug.
+   * Read whether the current server can file bug reports. In GitHub mode this
+   * is a local credential preflight; it does not probe repo-specific
+   * permissions.
    */
-  bugPreview(): Promise<BugPreviewResult> {
-    return this.client.post<BugPreviewResult>("runstatus.bug.preview", {});
+  bugStatus(): Promise<BugStatusResult> {
+    return this.client.post<BugStatusResult>("runstatus.bug.status", {});
+  }
+
+  /**
+   * Take a scrubbed preview snapshot to review before filing. The browser sends
+   * its observed HAR when available; the server parses, scrubs, holds, and
+   * returns that exact capture for review.
+   */
+  bugPreview(params: BugPreviewParams = {}): Promise<BugPreviewResult> {
+    return this.client.post<BugPreviewResult>("runstatus.bug.preview", {
+      har_json: params.har_json,
+    });
   }
 
   /** The last failed RPC (for bug-report error context), or null. */
   lastRpcError(): LastRpcError | null {
     return this.client.getLastError();
   }
+}
+
+/** Request shape for runstatus.bug.preview. */
+export interface BugPreviewParams {
+  /** JSON.stringify(HAR 1.2) from the browser-observed network recorder. */
+  har_json?: string;
 }
 
 /** Request shape for runstatus.bug.report — all fields optional. */
@@ -1360,6 +1446,7 @@ export interface HarHeader {
 export interface HarEntry {
   startedDateTime?: string;
   time?: number;
+  comment?: string;
   request?: {
     method?: string;
     url?: string;
@@ -1389,18 +1476,94 @@ export interface BugPreviewResult {
   capture_id: string;
   /** scrubbed HAR 1.2 document. */
   har: Har;
-  /** # of /rpc exchanges retained. */
+  /** # of network exchanges retained. */
   depth: number;
   /** ring-buffer capacity. */
   capacity: number;
+}
+
+/** Request shape for runstatus.meta.improve.report. */
+export interface MetaImproveReportParams {
+  session_id: string;
+  mode?: string;
+  chat_id?: string;
+  title?: string;
+  report?: string;
+  guidance?: string;
+  /** configured = provider/GitHub/local according to server flags; local forces .artifacts. */
+  destination?: "configured" | "local" | "ticket-provider";
+  capture_id?: string;
+  trace_ref?: string;
+  filed_by?: string;
+  story_path?: string;
+  target_dir?: string;
+  rrweb_events?: string;
+  console_logs?: string;
+  error_info?: string;
+}
+
+/** Result of runstatus.meta.improve.report. */
+export interface MetaImproveReportResult {
+  id?: string | number;
+  path?: string;
+  url?: string;
+  sink?: "local-artifact" | "github" | "ticket-provider" | string;
+  report_kind?: "meta-improve" | string;
+  destination?: string;
+  artifacts?: string[];
+  artifacts_path?: string;
+  local_path?: string;
+  local_artifacts_path?: string;
+  provider?: string;
+  provider_ok?: boolean;
+  provider_error?: string;
+  provider_hint?: string;
+}
+
+/** Result of runstatus.bug.status. */
+export interface BugStatusResult {
+  mode: "github" | "local" | "local-artifact";
+  repo?: string;
+  can_file: boolean;
+  github_auth_configured?: boolean;
+  warning?: string;
+  setup_hint?: string;
+}
+
+/** Result of runstatus.setup.status. */
+export interface SetupStatusResult {
+  warnings: SetupWarning[];
+  project_onboarded?: boolean;
+}
+
+export interface SetupWarning {
+  id: string;
+  title: string;
+  body: string;
+  action_label?: string;
+  action_command?: string;
+  story_id?: string;
+  story_ref?: string;
 }
 
 /** Result of runstatus.bug.report. */
 export interface BugReportResult {
   /** bare filename without .md, e.g. "2026-06-12T130405Z-foo". */
   id: string;
-  /** repo-relative path, e.g. "issues/bugs/<id>.md". */
-  path: string;
+  /** filed path, e.g. ".artifacts/issues/bugs/<id>.md". */
+  path?: string;
+  /** GitHub issue URL when the server is in GitHub filing mode. */
+  url?: string;
+  /** True when the report was filed as a GitHub issue. */
+  github?: boolean;
+  /** Privacy gate outcome returned by the server. */
+  privacy?: BugPrivacyResult;
+}
+
+export interface BugPrivacyResult {
+  status: string;
+  message?: string;
+  follow_up_path?: string;
 }
 
 // Re-export for components that import AnnotationEntry from this module.

@@ -3,7 +3,7 @@
  *
  * The catalog is the single source of truth for every kitsoki feature: its
  * promo/docs metadata, its tour steps (from which src/tour/generated/*.ts are
- * code-generated), its demo recording binding, and its gated ui-qa scenarios.
+ * code-generated), its demo capture binding, and its gated ui-qa scenarios.
  * generate.ts consumes this module; tests/unit/features-catalog.test.ts runs
  * every YAML file through it on each `pnpm test`.
  */
@@ -51,15 +51,24 @@ export const TourStepSchema = z.strictObject({
 });
 
 export const DemoSchema = z.strictObject({
-  /** Recording backend. Playwright is the default; binary uses `kitsoki tour`. */
+  /** Capture backend. Playwright is the default; binary uses legacy `kitsoki tour`. */
   renderer: z.enum(["playwright", "binary"]).optional(),
+  /**
+   * Primary product-site media artifact. Defaults to rrweb; mp4 is an explicit
+   * legacy fallback for surfaces rrweb cannot reconstruct or rendered-video
+   * exports requested outside the normal catalog path.
+   */
+  format: z.enum(["mp4", "rrweb"]).optional(),
   /** Playwright spec path, relative to tools/runstatus. Optional ONLY for a
-   *  product-tour, whose video is stitched from its sections, not recorded by a
-   *  spec (enforced in FeatureSchema's superRefine). */
+   *  product-tour whose legacy video is stitched from sections, not captured by
+   *  a single spec (enforced in FeatureSchema's superRefine). */
   spec: z.string().min(1).optional(),
-  /** Subdirectory of .artifacts/ the spec records into. */
+  /** Playwright capture spec for rrweb-first demos, relative to tools/runstatus.
+   *  When omitted, rrweb capture uses `spec`. */
+  rrwebSpec: z.string().min(1).optional(),
+  /** Subdirectory of .artifacts/ the spec captures into. */
   artifactDir: z.string().min(1),
-  /** Base name passed to saveVideoAsMp4 → <artifactDir>/<videoBase>.mp4. */
+  /** Base artifact name: `<videoBase>.rrweb.json`/`.html`, or legacy `.mp4`. */
   videoBase: z.string().min(1),
   /** Step id whose NN-<id>.png screenshot is the poster frame. */
   posterStep: z.string().min(1).optional(),
@@ -73,14 +82,34 @@ export const DemoSchema = z.strictObject({
    */
   external: z.boolean().optional(),
   /**
-   * Device profiles this demo records under (the camera registry ids). Defaults
+   * Device profiles this demo captures under (the camera registry ids). Defaults
    * to ["desktop"] — the canonical and ONLY enabled profile until a demo's UI is
    * responsive (mobile/tablet are a deliberate per-demo opt-in once breakpoints
-   * land; recording a non-responsive demo at a narrow profile just yields a
+   * land; capturing a non-responsive demo at a narrow profile just yields a
    * shrunken desktop). Keep these ids in lockstep with PROFILES in
    * tests/playwright/_helpers/camera.ts.
    */
   profiles: z.array(z.enum(["desktop", "tablet", "mobile"])).nonempty().optional(),
+  /**
+   * Renders this story-demo as an EMBEDDED Slidey deck clip instead of an mp4 —
+   * for a rrweb-native tour whose demo.spec is a PERMANENT stub (see the spec
+   * file's STATUS header: captured by a companion *-rrweb-capture.spec.ts,
+   * never an mp4). `deck` is the repo-relative SOURCE deck spec (JSON) that
+   * already carries this feature's clip as one scene; `rrweb` is that scene's
+   * `rrweb` path exactly as written in the deck JSON, used to resolve the scene
+   * index at codegen time (never hand-picked in YAML, so a reordered deck can't
+   * silently point the page at the wrong scene — see findEmbedScene below).
+   * The deck is bundled ONCE, offline (`slidey bundle <deck> <html>`), to
+   * docs/decks/bundled/<deck-stem>.html — a committed, self-contained
+   * interactive HTML asset (see embedHtmlPath) — and staged into the site
+   * verbatim at build time; no slidey CLI is required in CI.
+   */
+  embed: z
+    .strictObject({
+      deck: z.string().min(1),
+      rrweb: z.string().min(1),
+    })
+    .optional(),
 });
 
 export const QaScenarioSchema = z.strictObject({
@@ -91,10 +120,10 @@ export const QaScenarioSchema = z.strictObject({
   steps: z.array(z.string().min(1)).min(1),
 });
 
-/** One source clip in a product-tour section: a cataloged feature's recording,
+/** One source clip in a legacy product-tour section: a cataloged feature's video,
  *  optionally trimmed to a [startChapterId, endChapterId] window of its chapter
- *  sidecar (inclusive; omit = whole video). Chapter ids are validated against
- *  the recorded sidecar at STITCH time — the sidecar is a build artifact, not a
+ *  sidecar (inclusive; omit = whole legacy video). Chapter ids are validated against
+ *  the captured sidecar at STITCH time — the sidecar is a build artifact, not a
  *  catalog fact, so a catalog-time check would be a lie. */
 export const SectionClipSchema = z.strictObject({
   source: z.string().min(1),
@@ -163,13 +192,16 @@ export const FeatureSchema = FeatureObjectSchema.superRefine((f, ctx) => {
       ctx.addIssue({ code: "custom", message: `feature "${f.id}" has a tour but no demo binding` });
     }
     // sections are a product-tour-only composition (most product-tours are still
-    // single recordings — only a STITCHED one carries sections). A demo without
-    // a recording spec is legal ONLY when its video is stitched from sections.
+    // single captures — only a STITCHED one carries sections). A demo without
+    // a capture spec is legal ONLY when its legacy video is stitched from sections.
     if (f.sections && f.kind !== "product-tour") {
       ctx.addIssue({ code: "custom", message: `feature "${f.id}" declares sections but kind is not product-tour` });
     }
     if (f.demo && !f.demo.spec && !f.sections && f.demo.renderer !== "binary") {
       ctx.addIssue({ code: "custom", message: `feature "${f.id}" demo needs a spec unless renderer is binary (only a sectioned product-tour stitches without one)` });
+    }
+    if (f.demo?.format === "rrweb" && !f.demo.rrwebSpec && !f.demo.spec) {
+      ctx.addIssue({ code: "custom", message: `feature "${f.id}" rrweb demo needs demo.rrwebSpec or demo.spec` });
     }
     const secIds = new Set<string>();
     for (const s of f.sections ?? []) {
@@ -213,29 +245,67 @@ export const FeatureSchema = FeatureObjectSchema.superRefine((f, ctx) => {
         message: `feature "${f.id}" posterStep "${f.demo.posterStep}" is not a declared step id`,
       });
     }
-    // Completeness: a promoted feature's grid card renders its demo recording —
+    // Completeness: a promoted feature's grid card renders its demo media —
     // a promo entry with no demo binding ships an empty card.
     if (f.promo && !f.demo) {
       ctx.addIssue({
         code: "custom",
-        message: `feature "${f.id}" is promoted (promo:) but has no demo binding — the promo card needs a recording`,
+        message: `feature "${f.id}" is promoted (promo:) but has no demo binding — the promo card needs captured media`,
       });
     }
-    // Completeness: a recordable, tour-bearing demo must name a deterministic
+    // Completeness: a capturable, tour-bearing demo must name a deterministic
     // poster frame (a step id, validated above). Without one the feature page
     // and grid card fall back to a black first frame. Tourless demos
     // (harness-picker, meta-mode) and stitched product-tours are exempt.
-    const recordable = f.demo && f.demo.spec && !f.demo.external && !f.sections;
-    if (recordable && f.tour && !f.demo!.posterStep) {
+    const capturable = f.demo && (f.demo.spec || f.demo.rrwebSpec) && !f.demo.external && !f.sections;
+    if (capturable && f.tour && !f.demo!.posterStep) {
       ctx.addIssue({
         code: "custom",
-        message: `feature "${f.id}" has a recordable tour demo but no demo.posterStep — pick a step id for the poster frame`,
+        message: `feature "${f.id}" has a capturable tour demo but no demo.posterStep — pick a step id for the poster frame`,
       });
     }
 });
 
 export type Feature = z.infer<typeof FeatureSchema>;
 export type TourStepData = z.infer<typeof TourStepSchema>;
+
+/**
+ * Resolve a `demo.embed` binding to a scene index by matching `rrweb` against
+ * the SOURCE deck JSON's scenes — the index is always derived, never authored,
+ * so a reordered/edited deck can't silently strand the embed on the wrong
+ * scene. Shared by validateCatalog (existence/shape) and generate.ts's
+ * buildDemoIndex (the computed `sceneIndex` the site consumes).
+ */
+export function findEmbedScene(
+  repoRoot: string,
+  embed: { deck: string; rrweb: string },
+): { sceneIndex: number } | { error: string } {
+  const deckPath = path.join(repoRoot, embed.deck);
+  if (!fs.existsSync(deckPath)) return { error: `deck "${embed.deck}" does not exist` };
+  let deck: { scenes?: Array<Record<string, unknown>> };
+  try {
+    deck = JSON.parse(fs.readFileSync(deckPath, "utf8"));
+  } catch (e) {
+    return { error: `deck "${embed.deck}" is not valid JSON: ${e instanceof Error ? e.message : e}` };
+  }
+  const idx = (deck.scenes ?? []).findIndex((s) => s.rrweb === embed.rrweb);
+  if (idx < 0) return { error: `deck "${embed.deck}" has no scene with rrweb "${embed.rrweb}"` };
+  return { sceneIndex: idx };
+}
+
+/**
+ * docs/decks/<stem>.slidey.json → docs/decks/bundled/<stem>.html — the
+ * committed, self-contained Slidey bundle a `demo.embed` serves. Bundled
+ * offline (`slidey bundle`); see DemoSchema.embed's doc comment for why this
+ * isn't rebuilt in CI.
+ */
+export function embedHtmlPath(deck: string): string {
+  const stem = path
+    .basename(deck)
+    .replace(/\.slidey\.json$/, "")
+    .replace(/\.json$/, "");
+  return path.join(path.dirname(deck), "bundled", `${stem}.html`);
+}
 
 /**
  * Match a docs-manifest `from` pattern against a repo-relative path. The
@@ -263,10 +333,18 @@ function siteDocAllowlist(repoRoot: string): ((rel: string) => boolean) | null {
   if (!fs.existsSync(mp)) return null;
   let froms: string[];
   try {
+    type ManifestItem = { from?: string };
+    type ManifestGroup = { items?: ManifestItem[] };
+    type ManifestSection = { items?: ManifestItem[]; groups?: ManifestGroup[] };
+    const collect = (items: ManifestItem[] | undefined): string[] =>
+      (items ?? []).map((it) => it.from).filter(Boolean) as string[];
     const m = JSON.parse(fs.readFileSync(mp, "utf8")) as {
-      sections?: Array<{ items?: Array<{ from?: string }> }>;
+      sections?: ManifestSection[];
     };
-    froms = (m.sections ?? []).flatMap((s) => (s.items ?? []).map((it) => it.from).filter(Boolean) as string[]);
+    froms = (m.sections ?? []).flatMap((s) => [
+      ...collect(s.items),
+      ...(s.groups ?? []).flatMap((g) => collect(g.items)),
+    ]);
   } catch {
     return null;
   }
@@ -342,15 +420,30 @@ export function validateCatalog(
     for (const d of f.docs ?? []) mustExist.push(["docs", d]);
     if (f.demo) {
       if (f.demo.spec) mustExist.push(["demo.spec", path.join("tools/runstatus", f.demo.spec)]);
+      if (f.demo.rrwebSpec) mustExist.push(["demo.rrwebSpec", path.join("tools/runstatus", f.demo.rrwebSpec)]);
       if (!f.demo.external) {
         if (f.demo.story) mustExist.push(["demo.story", f.demo.story]);
         if (f.demo.flow) mustExist.push(["demo.flow", f.demo.flow]);
         if (f.demo.hostCassette) mustExist.push(["demo.hostCassette", f.demo.hostCassette]);
       }
+      if (f.demo.embed) mustExist.push(["demo.embed.deck", f.demo.embed.deck]);
     }
     for (const [what, rel] of mustExist) {
       if (!fs.existsSync(path.join(repoRoot, rel))) {
         problems.push(`${file}: ${what} path "${rel}" does not exist`);
+      }
+    }
+    if (f.demo?.embed) {
+      const embed = f.demo.embed;
+      if (fs.existsSync(path.join(repoRoot, embed.deck))) {
+        const res = findEmbedScene(repoRoot, embed);
+        if ("error" in res) problems.push(`${file}: demo.embed ${res.error}`);
+        const html = embedHtmlPath(embed.deck);
+        if (!fs.existsSync(path.join(repoRoot, html))) {
+          problems.push(
+            `${file}: demo.embed bundled html "${html}" does not exist — bundle it once: slidey bundle ${embed.deck} ${html}`,
+          );
+        }
       }
     }
   }

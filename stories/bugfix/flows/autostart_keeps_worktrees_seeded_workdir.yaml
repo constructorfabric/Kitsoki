@@ -1,0 +1,51 @@
+# autostart_keeps_worktrees_seeded_workdir — Step-0w exemption 1 (regression
+# guard for b0c49153).
+#
+# A seeded workdir already under the repo-relative .worktrees/ isolation is a
+# legitimate prepared identity (flow fixtures, prepared handoffs) — the
+# isolation guard must KEEP it, not clear-and-rederive. Same shape as
+# autostart_rejects_seeded_primary_workdir but with an isolated workdir; the
+# seeded identity must survive into the first agent dispatch.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: reproducing
+initial_world:
+  ticket_id:       "TKT-ISOLATED-SEED"
+  ticket_title:    "Seeded workdir is already a .worktrees checkout"
+  session_id:      "session-1"
+  bugfix_mode:     "full"
+  judge_mode:      "human"
+  workspace_id:    "ws-prepared"
+  feature_branch:  "fix/prepared"
+  workdir:         ".worktrees/tkt-isolated-seed"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:       { data: { ok: true, id: "ib-1" } }
+  host.git_worktree:    { data: { ok: true, log: "reused", path: ".worktrees/tkt-isolated-seed" } }
+  host.agent.task:
+    data:
+      ok: true
+      submitted:
+        summary_title:        "Reproduced"
+        summary_markdown:     "Repro artifact body."
+        bug_verified:         true
+        involved_components:  []
+
+turns:
+  - intent: { name: restart_from, slots: { stage: reproducing } }
+    expect_state: reproducing
+    expect_world:
+      ticket_id: "TKT-ISOLATED-SEED"
+      bf_autostart_attempted: true
+      workspace_id: "ws-prepared"
+      feature_branch: "fix/prepared"
+      workdir: ".worktrees/tkt-isolated-seed"
+    expect_host_calls:
+      - handler: host.agent.task
+        args:
+          working_dir: ".worktrees/tkt-isolated-seed"
+
+expect_terminal: false
+expect_no_errors: true

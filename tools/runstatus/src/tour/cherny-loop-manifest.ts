@@ -73,8 +73,8 @@ export const CHERNY_LOOP_TOUR_STEPS: readonly TourStep[] = [
 
 
   // ── The loop, driven in the InteractiveView ─────────────────────────────────
-  // Loop narration sits OFF to the right with no dimming backdrop (dim: false),
-  // so the conversation/trace stays fully visible and readable while it runs.
+  // Loop narration sits OFF to the right so the conversation/trace stays fully
+  // visible and readable while it runs.
   {
     id: "cl-welcome",
     route: "any",

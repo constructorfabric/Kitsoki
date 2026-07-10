@@ -22,6 +22,8 @@ const writeStubs = {
     Promise.reject(new Error("not stubbed")) as Promise<TurnResult>,
   continueTurn: () =>
     Promise.reject(new Error("not stubbed")) as Promise<TurnResult>,
+  driveOperation: () =>
+    Promise.reject(new Error("not stubbed")) as Promise<TurnResult>,
   offpath: () =>
     Promise.reject(new Error("not stubbed")) as Promise<{ answer: string }>,
 };
@@ -228,6 +230,63 @@ describe("useRunStore — live event appending", () => {
     expect(store.currentStatePath).toBe("root/done");
   });
 
+  it("ignores replayed live events that are already present from hydration", async () => {
+    let capturedCallback: ((e: TraceEvent) => void) | null = null;
+    const initial = SNAPSHOT.events[0]!;
+
+    const liveSource: DataSource = {
+      listSessions: () => Promise.resolve([SNAPSHOT.session]),
+      getSession: () => Promise.resolve(SNAPSHOT.session),
+      getApp: () => Promise.resolve(SNAPSHOT.app),
+      getMermaid: () => Promise.resolve(SNAPSHOT.mermaid),
+      getTrace: () => Promise.resolve({ events: [initial], last_turn: 1 }),
+      subscribe: (_sessionId, onEvent) => {
+        capturedCallback = onEvent;
+        return () => undefined;
+      },
+      ...writeStubs,
+    };
+
+    const store = useRunStore();
+    await store.hydrate(liveSource, "sess-1");
+
+    capturedCallback!({ ...initial, attrs: { ...initial.attrs } });
+
+    expect(store.events).toHaveLength(1);
+  });
+
+  it("keeps distinct events that share a turn", async () => {
+    let capturedCallback: ((e: TraceEvent) => void) | null = null;
+    const initial = SNAPSHOT.events[0]!;
+    const sameTurnDifferentEvent: TraceEvent = {
+      ...initial,
+      time: "2026-01-01T00:00:01.500Z",
+      msg: "machine.intent_accepted",
+      attrs: { intent: "continue" },
+    };
+
+    const liveSource: DataSource = {
+      listSessions: () => Promise.resolve([SNAPSHOT.session]),
+      getSession: () => Promise.resolve(SNAPSHOT.session),
+      getApp: () => Promise.resolve(SNAPSHOT.app),
+      getMermaid: () => Promise.resolve(SNAPSHOT.mermaid),
+      getTrace: () => Promise.resolve({ events: [initial], last_turn: 1 }),
+      subscribe: (_sessionId, onEvent) => {
+        capturedCallback = onEvent;
+        return () => undefined;
+      },
+      ...writeStubs,
+    };
+
+    const store = useRunStore();
+    await store.hydrate(liveSource, "sess-1");
+
+    capturedCallback!(sameTurnDifferentEvent);
+
+    expect(store.events).toHaveLength(2);
+    expect(store.events[1]!.msg).toBe("machine.intent_accepted");
+  });
+
   it("teardown calls the unsubscribe function", async () => {
     let unsubCalled = false;
     const src: DataSource = {
@@ -247,6 +306,44 @@ describe("useRunStore — live event appending", () => {
     await store.hydrate(src, "sess-1");
     store.teardown();
     expect(unsubCalled).toBe(true);
+  });
+
+  it("marks terminal when an operation waiting event lands over the live stream", async () => {
+    let capturedCallback: ((e: TraceEvent) => void) | null = null;
+    const liveSource: DataSource = {
+      listSessions: () => Promise.resolve([SNAPSHOT.session]),
+      getSession: () => Promise.resolve({ ...SNAPSHOT.session, terminal: false }),
+      getApp: () => Promise.resolve(SNAPSHOT.app),
+      getMermaid: () => Promise.resolve(SNAPSHOT.mermaid),
+      getTrace: () => Promise.resolve({ events: [], last_turn: 0 }),
+      subscribe: (_sessionId, onEvent) => {
+        capturedCallback = onEvent;
+        return () => undefined;
+      },
+      ...writeStubs,
+    };
+
+    const store = useRunStore();
+    await store.hydrate(liveSource, "sess-1");
+    expect(store.terminal).toBe(false);
+
+    capturedCallback!({
+      time: new Date().toISOString(),
+      level: "info",
+      msg: "operation.waiting",
+      session_id: "sess-1",
+      turn: 5,
+      state_path: "testing",
+      attrs: {
+        operation_id: "bugfix_full",
+        status: "waiting",
+        terminal_state: "__exit__needs-human",
+        stop_reason: "needs-human",
+      },
+    });
+
+    expect(store.terminal).toBe(true);
+    expect(store.currentStatePath).toBe("__exit__needs-human");
   });
 });
 
@@ -528,6 +625,59 @@ describe("useRunStore — write-side actions", () => {
     );
   });
 
+  // ---- sendRoutingFeedback (WS-C C4 web control) ----
+  // The routing chip's thumbs-up/down control drives store.sendRoutingFeedback,
+  // which posts the entry's own recovered provenance (state/intent/tier) + its
+  // phrase to the source, then marks the master transcript entry so the chip
+  // hides in favour of a "recorded" indicator — without advancing the turn (no
+  // TurnResult is applied).
+  it("sendRoutingFeedback posts the entry's routing provenance and marks it given", async () => {
+    let captured: unknown = null;
+    const src = writeSource({
+      sendTurn: () => Promise.resolve(turnResult({ view: "Got it." })),
+    }) as DataSource & {
+      routingFeedback: (
+        sid: string,
+        feedback: { state: string; intent: string; phrase: string; tier: string; verdict: string }
+      ) => Promise<void>;
+    };
+    src.routingFeedback = (_sid, feedback) => {
+      captured = feedback;
+      return Promise.resolve();
+    };
+
+    const store = useRunStore();
+    await store.sendText(src, "sess-1", "fix the crash on login", "discuss");
+    // sendText doesn't stamp routing (no trace events wired in this fixture),
+    // so drive the entry directly the way chatEntries would enrich it.
+    const entry = store.transcript[0]!;
+    entry.turn = 1;
+    entry.routing = { routedBy: "semantic", intent: "go_bugfix", statePath: "hub" };
+
+    await store.sendRoutingFeedback(src, "sess-1", entry, "down");
+
+    expect(captured).toEqual({
+      state: "hub",
+      intent: "go_bugfix",
+      phrase: "fix the crash on login",
+      tier: "semantic",
+      verdict: "down",
+    });
+    expect(store.transcript[0]!.feedbackGiven).toBe("down");
+  });
+
+  it("sendRoutingFeedback is a no-op on a source without the optional method", async () => {
+    const src = writeSource({
+      sendTurn: () => Promise.resolve(turnResult({ view: "Got it." })),
+    }); // no routingFeedback
+    const store = useRunStore();
+    await store.sendText(src, "sess-1", "hi", "discuss");
+    const entry = store.transcript[0]!;
+    entry.turn = 1;
+    await store.sendRoutingFeedback(src, "sess-1", entry, "up");
+    expect(store.transcript[0]!.feedbackGiven).toBeUndefined();
+  });
+
   it("sendText pushes the raw text as the user entry and applies the result", async () => {
     let capturedInput = "";
     const src = writeSource({
@@ -541,6 +691,114 @@ describe("useRunStore — write-side actions", () => {
     expect(capturedInput).toBe("build me a thing");
     expect(store.transcript[0]).toMatchObject({ role: "user", text: "build me a thing" });
     expect(store.transcript[1]).toMatchObject({ role: "agent", text: "Got it." });
+  });
+
+  it("driveOperation backfills all driven turns and applies the returned view", async () => {
+    const drivenEvents: TraceEvent[] = [
+      {
+        time: "2026-01-01T00:00:04Z",
+        level: "info",
+        msg: "operation.run_started",
+        session_id: "sess-1",
+        turn: 4,
+        state_path: "root/review",
+        attrs: {
+          operation_id: "bf__capsule_demo",
+          policy_id: "bf__capsule_demo",
+          title: "Capsule bugfix",
+          status: "running",
+          phase: "run_regression",
+        },
+      },
+      {
+        time: "2026-01-01T00:00:05Z",
+        level: "info",
+        msg: "operation.completed",
+        session_id: "sess-1",
+        turn: 5,
+        state_path: "__exit__done",
+        attrs: {
+          operation_id: "bf__capsule_demo",
+          policy_id: "bf__capsule_demo",
+          title: "Capsule bugfix",
+          status: "completed",
+          terminal_state: "__exit__done",
+          terminal_artifact: "artifacts/qa-report.md",
+          terminal_artifact_handle: "qa-report#abc123",
+        },
+      },
+    ];
+    const getTrace = vi.fn(
+      (_sid: string, cursor?: { since_turn?: number }) =>
+        Promise.resolve(
+          cursor?.since_turn === undefined
+            ? { events: SNAPSHOT.events, last_turn: 3 }
+            : {
+                events: drivenEvents.filter((event) => event.turn >= (cursor.since_turn ?? 0)),
+                last_turn: 5,
+              }
+        )
+    );
+    const driveOperation = vi.fn(() =>
+      Promise.resolve(
+        turnResult({
+          mode: "completed",
+          state: "__exit__done",
+          view: "Operation complete",
+          turn_number: 5,
+        })
+      )
+    );
+    const src = writeSource({ getTrace, driveOperation });
+
+    const store = useRunStore();
+    await store.hydrate(src, "sess-1");
+    await store.driveOperation(src, "sess-1");
+
+    expect(driveOperation).toHaveBeenCalledWith("sess-1");
+    expect(getTrace).toHaveBeenLastCalledWith("sess-1", { since_turn: 4 });
+    expect(store.events.some((event) => event.msg === "operation.run_started")).toBe(true);
+    expect(store.events.some((event) => event.msg === "operation.completed")).toBe(true);
+    expect(store.operationRun).toMatchObject({
+      status: "completed",
+      phase: "run_regression",
+      terminalState: "__exit__done",
+      terminalArtifact: "artifacts/qa-report.md",
+      terminalArtifactHandle: "qa-report#abc123",
+    });
+    expect(store.transcript[0]).toMatchObject({ role: "user", text: "Drive operation" });
+    expect(store.transcript[1]).toMatchObject({ role: "agent", text: "Operation complete" });
+    expect(store.currentStatePath).toBe("__exit__done");
+    expect(store.terminal).toBe(true);
+  });
+
+  it("driveOperation narrates the operation drive stop reason", async () => {
+    const driveOperation = vi.fn(() =>
+      Promise.resolve(
+        turnResult({
+          state: "review",
+          view: "Review checkpoint",
+          turn_number: 2,
+          operation_drive: {
+            turns: 1,
+            stop_reason: "no-driver-intent",
+            last_intent: "accept",
+          },
+        })
+      )
+    );
+    const src = writeSource({ driveOperation });
+
+    const store = useRunStore();
+    await store.driveOperation(src, "sess-1");
+
+    expect(store.transcript).toHaveLength(3);
+    expect(store.transcript[0]).toMatchObject({ role: "user", text: "Drive operation" });
+    expect(store.transcript[1]).toMatchObject({ role: "agent", text: "Review checkpoint" });
+    expect(store.transcript[2]).toMatchObject({
+      role: "narration",
+      text: "Drove 1 turn via accept; stopped at a checkpoint.",
+    });
   });
 
   // ---- live turn-stream feed ordering ----
@@ -735,6 +993,7 @@ describe("useRunStore — write-side actions", () => {
       onEvent({ type: "tool", tool: "Bash" });
       // A tool frame ends the run: the next thought is its own item.
       onEvent({ type: "delta", text: "After the tool." });
+      onEvent({ type: "tool", tool: "Read" });
       return new Promise<TurnResult>((resolve) => {
         resolveTurn = resolve;
       });
@@ -747,6 +1006,7 @@ describe("useRunStore — write-side actions", () => {
       { kind: "thinking", text: "Hello world.\n\nSecond thought." },
       { kind: "tool", tool: "Bash", preview: "" },
       { kind: "thinking", text: "After the tool." },
+      { kind: "tool", tool: "Read", preview: "" },
     ]);
 
     resolveTurn(turnResult({ view: "v" }));
@@ -757,6 +1017,31 @@ describe("useRunStore — write-side actions", () => {
       { kind: "thinking", text: "Hello world.\n\nSecond thought." },
       { kind: "tool", tool: "Bash", preview: "" },
       { kind: "thinking", text: "After the tool." },
+      { kind: "tool", tool: "Read", preview: "" },
+    ]);
+  });
+
+  it("drops a trailing final narration delta from the preserved activity feed", async () => {
+    const src = writeSource() as DataSource & { turnStream: unknown };
+    (src as { turnStream: unknown }).turnStream = (
+      _sid: string,
+      _method: string,
+      _params: unknown,
+      onEvent: (ev: { type: string; text?: string; tool?: string; preview?: string }) => void
+    ) => {
+      onEvent({ type: "delta", text: "I will inspect the file first." });
+      onEvent({ type: "tool", tool: "Read", preview: "app.go" });
+      onEvent({ type: "delta", text: "Final answer from the backend." });
+      return Promise.resolve(turnResult({ view: "Room view wins." }));
+    };
+
+    const store = useRunStore();
+    await store.sendText(src, "sess-1", "go");
+
+    expect(store.transcript[1]!.text).toBe("Room view wins.");
+    expect(store.transcript[1]!.stream).toEqual([
+      { kind: "thinking", text: "I will inspect the file first." },
+      { kind: "tool", tool: "Read", preview: "app.go" },
     ]);
   });
 
@@ -774,6 +1059,7 @@ describe("useRunStore — write-side actions", () => {
     const store = useRunStore();
     await store.sendText(src, "sess-1", "go");
     expect(store.transcript[1]!.text).toBe("Only narration this turn.");
+    expect(store.transcript[1]!.stream).toBeUndefined();
   });
 
   it("backfills the completed streamed free-text turn so LLM routing chips render when live events are missed", async () => {
@@ -805,6 +1091,7 @@ describe("useRunStore — write-side actions", () => {
       matchType: "main-turn",
       confidence: 0.82,
       intent: "workbench.ad_hoc",
+      statePath: "root/idle",
     });
   });
 
@@ -885,6 +1172,7 @@ describe("run store — chatEntries routing provenance", () => {
       matchType: "leading-verb:commit",
       confidence: 0.95,
       intent: "git.commit",
+      statePath: "root/idle",
     });
     // The raw transcript is never mutated — only chatEntries carries routing,
     // which is exactly why a surface binding the raw transcript loses the chip.

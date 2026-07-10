@@ -1,0 +1,32 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+turns:
+  - intent:
+      name: autonomous_marathon
+      slots:
+        project: vscode
+        persona: core-maintainer
+        seed: marathon-needs-preflight
+        scenarios: bugfix
+        live_budget_minutes: 6
+    expect_state: idle
+    expect_world:
+      status: autonomous_marathon_invalid
+      autonomous_marathon_status: autonomous_marathon_invalid
+      autonomous_marathon_summary: "Run capture_preflight successfully before creating a live-budgeted autonomous marathon."
+      autonomous_driver_mode: pending
+      autonomous_driver_status: invalid
+      autonomous_driver_summary: "capture_preflight must pass before live-budgeted driver handoff"
+      live_budget_minutes: 6
+      autonomous_fix_status: not_run
+      autonomous_gate_summary: "preflight=fail, filing=not_run, gh_agent=not_run, independent_verify=not_run, review=not_run, validation=fail"
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: capture-preflight-required
+      review_status: not_run
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Autonomous marathon[\\s\\S]*autonomous_marathon_invalid[\\s\\S]*Autonomous driver[\\s\\S]*pending / invalid[\\s\\S]*Validation issues[\\s\\S]*capture-preflight-required"
+    expect_no_host_calls: [host.run]
+
+expect_no_errors: true

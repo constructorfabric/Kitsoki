@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "autonomous_driver_result",
+  "description": "Reported result of the story-owned product-journey QA driver dispatch. The finalizer independently refreshes the bundle after this task.",
+  "type": "object",
+  "required": ["status", "summary"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "description": "captured | blocked | degraded-evidence | failed"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Short account of what the driver actually did."
+    },
+    "evidence_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issue_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace": {
+      "type": "string",
+      "description": "Trace or journal artifact for the live driver run."
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

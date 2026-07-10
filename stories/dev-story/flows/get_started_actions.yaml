@@ -1,0 +1,93 @@
+# get_started_actions — regression guard for change 0.3: the landing (first)
+# screen must advertise ONLY quick actions that map to real, defined intents
+# with a handler. The past bug (advertised `onboard`/`look` that were
+# missing/rejected) shipped a first screen with dead buttons; this fixture
+# drives each advertised quick action and asserts it is genuinely handled — a
+# button whose intent lost its handler would fall through / error here.
+#
+# The ticket-launch quick actions (drive, go_bugfix, bugfix_*, go_implementation,
+# go_cypilot, go_pr_refinement) have a no-ticket guard that bounces back to
+# landing, so they can be fired in a chain. The navigating quick actions
+# (go_ticket_search, go_init/onboard) reach their room and return via go_main.
+#
+# No LLM: landing's on_enter agent turn is guarded on landing_request != '',
+# left empty here, so re-entering landing on a bounce fires no host.agent.task.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  ticket_id: ""
+  landing_request: ""
+  judge_mode: "human"
+
+host_handlers:
+  host.local_files.ticket:
+    data: { tickets: [] }
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 0, ok: true, stdout: "ok\n" }
+        delay: "10ms"
+      full_verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\tfull suite\n" }
+        delay: "10ms"
+  host.agent.decide:
+    by_call:
+      review-0:
+        data:
+          submitted:
+            pass: true
+            reason: "No diff to review and the command is green."
+            functionality_preserved: true
+            tests_not_weakened: true
+            findings: []
+            fixes: []
+  host.append_to_file:
+    data: { ok: true, message_id: "msg-0" }
+  host.inbox.add:
+    data: { ok: true, id: "ib-0" }
+
+turns:
+  # look — re-render the workbench (the cited dead action must be real).
+  - intent: { name: look, slots: {} }
+    expect_state: landing
+
+  # Ticket-launch quick actions: no ticket selected → each is HANDLED and
+  # bounces back to landing with a "pick a ticket" guard (not fallthrough).
+  - intent: { name: drive, slots: {} }
+    expect_state: landing
+  - intent: { name: go_bugfix, slots: {} }
+    expect_state: landing
+  - intent: { name: bugfix_open_pr, slots: {} }
+    expect_state: landing
+  - intent: { name: bugfix_leave_worktree, slots: {} }
+    expect_state: landing
+  - intent: { name: bugfix_merge_local, slots: {} }
+    expect_state: landing
+  - intent: { name: go_implementation, slots: {} }
+    expect_state: landing
+  - intent: { name: go_fix_tests, slots: {} }
+    advance_clock: "1s"
+    expect_state: landing
+    expect_world:
+      status: "tests-green"
+      fix_tests_report_path: ".artifacts/fix-tests/report-clean.md"
+  - intent: { name: go_cypilot, slots: {} }
+    expect_state: landing
+  - intent: { name: go_pr_refinement, slots: {} }
+    expect_state: landing
+
+  # Navigating quick actions: reach their room (proving the intent is real),
+  # then return to landing via go_main.
+  - intent: { name: go_ticket_search, slots: {} }
+    expect_state: ticket_search
+  - intent: { name: go_main, slots: {} }
+    expect_state: landing
+
+  # onboard — the cited dead action. Advertised label "onboard" -> intent
+  # go_init -> the project-onboarding room.
+  - intent: { name: go_init, slots: {} }
+    expect_not_state: landing
+
+expect_no_errors: true

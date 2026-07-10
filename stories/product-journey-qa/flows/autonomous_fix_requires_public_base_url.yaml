@@ -1,0 +1,56 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-888
+            run_dir: .artifacts/product-journey/run-888
+            project: vscode
+            persona: ide-first-engineer
+            seed: autonomous-demo
+            issue_count: 2
+            finding_total_count: 2
+            proof_evidence_count: 3
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-888
+    expect_state: run_created
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: autonomous_fix
+      slots:
+        ticket_repo: bsacrobatix/Kitsoki
+        gh_agent_story: stories/bugfix
+    expect_state: run_created
+    expect_world:
+      status: autonomous_fix_invalid
+      autonomous_fix_status: autonomous_fix_invalid
+      ticket_repo: bsacrobatix/Kitsoki
+      filing_status: not_run
+      autonomous_gate_summary: "filing=not_run, gh_agent=fail, independent_verify=fail, review=not_run, validation=fail"
+      independent_verify_status: fail
+      independent_verify_summary: "gh_agent_public_base_url is required"
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: gh-agent-public-base-url
+      gh_agent_missing_run_url_count: 1
+      gh_agent_missing_evidence_summary: "gh_agent_public_base_url is required"
+      review_status: not_run
+    expect_view_matches: "RUN CREATED[\\s\\S]*Autonomous fix[\\s\\S]*autonomous_fix_invalid[\\s\\S]*Autonomous gates[\\s\\S]*filing=not_run, gh_agent=fail, independent_verify=fail,[\\s\\S]*review=not_run, validation=fail[\\s\\S]*Independent verify[\\s\\S]*fail: gh_agent_public_base_url is required[\\s\\S]*Validation[\\s\\S]*invalid"
+    expect_host_calls: []
+
+expect_no_errors: true

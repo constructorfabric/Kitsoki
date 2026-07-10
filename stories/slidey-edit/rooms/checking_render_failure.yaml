@@ -1,0 +1,109 @@
+# checking_render_failure — visible checkpoint after host.slidey.render fails.
+# Loading/editing an existing deck and rendering it are deterministic. If render
+# fails, stop here so the operator sees the failure before any repair agent can
+# run. The explicit `troubleshoot` action classifies the error and only enters
+# the repair-agent loop for deck-shaped failures.
+
+states:
+
+  checking_render_failure:
+    description: "Rendering failed; show the renderer error before deciding whether auto-repair is safe."
+    relevant_world: [deck, last_error, render_error_kind, render_error_repairable]
+    view:
+      - heading: "Slidey deck editor · rendering failed, troubleshooting"
+      - kv:
+          pairs:
+            Deck: '{{ world.deck.spec_path|default:"(pending)" }}'
+            Kind: '{{ world.render_error_kind|default:"(not classified yet)" }}'
+      - prose: "The deck was selected deterministically, but rendering failed before a reviewable deck was produced. No repair agent has run yet."
+      - code: '{{ world.last_error|default:"(no renderer error captured)" }}'
+      - prose: "This looks like an external renderer/toolchain failure, not a deck-spec issue. Fix the slidey/Node environment, then `rerender`."
+        when: "world.render_error_kind == 'toolchain'"
+      - prose: "This looks like a deck-shaped render failure. `troubleshoot` will run one bounded repair attempt, then render again."
+        when: "world.render_error_kind == 'deck_validation' || world.render_error_kind == 'deck_render'"
+      - heading: "Actions"
+      - list:
+          items:
+            - label: "troubleshoot"
+              hint: "classify the failure; may run one repair attempt for deck-shaped errors"
+            - label: "rerender"
+              hint: "try rendering the current deck again"
+            - label: "revise feedback=…"
+              hint: "edit the deck intentionally before rendering again"
+            - label: "quit"
+              hint: "abandon the editor"
+            - label: "look"
+    on:
+      troubleshoot:
+        - when: "hasPrefix(lower(world.last_error), 'host.slidey.render: validation exec:') || hasPrefix(lower(world.last_error), 'host.slidey.render: render exec:') || len(split(lower(world.last_error), 'slidey not found')) > 1 || len(split(lower(world.last_error), 'node_modules/')) > 1 || len(split(lower(world.last_error), 'referenceerror:')) > 1 || len(split(lower(world.last_error), 'require is not defined')) > 1 || len(split(lower(world.last_error), 'cannot find module')) > 1 || len(split(lower(world.last_error), 'error [err_require_esm]')) > 1 || len(split(lower(world.last_error), 'node.js v')) > 1 || (len(split(lower(world.last_error), 'enoent')) > 1 && len(split(lower(world.last_error), '.slidey.html')) > 1) || (len(split(lower(world.last_error), 'no such file or directory')) > 1 && len(split(lower(world.last_error), 'build-single.mjs')) > 1)"
+          target: .
+          effects:
+            - set:
+                render_error_repairable: false
+                render_error_kind: toolchain
+                render_error_summary: "renderer/toolchain failure; skip deck auto-repair"
+        - when: "hasPrefix(lower(world.last_error), 'host.slidey.render: spec validation failed:')"
+          target: fixing_render
+          effects:
+            - set:
+                render_error_repairable: true
+                render_error_kind: deck_validation
+                render_error_summary: "deck validation failed; auto-repair is allowed"
+                render_fix_result: {}
+        - when: "hasPrefix(lower(world.last_error), 'host.slidey.render: render exited')"
+          target: fixing_render
+          effects:
+            - set:
+                render_error_repairable: true
+                render_error_kind: deck_render
+                render_error_summary: "deck render failed; auto-repair is allowed"
+                render_fix_result: {}
+        - target: .
+          effects:
+            - set:
+                render_error_repairable: false
+                render_error_kind: unknown
+                render_error_summary: "render failure is not known to be deck-repairable"
+      rerender:
+        - target: rendering
+          effects:
+            - set:
+                deck_handle:     ""
+                semantic_handle: ""
+                deck_path:       ""
+                semantic_path:   ""
+                render_retries:  0
+                render_error_repairable: false
+                render_error_kind: ""
+                render_error_summary: ""
+      revise:
+        - target: drafting
+          effects:
+            - set:
+                source_deck: "{{ world.deck }}"
+                draft_feedback: "{{ slots.feedback ?? '' }}"
+                deck: {}
+                deck_handle:     ""
+                semantic_handle: ""
+                deck_path:       ""
+                semantic_path:   ""
+                render_retries:  0
+                render_error_repairable: false
+                render_error_kind: ""
+                render_error_summary: ""
+                annotation:      {}
+                current_scene:   ""
+                scene_index:     -1
+                scene:           {}
+                scene_json:      ""
+                scene_label:     ""
+                refine_feedback: ""
+                refine_result:   {}
+                refine_gate:     false
+                refine_message:  ""
+      quit:
+        - target: "@exit:abandoned"
+          effects:
+            - set: { abandon_reason: "abandoned_at_render_troubleshooting" }
+      look:
+        - target: .

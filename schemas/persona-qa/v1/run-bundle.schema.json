@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/persona-qa/v1/run-bundle.schema.json",
+  "title": "Persona QA Run Bundle",
+  "type": "object",
+  "required": ["run_id", "created_at", "mode", "project", "persona", "scenarios", "artifacts"],
+  "additionalProperties": true,
+  "properties": {
+    "run_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "mode": { "type": "string" },
+    "seed": { "type": "string" },
+    "project": { "type": "object", "required": ["id", "label"], "additionalProperties": true },
+    "persona": { "$ref": "persona.schema.json" },
+    "driver": { "type": "object", "additionalProperties": true },
+    "scenarios": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "label", "stage", "primary_story"], "additionalProperties": true }
+    },
+    "transports": { "type": "array", "items": { "type": "string" } },
+    "artifacts": { "type": "object", "additionalProperties": true }
+  }
+}

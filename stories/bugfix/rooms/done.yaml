@@ -24,7 +24,7 @@ states:
             Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary: '{{ world.done_artifact.summary_title|default:"(pending)" }}'
       - heading: "Artifact"
-      - code: '{{ world.done_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+      - template: '{{ world.done_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -116,11 +116,21 @@ states:
             - |
               export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
               WT="{{ world.workdir }}"
+              THREAD="{{ world.thread }}"
               # `git -C` targets the worktree; NO cwd: is set so a missing/odd
               # worktree dir can't make exec fail to start (which would bounce
               # via on_error). A worktree that doesn't exist → git errors →
               # 2>/dev/null → DIRTY="" → reported clean (nothing to lose).
+              # The pipeline's OWN thread file is excluded: checkpoint posts
+              # are deliberately routed into the worktree (append_file
+              # transport workdir arg) so they stay out of the primary
+              # checkout — that is transport bookkeeping the pipeline wrote,
+              # not maker lost work, and without the exclusion every real run
+              # would refuse handoff here.
               DIRTY=$(git -C "$WT" status --porcelain 2>/dev/null || echo "")
+              if [ -n "$THREAD" ]; then
+                DIRTY=$(printf '%s\n' "$DIRTY" | grep -vF " $THREAD" || true)
+              fi
               if [ -n "$DIRTY" ]; then
                 jq -n --arg files "$DIRTY" '{dirty:true,files:$files}'
               else
@@ -172,7 +182,8 @@ states:
 
       - when: |
           world.judge_mode != 'human' &&
-          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          (world.llm_verdict.verdict ?? '') != '' &&
+          (world.llm_verdict.confidence ?? 0) >= world.judge_confidence_threshold &&
           world.llm_verdict.verdict != 'uncertain' &&
           world.llm_verdict.intent != 'uncertain'
         emit_intent: "{{ world.llm_verdict.intent }}"
@@ -196,20 +207,26 @@ states:
             - set:
                 last_error: "refusing to hand off: the maker worktree has uncommitted work — it was never committed, so the committed tip is broken or partial while the working tree looks green. Commit it on the branch first:\n{{ world.worktree_dirty_files }}"
                 status:     "needs-human"
-        # Close out: post the artifact to the transport, transition the
-        # upstream ticket to resolved, then fire @exit:done.
-        # @exit:done.requires: [done_artifact] is checked statically
-        # against the effects on this arc — done_artifact is re-pinned
-        # below so the requires gate sees an explicit set.
-        - target: "@exit:done"
+        # ── CI-watch/merge tail (opt-in, WS-C C3) ───────────────────────────
+        # bugfix_exit=open-PR-merge: same close-out (post + ticket resolve) as
+        # the default open-PR arc below, but instead of handing @exit:done to
+        # a parent, enter the IMPORTED pr-refinement compound directly —
+        # pr_title/pr_body are seeded from the done_artifact so its world_in:
+        # projects them into the child. The chain settles at @exit:merged (or
+        # @exit:needs-human on a pr-refinement abandon) with no parent hub
+        # required. See imports.pr in app.yaml.
+        - when: "world.bugfix_exit == 'open-PR-merge'"
+          target: pr
           effects:
             - invoke: iface.transport.post
               with:
                 thread:   "{{ world.thread }}"
+                workdir:  "{{ world.workdir }}"
                 title:    "Bug-fix done: {{ world.ticket_id }}"
                 body:     "{{ world.done_artifact.summary_markdown }}"
                 phase_id: "done_{{ world.ticket_id }}"
             - invoke: iface.ticket.comment
+              when: "world.ticket_repo == ''"
               with:
                 id: "{{ world.ticket_id }}"
                 thread: "{{ world.thread }}"
@@ -230,9 +247,259 @@ states:
                   verified:
                     - {{ (world.validate_artifact.summary_title ?? '') != '' ? world.validate_artifact.summary_title : "Validation completed" }}
                   -->
+
+                  <!-- kitsoki-bugfix-audit
+                  version: 1
+                  story: bugfix
+                  classification: bugfix
+                  actor: {{ world.audit_actor }}
+                  audit_mode: {{ world.audit_mode }}
+                  session_id: {{ world.session_id }}
+                  trace_ref: {{ world.run_trace_ref != '' ? world.run_trace_ref : world.session_id }}
+                  artifacts_ref: {{ world.run_artifacts_ref != '' ? world.run_artifacts_ref : "(none)" }}
+                  ticket_id: {{ world.ticket_id }}
+                  ticket_repo: {{ world.ticket_repo != '' ? world.ticket_repo : "local" }}
+                  ticket_url: {{ world.ticket_url != '' ? world.ticket_url : "(none)" }}
+                  source_mode: {{ world.ticket_source_mode }}
+                  source_ref: {{ world.ticket_source_ref != '' ? world.ticket_source_ref : "(none)" }}
+                  thread: {{ world.thread }}
+                  bugfix_mode: {{ world.bugfix_mode }}
+                  judge_mode: {{ world.judge_mode }}
+                  bugfix_exit: {{ world.bugfix_exit }}
+                  base_branch: {{ world.base_branch != '' ? world.base_branch : "main" }}
+                  base_commit: {{ world.base_commit != '' ? world.base_commit : "(none)" }}
+                  feature_branch: {{ world.feature_branch != '' ? world.feature_branch : "(none)" }}
+                  workspace_id: {{ world.workspace_id != '' ? world.workspace_id : "(none)" }}
+                  workdir: {{ world.workdir != '' ? world.workdir : "(none)" }}
+                  fixed_in_commit: {{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}
+                  shipped_sha: {{ world.shipped_sha != '' ? world.shipped_sha : "(none)" }}
+                  merge_sha: {{ world.merge_sha != '' ? world.merge_sha : "(none)" }}
+                  pr_url: {{ world.pr_url != '' ? world.pr_url : "(none)" }}
+                  repro_checked: {{ world.repro_checked }}
+                  repro_gate_ran: {{ world.repro_gate_ran }}
+                  repro_gate_ok: {{ world.repro_gate_ok }}
+                  regression_gate_checked: {{ world.regression_gate_checked }}
+                  regression_red_pre_fix: {{ world.regression_red_pre_fix }}
+                  unsafe_jumps_made: {{ world.unsafe_jumps_made }}
+                  cycle: {{ world.cycle }}
+                  -->
+            - invoke: host.gh.ticket.comment
+              when: "world.ticket_repo != ''"
+              with:
+                repo: "{{ world.ticket_repo }}"
+                id: "{{ world.ticket_url != '' ? world.ticket_url : world.ticket_id }}"
+                thread: "{{ world.thread }}"
+                body: |
+                  Fixed in:
+
+                  - `{{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}` {{ (world.done_artifact.summary_title ?? '') != '' ? world.done_artifact.summary_title : "Bug-fix close-out" }}
+
+                  Verification:
+
+                  - {{ (world.validate_artifact.summary_title ?? '') != '' ? world.validate_artifact.summary_title : "Validation completed" }}
+
+                  <!-- kitsoki-fixed-in
+                  commits:
+                    - {{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}
+                  branch: {{ world.base_branch != '' ? world.base_branch : "main" }}
+                  workdir: {{ world.workdir }}
+                  verified:
+                    - {{ (world.validate_artifact.summary_title ?? '') != '' ? world.validate_artifact.summary_title : "Validation completed" }}
+                  -->
+
+                  <!-- kitsoki-bugfix-audit
+                  version: 1
+                  story: bugfix
+                  classification: bugfix
+                  actor: {{ world.audit_actor }}
+                  audit_mode: {{ world.audit_mode }}
+                  session_id: {{ world.session_id }}
+                  trace_ref: {{ world.run_trace_ref != '' ? world.run_trace_ref : world.session_id }}
+                  artifacts_ref: {{ world.run_artifacts_ref != '' ? world.run_artifacts_ref : "(none)" }}
+                  ticket_id: {{ world.ticket_id }}
+                  ticket_repo: {{ world.ticket_repo != '' ? world.ticket_repo : "local" }}
+                  ticket_url: {{ world.ticket_url != '' ? world.ticket_url : "(none)" }}
+                  source_mode: {{ world.ticket_source_mode }}
+                  source_ref: {{ world.ticket_source_ref != '' ? world.ticket_source_ref : "(none)" }}
+                  thread: {{ world.thread }}
+                  bugfix_mode: {{ world.bugfix_mode }}
+                  judge_mode: {{ world.judge_mode }}
+                  bugfix_exit: {{ world.bugfix_exit }}
+                  base_branch: {{ world.base_branch != '' ? world.base_branch : "main" }}
+                  base_commit: {{ world.base_commit != '' ? world.base_commit : "(none)" }}
+                  feature_branch: {{ world.feature_branch != '' ? world.feature_branch : "(none)" }}
+                  workspace_id: {{ world.workspace_id != '' ? world.workspace_id : "(none)" }}
+                  workdir: {{ world.workdir != '' ? world.workdir : "(none)" }}
+                  fixed_in_commit: {{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}
+                  shipped_sha: {{ world.shipped_sha != '' ? world.shipped_sha : "(none)" }}
+                  merge_sha: {{ world.merge_sha != '' ? world.merge_sha : "(none)" }}
+                  pr_url: {{ world.pr_url != '' ? world.pr_url : "(none)" }}
+                  repro_checked: {{ world.repro_checked }}
+                  repro_gate_ran: {{ world.repro_gate_ran }}
+                  repro_gate_ok: {{ world.repro_gate_ok }}
+                  regression_gate_checked: {{ world.regression_gate_checked }}
+                  regression_red_pre_fix: {{ world.regression_red_pre_fix }}
+                  unsafe_jumps_made: {{ world.unsafe_jumps_made }}
+                  cycle: {{ world.cycle }}
+                  -->
             - invoke: iface.ticket.transition
+              when: "world.ticket_repo == ''"
               with:
                 id: "{{ world.ticket_id }}"
+                to: "resolved"
+            - invoke: host.gh.ticket.transition
+              when: "world.ticket_repo != ''"
+              with:
+                repo: "{{ world.ticket_repo }}"
+                id: "{{ world.ticket_url != '' ? world.ticket_url : world.ticket_id }}"
+                to: "resolved"
+            - set:
+                status:        "fixed"
+                done_artifact: "{{ world.done_artifact }}"
+                pr_title:      "{{ (world.done_artifact.summary_title ?? '') != '' ? world.done_artifact.summary_title : 'Bug fix: ' + world.ticket_id }}"
+                pr_body:       "{{ world.done_artifact.summary_markdown }}"
+
+        # Close out: post the artifact to the transport, transition the
+        # upstream ticket to resolved, then fire @exit:done.
+        # @exit:done.requires: [done_artifact] is checked statically
+        # against the effects on this arc — done_artifact is re-pinned
+        # below so the requires gate sees an explicit set.
+        - target: "@exit:done"
+          effects:
+            - invoke: iface.transport.post
+              with:
+                thread:   "{{ world.thread }}"
+                workdir:  "{{ world.workdir }}"
+                title:    "Bug-fix done: {{ world.ticket_id }}"
+                body:     "{{ world.done_artifact.summary_markdown }}"
+                phase_id: "done_{{ world.ticket_id }}"
+            - invoke: iface.ticket.comment
+              when: "world.ticket_repo == ''"
+              with:
+                id: "{{ world.ticket_id }}"
+                thread: "{{ world.thread }}"
+                body: |
+                  Fixed in:
+
+                  - `{{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}` {{ (world.done_artifact.summary_title ?? '') != '' ? world.done_artifact.summary_title : "Bug-fix close-out" }}
+
+                  Verification:
+
+                  - {{ (world.validate_artifact.summary_title ?? '') != '' ? world.validate_artifact.summary_title : "Validation completed" }}
+
+                  <!-- kitsoki-fixed-in
+                  commits:
+                    - {{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}
+                  branch: {{ world.base_branch != '' ? world.base_branch : "main" }}
+                  workdir: {{ world.workdir }}
+                  verified:
+                    - {{ (world.validate_artifact.summary_title ?? '') != '' ? world.validate_artifact.summary_title : "Validation completed" }}
+                  -->
+
+                  <!-- kitsoki-bugfix-audit
+                  version: 1
+                  story: bugfix
+                  classification: bugfix
+                  actor: {{ world.audit_actor }}
+                  audit_mode: {{ world.audit_mode }}
+                  session_id: {{ world.session_id }}
+                  trace_ref: {{ world.run_trace_ref != '' ? world.run_trace_ref : world.session_id }}
+                  artifacts_ref: {{ world.run_artifacts_ref != '' ? world.run_artifacts_ref : "(none)" }}
+                  ticket_id: {{ world.ticket_id }}
+                  ticket_repo: {{ world.ticket_repo != '' ? world.ticket_repo : "local" }}
+                  ticket_url: {{ world.ticket_url != '' ? world.ticket_url : "(none)" }}
+                  source_mode: {{ world.ticket_source_mode }}
+                  source_ref: {{ world.ticket_source_ref != '' ? world.ticket_source_ref : "(none)" }}
+                  thread: {{ world.thread }}
+                  bugfix_mode: {{ world.bugfix_mode }}
+                  judge_mode: {{ world.judge_mode }}
+                  bugfix_exit: {{ world.bugfix_exit }}
+                  base_branch: {{ world.base_branch != '' ? world.base_branch : "main" }}
+                  base_commit: {{ world.base_commit != '' ? world.base_commit : "(none)" }}
+                  feature_branch: {{ world.feature_branch != '' ? world.feature_branch : "(none)" }}
+                  workspace_id: {{ world.workspace_id != '' ? world.workspace_id : "(none)" }}
+                  workdir: {{ world.workdir != '' ? world.workdir : "(none)" }}
+                  fixed_in_commit: {{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}
+                  shipped_sha: {{ world.shipped_sha != '' ? world.shipped_sha : "(none)" }}
+                  merge_sha: {{ world.merge_sha != '' ? world.merge_sha : "(none)" }}
+                  pr_url: {{ world.pr_url != '' ? world.pr_url : "(none)" }}
+                  repro_checked: {{ world.repro_checked }}
+                  repro_gate_ran: {{ world.repro_gate_ran }}
+                  repro_gate_ok: {{ world.repro_gate_ok }}
+                  regression_gate_checked: {{ world.regression_gate_checked }}
+                  regression_red_pre_fix: {{ world.regression_red_pre_fix }}
+                  unsafe_jumps_made: {{ world.unsafe_jumps_made }}
+                  cycle: {{ world.cycle }}
+                  -->
+            - invoke: host.gh.ticket.comment
+              when: "world.ticket_repo != ''"
+              with:
+                repo: "{{ world.ticket_repo }}"
+                id: "{{ world.ticket_url != '' ? world.ticket_url : world.ticket_id }}"
+                thread: "{{ world.thread }}"
+                body: |
+                  Fixed in:
+
+                  - `{{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}` {{ (world.done_artifact.summary_title ?? '') != '' ? world.done_artifact.summary_title : "Bug-fix close-out" }}
+
+                  Verification:
+
+                  - {{ (world.validate_artifact.summary_title ?? '') != '' ? world.validate_artifact.summary_title : "Validation completed" }}
+
+                  <!-- kitsoki-fixed-in
+                  commits:
+                    - {{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}
+                  branch: {{ world.base_branch != '' ? world.base_branch : "main" }}
+                  workdir: {{ world.workdir }}
+                  verified:
+                    - {{ (world.validate_artifact.summary_title ?? '') != '' ? world.validate_artifact.summary_title : "Validation completed" }}
+                  -->
+
+                  <!-- kitsoki-bugfix-audit
+                  version: 1
+                  story: bugfix
+                  classification: bugfix
+                  actor: {{ world.audit_actor }}
+                  audit_mode: {{ world.audit_mode }}
+                  session_id: {{ world.session_id }}
+                  trace_ref: {{ world.run_trace_ref != '' ? world.run_trace_ref : world.session_id }}
+                  artifacts_ref: {{ world.run_artifacts_ref != '' ? world.run_artifacts_ref : "(none)" }}
+                  ticket_id: {{ world.ticket_id }}
+                  ticket_repo: {{ world.ticket_repo != '' ? world.ticket_repo : "local" }}
+                  ticket_url: {{ world.ticket_url != '' ? world.ticket_url : "(none)" }}
+                  source_mode: {{ world.ticket_source_mode }}
+                  source_ref: {{ world.ticket_source_ref != '' ? world.ticket_source_ref : "(none)" }}
+                  thread: {{ world.thread }}
+                  bugfix_mode: {{ world.bugfix_mode }}
+                  judge_mode: {{ world.judge_mode }}
+                  bugfix_exit: {{ world.bugfix_exit }}
+                  base_branch: {{ world.base_branch != '' ? world.base_branch : "main" }}
+                  base_commit: {{ world.base_commit != '' ? world.base_commit : "(none)" }}
+                  feature_branch: {{ world.feature_branch != '' ? world.feature_branch : "(none)" }}
+                  workspace_id: {{ world.workspace_id != '' ? world.workspace_id : "(none)" }}
+                  workdir: {{ world.workdir != '' ? world.workdir : "(none)" }}
+                  fixed_in_commit: {{ world.fixed_in_commit != '' ? world.fixed_in_commit : "unknown" }}
+                  shipped_sha: {{ world.shipped_sha != '' ? world.shipped_sha : "(none)" }}
+                  merge_sha: {{ world.merge_sha != '' ? world.merge_sha : "(none)" }}
+                  pr_url: {{ world.pr_url != '' ? world.pr_url : "(none)" }}
+                  repro_checked: {{ world.repro_checked }}
+                  repro_gate_ran: {{ world.repro_gate_ran }}
+                  repro_gate_ok: {{ world.repro_gate_ok }}
+                  regression_gate_checked: {{ world.regression_gate_checked }}
+                  regression_red_pre_fix: {{ world.regression_red_pre_fix }}
+                  unsafe_jumps_made: {{ world.unsafe_jumps_made }}
+                  cycle: {{ world.cycle }}
+                  -->
+            - invoke: iface.ticket.transition
+              when: "world.ticket_repo == ''"
+              with:
+                id: "{{ world.ticket_id }}"
+                to: "resolved"
+            - invoke: host.gh.ticket.transition
+              when: "world.ticket_repo != ''"
+              with:
+                repo: "{{ world.ticket_repo }}"
+                id: "{{ world.ticket_url != '' ? world.ticket_url : world.ticket_id }}"
                 to: "resolved"
             - set:
                 status:        "fixed"
@@ -284,7 +551,10 @@ states:
                 implementing_cycle:  0
                 cycle:               0
                 # Clear implementing's once: bind so it re-applies fresh.
-                implement_artifact:  {}
+                implement_artifact:        {}
+                implement_review_artifact: {}
+                validate_artifact:         {}
+                done_artifact:             {}
         - when: "slots.stage == 'testing' || slots.stage == 'test'"
           target: testing
           effects:

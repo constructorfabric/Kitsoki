@@ -45,17 +45,17 @@ state: core.bf.reproducing
 world:
   # Ticket (integration-smoke is the safest — never been driven, no
   # stale .worktrees/ dir).
-  core__ticket_id:    "2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood"
-  core__ticket_title: "integration smoke — bug picked up by dogfood"
-  core__ticket_url:   "issues/bugs/2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood.md"
+  core__ticket_id:    "2026-05-17T111838Z-integration-smoke-bug-picked-up-by-self-host"
+  core__ticket_title: "integration smoke - bug picked up by self-hosted instance"
+  core__ticket_url:   "issues/bugs/2026-05-17T111838Z-integration-smoke-bug-picked-up-by-self-host.md"
   core__ticket_type:  "bug"
-  core__thread:       "issues/bugs/2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood.md"
+  core__thread:       "issues/bugs/2026-05-17T111838Z-integration-smoke-bug-picked-up-by-self-host.md"
 
   # Workspace (seeded so the bf.idle auto-create won't try to fire
   # if you bounce back to idle).
-  core__bf__workspace_id:           "bf-2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood"
-  core__bf__feature_branch:         "fix/2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood"
-  core__bf__workdir:                ".worktrees/bf-2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood"
+  core__bf__workspace_id:           "bf-2026-05-17T111838Z-integration-smoke-bug-picked-up-by-self-host"
+  core__bf__feature_branch:         "fix/2026-05-17T111838Z-integration-smoke-bug-picked-up-by-self-host"
+  core__bf__workdir:                ".worktrees/bf-2026-05-17T111838Z-integration-smoke-bug-picked-up-by-self-host"
   core__bf__base_branch:            "main"
   core__bf__bf_autostart_attempted: true
   core__bf__bugfix_mode:            "full"
@@ -73,7 +73,7 @@ world:
   # step has a non-empty body to post, AND the view at reproducing
   # renders the artifact you're about to advance past.
   core__bf__reproduction_artifact:
-    summary_title:    "integration-smoke — verify dogfood loop completes end-to-end"
+    summary_title:    "integration-smoke - verify self-hosted loop completes end-to-end"
     summary_markdown: |
       ## Reproduction (seeded by verify_autostart warp)
 

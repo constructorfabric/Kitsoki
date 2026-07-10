@@ -125,9 +125,9 @@ def run(project: str, check: bool, timeout: int) -> list[str]:
                 lines.extend(f"    {line}" for line in result.stderr.strip().splitlines())
             continue
         if pid == "gears-rust":
-            repo = os.environ.get(target.get("local_repo_env", "GEARS_RUST_REPO"), "")
+            repo = os.environ.get(target.get("local_repo_env", "BUGFIX_BAKEOFF_REPO"), "")
             if not repo:
-                lines.append("  verify: blocked (set GEARS_RUST_REPO to a local checkout)")
+                lines.append("  verify: blocked (set BUGFIX_BAKEOFF_REPO to a local checkout)")
                 continue
             status, output = verify_gears_rust(repo)
             lines.append(f"  verify: {status}")

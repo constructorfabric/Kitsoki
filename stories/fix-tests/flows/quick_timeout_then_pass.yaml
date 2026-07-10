@@ -1,0 +1,65 @@
+# quick_timeout_then_pass — a bounded quick-gate timeout is treated as a red
+# deterministic gate, so the fixer gets the timeout output instead of the story
+# hanging or stopping on a host error.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  test_cmd: "make test"
+  quick_test_cmd: "go test -short ./cmd/kitsoki ./internal/mcp/studio"
+  quick_test_timeout_seconds: 1
+  full_test_timeout_seconds: 30
+  max_cycles: 3
+
+host_handlers:
+  host.run:
+    by_call:
+      run_initial:
+        data: { exit_code: 124, ok: false, stdout: "TIMEOUT: quick gate exceeded 1s\n" }
+        delay: "10ms"
+      verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\tquick gate\n" }
+        delay: "10ms"
+      full_verify_run:
+        data: { exit_code: 0, ok: true, stdout: "ok\tfull suite\n" }
+        delay: "10ms"
+  host.agent.task:
+    by_call:
+      fix:
+        delay: "10ms"
+        data:
+          submitted:
+            summary_title: "Reduce test wait"
+            summary_markdown: "Handled the timeout output and made the quick gate pass."
+            files_changed: ["internal/example/example.go"]
+            fixed_tests: ["quick gate"]
+            remaining_failures: []
+            needs_decision: false
+            confidence: 0.8
+  host.agent.decide:
+    by_call:
+      review-1:
+        data:
+          submitted:
+            pass: true
+            reason: "The full gate is green and tests were not weakened."
+            functionality_preserved: true
+            tests_not_weakened: true
+            findings: []
+            fixes: []
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: start }
+    advance_clock: "3s"
+    expect_state: __exit__achieved
+    expect_world:
+      tests_passed: true
+      outcome: "fixed"
+      cycle: 1
+      report_path: ".artifacts/fix-tests/report-fixed.md"
+      review_ok: true
+
+expect_terminal: true
+expect_no_errors: true

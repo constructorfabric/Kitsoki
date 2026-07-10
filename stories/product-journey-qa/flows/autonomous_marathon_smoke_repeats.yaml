@@ -1,0 +1,59 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      autonomous_product_journey_marathon_smoke:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            summary: core use-case autonomous product-QA marathon persona sweep passed
+            exit_code: 0
+            project: gears-rust
+            cycle_count: 2
+            persona_count: 5
+            scenario_count: 3
+            run_count: 10
+            expected_issue_count: 30
+            filed_issue_count: 30
+            gh_agent_done_count: 30
+            gh_agent_integration_landing_count: 30
+            flawless_run_count: 10
+            success_rate: "10/10"
+            report_path: .artifacts/product-journey/marathon-smokes/fixture-repeats/autonomous-marathon-smoke.json
+            report_markdown_path: .artifacts/product-journey/marathon-smokes/fixture-repeats/autonomous-marathon-smoke.md
+            output: "ok: sweep completed every requested repeat cycle\nSUMMARY_JSON: {\"cycle_count\": 2, \"expected_issue_count\": 30, \"filed_issue_count\": 30, \"flawless_run_count\": 10, \"gh_agent_done_count\": 30, \"gh_agent_integration_landing_count\": 30, \"persona_count\": 5, \"project\": \"gears-rust\", \"report_markdown_path\": \".artifacts/product-journey/marathon-smokes/fixture-repeats/autonomous-marathon-smoke.md\", \"report_path\": \".artifacts/product-journey/marathon-smokes/fixture-repeats/autonomous-marathon-smoke.json\", \"run_count\": 10, \"scenario_count\": 3, \"success_rate\": \"10/10\"}\nPASS"
+
+turns:
+  - intent:
+      name: autonomous_marathon_smoke
+      slots:
+        repeats: 2
+    expect_state: idle
+    expect_world:
+      status: autonomous_marathon_smoke_checked
+      autonomous_marathon_smoke_status: passed
+      autonomous_marathon_smoke_summary: core use-case autonomous product-QA marathon persona sweep passed
+      autonomous_marathon_smoke_exit_code: 0
+      autonomous_marathon_smoke_project: gears-rust
+      autonomous_marathon_smoke_cycle_count: 2
+      autonomous_marathon_smoke_persona_count: 5
+      autonomous_marathon_smoke_scenario_count: 3
+      autonomous_marathon_smoke_run_count: 10
+      autonomous_marathon_smoke_filed_issue_count: 30
+      autonomous_marathon_smoke_done_count: 30
+      autonomous_marathon_smoke_landing_count: 30
+      autonomous_marathon_smoke_flawless_count: 10
+      autonomous_marathon_smoke_success_rate: "10/10"
+      autonomous_marathon_smoke_report_path: .artifacts/product-journey/marathon-smokes/fixture-repeats/autonomous-marathon-smoke.json
+      autonomous_marathon_smoke_report_markdown_path: .artifacts/product-journey/marathon-smokes/fixture-repeats/autonomous-marathon-smoke.md
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_marathon_smoke }
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Autonomous marathon smoke[\\s\\S]*passed[\\s\\S]*Marathon smoke coverage[\\s\\S]*gears-rust; cycles=2[\\s\\S]*personas=5[\\s\\S]*scenarios=3[\\s\\S]*runs=10[\\s\\S]*filed=30[\\s\\S]*fixed=30[\\s\\S]*landed=30[\\s\\S]*flawless=10/10[\\s\\S]*Marathon smoke ledger[\\s\\S]*autonomous-marathon-smoke.md[\\s\\S]*Status[\\s\\S]*autonomous_marathon_smoke_checked"
+
+expect_no_errors: true

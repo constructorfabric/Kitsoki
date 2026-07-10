@@ -1,0 +1,127 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+# campaign_issue_fix's declared finding-sink policy (AGENTS.md, docs/proposals
+# retired into docs/stories/product-journey-qa.md): local developer/dogfood
+# findings stay local under .artifacts/issues/bugs by default, with no GitHub
+# filing or gh-agent repair touched. finding_sink=github is an explicit
+# opt-in for a real handoff (covered by campaign_surface.yaml's
+# campaign_issue_fix turn).
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-local-sink
+            run_dir: .artifacts/product-journey/run-local-sink
+            project: vscode
+            persona: ide-first-engineer
+            seed: local-sink-demo
+            deck_path: .artifacts/product-journey/run-local-sink/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-local-sink/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-local-sink/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-local-sink/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-local-sink/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-local-sink/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-local-sink/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-local-sink/scenario-outcomes.md
+            finding_total_count: 2
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 2
+            fix_count: 0
+            blocked_count: 0
+            proof_evidence_count: 2
+            review_status: needs_evidence
+      file_local_product_journey_findings:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: findings_filed_local
+            run_dir: .artifacts/product-journey/run-local-sink
+            filing_sink: local-artifact
+            local_sink_target: kitsoki
+            local_sink_target_dir: /repo
+            dry_run: "no"
+            findings_filed_count: 2
+            findings_skipped_count: 0
+            findings_failed_count: 0
+            findings_unfiled_count: 0
+            filed_issue_summary: ".artifacts/issues/bugs/2026-07-09T000000Z-credible-one.md; .artifacts/issues/bugs/2026-07-09T000000Z-credible-two.md"
+            filing_summary: "Filed findings to the local-artifact sink: 2 filed, 0 already filed, 0 failed; 0 credible finding(s) remain unfiled. Use finding_sink=github ticket_repo=owner/repo for an explicit GitHub handoff."
+            gh_agent_enqueue_status: ""
+            gh_agent_enqueued_count: 0
+            gh_agent_skipped_count: 0
+            gh_agent_job_summary: ""
+            gh_agent_drain_status: ""
+            gh_agent_drained_count: 0
+            gh_agent_done_count: 0
+            gh_agent_failed_count: 0
+            gh_agent_active_count: 0
+            gh_agent_run_summary: ""
+            deck_path: .artifacts/product-journey/run-local-sink/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-local-sink/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-local-sink/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-local-sink/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-local-sink/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-local-sink/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-local-sink/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-local-sink/scenario-outcomes.md
+            finding_total_count: 2
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 2
+            fix_count: 0
+            blocked_count: 0
+            proof_evidence_count: 2
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-local-sink
+    expect_state: run_created
+    expect_world:
+      status: run_loaded
+      run_id: run-local-sink
+      run_dir: .artifacts/product-journey/run-local-sink
+      issue_count: 2
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: campaign_issue_fix
+    expect_state: run_created
+    expect_world:
+      status: campaign_filing_local_complete
+      campaign_status: filing_local_complete
+      campaign_finding_sink: local-artifact
+      filing_sink: local-artifact
+      filing_status: findings_filed_local
+      filing_dry_run: "no"
+      findings_filed_count: 2
+      findings_skipped_count: 0
+      findings_failed_count: 0
+      findings_unfiled_count: 0
+      filed_issue_summary: ".artifacts/issues/bugs/2026-07-09T000000Z-credible-one.md; .artifacts/issues/bugs/2026-07-09T000000Z-credible-two.md"
+    expect_view_matches: "RUN CREATED[\\s\\S]*Filing sink[\\s\\S]*local-artifact[\\s\\S]*Issue filing[\\s\\S]*findings_filed_local[\\s\\S]*filed 2[\\s\\S]*skipped 0[\\s\\S]*failed 0[\\s\\S]*unfiled 0"
+    expect_host_calls:
+      - handler: host.run
+        args:
+          call: file_local_product_journey_findings
+          args:
+            - tools/product-journey/run.py
+            - --file-local-findings
+            - --json-output
+            - --run-dir
+            - .artifacts/product-journey/run-local-sink
+
+expect_no_errors: true

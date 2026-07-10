@@ -84,6 +84,86 @@ func decodeDriveFrames(t *testing.T, raw string) []driveFrame {
 const cloakAppPath = "../../testdata/apps/cloak/app.yaml"
 const cloakCassettePath = "../../testdata/apps/cloak/recording.yaml"
 
+func TestDrive_AutoRunsBackgroundOperation(t *testing.T) {
+	dir := t.TempDir()
+	appPath := filepath.Join(dir, "app.yaml")
+	tracePath := filepath.Join(dir, "trace.jsonl")
+	require.NoError(t, os.WriteFile(appPath, []byte(`
+app:
+  id: drive-operation-headless
+  version: 0.1.0
+intents:
+  start: {}
+  accept: {}
+  quit: {}
+root: idle
+operations:
+  demo_run:
+    title: Demo run
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [reproduction_artifact, done_artifact]
+states:
+  idle:
+    on:
+      start:
+        - target: reproducing
+          operation: demo_run
+  reproducing:
+    on:
+      accept:
+        - target: proposing
+          effects:
+            - set:
+                reproduction_artifact: { summary_title: Reproduced }
+      quit:
+        - target: needs-human
+  proposing:
+    on:
+      accept:
+        - target: done
+          effects:
+            - set:
+                done_artifact: { summary_title: Done }
+      quit:
+        - target: needs-human
+  needs-human:
+    terminal: true
+  done:
+    terminal: true
+`), 0o644))
+
+	cmd, out := newDriveCmd(t, "start\n")
+	err := runDrive(cmd, driveCmdConfig{
+		appPath:   appPath,
+		tracePath: tracePath,
+		cols:      80,
+		rows:      24,
+		harnessOverride: &scriptLive{reply: map[string]string{
+			"start": "start",
+		}},
+	})
+	require.NoError(t, err)
+
+	frames := decodeDriveFrames(t, out.String())
+	require.Len(t, frames, 1, "one JSON frame per scripted operator input")
+	require.Equal(t, "start", frames[0].RoutedIntent)
+	require.Equal(t, driveExitTerminal, frames[0].Exit)
+	require.Equal(t, "done", frames[0].Frame.Metadata.State)
+	require.NotNil(t, frames[0].OperationDrive)
+	require.Equal(t, 2, frames[0].OperationDrive.Turns)
+	require.Equal(t, "operation-completed", frames[0].OperationDrive.StopReason)
+	require.Equal(t, "accept", frames[0].OperationDrive.LastIntent)
+
+	traceRaw, err := os.ReadFile(tracePath)
+	require.NoError(t, err)
+	require.Contains(t, string(traceRaw), "operation.completed")
+	require.Contains(t, string(traceRaw), "operation_driver")
+}
+
 // TestDrive_ReplayNoneReproducesKnownTranscript (task 2.1 + 2.4): driving the
 // cloak app under --harness replay --record none with recorded free-text inputs
 // reproduces a known transcript — routed intents, exits, and resting states —

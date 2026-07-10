@@ -32,6 +32,24 @@ func TestStubAgent_ReadOnly_NoWrite(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "a read-only turn must not write to the story tree")
 }
 
+func TestStubAgent_ReadOnlyImprove_ReturnsReport(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStubAgentCaller()
+	out, err := s.Ask(context.Background(), AskInput{
+		SystemPrompt:  "You are the `story-improver` agent for kitsoki.",
+		ToolAllowlist: []string{"Read", "Glob", "Grep"},
+		Cwd:           dir,
+		UserMessage:   "[context]\nstate: done\n[/context]\n\n[user]\nReview this completed session for an improvement report.\n[/user]\n",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, out.Reply, "Introspection report")
+	assert.Contains(t, out.Reply, "Tool and permission notes")
+	assert.Contains(t, out.Reply, "Regression coverage")
+
+	_, statErr := os.Stat(filepath.Join(dir, "meta-edits.log"))
+	assert.True(t, os.IsNotExist(statErr), "an improve report is read-only")
+}
+
 func TestStubAgent_Edit_WritesFile(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStubAgentCaller()

@@ -8,9 +8,12 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"kitsoki/internal/app"
 	"kitsoki/internal/chats"
 	"kitsoki/internal/jobs"
+	"kitsoki/internal/journal"
 	"kitsoki/internal/store"
 	"kitsoki/internal/tui/blocks"
 )
@@ -23,21 +26,37 @@ import (
 // see unread notifications, active background jobs, queued/dispatching/failed
 // chat drives, backgrounded Claude PTYs, and proposal-review work without
 // leaving the current flow.
+func handleWorkSlash(m RootModel, args []string) (RootModel, string, tea.Cmd) {
+	if len(args) > 0 {
+		switch args[0] {
+		case "drive":
+			return handleWorkDriveSlash(m)
+		case "artifact", "open":
+			return handleWorkArtifactSlash(m)
+		case "summary":
+			return handleWorkSummarySlash(m)
+		}
+	}
+	next, block := renderWorkBlock(m, args)
+	return next, block, nil
+}
+
 func renderWorkBlock(m RootModel, args []string) (RootModel, string) {
 	r := blocks.New(m.transcript.width, m.currentTheme())
+	operationRows := workRowsForCurrentOperation(m)
 	proposalRows := workRowsForProposals(m.mineState())
 	traceProposalRows, traceErr := workRowsForTraceMiningProposals(m.traceHistory, workRowIDs(proposalRows))
 	if traceErr != nil {
 		traceProposalRows = nil
 	}
 	proposalRows = append(proposalRows, traceProposalRows...)
-	if m.jobStore == nil && m.chatStore == nil && m.traceHistory == nil && len(proposalRows) == 0 {
+	if m.jobStore == nil && m.chatStore == nil && m.traceHistory == nil && len(proposalRows) == 0 && len(operationRows) == 0 {
 		return m, r.SlashOutput("(work: no job or chat store wired - pass --db for async work tracking)")
 	}
 	allSessions := workAllSessions(args)
 
 	ctx := context.Background()
-	var rows []workRow
+	rows := append([]workRow{}, operationRows...)
 	var errs []string
 	if traceErr != nil {
 		errs = append(errs, "trace proposals: "+traceErr.Error())
@@ -151,6 +170,237 @@ func workAllSessions(args []string) bool {
 		}
 	}
 	return false
+}
+
+func handleWorkDriveSlash(m RootModel) (RootModel, string, tea.Cmd) {
+	r := blocks.New(m.transcript.width, m.currentTheme())
+	if m.mode == ModeAwaitingLLM {
+		return m, r.SlashOutput("(work drive: another turn is already in flight)"), nil
+	}
+	if m.orch == nil {
+		return m, r.SlashOutput("(work drive: no live session attached)"), nil
+	}
+	handle, ok := operationRunHandle(m.orch.CurrentWorld(m.sid).Vars[app.OperationRunWorldKey])
+	if !ok {
+		return m, r.SlashOutput("(work drive: no running operation in this session)"), nil
+	}
+	status := operationRunString(handle, "status")
+	if status == "" {
+		status = "running"
+	}
+	if status != "running" {
+		return m, r.SlashOutput(fmt.Sprintf("(work drive: operation is %s)", status)), nil
+	}
+	if mode := operationRunString(handle, "mode"); !operationRunModeCanDrive(mode) {
+		return m, r.SlashOutput(fmt.Sprintf("(work drive: operation mode %s needs an operator checkpoint)", mode)), nil
+	}
+	next, cmd := startAsyncTurnDetailed(m, "/work drive", asyncDriveOperation(m.orch, m.sid), pendingDeterministic)
+	return next, r.SlashOutput("(work: driving operation)"), cmd
+}
+
+func handleWorkArtifactSlash(m RootModel) (RootModel, string, tea.Cmd) {
+	r := blocks.New(m.transcript.width, m.currentTheme())
+	artifact := operationArtifactForCurrentOperation(m)
+	if artifact == "" {
+		if m.orch == nil {
+			return m, r.SlashOutput("(work artifact: no live session attached)"), nil
+		}
+		return m, r.SlashOutput("(work artifact: current operation has no terminal artifact)"), nil
+	}
+	updated, cmd := m.handleOpenSlash([]string{operationArtifactOpenPath(m, artifact)})
+	next, ok := updated.(RootModel)
+	if !ok {
+		return m, r.SlashOutput("(work artifact: open command failed)"), cmd
+	}
+	return next, "", cmd
+}
+
+func operationArtifactForCurrentOperation(m RootModel) string {
+	if m.orch == nil {
+		return ""
+	}
+	handle, ok := operationRunHandle(m.orch.CurrentWorld(m.sid).Vars[app.OperationRunWorldKey])
+	if !ok {
+		return ""
+	}
+	if artifact := operationRunString(handle, "terminal_artifact_handle"); artifact != "" {
+		return artifact
+	}
+	return operationRunString(handle, "terminal_artifact")
+}
+
+func operationArtifactOpenPath(m RootModel, artifact string) string {
+	if path := operationArtifactPathFromJournal(m, artifact); path != "" {
+		return path
+	}
+	return artifact
+}
+
+func operationArtifactPathFromJournal(m RootModel, artifact string) string {
+	if m.journalReader == nil || strings.TrimSpace(artifact) == "" {
+		return ""
+	}
+	seq, errFn := m.journalReader.ReplayTyped(m.sid)
+	for entry := range seq {
+		if entry.Kind != journal.KindArtifactEmitted {
+			continue
+		}
+		var ev journal.ArtifactEvent
+		if err := json.Unmarshal(entry.Body, &ev); err != nil {
+			continue
+		}
+		if ev.ID == artifact && strings.TrimSpace(ev.Path) != "" {
+			_ = errFn()
+			return ev.Path
+		}
+	}
+	_ = errFn()
+	return ""
+}
+
+func handleWorkSummarySlash(m RootModel) (RootModel, string, tea.Cmd) {
+	r := blocks.New(m.transcript.width, m.currentTheme())
+	if m.orch == nil {
+		return m, r.SlashOutput("(work summary: no live session attached)"), nil
+	}
+	handle, ok := operationRunHandle(m.orch.CurrentWorld(m.sid).Vars[app.OperationRunWorldKey])
+	if !ok {
+		return m, r.SlashOutput("(work summary: no operation in this session)"), nil
+	}
+	return m, operationRunSummaryBlock(r, handle), nil
+}
+
+func operationRunSummaryBlock(r *blocks.Renderer, handle map[string]any) string {
+	status := operationRunString(handle, "status")
+	if status == "" {
+		status = "running"
+	}
+	lines := []string{
+		"  operation summary",
+		"  title: " + operationRunTitle(handle),
+		"  status: " + status,
+	}
+	add := func(label, value string) {
+		if value != "" {
+			lines = append(lines, "  "+label+": "+value)
+		}
+	}
+	add("operation", operationRunString(handle, "operation_id"))
+	add("policy", operationRunString(handle, "policy_id"))
+	add("mode", operationRunString(handle, "mode"))
+	add("execution", operationRunString(handle, "execution_mode"))
+	if phase := operationRunDisplayPhase(handle); phase != "" {
+		add("phase", phase)
+	}
+	if from, to := operationRunString(handle, "from"), operationRunString(handle, "to"); from != "" && to != "" {
+		add("route", from+" -> "+to)
+	}
+	add("intent", operationRunString(handle, "entry_intent"))
+	add("terminal", operationRunString(handle, "terminal_state"))
+	add("artifact", operationRunString(handle, "terminal_artifact"))
+	add("stop reason", operationRunString(handle, "stop_reason"))
+	add("stop detail", operationRunString(handle, "stop_detail"))
+
+	var actions []string
+	if status == "running" && operationRunModeCanDrive(operationRunString(handle, "mode")) {
+		actions = append(actions, "/work drive")
+	}
+	if operationRunString(handle, "terminal_artifact") != "" {
+		actions = append(actions, "/work artifact")
+	}
+	if len(actions) > 0 {
+		add("actions", strings.Join(actions, ", "))
+	}
+	return r.SlashOutput(strings.Join(lines, "\n"))
+}
+
+func workRowsForCurrentOperation(m RootModel) []workRow {
+	if m.orch == nil {
+		return nil
+	}
+	handle, ok := operationRunHandle(m.orch.CurrentWorld(m.sid).Vars[app.OperationRunWorldKey])
+	if !ok {
+		return nil
+	}
+	status := operationRunString(handle, "status")
+	if status == "" {
+		status = "running"
+	}
+	id := operationRunString(handle, "operation_id")
+	if id == "" {
+		id = operationRunString(handle, "policy_id")
+	}
+	return []workRow{{
+		Kind:     "operation",
+		Status:   status,
+		Title:    operationRunTitle(handle),
+		Hint:     operationRunWorkHint(handle, status),
+		Priority: workOperationPriority(status),
+		ID:       id,
+	}}
+}
+
+func operationRunTitle(handle map[string]any) string {
+	for _, key := range []string{"title", "policy_id", "operation_id"} {
+		if value := operationRunString(handle, key); value != "" {
+			return value
+		}
+	}
+	return "operation"
+}
+
+func operationRunWorkHint(handle map[string]any, status string) string {
+	var parts []string
+	switch status {
+	case "waiting":
+		if reason := operationRunString(handle, "stop_reason"); reason != "" {
+			parts = append(parts, "reason "+reason)
+		}
+		if detail := operationRunString(handle, "stop_detail"); detail != "" {
+			parts = append(parts, detail)
+		}
+		parts = append(parts, "/work summary")
+	case "completed":
+		if terminal := operationRunString(handle, "terminal_state"); terminal != "" {
+			parts = append(parts, "terminal "+terminal)
+		}
+		if artifact := operationRunString(handle, "terminal_artifact"); artifact != "" {
+			parts = append(parts, "artifact "+artifact)
+			parts = append(parts, "/work artifact")
+		}
+		parts = append(parts, "/work summary")
+	case "running":
+		parts = appendOperationProgressHint(parts, handle)
+		if operationRunModeCanDrive(operationRunString(handle, "mode")) {
+			parts = append(parts, "/work drive")
+		}
+		parts = append(parts, "/work summary")
+	default:
+		parts = appendOperationProgressHint(parts, handle)
+		parts = append(parts, "/work summary")
+	}
+	if len(parts) == 0 {
+		return "current session"
+	}
+	return strings.Join(parts, "; ")
+}
+
+func operationRunModeCanDrive(mode string) bool {
+	mode = strings.TrimSpace(mode)
+	return mode == "" || mode == "autonomous" || mode == "supervised"
+}
+
+func appendOperationProgressHint(parts []string, handle map[string]any) []string {
+	if phase := operationRunDisplayPhase(handle); phase != "" {
+		return append(parts, "phase "+phase)
+	}
+	if from, to := operationRunString(handle, "from"), operationRunString(handle, "to"); from != "" && to != "" {
+		return append(parts, from+" -> "+to)
+	}
+	if intent := operationRunString(handle, "entry_intent"); intent != "" {
+		return append(parts, "intent "+intent)
+	}
+	return parts
 }
 
 type workRow struct {
@@ -647,6 +897,21 @@ func workDrivePriority(status chats.DriveStatus) int {
 		return 68
 	default:
 		return 65
+	}
+}
+
+func workOperationPriority(status string) int {
+	switch status {
+	case "waiting":
+		return 98
+	case "failed":
+		return 94
+	case "running":
+		return 72
+	case "completed":
+		return 55
+	default:
+		return 60
 	}
 }
 

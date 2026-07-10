@@ -100,16 +100,13 @@ states:
   references_seed_fallback:
     description: "Semantic search unavailable — curating references directly…"
     view:
+      - prose: "⚠ Action failed: semantic pre-seed unavailable; curating references directly."
       - prose: "Semantic pre-seed unavailable; curating references directly…"
     relevant_world: [reference_hits, last_error]
     on_enter:
-      # The pre-seed is OPTIONAL — an unconfigured embedding endpoint is a
-      # benign condition, not a pipeline failure. Clear the last_error the
-      # runtime set on the search fault so the references view doesn't show a
-      # scary ⚠ for a feature the operator never asked for, then advance.
-      - set:
-          last_error: ""
-        emit_intent: "seeded"
+      # The pre-seed is OPTIONAL, but the fallback still preserves the runtime
+      # error so the immediate transition is never silent under the flow gate.
+      - emit_intent: "seeded"
     on:
       seeded:
         - target: references

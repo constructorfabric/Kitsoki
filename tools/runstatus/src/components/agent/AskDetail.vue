@@ -2,11 +2,7 @@
   <div class="ask-detail">
     <CollapsibleText label="System Prompt" :text="systemPrompt" />
     <CollapsibleText label="Prompt" :text="prompt" />
-
-    <div v-if="responseText" class="ask-detail__block">
-      <span class="od-label">Response</span>
-      <pre class="od-pre od-pre--response">{{ responseText }}</pre>
-    </div>
+    <CollapsibleText label="Response" :text="responseText" markdown />
 
     <div v-if="intent" class="ask-detail__kv">
       <span class="od-label">Intent</span>
@@ -112,7 +108,4 @@ const slots = computed(() => {
   overflow-y: auto;
 }
 
-.od-pre--response {
-  color: var(--k-fg, #e2e8f0);
-}
 </style>

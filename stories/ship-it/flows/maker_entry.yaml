@@ -38,4 +38,6 @@ turns:
       maker__gate_mode:    "script"
       maker__workspace_id: "burst-fix"
 
+expect_operation_policy: ship_it
+expect_operation_status: running
 expect_no_errors: true

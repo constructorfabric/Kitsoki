@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -283,6 +284,7 @@ type blockingSender struct {
 	hits     chan tea.Msg // each Send call sends one msg here, blocking until the test drains
 	stop     <-chan struct{}
 	released chan struct{} // closed when at least one goroutine has been released by stop
+	once     sync.Once
 }
 
 func (b *blockingSender) Send(msg tea.Msg) {
@@ -294,13 +296,7 @@ func (b *blockingSender) Send(msg tea.Msg) {
 		// non-blocking record-or-skip; the test only needs SOME hit.
 	}
 	<-b.stop
-	// Note: deliberately NOT closing `released` here — multiple
-	// goroutines call Send, so only one needs to advertise progress.
-	select {
-	case <-b.released:
-	default:
-		close(b.released)
-	}
+	b.once.Do(func() { close(b.released) })
 }
 
 // TestRoutingObserver_HandleDoesNotBlockOnSlowSender pins the M7 fix:

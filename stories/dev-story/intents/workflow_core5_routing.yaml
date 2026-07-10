@@ -1,0 +1,121 @@
+# workflow_core5_routing — routing-tuning substrate for WS-C C2 (see
+# .context/dev-workflows-surface-matrix-plan.md WS-C). Mines real phrasing
+# for the five core developer workflows this hub fronts from `landing`:
+# onboard, PRD/proposal, decompose->implement, file a bug, fix a bug.
+#
+# Run under `kitsoki test routing` (internal/testrunner/routing.go), NOT
+# `kitsoki test intents`: this file asserts the pure no-LLM routing tiers
+# (orchestrator.Classify — deterministic display/example match -> semantic
+# synonym/template -> optional embedding tier). No harness, no LLM, no
+# recording needed:
+#
+#   go run ./cmd/kitsoki test routing stories/dev-story/app.yaml \
+#     --intents stories/dev-story/intents/workflow_core5_routing.yaml
+#
+# "File a bug" has no dedicated fixture group below: it is not a
+# semantically-routed workflow in dev-story at all — bug filing rides the
+# TUI's `/bug` meta-mode command + web Report-Bug modal (see
+# .agents/skills/kitsoki-bug-filing/SKILL.md), never the intent router. The
+# `filebug-not-misrouted` case below is the regression that matters here: a
+# free-text bug description must NOT get swallowed by `go_bugfix` (which
+# starts the FIX pipeline on an already-picked ticket, not a filing flow) —
+# it should defer past these tiers entirely.
+
+test_kind: intents
+app: ../app.yaml
+state: landing
+defaults:
+  runs: 1
+  min_pass_rate: 1.0
+
+fixtures:
+  # ── Onboard ────────────────────────────────────────────────────────────
+  - id: onboard-explicit
+    intent: { name: go_init }
+    inputs:
+      - "onboard this project"
+  - id: onboard-noun-phrase
+    intent: { name: go_init }
+    inputs:
+      - "project onboarding"
+  - id: onboard-init-verb
+    intent: { name: go_init }
+    inputs:
+      - "init project"
+  - id: onboard-setup-phrasing
+    intent: { name: go_init }
+    inputs:
+      - "set up kitsoki for this repo"
+
+  # ── PRD / proposal ─────────────────────────────────────────────────────
+  - id: proposal-draft-request
+    intent: { name: go_idea }
+    inputs:
+      - "draft a proposal for dynamic workflows"
+  - id: proposal-from-idea
+    intent: { name: go_idea }
+    inputs:
+      - "I have an idea for a reusable story export flow"
+
+  # ── Decompose -> implement ─────────────────────────────────────────────
+  - id: implement-task-verb
+    intent: { name: go_implementation }
+    inputs:
+      - "implement task"
+  - id: implement-noun-phrase
+    intent: { name: go_implementation }
+    inputs:
+      - "implementation"
+  - id: implement-work-on-task
+    intent: { name: go_implementation }
+    inputs:
+      - "work on task"
+
+  # ── Decompose -> implement (deliver, the decompose-vs-direct alternative) ─
+  - id: deliver-explicit
+    intent: { name: go_deliver }
+    inputs:
+      - "decompose the epic"
+  - id: deliver-break-into-briefs
+    intent: { name: go_deliver }
+    inputs:
+      - "break this into briefs"
+  - id: deliver-noun
+    intent: { name: go_deliver }
+    inputs:
+      - "decompose"
+
+  # ── Fix a bug ──────────────────────────────────────────────────────────
+  - id: fixbug-explicit
+    # Bare "fix bug" is intentionally owned by landing_capture now: making it a
+    # semantic example causes the stem-subset tier to steal richer inline reports
+    # like "fix this bug <complaint>" and exact ids like "fix bug TKT-404".
+    defers_to_interpreter: true
+    inputs:
+      - "fix bug"
+  - id: fixbug-noun
+    intent: { name: go_bugfix }
+    inputs:
+      - "bugfix"
+  - id: fixbug-first-person
+    intent: { name: go_bugfix }
+    inputs:
+      - "i want to fix a bug"
+  - id: fixbug-plural-first-person
+    intent: { name: go_bugfix }
+    inputs:
+      - "i want to work on some bugs"
+  - id: fixbug-then-pr-shortcut
+    intent: { name: bugfix_open_pr }
+    inputs:
+      - "fix this and open a pr"
+
+  # ── Boundary / near-miss (workflow selection must not cross-route) ─────
+  - id: filebug-not-misrouted
+    defers_to_interpreter: true
+    inputs:
+      - "file a bug about the login button being broken"
+  - id: onboard-freeform-not-decompose
+    defers_to_interpreter: true
+    inputs:
+      - "help me get this repo ready to work on"

@@ -8,27 +8,58 @@ states:
 
   slideshow:
     description: "Rendering the marathon report to a static-HTML slidey deck (deterministic)."
-    relevant_world: [deck_spec, deck_path, report_handle]
+    relevant_world: [deck_spec, deck_path, report_handle, journal_path, render_job_id]
     view:
-      - heading: "Dogfood marathon · slideshow"
+      - heading: "Marathon · slideshow"
       - kv:
           pairs:
             Spec:   '{{ world.deck_spec.spec_path }}'
             Report: '{{ world.report_handle|default:"(rendering…)" }}'
+            Per-bug decks: '{{ world.deck_spec.case_decks|length|default:"0" }}'
+            Journal: '{{ world.journal_path|default:"(pending)" }}'
+            Job:    '{{ world.render_job_id|default:"(starting)" }}'
       - prose: "Rendering the report deck to a self-contained static HTML deck, then publishing it as a media handle for the gallery."
     on_enter:
       - invoke: host.slidey.render
         id: render_report
+        when: "world.render_job_id == '' && world.deck_path == ''"
         once: true
+        background: true
         with:
           spec_path: "{{ world.deck_spec.spec_path }}"
           format:    html
         bind:
-          deck_path: path
+          render_job_id: job_id
+        on_complete:
+          - set:
+              deck_path:     "{{ world.last_job_result.path }}"
+              render_job_id: ""
+          - target: slideshow_publishing
         on_error: slideshow
+    on:
+      rendered:
+        - target: done
+      look:
+        - target: .
+
+  slideshow_publishing:
+    description: "Publishing the rendered marathon report handle."
+    relevant_world: [deck_spec, deck_path, report_handle, publish_job_id, journal_path]
+    view:
+      - heading: "Marathon · publishing"
+      - kv:
+          pairs:
+            Spec:   '{{ world.deck_spec.spec_path }}'
+            Path:   '{{ world.deck_path|default:"(pending)" }}'
+            Report: '{{ world.report_handle|default:"(publishing…)" }}'
+            Job:    '{{ world.publish_job_id|default:"(starting)" }}'
+      - prose: "Publishing the rendered slidey report as a stable media handle."
+    on_enter:
       - invoke: host.artifacts_dir
         id: emit_report
+        when: "world.publish_job_id == '' && world.report_handle == ''"
         once: true
+        background: true
         with:
           thread:   "dogfood-marathon"
           src_path: "{{ world.deck_path }}"
@@ -36,12 +67,13 @@ states:
           mime:     text/html
           label:    "{{ world.deck_spec.summary }}"
         bind:
-          report_handle: handle.id
+          publish_job_id: job_id
+        on_complete:
+          - set:
+              report_handle:  "{{ world.last_job_result.handle.id }}"
+              publish_job_id: ""
+          - target: done
         on_error: slideshow
-      - when: "world.report_handle != ''"
-        emit_intent: rendered
     on:
-      rendered:
-        - target: done
       look:
         - target: .

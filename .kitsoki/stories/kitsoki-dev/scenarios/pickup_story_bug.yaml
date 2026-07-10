@@ -1,7 +1,7 @@
 # Warp basis: lands at `core.landing` primed to pick up a story-bug from
 # `stories/oregon-trail/issues/bugs/`. Demonstrates the multi-glob
 # `ticket_globs:` covering BOTH kitsoki-self bugs and per-story bugs.
-# Same dogfood pipeline; only the file path is different.
+# Same self-hosted pipeline; only the file path is different.
 #
 # Usage (from kitsoki repo root):
 #

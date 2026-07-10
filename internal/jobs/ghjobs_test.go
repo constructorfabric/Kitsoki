@@ -133,6 +133,144 @@ func TestGHJobEventsAndStuckListing(t *testing.T) {
 	}
 }
 
+func TestListQueuedReturnsOnlyQueuedJobs(t *testing.T) {
+	ctx := context.Background()
+	s := newTestGHStore(t)
+	queuedJob, _, err := s.Claim(ctx, GHMention{
+		OriginRef:    "github:o/r/issue/1",
+		Repo:         "o/r",
+		ObjectKind:   "issue",
+		ObjectNumber: "1",
+	}, "w1")
+	if err != nil {
+		t.Fatalf("Claim queued: %v", err)
+	}
+	if err := s.Advance(ctx, queuedJob.JobID, GHQueued, "retry"); err != nil {
+		t.Fatalf("requeue: %v", err)
+	}
+	runningJob, _, err := s.Claim(ctx, GHMention{
+		OriginRef:    "github:o/r/pr/2",
+		Repo:         "o/r",
+		ObjectKind:   "pr",
+		ObjectNumber: "2",
+	}, "w1")
+	if err != nil {
+		t.Fatalf("Claim running: %v", err)
+	}
+	if err := s.Advance(ctx, runningJob.JobID, GHRunning, ""); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+
+	queued, err := s.ListQueued(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListQueued: %v", err)
+	}
+	if len(queued) != 1 || queued[0].JobID != queuedJob.JobID {
+		t.Fatalf("queued=%+v, want only queued job %s", queued, queuedJob.JobID)
+	}
+}
+
+func TestEnqueueCreatesQueuedJobIdempotently(t *testing.T) {
+	ctx := context.Background()
+	s := newTestGHStore(t)
+	m := GHMention{
+		OriginRef:    "github:o/r/issue/105",
+		Repo:         "o/r",
+		ObjectKind:   "issue",
+		ObjectNumber: "105",
+	}
+
+	job1, created1, err := s.Enqueue(ctx, m, "stories/bugfix")
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if !created1 {
+		t.Fatal("first enqueue should create a job")
+	}
+	if job1.State != GHQueued || job1.Story != "stories/bugfix" {
+		t.Fatalf("job after enqueue = %+v, want queued stories/bugfix", job1)
+	}
+
+	job2, created2, err := s.Enqueue(ctx, m, "stories/dev-story")
+	if err != nil {
+		t.Fatalf("second Enqueue: %v", err)
+	}
+	if created2 {
+		t.Fatal("second enqueue should attach to existing job")
+	}
+	if job2.JobID != job1.JobID {
+		t.Fatalf("second enqueue minted new job %s, want %s", job2.JobID, job1.JobID)
+	}
+	if job2.Story != "stories/bugfix" {
+		t.Fatalf("second enqueue overwrote story: %q", job2.Story)
+	}
+
+	queued, err := s.ListQueued(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListQueued: %v", err)
+	}
+	if len(queued) != 1 || queued[0].JobID != job1.JobID {
+		t.Fatalf("queued=%+v, want only %s", queued, job1.JobID)
+	}
+}
+
+func TestMergeMetadataPersistsAndOverlaysKeys(t *testing.T) {
+	ctx := context.Background()
+	s := newTestGHStore(t)
+	job, _, err := s.Enqueue(ctx, GHMention{
+		OriginRef:    "github:o/r/issue/105",
+		Repo:         "o/r",
+		ObjectKind:   "issue",
+		ObjectNumber: "105",
+	}, "stories/bugfix")
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if err := s.MergeMetadata(ctx, job.JobID, map[string]string{
+		"ticket_title": "Still-live UI bug",
+		"ticket_body":  "Steps and evidence",
+		"blank":        " ",
+	}); err != nil {
+		t.Fatalf("MergeMetadata first: %v", err)
+	}
+	if err := s.MergeMetadata(ctx, job.JobID, map[string]string{
+		"ticket_body":        "Updated evidence",
+		"ticket_source_mode": "remote",
+	}); err != nil {
+		t.Fatalf("MergeMetadata second: %v", err)
+	}
+	got, err := s.GetJob(ctx, job.JobID)
+	if err != nil {
+		t.Fatalf("GetJob: %v", err)
+	}
+	if got.Metadata["ticket_title"] != "Still-live UI bug" {
+		t.Fatalf("ticket_title = %q", got.Metadata["ticket_title"])
+	}
+	if got.Metadata["ticket_body"] != "Updated evidence" {
+		t.Fatalf("ticket_body = %q", got.Metadata["ticket_body"])
+	}
+	if got.Metadata["ticket_source_mode"] != "remote" {
+		t.Fatalf("ticket_source_mode = %q", got.Metadata["ticket_source_mode"])
+	}
+	if _, ok := got.Metadata["blank"]; ok {
+		t.Fatalf("blank metadata key should have been discarded: %+v", got.Metadata)
+	}
+
+	events, err := s.Events(ctx, job.JobID)
+	if err != nil {
+		t.Fatalf("Events: %v", err)
+	}
+	var metadataEvents int
+	for _, ev := range events {
+		if ev.State == "metadata" {
+			metadataEvents++
+		}
+	}
+	if metadataEvents != 2 {
+		t.Fatalf("metadata events = %d, want 2", metadataEvents)
+	}
+}
+
 func TestAdvanceAndSetters(t *testing.T) {
 	ctx := context.Background()
 	s := newTestGHStore(t)
@@ -162,5 +300,31 @@ func TestAdvanceAndSetters(t *testing.T) {
 	}
 	if got.Story != "stories/bugfix" || got.State != GHDone || got.CommentID != "c-1" || got.RunURL != "kitsoki://run/run-1" {
 		t.Errorf("unexpected job after lifecycle: %+v", got)
+	}
+}
+
+func TestListRecentOrdersByUpdatedAt(t *testing.T) {
+	ctx := context.Background()
+	s := newTestGHStore(t)
+	older, _, err := s.Claim(ctx, GHMention{OriginRef: "github:o/r/issue/1", Repo: "o/r", ObjectKind: "issue", ObjectNumber: "1"}, "w1")
+	if err != nil {
+		t.Fatalf("claim older: %v", err)
+	}
+	newer, _, err := s.Claim(ctx, GHMention{OriginRef: "github:o/r/pr/2", Repo: "o/r", ObjectKind: "pr", ObjectNumber: "2"}, "w1")
+	if err != nil {
+		t.Fatalf("claim newer: %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE gh_jobs SET updated_at=? WHERE job_id=?`, time.Now().Add(-time.Hour).UnixMilli(), older.JobID); err != nil {
+		t.Fatalf("age older: %v", err)
+	}
+	recent, err := s.ListRecent(ctx, 1)
+	if err != nil {
+		t.Fatalf("ListRecent: %v", err)
+	}
+	if len(recent) != 1 {
+		t.Fatalf("recent len=%d, want 1", len(recent))
+	}
+	if recent[0].JobID != newer.JobID {
+		t.Fatalf("recent[0]=%s, want newer %s", recent[0].JobID, newer.JobID)
 	}
 }

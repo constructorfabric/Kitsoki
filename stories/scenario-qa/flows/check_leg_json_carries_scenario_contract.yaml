@@ -1,0 +1,183 @@
+# check_leg_json_carries_scenario_contract — the per-leg driver (drive_leg.md)
+# now instructs the agent to keep driving until the SCENARIO's own declared
+# `task_prompt` / `success_criteria` / `quality_gate` (minimum_evidence +
+# done_when) are satisfied, not just until the primary_story's first landing/
+# discovery room renders. That instruction is only actionable if those
+# fields actually reach the driver's rendered prompt context — this flow pins
+# the full rendered `host.agent.task` context block for `drive_leg` (an exact
+# deep-equal per top-level key, same convention as
+# check_profile_passthrough.yaml) so a regression that drops task_prompt/
+# success_criteria/quality_gate anywhere along plan_legs.star -> pick_leg.star
+# -> execute.yaml's `context.args.leg_json` fails HERE instead of only
+# surfacing as a live run that silently stops at `prd.idle` with no
+# prd_artifact/design_artifact/review_notes ever produced.
+#
+# Every host call is stubbed by invoke id (no real run.py / LLM call runs
+# here); this exercises the room-to-room control flow + prompt-arg rendering
+# only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-contract-run-1
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-contract-run-1
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-contract-run-1/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-contract-run-1/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-contract-run-1/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-contract-run-1
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-contract-run-1/deck.slidey.json
+            leg_count: 1
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 0
+            summary: "1 / 1 transport checks passed."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "prd-design::tui"
+                scenario: "prd-design"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_dir: "evidence/gears-rust--core-maintainer/prd-design"
+                primary_story: "stories/dev-story/app.yaml"
+                task_prompt: "Turn one small improvement idea for gears-rust into a PRD/design artifact."
+                success_criteria: ["Artifacts cite real repository files, commands, or product surfaces rather than generic architecture advice."]
+                quality_gate:
+                  minimum_evidence: ["session_trace", "prd_artifact", "design_artifact", "review_notes", "key_interaction_video"]
+                  done_when: "A concrete PRD and design artifact exist, grounded in named repository files, with review notes recorded."
+                  block_if: ["No concrete PRD artifact can be produced without live LLM authorization."]
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-contract-run-1"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "prd-design::tui"
+            scenario: "prd-design"
+            transport: "tui"
+            visual_surface: "tui"
+            evidence_dir: "evidence/gears-rust--core-maintainer/prd-design"
+            primary_story: "stories/dev-story/app.yaml"
+          current_leg_id: "prd-design::tui"
+          current_leg_json: '{"leg_id":"prd-design::tui","scenario":"prd-design","transport":"tui","primary_story":"stories/dev-story/app.yaml","task_prompt":"Turn one small improvement idea for gears-rust into a PRD/design artifact.","success_criteria":["Artifacts cite real repository files, commands, or product surfaces rather than generic architecture advice."],"quality_gate":{"minimum_evidence":["session_trace","prd_artifact","design_artifact","review_notes","key_interaction_video"],"done_when":"A concrete PRD and design artifact exist, grounded in named repository files, with review notes recorded.","block_if":["No concrete PRD artifact can be produced without live LLM authorization."]}}'
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "prd-design::tui"
+                scenario: "prd-design"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_level: "frame-level"
+                driver_status: "captured"
+                evidence_refs: ["render_tui_png:frame-1", "prd_artifact:docs/prd/gears-rust-idea.md", "design_artifact:docs/design/gears-rust-idea.md"]
+                verdict: "pass"
+                verdict_summary: "PRD and design artifacts produced; review notes captured."
+                frames_dir: "evidence/gears-rust--core-maintainer/prd-design"
+          pass_count: 1
+          fail_count: 0
+          degraded_count: 0
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-contract-run-1/report.md"
+          report_summary: "1 / 1 transport checks passed."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["render_tui_png:frame-1", "prd_artifact:docs/prd/gears-rust-idea.md", "design_artifact:docs/design/gears-rust-idea.md"]
+            frames_dir: "evidence/gears-rust--core-maintainer/prd-design"
+            blockers: []
+            summary: "Drove the nested dev-story session live through PRD discovery, drafting, design, and publish; produced prd_artifact/design_artifact/review_notes per quality_gate.minimum_evidence."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "prd_artifact and design_artifact exist at cited paths; review notes recorded."
+            cited_frames: ["frame-1.png"]
+            frames_dir: "evidence/gears-rust--core-maintainer/prd-design"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: prd-design
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: scenario-qa
+        profile: claude-native
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-contract-run-1
+      live_profile: claude-native
+      leg_count: 1
+      leg_index: 0
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      # This is the assertion that closes the gap: the FULL rendered
+      # `context` block for drive_leg, including `leg_json`, must still carry
+      # task_prompt/success_criteria/quality_gate (with quality_gate.
+      # minimum_evidence naming prd_artifact/design_artifact/review_notes) —
+      # a regression that drops any of these on the way from plan_legs.star's
+      # carrier_legs passthrough through pick_leg.star's json.encode(leg) into
+      # execute.yaml's context.args.leg_json fails HERE.
+      - handler: host.agent.task
+        args:
+          call: drive_leg
+          context:
+            prompt: prompts/drive_leg.md
+            args:
+              leg_json: '{"leg_id":"prd-design::tui","scenario":"prd-design","transport":"tui","primary_story":"stories/dev-story/app.yaml","task_prompt":"Turn one small improvement idea for gears-rust into a PRD/design artifact.","success_criteria":["Artifacts cite real repository files, commands, or product surfaces rather than generic architecture advice."],"quality_gate":{"minimum_evidence":["session_trace","prd_artifact","design_artifact","review_notes","key_interaction_video"],"done_when":"A concrete PRD and design artifact exist, grounded in named repository files, with review notes recorded.","block_if":["No concrete PRD artifact can be produced without live LLM authorization."]}}'
+              run_id: "scenario-qa-contract-run-1"
+              run_dir: "/repo/.artifacts/product-journey/scenario-qa-contract-run-1"
+              transport: "tui"
+              live_profile: "claude-native"
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+
+expect_no_errors: true

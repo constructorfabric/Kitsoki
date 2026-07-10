@@ -88,6 +88,11 @@
         {{ reloadWarning }}
       </div>
 
+      <ImprovePrompt
+        v-if="store.terminal"
+        :session-id="props.sessionId"
+      />
+
       <!-- Main panel: ViewModeTabs (Tree / Timeline / Graph) -->
       <div class="run-view__panels" ref="panelsEl">
         <div class="run-view__panel run-view__panel--tabs">
@@ -119,6 +124,7 @@ import { createDataSource } from "../data/source.js";
 import { markAutoNavDone } from "../lib/auto-nav.js";
 import StoryFreshness from "../components/StoryFreshness.vue";
 import ViewModeTabs from "../components/ViewModeTabs.vue";
+import ImprovePrompt from "../components/meta/ImprovePrompt.vue";
 import { fmtTokens, fmtCost } from "../components/agent/lib.js";
 import type { NodeRef } from "../types.js";
 

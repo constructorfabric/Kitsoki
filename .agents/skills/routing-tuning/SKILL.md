@@ -14,13 +14,21 @@ Use this skill to make free-text routing reliable and evidence-backed.
    - Include target-route positives.
    - Include near-miss negatives that should route elsewhere.
    - Include slots for text-capturing intents.
-3. Run `kitsoki test intents` in a cheap mode first:
+3. Run `kitsoki test routing` FIRST — the no-LLM Mode 0 runner
+   (`internal/testrunner/routing.go`) that calls `orchestrator.Classify`
+   directly (deterministic/semantic/embedding tiers only, no harness, no
+   recording needed). It asserts a resolved intent, or `defers_to_interpreter:
+   true` for content-bearing phrases that should correctly fall through:
 
    ```sh
-   go run ./cmd/kitsoki test intents stories/dev-story/app.yaml \
-     --intents stories/dev-story/intents/landing_proposal_routing.yaml \
-     --dry-run
+   go run ./cmd/kitsoki test routing stories/dev-story/app.yaml \
+     --intents stories/dev-story/intents/landing_proposal_routing.yaml
    ```
+
+   Fixtures that need a live model (the ones that legitimately
+   `defers_to_interpreter`) move on to `kitsoki test intents` below. See
+   "Mode 0 vs Mode 1" in `docs/testing/routing-tuning.md` for which runner to
+   reach for.
 
 4. If live model tuning is explicitly requested, run one pass against the target
    profile:

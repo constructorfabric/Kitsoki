@@ -1,4 +1,4 @@
-# record — phase 5/5. Climb the determinism ladder where the data supports it.
+# record — phase 6/6. Climb the determinism ladder where the data supports it.
 #
 # The `recorder` persona reviews recorded decisions at existing gates and
 # reports any that one branch dominates enough to drop a rung (L2→L3→L4).
@@ -9,15 +9,22 @@
 states:
 
   record:
-    description: "Review recorded decisions; propose any determinism-ladder moves."
+    description: "Review recorded decisions; propose any progressive-determinism moves."
     view:
       - banner:
           text:     "RECORD"
-          subtitle: "Phase 5 / 5  ·  can a gate drop a rung? (L2→L3→L4)"
+          subtitle: "Phase 6 / 6  -  final report + ladder review"
           color:    "#10B981"
-      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }}"
+      - prose: "{{ world.job }} - judge {{ world.judge_mode }}"
+      - kv:
+          pairs:
+            "Final report": '{{ world.record_artifact.final_report_path|default:"(pending)" }}'
+            Diff: '{{ world.author_artifact.diff_path|default:"(pending)" }}'
+            Selected: '{{ world.selected_theme|default:"(pending)" }}'
+      - heading: "Final summary"
+      - template: '{{ world.record_artifact.summary_markdown|default:"(pending - recorder has not returned yet)" }}'
       - heading: "Ladder review"
-      - code: '{{ world.record_artifact.summary_markdown|default:"(pending — recorder has not returned yet)" }}'
+      - template: '{{ world.record_artifact.ladder_summary_markdown|default:"No additional ladder move was recorded beyond the final summary." }}'
       - choice:
           mode: single
           prompt: "Actions"
@@ -35,17 +42,26 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [job, stories_dir, judge_mode, judge_confidence_threshold, author_artifact, record_artifact, llm_verdict, refine_feedback, cycle]
+    relevant_world: [job, stories_dir, source_plan_artifact, selected_theme, selected_artifact_kind, judge_mode, judge_confidence_threshold, author_artifact, record_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
-      - invoke: host.agent.ask
+      - invoke: host.agent.task
         once: true
         with:
           agent: recorder
-          schema: schemas/record_artifact.json
-          prompt: prompts/record_executing.md
-          args:
-            stories_dir:     "{{ world.stories_dir }}"
-            author_summary:  "{{ world.author_artifact.summary_markdown }}"
+          acceptance:
+            schema: schemas/record_artifact.json
+          context:
+            prompt: prompts/record_executing.md
+            args:
+              job:             "{{ world.job }}"
+              stories_dir:     "{{ world.stories_dir }}"
+              source_plan:     "{{ world.source_plan_artifact }}"
+              brief_path:      "{{ world.mine_artifact.brief_path }}"
+              map_path:        "{{ world.map_artifact.map_path }}"
+              diff_path:       "{{ world.author_artifact.diff_path }}"
+              selected_theme:  "{{ world.selected_theme }}"
+              selected_artifact_kind: "{{ world.selected_artifact_kind }}"
+              author_summary:  "{{ world.author_artifact.summary_markdown }}"
         bind:
           record_artifact: submitted
         on_error: idle
@@ -75,7 +91,7 @@ states:
       accept:
         - target: "@exit:done"
           effects:
-            - say: "Loop complete — gate installed; ladder review recorded."
+            - say: "Loop complete. Improvement installed, final report linked, and ladder review recorded."
             - set: { status: "authored", refine_feedback: "" }
       refine:
         - when: "world.record_cycle >= world.record_budget"

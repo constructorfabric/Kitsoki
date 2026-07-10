@@ -165,6 +165,118 @@ func TestFromHistory_CurrentStatePrefersStateEntered(t *testing.T) {
 		"the last state_entered must win over turn.end's starting-state stamp")
 }
 
+func TestFromHistory_DerivesOperationRunSummary(t *testing.T) {
+	t.Parallel()
+
+	def := buildMinimalAppDef()
+	base := time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC)
+	runStarted, err := json.Marshal(map[string]any{
+		"operation_id":      "bugfix_full",
+		"policy_id":         "bugfix_full",
+		"title":             "Fix bug",
+		"status":            "running",
+		"mode":              "autonomous",
+		"execution_mode":    "one-shot",
+		"run_in_background": true,
+		"from":              "idle",
+		"to":                "reproducing",
+		"entry_intent":      "start",
+	})
+	require.NoError(t, err)
+	runWaiting, err := json.Marshal(map[string]any{
+		"operation_id":             "bugfix_full",
+		"policy_id":                "bugfix_full",
+		"status":                   "waiting",
+		"terminal_state":           "__exit__needs-human",
+		"terminal_artifact":        "done_artifact",
+		"terminal_artifact_handle": "done#abc123",
+		"stop_reason":              "needs-human",
+		"stop_detail":              "Regression gate was never RED.",
+	})
+	require.NoError(t, err)
+	runPhase, err := json.Marshal(map[string]any{
+		"operation_id": "bugfix_full",
+		"policy_id":    "bugfix_full",
+		"status":       "running",
+		"phase":        "testing_artifact",
+		"phase_status": "completed",
+	})
+	require.NoError(t, err)
+
+	snap, err := runstatus.FromHistory(store.History{
+		{Turn: 1, Ts: base, Kind: store.OperationRunStarted, StatePath: "idle", Seq: 1, Payload: runStarted},
+		{Turn: 2, Ts: base.Add(time.Second), Kind: store.OperationRunPhaseCompleted, StatePath: "testing", Seq: 2, Payload: runPhase},
+		{Turn: 3, Ts: base.Add(2 * time.Second), Kind: store.OperationRunWaiting, StatePath: "testing", Seq: 3, Payload: runWaiting},
+	}, def, "sess-op")
+	require.NoError(t, err)
+	require.NotNil(t, snap.Session.OperationRun)
+	assert.Equal(t, "bugfix_full", snap.Session.OperationRun.OperationID)
+	assert.Equal(t, "Fix bug", snap.Session.OperationRun.Title)
+	assert.Equal(t, "waiting", snap.Session.OperationRun.Status)
+	assert.Equal(t, "idle", snap.Session.OperationRun.From)
+	assert.Equal(t, "reproducing", snap.Session.OperationRun.To)
+	assert.Equal(t, "testing_artifact", snap.Session.OperationRun.Phase)
+	assert.Equal(t, "needs-human", snap.Session.OperationRun.StopReason)
+	assert.Equal(t, "Regression gate was never RED.", snap.Session.OperationRun.StopDetail)
+	assert.Equal(t, "__exit__needs-human", snap.Session.OperationRun.TerminalState)
+	assert.Equal(t, "done_artifact", snap.Session.OperationRun.TerminalArtifact)
+	assert.Equal(t, "done#abc123", snap.Session.OperationRun.TerminalArtifactHandle)
+	assert.True(t, snap.Session.OperationRun.RunInBackground)
+}
+
+func TestSessionHeaderFromTrace_DerivesOperationRunSummary(t *testing.T) {
+	t.Parallel()
+
+	def := buildMinimalAppDef()
+	header := runstatus.SessionHeaderFromTrace(def, []runstatus.TraceEvent{
+		{
+			Time:      time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC),
+			Msg:       string(store.EffectApplied),
+			SessionID: "sess-trace",
+			Turn:      1,
+			StatePath: "idle",
+			Attrs: map[string]any{
+				"set": map[string]any{
+					app.OperationRunWorldKey: map[string]any{
+						"operation_id":   "bugfix_full",
+						"policy_id":      "bugfix_full",
+						"title":          "Fix bug",
+						"status":         "running",
+						"from":           "idle",
+						"to":             "reproducing",
+						"entry_intent":   "start",
+						"execution_mode": "one-shot",
+					},
+				},
+			},
+		},
+		{
+			Time:      time.Date(2026, 7, 7, 10, 1, 0, 0, time.UTC),
+			Msg:       string(store.OperationRunCompleted),
+			SessionID: "sess-trace",
+			Turn:      2,
+			StatePath: "__exit__direct-ship",
+			Attrs: map[string]any{
+				"operation_id":             "bugfix_full",
+				"status":                   "completed",
+				"terminal_state":           "__exit__direct-ship",
+				"terminal_artifact":        "done_artifact",
+				"terminal_artifact_handle": "done#abc123",
+			},
+		},
+	}, runstatus.HeaderOverrides{})
+
+	require.NotNil(t, header.OperationRun)
+	assert.Equal(t, "bugfix_full", header.OperationRun.OperationID)
+	assert.Equal(t, "Fix bug", header.OperationRun.Title)
+	assert.Equal(t, "completed", header.OperationRun.Status)
+	assert.Equal(t, "idle", header.OperationRun.From)
+	assert.Equal(t, "reproducing", header.OperationRun.To)
+	assert.Equal(t, "__exit__direct-ship", header.OperationRun.TerminalState)
+	assert.Equal(t, "done_artifact", header.OperationRun.TerminalArtifact)
+	assert.Equal(t, "done#abc123", header.OperationRun.TerminalArtifactHandle)
+}
+
 // TestFromHistory_AgentEventsPassThroughVerbatim confirms that when a History
 // already contains AgentCalled/AgentReturned events, FromHistory does not
 // inject any additional agent events. This is the core wave 4a contract: the

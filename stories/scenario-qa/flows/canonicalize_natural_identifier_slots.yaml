@@ -1,0 +1,79 @@
+# canonicalize_natural_identifier_slots — semantic templates capture string
+# slots as lexical words, so "core-maintainer" arrives as "core maintainer".
+# The story canonicalizes identifier-like slots before calling run.py.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-natural-id-run
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-natural-id-run
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-natural-id-run/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-natural-id-run/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-natural-id-run/agent-brief.md
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs: { items: [] }
+          leg_count: 0
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-natural-id-run"
+          plan_status: { resolved: true }
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: "prd design"
+        transport: all
+        persona: "core maintainer"
+        target: "gears rust"
+    expect_state: idle
+    expect_world:
+      mode: catalog
+      scenario_ref: prd-design
+      transport_arg: all
+      persona: core-maintainer
+      target: gears-rust
+      run_id: scenario-qa-natural-id-run
+      last_error: "No transport checks resolved for this scenario/transport combination — check scenario/transport values."
+      status: idle
+    expect_host_calls:
+      - handler: host.run
+        args:
+          call: emit_scenario_qa_run
+          cmd: python3
+          args:
+            - tools/product-journey/run.py
+            - --emit-run
+            - --scenario-qa-workspace
+            - --project
+            - gears-rust
+            - --persona
+            - core-maintainer
+            - --seed
+            - scenario-qa
+            - --scenarios
+            - prd-design
+            - --transport
+            - all
+            - --live-budget-minutes
+            - 20
+            - --json-output
+          cwd: "."
+      - handler: host.starlark.run
+        args:
+          call: plan_legs
+    expect_no_host_calls: [host.agent.task]
+
+expect_no_errors: true

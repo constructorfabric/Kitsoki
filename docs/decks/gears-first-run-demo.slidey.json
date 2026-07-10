@@ -1,0 +1,218 @@
+{
+  "meta": {
+    "mode": "pitch",
+    "title": "Kitsoki first run on Gears Rust",
+    "resolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "theme": "rose-pine-moon",
+    "narration": {
+      "voice": "en-AU-NatashaNeural",
+      "pronunciations": {
+        "Kitsoki": "kit-soh-kee",
+        "PRD": "P R D",
+        "rrweb": "R R web"
+      }
+    }
+  },
+  "scenes": [
+    {
+      "type": "title",
+      "eyebrow": "Kitsoki · first run",
+      "title": "From blank web UI to real PR",
+      "subtitle": "provider setup, Gears Rust onboarding, PRD intake, live bug queue, validated fix evidence, and the pull request link",
+      "narration": "This is a source-backed first-run demo for Kitsoki on constructorfabric gears rust. The playback video is rendered from a real browser rrweb capture, the flow fixtures and host cassettes are generated from real Kitsoki traces, and the bugfix ends on a real Gears Rust pull request."
+    },
+    {
+      "type": "objectives",
+      "title": "Evidence gate",
+      "items": [
+        {
+          "label": "Real run traces",
+          "status": "done",
+          "detail": "Three recorded Kitsoki web sessions produced JSONL traces for onboarding, PRD intake, and ticket search."
+        },
+        {
+          "label": "Replay fixtures",
+          "status": "done",
+          "detail": "Trace-derived flow YAML and host cassettes were generated with kitsoki trace to-flow, then replay-validated."
+        },
+        {
+          "label": "Video proof",
+          "status": "done",
+          "detail": "The embedded playback is a readable repace of the real captured rrweb event stream, with the raw capture retained beside it."
+        },
+        {
+          "label": "Real artifacts",
+          "status": "done",
+          "detail": "Links include Gears issue #3105, the Gears bugfix PR #4082, Cypilot validation, traces, cassettes, and the evidence manifest. Kitsoki PR #67 is only the demo/deck delivery branch."
+        }
+      ],
+      "caption": "Product-journey review: ready, 33/33 checks passed, 0 warnings, 0 failures.",
+      "narration": "The acceptance gate is now evidence backed. There are no synthetic tickets, no hand-written cassette standing in for a run, and no demo-only proof rows."
+    },
+    {
+      "type": "video",
+      "mode": "embedded",
+      "title": "Real first-run web playback",
+      "rrweb": "assets/gears-first-run-demo/gears-first-run-web-demo.readable.rrweb.json",
+      "chapters": "auto",
+      "caption": "Readable rrweb playback derived from the real first-run browser capture; raw capture and repace metadata are committed beside it.",
+      "narration": "This is the real rrweb playback from the browser session. First, the provider setup path discovers a local harness profile. Then project onboarding creates the Gears Rust profile. The PRD chapter enters the PRD flow and receives a live model response. Finally, ticket search opens the live bug queue surface."
+    },
+    {
+      "type": "evidence",
+      "title": "Replayable source artifacts",
+      "items": [
+        {
+          "label": "Session trace",
+          "status": "done",
+          "detail": "Real onboarding trace captured from kitsoki web.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/gears-first-run-web-demo-session_trace.jsonl"
+        },
+        {
+          "label": "Trace-derived flow",
+          "status": "done",
+          "detail": "Generated from the real trace and replay validated.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/gears-first-run-web-demo-session.flow.yaml"
+        },
+        {
+          "label": "Host cassette",
+          "status": "done",
+          "detail": "Generated beside the flow, not manually authored.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/gears-first-run-web-demo-session.cassette.yaml"
+        },
+        {
+          "label": "Evidence manifest",
+          "status": "done",
+          "detail": "All 15 required evidence slots captured with 15 proof rows.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence.json"
+        }
+      ],
+      "narration": "The replayable source is kept with the product-journey run bundle. The session trace is the origin, the flow and cassette are generated from it, and the evidence manifest links the proof rows."
+    },
+    {
+      "type": "evidence",
+      "title": "Provider and project onboarding",
+      "items": [
+        {
+          "label": "Provider setup receipt",
+          "status": "done",
+          "detail": "The run discovers the local harness profile and shows the patch preview before project work.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/03-provider-discovery.png"
+        },
+        {
+          "label": "Gears project profile",
+          "status": "done",
+          "detail": "The onboarding result names Gears Rust, Rust commands, tracker configuration, and generated story app.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/gears-rust-project-profile.yaml"
+        },
+        {
+          "label": "Demo harness fix",
+          "status": "done",
+          "detail": "The Kitsoki integration branch fixes imported dev-story script resolution so this first-run capture can reach the Gears onboarding path.",
+          "refType": "doc",
+          "ref": "https://github.com/constructorfabric/Kitsoki/pull/67"
+        }
+      ],
+      "narration": "The first run also found demo machinery that had to be fixed in Kitsoki. That branch is support work for the capture. The bugfix outcome of the demo remains the Gears Rust pull request shown at the end."
+    },
+    {
+      "type": "evidence",
+      "title": "PRD chapter status",
+      "items": [
+        {
+          "label": "PRD flow entry",
+          "status": "done",
+          "detail": "The browser run enters core.prd.idle and submits a notes-service PRD prompt.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/07-prd-discussion.png"
+        },
+        {
+          "label": "Live model response",
+          "status": "done",
+          "detail": "The trace records host.agent.converse responding with a clarifying question for the PRD.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/gears-first-run-web-demo-prd-session_trace.jsonl"
+        },
+        {
+          "label": "Published PRD artifact",
+          "status": "issue",
+          "detail": "This capture proves PRD intake and live response, but it does not yet publish and reopen the final PRD markdown artifact."
+        }
+      ],
+      "caption": "The product-journey run records this as an open weakness routed to stories/prd start intake.",
+      "narration": "This is the one honest gap. The PRD chapter is real, but it stops at discussion. The deck does not claim a published PRD file until the story drives that final artifact end to end."
+    },
+    {
+      "type": "evidence",
+      "title": "Live Gears Rust bug queue",
+      "items": [
+        {
+          "label": "Ticket search trace",
+          "status": "done",
+          "detail": "The web run queries live constructorfabric/gears-rust tickets and displays GitHub issue rows.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/gears-first-run-web-demo-ticket-session_trace.jsonl"
+        },
+        {
+          "label": "Selected bug",
+          "status": "done",
+          "detail": "Issue #3105: make all fails on a Cypilot tomllib import path.",
+          "refType": "doc",
+          "ref": "https://github.com/constructorfabric/gears-rust/issues/3105"
+        },
+        {
+          "label": "Queue screenshot",
+          "status": "done",
+          "detail": "The run captures the web ticket-search surface.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/08-ticket-search.png"
+        }
+      ],
+      "narration": "The bug chapter is anchored in the live Gears Rust issue queue. Issue thirty one oh five is the selected bug because the branch has a bounded fix and validation evidence."
+    },
+    {
+      "type": "evidence",
+      "title": "Bugfix to real PR",
+      "items": [
+        {
+          "label": "Candidate diff",
+          "status": "done",
+          "detail": "Captured from the real Gears Rust PR branch.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/gears-pr-4082.diff"
+        },
+        {
+          "label": "Cypilot validation",
+          "status": "done",
+          "detail": "validate --local-only passed: 174 artifacts, 0 errors, 95/95 code traceability.",
+          "refType": "path",
+          "ref": ".artifacts/product-journey/20260710T051031Z-gears-rust-core-maintainer-gears-first-run-real-20260710/evidence/gears-rust--core-maintainer/gears-first-run-web-demo/gears-cypilot-validate.json"
+        },
+        {
+          "label": "Pull request",
+          "status": "done",
+          "detail": "The fix is open as a real Gears Rust pull request.",
+          "refType": "doc",
+          "ref": "https://github.com/constructorfabric/gears-rust/pull/4082"
+        }
+      ],
+      "narration": "The demo closes on a real pull request, not a mocked success screen. The issue, diff, validation result, full-suite classification, and P R link are all in the evidence bundle."
+    },
+    {
+      "type": "cta",
+      "wordmark": "Gears bugfix PR",
+      "tagline": "constructorfabric/gears-rust#4082 is the real bugfix PR produced for issue #3105; Kitsoki#67 only carries the demo scenario and deck source.",
+      "url": "https://github.com/constructorfabric/gears-rust/pull/4082",
+      "narration": "The demo closes on the Gears Rust bugfix pull request. The Kitsoki branch is the evidence and replay packaging, not the product fix being demonstrated. The only product caveat is clearly called out: the current P R D story capture proves intake, but not final published artifact handoff."
+    }
+  ]
+}

@@ -382,7 +382,7 @@ All claims in this synthesis are traceable to specific sections in those documen
 [domain-2]: ./domain-research.md#2-the-domain-practitioner
 [domain-3]: ./domain-research.md#3-workflow-anatomy-in-the-target-domain
 [domain-paradox]: ./domain-research.md#45-trend-5-the-ai-productivity-paradox
-[loopy-self-improvement]: /home/cloud-user/code/cyber-repo/tools/loopy/docs/SELF-IMPROVEMENT.md
+[loopy-self-improvement]: /home/cloud-user/code/focused-engineering/tools/loopy/docs/SELF-IMPROVEMENT.md
 
 [tbrc-enterprise-cai]: https://www.researchandmarkets.com/reports/6226735/enterprise-conversational-ai-platform-market
 [whatech-llm-dialogue]: https://whatech.com/og/markets-research/it/1011349-2026-forecast-for-the-large-language-model-artificial-intelligence-ai-dialogue-system-industry-key-market-drivers-opportunities-and-growth-strategy.html

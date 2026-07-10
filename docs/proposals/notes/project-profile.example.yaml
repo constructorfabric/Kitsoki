@@ -3,7 +3,7 @@
 # .kitsoki/stories/kitsoki-dev/ binds by hand). This is the dry-run report shown at
 # init_review: readiness.status is `not-run` and nothing is written yet.
 #
-# Validates against project-profile.schema.json (proven in docs/proposals/project-init.md §Verification).
+# Validates against project-profile.schema.json; see docs/project-onboarding.md.
 schema: project-profile/v1
 id: kitsoki
 title: kitsoki — self-hosting dev loop

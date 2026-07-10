@@ -1,0 +1,124 @@
+# dogfood_marathon_entry — route from kitsoki-dev landing into the imported
+# dogfood-marathon story, then start a small autonomous run.
+test_kind: flow
+app: ../app.yaml
+initial_state: core.landing
+initial_world:
+  core__dogfood_backlog_sources: "local:tools/tui-bridge/fixtures/dogfood-bugs"
+  core__dogfood_run_id: "route-smoke"
+
+host_handlers:
+  host.starlark.run:
+    by_call:
+      load_backlog:
+        data:
+          backlog:
+            items:
+              - { id: "case-1", title: "Routed dogfood case", baseline: "abc123^", repro_command: "go test ./pkg/a" }
+          run_id: "route-smoke"
+          run_dir: ".artifacts/dogfood-marathon/route-smoke"
+          journal_path: ".artifacts/dogfood-marathon/route-smoke/journal.json"
+          journal_markdown_path: ".artifacts/dogfood-marathon/route-smoke/journal.md"
+          last_result: {}
+          loaded_journal: false
+          journal_status: "loaded"
+          journal_summary: "loaded"
+          last_checkpoint: "intake"
+      persist_journal:
+        data:
+          run_id: "route-smoke"
+          run_dir: ".artifacts/dogfood-marathon/route-smoke"
+          journal_path: ".artifacts/dogfood-marathon/route-smoke/journal.json"
+          journal_markdown_path: ".artifacts/dogfood-marathon/route-smoke/journal.md"
+          journal_status: "written"
+          journal_summary: "checkpoint written"
+          last_checkpoint: "recorded"
+      pick_case:
+        data:
+          current_case: { id: "case-1", title: "Routed dogfood case", baseline: "abc123^", repro_command: "go test ./pkg/a" }
+          current_case_id: "case-1"
+          current_case_json: "{\"id\":\"case-1\",\"title\":\"Routed dogfood case\",\"baseline\":\"abc123^\",\"repro_command\":\"go test ./pkg/a\"}"
+      verify_case:
+        data:
+          verify_result: { status: "solved", how: "independent oracle passed on the produced worktree" }
+      record_case:
+        data:
+          results: { items: [ { case_id: "case-1", title: "Routed dogfood case", exit: "shipped", verify_status: "solved", trace: ".artifacts/dogfood-marathon/route-smoke/traces/case-1.jsonl" } ] }
+          last_result: { case_id: "case-1", title: "Routed dogfood case", source_url: ".artifacts/issues/bugs/case-1.md", exit: "shipped", verify_status: "solved", tokens: 12000, tokens_display: "12000", wall_s: 90, wall_s_display: "90", trace: ".artifacts/dogfood-marathon/route-smoke/traces/case-1.jsonl" }
+          findings: { items: [] }
+          exceptions: { items: [] }
+          exception_pending: ""
+          exception_summary: ""
+          record_status: "recorded"
+      aggregate_run:
+        data:
+          rollup:
+            counts: { processed: 1, solved: 1, partial: 0, failed: 0, skipped: 0, shipped: 1, needs_human: 0 }
+            totals: { cost_usd: 1.25, tokens: 12000, wall_s: 90 }
+            worked: ["1 case independently verified solved"]
+            didnt: []
+            headline: "Processed 1 case: 1 solved."
+      build_deck:
+        data:
+          deck_spec:
+            spec_path: "stories/dogfood-marathon/baked/report.deck.json"
+            summary: "Dogfood marathon report — 1 case, 1 solved."
+            case_decks: []
+
+  host.agent.task:
+    by_call:
+      triage_case:
+        data:
+          ok: true
+          submitted: { verdict: "STILL-LIVE", evidence: "pkg/a/foo.go:42", note: "bug reproduces at baseline" }
+      drive_case:
+        data:
+          ok: true
+          submitted:
+            exit: "shipped"
+            worktree: ".worktrees/case-1"
+            branch: "fix/case-1"
+            deliverable_present: true
+            oracle_pass: true
+            trace: ".artifacts/dogfood-marathon/route-smoke/traces/case-1.jsonl"
+            cost_usd: 1.25
+            tokens: 12000
+            wall_s: 90
+            findings: []
+        delay: "20ms"
+
+  host.slidey.render:
+    by_call:
+      render_report:
+        data:
+          ok: true
+          path: "stories/dogfood-marathon/baked/report.deck.json"
+
+  host.artifacts_dir:
+    by_call:
+      emit_report:
+        data:
+          ok: true
+          handle: { id: "dogfood-marathon#route-smoke", kind: "slideshow", mime: "text/html" }
+          path: "stories/dogfood-marathon/baked/report.deck.json"
+
+turns:
+  - intent:
+      name: core__landing_capture
+      slots:
+        request: "I want to do a dogfood marathon"
+    expect_state: core.dogfood.idle
+
+  - intent:
+      name: core__dogfood__start
+      slots:
+        backlog_sources: "local:tools/tui-bridge/fixtures/dogfood-bugs"
+        backlog_limit: 1
+        run_id: "route-smoke"
+    advance_clock: "2s"
+    expect_state: core.dogfood.done
+    expect_world:
+      core__dogfood__cases_processed: 1
+      core__dogfood__report_handle: "dogfood-marathon#route-smoke"
+
+expect_no_errors: true

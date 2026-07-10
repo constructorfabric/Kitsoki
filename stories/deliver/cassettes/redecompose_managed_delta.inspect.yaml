@@ -1,0 +1,39 @@
+# A prior decomposition ALREADY exists at decomposition_path (exists: true —
+# the fork detect_prior_decomposition.star takes). The updated content below
+# is what apply_delta.py would have written after applying the delta (the
+# transaction itself is stubbed via host.run in the sibling flow, so this
+# cassette only needs to serve the two REAL Starlark reads downstream: lint's
+# validation of the post-apply manifest and fleet.load's re-parse.
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/deliver/decomposition.yaml
+    out: "true"
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: health-model
+          brief: |
+            Add HealthStatus struct in internal/health/ with Status and Version fields. Gate: go test ./internal/health/...
+          gate_command: go test ./internal/health/...
+          deps: []
+        - id: health-metrics
+          brief: |
+            Add a /health/metrics counter the epic's new requirement asks for. Gate: go test ./internal/health/... -run TestMetrics
+          gate_command: "grep -rq 'func TestMetrics' internal/health/ && go test ./internal/health/... -run TestMetrics"
+          deps: [health-model]
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: health-model
+          brief: |
+            Add HealthStatus struct in internal/health/ with Status and Version fields. Gate: go test ./internal/health/...
+          gate_command: go test ./internal/health/...
+          deps: []
+        - id: health-metrics
+          brief: |
+            Add a /health/metrics counter the epic's new requirement asks for. Gate: go test ./internal/health/... -run TestMetrics
+          gate_command: "grep -rq 'func TestMetrics' internal/health/ && go test ./internal/health/... -run TestMetrics"
+          deps: [health-model]

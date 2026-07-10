@@ -189,9 +189,9 @@ test("story editor view feature-spotlight video", async () => {
         // The only action step: se-intro-open (home → editor via route-match).
         const target = await resolveTarget(page, step);
         await target.scrollIntoViewIfNeeded().catch(() => undefined);
-        // Dispatch the DOM click directly so the overlay backdrop can't intercept
-        // it; this fires the anchor's navigation AND the overlay's capture-phase
-        // advance listener regardless of the click-through hole's paint geometry.
+        // Dispatch the DOM click directly so popover placement cannot affect the
+        // action; this fires the anchor's navigation AND the overlay's
+        // capture-phase advance listener regardless of paint timing.
         await target.evaluate((el) => (el as HTMLElement).click());
         await page.waitForTimeout(300);
         await page.waitForURL(/#\/editor/, { timeout: 15000 });

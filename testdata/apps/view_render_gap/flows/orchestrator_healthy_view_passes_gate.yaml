@@ -1,0 +1,21 @@
+# G-VIEW gate, positive case, orchestrator-backed rig.
+#
+# go_good lands in `fine` and renders cleanly through the orchestrator path —
+# proving the gate does not false-positive there either.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: lobby
+use_orchestrator: true
+
+host_handlers:
+  host.test.scan:
+    data:
+      summary: "two overlapping drafts"
+
+turns:
+  - intent: { name: go_good, slots: {} }
+    expect_state: fine
+    expect_view_matches: "Made it, all good."
+
+expect_terminal: true

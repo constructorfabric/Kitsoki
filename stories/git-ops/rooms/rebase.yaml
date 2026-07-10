@@ -21,13 +21,13 @@ states:
           pairs:
             Branch:       '{{ world.current_branch|default:"(unknown)" }}'
             Integration:  '{{ world.integration_branch }}'
-            Ahead:        '{{ world.commits_ahead }} commits'
+            Ahead:        '{{ world.commits_ahead ?? 0 }} commits'
             "Backup tag": '{{ world.pre_rebase_tag|default:"(none)" }}'
-      - prose: "Rebase output: {{ world.last_op_output }}"
+      - prose: "Rebase output: {{ world.last_op_output ?? '(pending)' }}"
         when: "world.last_op_ok == false"
       - prose: "Conflicts detected — routing to conflict resolver."
         when: "world.last_op_outcome == 'conflict'"
-      - prose: "Rebase complete. Backup tag: {{ world.pre_rebase_tag }}."
+      - prose: "Rebase complete. Backup tag: {{ world.pre_rebase_tag ?? '(none)' }}."
         when: "world.last_op_ok == true && world.last_op_outcome == 'ok'"
       - choice:
           mode: single
@@ -36,7 +36,8 @@ states:
             - label: "look"
               intent: look
     on_enter:
-      # Single script: run rebase, determine outcome, bind route.
+      # Thin wrapper around scripts/rebase-current-branch.sh: run rebase,
+      # determine outcome, bind route.
       # route="on_branch" (success), "rebase_conflict" (conflict).
       # emit_intent re-evaluated post-bind against bound route.
       # Machine pre-bind: route="look" (default) → no-op.
@@ -49,56 +50,50 @@ states:
             - |
               set -e
               export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
-              INTEGRATION="{{ world.integration_branch }}"
-              BRANCH=$(git rev-parse --abbrev-ref HEAD)
-              AHEAD=$(git rev-list --count "${INTEGRATION}..HEAD" 2>/dev/null || echo 0)
+              if [ -n "${KITSOKI_APP_DIR:-}" ] && [ -x "$KITSOKI_APP_DIR/../../scripts/rebase-current-branch.sh" ]; then
+                KITSOKI_ROOT=$(cd "$KITSOKI_APP_DIR/../.." && pwd)
+                "$KITSOKI_ROOT/scripts/rebase-current-branch.sh" --integration "$1" --worktree "$2"
+                exit 0
+              fi
+
+              # Fallback for embedded/no-app-dir harnesses. Keep this semantically
+              # close to scripts/rebase-current-branch.sh; real CLI/session runs
+              # take the helper path above.
+              INTEGRATION="$1"
+              WORKTREE="$2"
+              BRANCH=$(git -C "$WORKTREE" rev-parse --abbrev-ref HEAD)
+              AHEAD=$(git -C "$WORKTREE" rev-list --count "${INTEGRATION}..HEAD" 2>/dev/null || echo 0)
               TAG=""
               if [ "$AHEAD" -gt 1 ]; then
                 TAG="${BRANCH}-pre-rebase-backup"
-                git tag -f "$TAG" HEAD 2>/dev/null || true
+                git -C "$WORKTREE" tag -f "$TAG" HEAD 2>/dev/null || true
               fi
-              # || EXIT=$? OUTSIDE the $() — a `|| true` INSIDE the
-              # substitution would force EXIT=0 even on a conflicting rebase,
-              # mis-routing it to on_branch. set -e is not tripped because the
-              # failing assignment is the left side of a || list.
               EXIT=0
-              OUTPUT=$(git rebase "$INTEGRATION" --no-autostash 2>&1) || EXIT=$?
-              # ── rerere auto-resolution ──────────────────────────────────────
-              # When the rebase stops on a conflict, replay any previously-recorded
-              # resolutions (git rerere) and drive the rebase to completion WITHOUT
-              # the operator/LLM. The conflict room is reserved for hunks rerere has
-              # never seen. Loop: a multi-commit rebase can stop once per commit.
+              OUTPUT=$(git -C "$WORKTREE" rebase "$INTEGRATION" --no-autostash 2>&1) || EXIT=$?
               rebase_in_progress() {
-                [ -d "$(git rev-parse --git-path rebase-merge 2>/dev/null)" ] || \
-                [ -d "$(git rev-parse --git-path rebase-apply 2>/dev/null)" ]
+                [ -d "$(git -C "$WORKTREE" rev-parse --git-path rebase-merge 2>/dev/null)" ] || \
+                [ -d "$(git -C "$WORKTREE" rev-parse --git-path rebase-apply 2>/dev/null)" ]
               }
               if [ "$EXIT" -ne 0 ] && rebase_in_progress; then
                 GUARD=0
                 while rebase_in_progress && [ "$GUARD" -lt 100 ]; do
                   GUARD=$((GUARD + 1))
-                  git rerere 2>/dev/null || true
-                  # rerere.autoupdate stages cleanly-replayed files; without it
-                  # rerere only fixes the working tree, so stage any unmerged file
-                  # that no longer carries conflict markers (<<<<<<< / >>>>>>>
-                  # bracket every real conflict; a resolved file has neither).
-                  for f in $(git diff --diff-filter=U --name-only 2>/dev/null); do
-                    [ -f "$f" ] || continue
-                    grep -qE '^(<<<<<<<|>>>>>>>)' "$f" 2>/dev/null || git add -- "$f" 2>/dev/null || true
+                  git -C "$WORKTREE" rerere 2>/dev/null || true
+                  for f in $(git -C "$WORKTREE" diff --diff-filter=U --name-only 2>/dev/null); do
+                    [ -f "$WORKTREE/$f" ] || continue
+                    grep -qE '^(<<<<<<<|>>>>>>>)' "$WORKTREE/$f" 2>/dev/null || git -C "$WORKTREE" add -- "$f" 2>/dev/null || true
                   done
-                  # A conflict rerere could NOT resolve remains → escalate.
-                  if git diff --diff-filter=U --name-only 2>/dev/null | grep -q .; then
+                  if git -C "$WORKTREE" diff --diff-filter=U --name-only 2>/dev/null | grep -q .; then
                     break
                   fi
-                  # Every conflict at this stop is resolved → continue (non-interactive).
-                  GIT_EDITOR=true git rebase --continue >/dev/null 2>&1 || true
+                  GIT_EDITOR=true git -C "$WORKTREE" rebase --continue >/dev/null 2>&1 || true
                 done
-                # Fully replayed iff the rebase is no longer in progress.
                 if ! rebase_in_progress; then
                   EXIT=0
                   OUTPUT="conflicts auto-resolved from rerere cache"
                 fi
               fi
-              MERGE_BASE=$(git merge-base HEAD "$INTEGRATION" 2>/dev/null || echo "")
+              MERGE_BASE=$(git -C "$WORKTREE" merge-base HEAD "$INTEGRATION" 2>/dev/null || echo "")
               if [ $EXIT -eq 0 ]; then
                 jq -n --arg tag "$TAG" --arg out "$OUTPUT" --arg mb "$MERGE_BASE" \
                   '{pre_rebase_tag:$tag,last_op_output:$out,rebase_base_sha:$mb,rebase_done:true,conflict_origin:"",route:"on_branch"}'
@@ -106,6 +101,9 @@ states:
                 jq -n --arg tag "$TAG" --arg out "$OUTPUT" --arg mb "$MERGE_BASE" \
                   '{pre_rebase_tag:$tag,last_op_output:$out,rebase_base_sha:$mb,rebase_done:false,conflict_origin:"rebase",route:"rebase_conflict"}'
               fi
+            - "kitsoki-rebase-current-branch"
+            - "{{ world.integration_branch }}"
+            - "{{ world.working_dir }}"
           cwd: "{{ world.working_dir }}"
         bind:
           pre_rebase_tag:  "stdout_json.pre_rebase_tag"

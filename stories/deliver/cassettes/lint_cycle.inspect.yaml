@@ -1,0 +1,45 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: .artifacts/deliver/decomposition.yaml
+    out: "false"
+  # 1. First lint invoke: slice-a and slice-b depend on each other — a cycle.
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: slice-a
+          brief: Implement slice A so that go test ./... passes.
+          gate_command: go test ./...
+          deps: [slice-b]
+        - id: slice-b
+          brief: Implement slice B so that go test ./... passes.
+          gate_command: go test ./...
+          deps: [slice-a]
+  # 2. Second lint invoke (after the refine loop re-arms decompose): the
+  #    cycle is broken (slice-b now depends on slice-a only) — lint passes.
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: slice-a
+          brief: Implement slice A so that go test ./... passes.
+          gate_command: go test ./...
+          deps: []
+        - id: slice-b
+          brief: Implement slice B so that go test ./... passes.
+          gate_command: go test ./...
+          deps: [slice-a]
+  # 3. fleet.load's own read of the same (now-passing) manifest.
+  - op: read
+    target: .artifacts/deliver/decomposition.yaml
+    out: |
+      briefs:
+        - id: slice-a
+          brief: Implement slice A so that go test ./... passes.
+          gate_command: go test ./...
+          deps: []
+        - id: slice-b
+          brief: Implement slice B so that go test ./... passes.
+          gate_command: go test ./...
+          deps: [slice-a]

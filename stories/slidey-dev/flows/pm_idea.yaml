@@ -12,7 +12,7 @@ initial_state: core.landing
 initial_world:
   judge_mode: "human"
   core__workdir:               "."
-  core__publish_durable_path:  "docs/prd"
+  core__publish_durable_path:  "/tmp/kitsoki-prd-fixtures"
   core__prd_doc_filename:      ""
 
 host_handlers:
@@ -52,7 +52,7 @@ host_handlers:
           ok: true
           submitted:
             items:
-              - { path: "docs/prd/speaker-notes-export.md", sections: "§5", rationale: "the PRD this design realizes" }
+              - { path: "/tmp/kitsoki-prd-fixtures/speaker-notes-export.md", sections: "§5", rationale: "the PRD this design realizes" }
   host.agent.task:
     by_call:
       prd_author:
@@ -99,7 +99,7 @@ host_handlers:
           ok: true
           exit_code: 0
           stdout_json:
-            prd_file: "docs/prd/speaker-notes-export.md"
+            prd_file: "/tmp/kitsoki-prd-fixtures/speaker-notes-export.md"
 
 turns:
   - intent: { name: core__go_prd, slots: {} }

@@ -1,11 +1,15 @@
-# kitsoki-dev — the dogfood instance.
+# kitsoki-dev — the self-hosted dev-story instance.
 #
-# The dogfood PoC milestone (★): kitsoki working on kitsoki through its own UI,
-# with the bug file as both ticket and conversation log.
+# This is the golden project-owned wrapper for @kitsoki/dev-story. It imports
+# the shared hub under `core`, declares strict hosts at the parent level, and
+# projects only project defaults through world_in. Local artifact bug files stay
+# the default ticket/conversation log, while GitHub Issues appear beside them
+# for user-submitted issues and coordination without making local developer
+# picks close/comment on GitHub.
 #
 # Composition is one import edge: dev-story (general-purpose hub) is
-# imported under alias `core` with concrete host bindings to the
-# local-files providers. The bf → pr chain — and every day-level room
+# imported under alias `core` with concrete host bindings. The bf → pr chain —
+# and every day-level room
 # (main, ticket_search, inbox, agent, …) — is reachable via the
 # `core` compound.
 #
@@ -22,7 +26,9 @@
 #
 # # ticket_globs — multi-glob coverage
 #
-# The local-files ticket provider scans `<repo_root>/issues/bugs/*.md`
+# The local-files ticket provider scans `<repo_root>/issues/bugs/*.md`. This
+# instance sets `repo_root` to `.artifacts`, so local developer iterations read
+# `.artifacts/issues/bugs/*.md` and do not create committed ticket files.
 # for files matching the bug frontmatter schema (docs/stories/bugs.md).
 # The `ticket_globs:` world key documents the FULL set of paths a
 # future multi-glob provider scan will cover:
@@ -50,13 +56,23 @@
 app:
   id: kitsoki-dev
   version: 0.1.0
-  title: "kitsoki-dev — work on kitsoki itself (and its stories) with GitHub issues"
+  title: "kitsoki-dev — work on kitsoki itself with local artifact tickets"
   author: "Kitsoki"
   license: "CC0"
 
 routing:
   embedding:
     model: "nomic-embed-text-v1.5"
+  # Explicit — the loader's own free-form-fallback auto-detect
+  # (effectiveFreeFormFallback, internal/app/loader.go) hardcodes the bare
+  # intent name "work" (and the "__work" import-alias suffix); dev-story's
+  # landing room now names its capture intent `landing_capture` (workbench:'s
+  # fixed `<room>_capture` naming, docs/proposals/room-workbench.md Task 3.1),
+  # so after folding under the `core` alias the auto-detect would find nothing
+  # and menu-shaped rooms in this instance would lose their free-text sink.
+  free_form_fallback:
+    state: core.landing
+    intent: core__landing_capture
 
 # agent_plugins must be declared at the instance level — they are NOT inherited
 # from imported children. Mirrors the declaration in dev-story/app.yaml.
@@ -75,7 +91,11 @@ hosts:
   # Iface-backed handlers — rebound via host_bindings below. Listed
   # here so `hosts: declared` is satisfied.
   - host.local_files.ticket
+  - host.local_github.ticket
   - host.gh.ticket
+  - host.gh.ticket.get
+  - host.gh.ticket.comment
+  - host.gh.ticket.transition
   - host.git
   - host.local
   - host.git_worktree
@@ -86,6 +106,7 @@ hosts:
   - host.agent.ask
   - host.agent.decide
   - host.agent.task
+  - host.agent.codeact
   # Pulled in transitively via dev-story → cypilot import (cypilot
   # uses host.run for its prd/adr/decomposition rooms). The strict
   # `hosts: declared` import on `core` requires every transitively-
@@ -97,7 +118,12 @@ hosts:
   # Required under `hosts: declared`.
   - host.agent.search
   - host.artifacts_dir
+  - host.slidey.render
   - host.ide.open_file
+  # design_search resolves design_durable_path to a writable location
+  # (falling back to .context/designs) before minting any workspace folder
+  # or writing any artifact. Required under `hosts: declared`.
+  - host.fs.writable_dir
   # Design draft (dev-story design_draft) + PRD drafting (prd/drafting) mirror
   # the editable artifact into the IDE and present the verdict-gated refine as a
   # diff. Required under `hosts: declared`.
@@ -107,6 +133,8 @@ hosts:
   # PRD → Design walk. Required under `hosts: declared`.
   - host.agent.converse
   - host.chat.resolve
+  - host.chat.transcript
+  - host.ide.get_diagnostics
   # Code-review surface (dev-story's code_review room opens diffs in the best
   # surface). Required under `hosts: declared`.
   - host.diff.open
@@ -132,17 +160,15 @@ imports:
     # (and transitively by bf / pr). These rebind the dev-story
     # defaults to the local-files / git providers.
     #
-    # The append_to_file transport is the dogfood-specific choice:
+    # The append_to_file transport is the project-specific choice:
     # checkpoint posts go INTO the bug file (the `thread:` arg on
     # iface.transport.post carries the file path), so the local file
     # is the comment thread.
     host_bindings:
-      # GitHub cutover (github-issues-tracker slice #4): the dogfood loop reads/
-      # writes its tickets as GitHub issues on `ticket_repo`
-      # (constructorfabric/Kitsoki). The rooms thread `repo: {{ world.ticket_repo }}`
-      # into every iface.ticket.* call. Flip back to host.local_files.ticket for a
-      # purely offline run.
-      ticket:    host.gh.ticket
+      # Local iteration default: search local artifact tickets and GitHub
+      # Issues side by side. Picked local artifacts keep local close-out; picked
+      # GitHub issues carry ticket_repo into the child stories.
+      ticket:    host.local_github.ticket
       vcs:       host.git
       ci:        host.local
       workspace: host.git_worktree
@@ -155,35 +181,54 @@ imports:
     world_in:
       judge_mode:                 "{{ world.judge_mode }}"
       judge_confidence_threshold: "{{ world.judge_confidence_threshold }}"
+      repo_root:                  "{{ world.repo_root }}"
       ticket_repo:                "{{ world.ticket_repo }}"
+      ticket_github_repo:         "{{ world.ticket_github_repo }}"
       bugfix_destination:         "{{ world.bugfix_destination }}"
+      design_durable_path:        "{{ world.design_durable_path }}"
+      test_cmd:                   "{{ world.test_cmd }}"
+      quick_test_cmd:             "{{ world.quick_test_cmd }}"
+      quick_test_timeout_seconds: "{{ world.quick_test_timeout_seconds }}"
+      full_test_timeout_seconds:  "{{ world.full_test_timeout_seconds }}"
 
 # Instance-level world. Provider-pointing keys plus judge-mode
 # defaults; the operator can override any of them at session start
 # via a `--warp` scenario file.
 #
-# `repo_root` and `ticket_globs` are documented here for forward
-# compatibility — the local-files provider currently honours
-# args.root → $KITSOKI_TICKETS_ROOT → cwd, and reads
-# `<root>/issues/bugs/*.md` literally. A future enhancement (Wave 3.5)
-# will accept ticket_globs as a multi-glob scan list and respect
-# repo_root via world.repo_root passthrough in `iface.ticket.*` args.
+# `repo_root` is wired: dev-story threads it into `iface.ticket.*` calls as
+# the `root` arg, which the local-files provider honours
+# (args.root → $KITSOKI_TICKETS_ROOT → cwd); host.gh.ticket ignores it.
+# `ticket_globs` remains forward-compat only — the provider reads
+# `<root>/issues/bugs/*.md` literally; a future enhancement would accept
+# it as a multi-glob scan list.
 world:
-  # Provider-pointing keys (forward-looking; not yet wired into
-  # iface.ticket.* args — see comment above).
-  repo_root:    { type: string, default: "" }
+  # Provider-pointing keys. repo_root reaches iface.ticket.* via the
+  # dev-story rooms' `root:` passthrough; ticket_globs is still unwired.
+  repo_root:    { type: string, default: ".artifacts" }
   ticket_globs: { type: string, default: "issues/bugs/*.md,issues/features/*.md,stories/*/issues/bugs/*.md,stories/*/issues/features/*.md" }
 
-  # ticket_repo — the canonical GitHub repo every host.gh.ticket call pins via
-  # its `repo` arg, so the dogfood loop never silently resolves the operator's
-  # `origin` (a personal fork like bsacrobatix/Kitsoki). The checked-in project
-  # profile (.kitsoki/project-profile.yaml) is the source of truth for this repo;
-  # local dogfood runs can override via .kitsoki.local.yaml root.overrides.world.
-  ticket_repo:  { type: string, default: "constructorfabric/Kitsoki" }
-  # Default self-hosting destination: land fixes into the local base branch
+  # ticket_repo is intentionally empty for local artifact iteration. It is set
+  # after picking a GitHub row, so downstream close-out knows the selected
+  # ticket is remote. ticket_github_repo feeds the selector's GitHub section.
+  ticket_repo:  { type: string, default: "" }
+  ticket_github_repo: { type: string, default: "origin" }
+  # Default local destination: land fixes into the local base branch
   # (main here) after the bugfix RED/GREEN gate and shared ship-it tail pass.
   # Operators can still choose open-pr or leave-worktree from the dev-story UI.
   bugfix_destination: { type: string, default: "local-merge" }
+
+  # The self-hosted test-fix loop uses the same project-level command an operator
+  # would run locally. dev-story's imported fix-tests loop falls back to
+  # `make test` when this is empty; keeping it explicit here documents the
+  # self-instance contract.
+  test_cmd: { type: string, default: "make test" }
+  quick_test_cmd: { type: string, default: "go test -short -count=1 ./cmd/kitsoki ./internal/mcp/studio ./internal/host ./internal/app" }
+  quick_test_timeout_seconds: { type: int, default: 180 }
+  full_test_timeout_seconds: { type: int, default: 1200 }
+
+  # Proposal/idea work must not write under docs/proposals in the protected
+  # primary checkout. Keep scratch + published design docs in local context.
+  design_durable_path: { type: string, default: ".context/designs" }
 
   # Judge polymorphism. Defaults: supervised + 0.8 confidence floor.
   # Flip judge_mode to `llm_then_human` for an unattended run.

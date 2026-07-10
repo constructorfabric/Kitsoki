@@ -8,10 +8,10 @@ and follows the style-guide block convention (docs/stories/story-style.md §2):
   choices  — action list (typed list element)
   footer   — optional bottom matter; default empty
 
-When dev-story is imported under kitsoki-dev / cyber-repo, this base IS the
-host base — sub-stories (bf, impl, pr, rev, cyp) inherit our block contract
-when their own `extends: "base"` is rewritten to this file by the imports
-mechanism. Standalone dev-story runs render the same chrome.
+When dev-story is imported by a project wrapper, this base IS the host base:
+sub-stories (bf, impl, pr, rev, cyp) inherit our block contract when their own
+`extends: "base"` is rewritten to this file by the imports mechanism.
+Standalone dev-story runs render the same chrome.
 
 The status bar uses the world keys the bf / pr / impl exits project up into
 dev-story's world (ticket_id, workdir, feature_branch, last_pr_url) plus the

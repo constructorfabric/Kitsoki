@@ -1,0 +1,39 @@
+# seed-objects.overlay-ui-declutter.yaml — a small, additive "desired state"
+# delta for diff mode (docs/proposals/project-object-graph/ui-declutter-and-diff-mode.md).
+#
+# Loaded via internal/graph.LoadCatalogWithOverlay(seed-objects.yaml, this file):
+# the base catalog already carries this proposal's own current-state nodes
+# (proposal-object-graph-ui-declutter-and-diff-mode and its requirements/use-case,
+# same as every other backlog proposal already in the base file — a proposal is
+# durable current state the moment it's authored). This overlay instead
+# demonstrates the genuinely *desired-but-not-yet-true* next state: the
+# evidence node slice 5's local persona-lensed kitsoki-ui-review pass will
+# produce once it actually runs, verifying this proposal's three requirements.
+# Diffing (base, base+overlay) renders exactly one "added" gap — a real,
+# honest first exercise of diff mode rather than a contrived toy example.
+#
+# additive-only: every id here must not already exist in seed-objects.yaml
+# (LoadCatalogWithOverlay errors on a duplicate id — representing a modified
+# or removed node needs the real changeset apply/merge machinery, epic slice 2,
+# not this overlay).
+nodes:
+  - schema: graph/evidence/v0
+    id: evidence-object-graph-ui-persona-review
+    title: Local persona-lensed usability review of the object-graph viewer
+    status: planned
+    visibility: internal
+    evidence_kind: local_review
+    producers:
+      - .agents/skills/kitsoki-ui-review/scripts/ui-review.sh
+    artifacts:
+      - artifactDir: .artifacts/ui-review
+        note: one verdict.json + review-report.md per persona-* node, local-only
+    sources:
+      - source-object-graph-ui-declutter-and-diff-mode-proposal
+    edges:
+      verifies:
+        - req-object-graph-layer-bar-no-scroll
+        - req-object-graph-diff-mode-visual-affordances
+        - req-object-graph-persona-qa-stays-local
+      demonstrates:
+        - feature-graph-viewer

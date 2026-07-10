@@ -1,0 +1,62 @@
+# init_missing_target -- invalid onboarding targets do not become generic
+# "local project" profiles and never reach apply. Host calls are stubbed;
+# the real path guard is covered by init_discover_test.py.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+initial_world:
+  workdir: "/Users/brad/code/Kitsoki"
+  repo_root: "/Users/brad/code/Kitsoki"
+
+host_handlers:
+  host.run:
+    by_call:
+      discover:
+        data:
+          ok: true
+          exit_code: 0
+          stdout: '{"target_path":"/srv/repos/missing","project_id":"","project_title":"","stack":"","dev_command":"","test_command":"","build_command":"","repo_vcs":"none","repo_default_branch":"","repo_remote":"","conventions":"local defaults","tracker":"none","transcript_count":0,"transcript_sources":[],"mining_recommendation":{"status":"no-transcripts-found","sample":"recency","first_pass_sample":0,"transcript_count":0,"sources":[],"note":"No associated Claude/Codex transcripts were found during deterministic discovery."},"error":"target path does not exist"}'
+          stdout_json:
+            target_path: "/srv/repos/missing"
+            project_id: ""
+            project_title: ""
+            stack: ""
+            dev_command: ""
+            test_command: ""
+            build_command: ""
+            repo_vcs: "none"
+            repo_default_branch: ""
+            repo_remote: ""
+            conventions: "local defaults"
+            tracker: "none"
+            transcript_count: 0
+            transcript_sources: []
+            mining_recommendation:
+              status: "no-transcripts-found"
+              sample: "recency"
+              first_pass_sample: 0
+              transcript_count: 0
+              sources: []
+              note: "No associated Claude/Codex transcripts were found during deterministic discovery."
+            error: "target path does not exist"
+
+turns:
+  - intent: { name: go_init, slots: { target: "/srv/repos/missing" } }
+    expect_state: init_discover
+    expect_world:
+      init_request: "/srv/repos/missing"
+      init_target_path: "/srv/repos/missing"
+      init_project_id: ""
+      init_discovery_error: "target path does not exist"
+      init_profile_status: "discovering"
+    expect_view_matches: "target path does not exist"
+
+  - intent: { name: init_discovered, slots: {} }
+    expect_state: init_discover_failed
+    expect_world:
+      init_profile_status: "discovery-failed"
+      init_discovery_error: "target path does not exist"
+    expect_view_matches: "No files were written"
+
+expect_no_errors: true

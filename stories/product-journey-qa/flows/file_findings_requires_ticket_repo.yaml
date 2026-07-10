@@ -1,0 +1,51 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      load_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: run_loaded
+            run_id: run-777
+            run_dir: .artifacts/product-journey/run-777
+            project: vscode
+            persona: core-maintainer
+            seed: filing-missing-repo
+            issue_count: 2
+            finding_total_count: 2
+            proof_evidence_count: 3
+
+turns:
+  - intent:
+      name: load
+      slots:
+        run_dir: .artifacts/product-journey/run-777
+    expect_state: run_created
+    expect_host_calls:
+      - handler: host.run
+        args: { call: load_product_journey_run }
+
+  - intent:
+      name: file_findings
+      slots:
+        ticket_repo: ""
+        mode: file
+        gh_agent_public_base_url: https://agent.example
+    expect_state: run_created
+    expect_world:
+      status: findings_filing_invalid
+      filing_status: findings_filing_invalid
+      filing_summary: "Product-journey finding filing requires ticket_repo=owner/repo."
+      validation_status: invalid
+      validation_errors: 1
+      validation_issue_summary: ticket-repo-required
+      gh_agent_missing_evidence_summary: "ticket_repo is required"
+    expect_view_matches: "RUN CREATED[\\s\\S]*Issue filing[\\s\\S]*findings_filing_invalid[\\s\\S]*Validation[\\s\\S]*invalid"
+    expect_host_calls: []
+
+expect_no_errors: true

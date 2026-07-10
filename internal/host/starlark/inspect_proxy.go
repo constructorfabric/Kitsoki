@@ -23,10 +23,10 @@ func newInspectorProxy(ictx context.Context) *inspectorProxy {
 
 // ─── ctx.fs ─────────────────────────────────────────────────────────────────
 
-// fsValue is the ctx.fs value. It exposes read, exists and glob — the minimal
-// read-only filesystem surface a script needs to inspect a repo without any way
-// to write, delete, or escape the rooted working directory. Mirrors httpProxy's
-// shape (a small attr-bearing value backed by a Go boundary).
+// fsValue is the ctx.fs value. It exposes read, exists, glob, and write — the
+// small filesystem surface a script needs without any way to delete, chmod,
+// run a shell, or escape the rooted working directory. Mirrors httpProxy's shape
+// (a small attr-bearing value backed by a Go boundary).
 type fsValue struct {
 	p *inspectorProxy
 }
@@ -37,7 +37,7 @@ func (f *fsValue) Freeze()               {}
 func (f *fsValue) Truth() starlark.Bool  { return starlark.True }
 func (f *fsValue) Hash() (uint32, error) { return 0, fmt.Errorf("ctx.fs is unhashable") }
 
-func (f *fsValue) AttrNames() []string { return []string{"read", "exists", "glob"} }
+func (f *fsValue) AttrNames() []string { return []string{"read", "exists", "glob", "write"} }
 
 func (f *fsValue) Attr(name string) (starlark.Value, error) {
 	switch name {
@@ -47,6 +47,8 @@ func (f *fsValue) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("ctx.fs.exists", f.exists), nil
 	case "glob":
 		return starlark.NewBuiltin("ctx.fs.glob", f.glob), nil
+	case "write":
+		return starlark.NewBuiltin("ctx.fs.write", f.write), nil
 	}
 	return nil, nil // nil,nil → "no such attribute" with a clear traceback
 }
@@ -94,6 +96,20 @@ func (f *fsValue) glob(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tu
 		elems[i] = starlark.String(m)
 	}
 	return starlark.NewList(elems), nil
+}
+
+// write implements ctx.fs.write(path, content) -> path. It replaces one rooted
+// file and returns the normalized repo-relative path.
+func (f *fsValue) write(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var path, content string
+	if err := starlark.UnpackArgs("ctx.fs.write", args, kwargs, "path", &path, "content", &content); err != nil {
+		return nil, err
+	}
+	written, err := f.p.in.Write(f.p.ictx, path, []byte(content))
+	if err != nil {
+		return nil, err
+	}
+	return starlark.String(written), nil
 }
 
 // ─── ctx.probe ──────────────────────────────────────────────────────────────

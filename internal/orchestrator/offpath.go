@@ -68,8 +68,57 @@ func offRampLockHeld(ctx context.Context) bool {
 // legacy agent.talk path (no chat persistence) — the user still gets an
 // answer, but there is no transcript history across turns.
 func (o *Orchestrator) AskOffPath(ctx context.Context, sid app.SessionID, question string) (string, error) {
-	// Default voice: the app's off_path: persona/agent (nil-safe).
-	return o.askOffPathVoiced(ctx, sid, question, o.offPathVoice())
+	// Default voice: the app's off_path: persona/agent (nil-safe). Zero
+	// scope: the typed /freeform door keeps the session-wide off_path thread.
+	return o.askOffPathVoiced(ctx, sid, question, o.offPathVoice(), offRampScope{})
+}
+
+// offRampScope carries the per-room conversation identity and the
+// engine-composed room context for an off-ramp / conversation-lane converse
+// call. The zero value preserves the typed-/freeform behavior: one
+// session-wide chat thread under the offPathRoom key, no room context.
+//
+// A non-empty room keys the chat thread by that room instead, so each room
+// holds exactly ONE persistent conversation per session (the chat is still
+// session-scoped via the scope_key = session id passed at resolve time): the
+// operator's follow-ups in a room resume the same warm Claude session, with
+// the transcript in the ChatStore and nothing threaded through world.
+type offRampScope struct {
+	// room is the chat-thread room key; "" means the session-wide
+	// offPathRoom thread (typed /freeform).
+	room string
+	// context is the engine-composed room context (composeRoomContext) fed
+	// to the converse call as the room_context arg; "" adds nothing.
+	context string
+	// workingDir scopes the converse agent's read-only tool inspection to
+	// the story's checkout; "" leaves the handler's default cwd behavior.
+	workingDir string
+}
+
+// offRampScopeForState builds the per-room conversation scope for an
+// off-ramp or conversation-lane entry resting in state: the chat thread is
+// keyed by the room (prefixed so it can never collide with the reserved
+// offPathRoom key) and the room context is composed from the app definition
+// plus the live world.
+func (o *Orchestrator) offRampScopeForState(state app.StatePath, st *app.State, w world.World, allowedNames []string) offRampScope {
+	return offRampScope{
+		room:       "room:" + string(state),
+		context:    composeRoomContext(o.def, state, st, w, allowedNames),
+		workingDir: worldWorkingDir(w),
+	}
+}
+
+// worldWorkingDir resolves the story's checkout directory from world using
+// the two established conventions, in precedence order: `working_dir`
+// (git-ops) then `workdir` (dev-story / workbench:). Returns "" when
+// neither is a non-empty string.
+func worldWorkingDir(w world.World) string {
+	for _, key := range []string{"working_dir", "workdir"} {
+		if s, ok := w.Vars[key].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // offPathVoice is the offRampVoice for the app-level off_path: block, used as
@@ -92,7 +141,7 @@ type offRampVoice struct {
 	agent   string
 }
 
-func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, question string, voice offRampVoice) (string, error) {
+func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, question string, voice offRampVoice, scope offRampScope) (string, error) {
 	if question == "" {
 		return "", fmt.Errorf("orchestrator: AskOffPath: empty question")
 	}
@@ -102,12 +151,18 @@ func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, 
 		slog.Int("question_bytes", len(question)),
 	)
 
-	// Resolve (or create) the off-path chat thread for this session.
-	// Scope by session_id so each session has its own thread that survives
-	// repeated /freeform → /onpath cycles within the same session.
+	// Resolve (or create) the chat thread. Scope by session_id so each
+	// session has its own thread(s) that survive repeated entries within the
+	// same session. A per-room scope keys the thread by the resting room —
+	// one persistent conversation per room; the zero scope keeps the single
+	// session-wide off_path thread the typed /freeform door has always used.
+	chatRoom, chatTitle := offPathRoom, "off-path chat"
+	if scope.room != "" {
+		chatRoom, chatTitle = scope.room, scope.room+" conversation"
+	}
 	chatID := ""
 	if o.chatStore != nil {
-		chatRec, _, err := o.chatStore.Resolve(ctx, o.def.App.ID, offPathRoom, string(sid), "off-path chat")
+		chatRec, _, err := o.chatStore.Resolve(ctx, o.def.App.ID, chatRoom, string(sid), chatTitle)
 		if err != nil {
 			o.logger.WarnContext(ctx, trace.EvOffPathAskError,
 				slog.String("session_id", string(sid)),
@@ -129,6 +184,15 @@ func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, 
 	}
 	if chatID != "" {
 		args["chat_id"] = chatID
+	}
+	// Engine-composed room context (room purpose, available commands,
+	// relevant world) — appended to the converse system prompt by the
+	// handler so the agent never has to tool-call for the basics.
+	if scope.context != "" {
+		args["room_context"] = scope.context
+	}
+	if scope.workingDir != "" {
+		args["working_dir"] = scope.workingDir
 	}
 	// App-tunable persona for the off-path/off-ramp voice. Two equivalent
 	// inputs, in priority order:
@@ -156,12 +220,17 @@ func (o *Orchestrator) askOffPathVoiced(ctx context.Context, sid app.SessionID, 
 	// by the off-path-via-agent path above when Model is set on the
 	// resolved agent) without having to import the app package.
 	ctx = host.WithAgents(ctx, agentsForContext(o.def))
-	ctx = host.WithProviders(ctx, providersForContext(o.def))
+	ctx = host.WithProviders(ctx, o.providersForDispatch())
 	// Off-path agent calls honor the live harness selection too (see
 	// host_dispatch.go).
 	backendName, activeProfile := o.resolveSelection(o.agentBackendName)
 	ctx = host.WithAgentBackendNamed(ctx, backendName)
 	ctx = host.WithActiveProfile(ctx, activeProfile)
+	ctx = host.WithHarnessLadder(ctx, o.harnessLadder)
+	ctx = host.WithLadderSessionState(ctx, o.ladderSession)
+	if o.agentLaunchPolicy.Enabled {
+		ctx = host.WithAgentLaunchPolicy(ctx, o.agentLaunchPolicy)
+	}
 	ctx = host.WithPromptRenderer(ctx, o.promptRenderer)
 	ctx = host.WithProjectContext(ctx, projectContextFor(o.def))
 	// Inject the live IDE link (nil-safe) so the off-path agent subprocess
@@ -254,6 +323,12 @@ const (
 	// offPathReasonOffRamp labels an automatic off-ramp entry: a free-text
 	// no-match in a room that declared agent_off_ramp.
 	offPathReasonOffRamp = "off_ramp"
+	// offPathReasonConversation labels a conversation-lane entry: the room
+	// declared agent_off_ramp.capture_free_text and its synthesized
+	// <room>_discuss intent was diverted to the off-ramp conversation before
+	// the state machine ran (maybeConversationDivert). Additive, like the
+	// other reasons — older cassettes replay unchanged.
+	offPathReasonConversation = "conversation"
 )
 
 // MarkOffPathEntered appends an OffPathEntered event for a typed-trigger
@@ -285,16 +360,23 @@ func (o *Orchestrator) MarkOffPathEntered(sid app.SessionID, fromState app.State
 // router confidence, so a trace can tell why the turn went free-form. All three
 // fields are additive on the existing event (Task 1.5) — replay-safe.
 func (o *Orchestrator) markOffRampEntered(ctx context.Context, sid app.SessionID, fromState app.StatePath, errorCode string, confidence float64) error {
+	return o.markOffRampEnteredReason(ctx, sid, fromState, offPathReasonOffRamp, errorCode, confidence)
+}
+
+// markOffRampEnteredReason is markOffRampEntered parameterized on the entry
+// reason so the conversation lane (reason: "conversation") shares the event
+// shape without duplicating the append.
+func (o *Orchestrator) markOffRampEnteredReason(ctx context.Context, sid app.SessionID, fromState app.StatePath, reason, errorCode string, confidence float64) error {
 	o.logger.DebugContext(ctx, trace.EvOffPathEnter,
 		slog.String("session_id", string(sid)),
 		slog.String("from_state", string(fromState)),
-		slog.String("reason", offPathReasonOffRamp),
+		slog.String("reason", reason),
 		slog.String("error_code", errorCode),
 		slog.Float64("confidence", confidence),
 	)
 	ev := newOrchestratorEvent(store.OffPathEntered, map[string]any{
 		"from_state": string(fromState),
-		"reason":     offPathReasonOffRamp,
+		"reason":     reason,
 		"error_code": errorCode,
 		"confidence": confidence,
 	}, 0)
@@ -364,6 +446,7 @@ func (o *Orchestrator) maybeOffRamp(
 	ctx context.Context,
 	sid app.SessionID,
 	state app.StatePath,
+	w world.World,
 	input string,
 	code intent.ErrorCode,
 	confidence float64,
@@ -399,7 +482,7 @@ func (o *Orchestrator) maybeOffRamp(
 		)
 	}
 
-	answer, err := o.askOffPathVoiced(ctx, sid, input, o.offRampVoice(st))
+	answer, err := o.askOffPathVoiced(ctx, sid, input, o.offRampVoice(st), o.offRampScopeForState(state, st, w, allowedNames))
 	if err != nil {
 		// The off-ramp could not produce an answer. Fall back to the ordinary
 		// rejection so the user is not left with a silent turn.

@@ -1,6 +1,17 @@
 # Story: Demo — @kitsoki GitHub loop slidey composite
 
-**Status:** Draft v1. Nothing implemented yet.
+**Status:** Draft v1. The deliverable (one composited, QA-gated slidey
+deck) is not shipped, but substantial capture/render scaffolding already
+exists and should not be re-authored from scratch: `tools/runstatus/src/tour/github-demo-manifest.ts`
+(the Act 1 storyboard beats over a static GitHub-thread fixture),
+`tools/runstatus/tests/playwright/github-demo-issuepr.spec.ts` (Act 1
+capture), `github-demo-act2-rrweb-capture.spec.ts` (Act 2, the kitsoki web
+viewer side), and `github-demo-composite.spec.ts` (the Act 3 slidey
+composite, gated on both rrweb clips existing; SKIPs safely if not — see
+that file's doc comment). None of it has been run to a finished, checked-in
+deck (outputs are gitignored under `.artifacts/github-demo/`), and the
+`features/` tour-manifest registration this proposal's task 4.1 calls for is
+still outstanding.
 **Kind:**   story
 **Epic:**   kitsoki-github-agent.md
 

@@ -1,0 +1,38 @@
+{
+  "run_id": "persona-qa-slidey-architect-review",
+  "status": "needs_evidence",
+  "summary": "For a software architect who presents often, Slidey is strong for reproducible, visual, evidence-backed talks, but this example is not complete until the deck-maintenance scenario has proof-grade playback.",
+  "summary_counts": {
+    "passed": 3,
+    "warned": 1,
+    "failed": 1,
+    "total": 5
+  },
+  "checks": [
+    {
+      "id": "deck-as-code",
+      "status": "pass",
+      "summary": "Slidey JSON is reviewable and diffable enough for architecture decks."
+    },
+    {
+      "id": "visual-vocabulary",
+      "status": "pass",
+      "summary": "Scene types cover diagrams, tables, evidence, and playback without bespoke slide tooling."
+    },
+    {
+      "id": "playback-embedding",
+      "status": "warn",
+      "summary": "Two recorded rrweb clips can become standalone deck scenes; one placeholder clip was blocked."
+    },
+    {
+      "id": "layout-gates",
+      "status": "pass",
+      "summary": "Slidey exposes validation and audit commands that catch common rendering failures before a final video render."
+    },
+    {
+      "id": "asset-lifecycle",
+      "status": "fail",
+      "summary": "Published decks need proof-grade capture provenance for every playback scene, not just deck-local paths."
+    }
+  ]
+}

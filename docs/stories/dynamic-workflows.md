@@ -16,6 +16,11 @@ contains:
 - `validation.json` - the deterministic validation report.
 - `trace.jsonl` - the launch trace written when the workflow is opened.
 
+The receipt includes a top-level `model_policy` block with the effective
+`harness`, `profile`, `model`, `require_gpt55`, and `require_trace_model`
+settings. Reviewers can audit the worker policy from `workflow status` without
+opening `manifest.yaml`.
+
 Exported runs also write:
 
 - `README.md` - provenance and source-trace summary for the promoted story;
@@ -31,6 +36,31 @@ Create a draft from a free-text goal:
 ```sh
 kitsoki workflow create "implement dynamic workflows" --slug dynamic-workflows
 ```
+
+Create a draft from an operator-provided decomposition:
+
+```yaml
+goal: fix dynamic workflow audit problems
+slug: dynamic-workflow-audit
+items:
+  - id: tui-proof
+    title: TUI operation handle proof
+    owner_scope: internal/tui
+    gate: go test ./internal/tui -run 'Test.*Operation|Test.*Work' -count=1
+  - id: corpus-report
+    title: Demo corpus runner/report clarity
+    owner_scope: internal/testrunner/operation_demo_corpus_test.go
+    gate: go test ./internal/testrunner -run TestOperationDemoCorpus -count=1
+```
+
+```sh
+kitsoki workflow create --brief .context/dynamic-workflow-audit.yaml
+```
+
+Structured `items` preserve the supplied IDs, titles, owner scopes, and gates in
+the generated `punch-list/v1` manifest instead of replacing them with the
+generic `scope` / `implement` / `wire` / `test` phases. `gate` is emitted as the
+item's deterministic `gate_command`; use `verify` for richer verifier lists.
 
 Validate, export, or run the draft:
 
@@ -62,11 +92,42 @@ The Studio MCP server exposes the same receipt shape via:
 runnable command. The receipt also carries `events_path`, the lifecycle log
 written alongside the draft.
 
+`studio.ping` reports both the server build revision and the checkout `HEAD`.
+When they differ it returns `stale: true` plus a reload hint. `workflow.create`
+and `workflow.launch` refuse stale attached servers so a workflow is not
+generated or launched with an older MCP process.
+
+`workflow.create` accepts the same structured shape as `--brief`:
+
+```json
+{
+  "goal": "fix dynamic workflow audit problems",
+  "slug": "dynamic-workflow-audit",
+  "items": [
+    {
+      "id": "tui-proof",
+      "title": "TUI operation handle proof",
+      "owner_scope": "internal/tui",
+      "gate": "go test ./internal/tui -run 'Test.*Operation|Test.*Work' -count=1"
+    }
+  ]
+}
+```
+
 ## Evidence and limits
 
 Validation is deterministic. The current generator produces a conservative
-four-step plan and a `punch-list/v1` manifest, then validates the copied story
-package with `app.Load` plus the manifest linter.
+four-step plan when no structured items or recognized fan-out goal are supplied.
+It then validates the copied story package with `app.Load`, the manifest linter,
+and launch-readiness flow replay.
+
+Focused deterministic flow gates can name more than one fixture with repeated or
+comma-separated `--flows` values:
+
+```sh
+kitsoki test flows stories/punch-list/app.yaml \
+  --flows stories/punch-list/flows/happy_two_items.yaml,stories/punch-list/flows/skip_current_records.yaml
+```
 
 The export path is conservative: it mines the recorded session trace into
 starter flow/cassette files and writes an export report listing the review

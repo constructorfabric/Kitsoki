@@ -14,13 +14,15 @@ initial_state: core.prd_published
 initial_world:
   judge_mode: "human"
   core__workdir:               "."
-  core__prd__prd_file:         "docs/prd/speaker-notes-export.md"
+  core__prd__prd_file:         "/tmp/kitsoki-prd-fixtures/speaker-notes-export.md"
   core__design_durable_path:   "docs/proposals"
   core__design_doc_filename:   ""
   core__design_template_dir:   "docs/proposals/templates"
   core__design_ticket_dir:     "issues/features"
 
 host_handlers:
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
   host.ide.open_file:
     data: { ok: true, connected: false }
   host.agent.search:
@@ -37,7 +39,7 @@ host_handlers:
           ok: true
           submitted:
             items:
-              - { path: "docs/prd/speaker-notes-export.md", sections: "§5", rationale: "the PRD this design realizes" }
+              - { path: "/tmp/kitsoki-prd-fixtures/speaker-notes-export.md", sections: "§5", rationale: "the PRD this design realizes" }
       brief_check:
         data:
           ok: true

@@ -1,0 +1,71 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_product_journey_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: created
+            run_id: run-budget
+            run_dir: .artifacts/product-journey/run-budget
+            deck_path: .artifacts/product-journey/run-budget/deck.slidey.json
+            execution_plan_path: .artifacts/product-journey/run-budget/execution-plan.md
+            driver_plan_path: .artifacts/product-journey/run-budget/driver-plan.md
+            driver_journal_path: .artifacts/product-journey/run-budget/driver-journal.md
+            agent_brief_path: .artifacts/product-journey/run-budget/agent-brief.md
+            driver_handoff_path: .artifacts/product-journey/run-budget/driver-handoff.md
+            media_manifest_path: .artifacts/product-journey/run-budget/media-manifest.json
+            scenario_outcomes_path: .artifacts/product-journey/run-budget/scenario-outcomes.md
+            scenario_count: 1
+            live_budget_minutes: 6
+            persona_starting_surface: terminal-first
+            persona_first_question: Can the driver stop on budget?
+            persona_evidence_emphasis: budgeted evidence
+            persona_escalation_trigger: budget exhaustion
+            persona_finding_bias: Prefer budget discipline.
+            proof_evidence_count: 0
+            demo_evidence_count: 0
+            finding_total_count: 0
+            strength_count: 0
+            weakness_count: 0
+            issue_count: 0
+            fix_count: 0
+            blocked_count: 0
+            missing_evidence_count: 5
+            missing_proof_evidence_count: 5
+            proof_minimum_evidence_count: 0
+            minimum_evidence_count: 5
+            missing_proof_summary: "bugfix: candidate_diff, regression_test_result"
+            driver_contract_summary: "Driver contract: 1 scenarios (bugfix); 1 missing-proof rows; 4 final gates."
+            next_driver_capture: "Next capture: bugfix/candidate_diff. Save a retained patch or diff reference."
+            next_driver_attach_command: "python3 tools/product-journey/run.py --attach-evidence --run-dir .artifacts/product-journey/run-budget --scenario bugfix --evidence-kind candidate_diff --evidence-path <path-or-retained-id>"
+            next_driver_blocker_command: "python3 tools/product-journey/run.py --record-blocker --run-dir .artifacts/product-journey/run-budget --scenario bugfix --title <blocker-title> --summary <why-this-scenario-could-not-be-captured>"
+
+steps:
+  - intent:
+      name: start
+      slots:
+        project: gears-rust
+        persona: core-maintainer
+        seed: live-budget-flow
+        scenarios: bugfix
+        live_budget_minutes: 6
+    expect_state: run_created
+    expect_world:
+      status: run_created
+      project: gears-rust
+      persona: core-maintainer
+      seed: live-budget-flow
+      scenario_scope: bugfix
+      run_scenario_count: 1
+      live_budget_minutes: 6
+      run_id: run-budget
+    expect_view_matches: "Scenario scope[\\s\\S]*bugfix[\\s\\S]*Scenario count[\\s\\S]*1[\\s\\S]*Live budget[\\s\\S]*6 min/scenario"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_product_journey_run }

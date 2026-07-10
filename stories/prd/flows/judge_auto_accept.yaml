@@ -46,6 +46,10 @@ host_handlers:
             confidence: 0.92
   host.artifacts_dir:
     data: { ok: true, path: ".artifacts/prd_references.md", message_id: "prd_references#1" }
+  host.starlark.run:
+    by_call:
+      publish:
+        data: { ok: true, prd_file: ".artifacts/prd.md", publish_status: "done" }
   host.agent.task:
     data:
       ok: true

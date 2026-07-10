@@ -1,0 +1,31 @@
+# background_operation — start a deterministic background operation and let its
+# delayed host.run completion exit the story with a terminal artifact.
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world: {}
+
+host_handlers:
+  host.run:
+    data:
+      stdout: "report written\n"
+      exit_code: 0
+      ok: true
+    delay: "10s"
+  host.inbox.add:
+    data: { ok: true }
+
+turns:
+  - intent: { name: start, slots: {} }
+    advance_clock: "11s"
+    expect_state: done
+    expect_world:
+      status: "complete"
+      result_summary: "Background task produced a report."
+      result_path: ".artifacts/operation-demo/report.md"
+
+expect_terminal: true
+expect_operation_policy: background_task
+expect_operation_status: completed
+expect_terminal_artifact: result_path
+expect_no_errors: true

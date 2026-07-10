@@ -14,7 +14,11 @@ initial_state: design
 initial_world:
   judge_mode: "human"
 
+starlark_inspect_cassette: ../cassettes/design_tamagotchi.inspect.yaml
+
 host_handlers:
+  host.fs.writable_dir:
+    data: { path: "docs/proposals", used_fallback: false }
   host.ide.open_file:
     data: { ok: true, connected: true }
   host.agent.decide:
@@ -60,18 +64,6 @@ host_handlers:
         follow_up_questions: []
   host.run:
     by_call:
-      name_slug:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"tamagotchi-pet-ui","workspace":"docs/proposals/.workspace/tamagotchi-pet-ui"}'
-          stdout_json: { slug: "tamagotchi-pet-ui", workspace: "docs/proposals/.workspace/tamagotchi-pet-ui" }
-      uniquify:
-        data:
-          ok: true
-          exit_code: 0
-          stdout: '{"slug":"tamagotchi-pet-ui","workspace":"docs/proposals/.workspace/tamagotchi-pet-ui"}'
-          stdout_json: { slug: "tamagotchi-pet-ui", workspace: "docs/proposals/.workspace/tamagotchi-pet-ui" }
       publish:
         data:
           ok: true

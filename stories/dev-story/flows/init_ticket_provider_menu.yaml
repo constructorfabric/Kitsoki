@@ -1,0 +1,39 @@
+# init_ticket_provider_menu -- first-run onboarding chooses ticket capability
+# explicitly before any files are written. No host calls or LLMs.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: init
+initial_world:
+  init_target_path: "/srv/repos/acme-api"
+  init_project_id: "acme-api"
+  init_project_title: "Acme Api"
+  init_stack: "go project"
+  init_profile_status: "draft"
+  init_tracker: "github"
+  init_ticket_provider: "github"
+  init_ticket_repo: "acme/api"
+
+turns:
+  - intent: { name: select_ticket_provider, slots: { provider: "review" } }
+    expect_state: init_ticket_provider
+    expect_view_matches: "Full ticket capability"
+
+  - intent: { name: select_ticket_provider, slots: { provider: "local" } }
+    expect_state: init
+    expect_world:
+      init_ticket_provider: "local"
+      init_ticket_repo: ""
+    expect_view_matches: "local markdown / pasted reports"
+
+  - intent: { name: select_ticket_provider, slots: { provider: "review" } }
+    expect_state: init_ticket_provider
+
+  - intent: { name: select_ticket_provider, slots: { repo: "acme/api" } }
+    expect_state: init
+    expect_world:
+      init_ticket_provider: "github"
+      init_ticket_repo: "acme/api"
+    expect_view_matches: "GitHub Issues \\(acme/api\\)"
+
+expect_no_errors: true

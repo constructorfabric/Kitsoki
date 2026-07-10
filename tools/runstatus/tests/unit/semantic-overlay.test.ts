@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import { mount } from "@vue/test-utils";
 import SemanticOverlay from "../../src/components/SemanticOverlay.vue";
 import {
+  enrichSemanticMapFromDOM,
   formatLabel,
   toSemanticMap,
 } from "../../src/lib/semanticPlugins.js";
@@ -20,7 +21,15 @@ import type { SemanticSidecar, SemanticMap } from "../../src/lib/semanticPlugins
 const SIDECAR: SemanticSidecar = {
   plugin: "slidey",
   elements: [
-    { ref: "scene-2.title", bbox: [100, 50, 400, 80] },
+    {
+      ref: "scene-2.title",
+      kind: "field",
+      description: "The title field in the rendered scene",
+      selector: "[data-slidey-el='scene-2.title']",
+      text: "Quarterly Results",
+      data: { path: "scenes[1].title" },
+      bbox: [100, 50, 400, 80],
+    },
     { ref: "mystery", label: "Mystery box", bbox: [10, 10, 20, 20] },
     { ref: "no-box" }, // no bbox → not drawable as a positioned marker
   ],
@@ -50,6 +59,42 @@ describe("toSemanticMap", () => {
     expect(MAP.natural).toEqual({ width: 1280, height: 720 });
     expect(MAP.elements).toHaveLength(3);
   });
+
+  it("uses a sidecar-declared viewport when one exists", () => {
+    const map = toSemanticMap(
+      { plugin: "html-data", viewport: { width: 900, height: 500 }, elements: [] },
+      "mockup.html",
+      { width: 1280, height: 720 }
+    );
+    expect(map.natural).toEqual({ width: 900, height: 500 });
+  });
+});
+
+describe("enrichSemanticMapFromDOM", () => {
+  it("resolves selector-only HTML fields to bbox and text", () => {
+    const root = document.implementation.createHTMLDocument("fixture");
+    root.body.innerHTML = `<section><span data-field="status">Blocked</span></section>`;
+    const field = root.querySelector("[data-field='status']") as HTMLElement;
+    Object.defineProperty(field, "getBoundingClientRect", {
+      value: () => ({ left: 12, top: 34, width: 56, height: 20 }),
+    });
+    const map = toSemanticMap(
+      {
+        plugin: "html-data",
+        elements: [{ ref: "issue.status", selector: "[data-field='status']" }],
+      },
+      "issue.html",
+      { width: 800, height: 600 }
+    );
+
+    const enriched = enrichSemanticMapFromDOM(map, root);
+    expect(enriched.elements[0]).toMatchObject({
+      ref: "issue.status",
+      selector: "[data-field='status']",
+      text: "Blocked",
+      bbox: [12, 34, 56, 20],
+    });
+  });
 });
 
 describe("SemanticOverlay", () => {
@@ -70,7 +115,12 @@ describe("SemanticOverlay", () => {
       kind: string;
       plugin: string;
       ref: string;
+      semantic_kind: string;
       label: string;
+      description: string;
+      selector: string;
+      text: string;
+      data: Record<string, unknown>;
       bbox: { x: number; y: number; width: number; height: number };
       point: { x: number; y: number };
     };
@@ -78,6 +128,11 @@ describe("SemanticOverlay", () => {
       kind: "semantic_element",
       plugin: "slidey",
       ref: "scene-2.title",
+      semantic_kind: "field",
+      description: "The title field in the rendered scene",
+      selector: "[data-slidey-el='scene-2.title']",
+      text: "Quarterly Results",
+      data: { path: "scenes[1].title" },
       bbox: { x: 100, y: 50, width: 400, height: 80 },
       id: "scene-2.title",
       label: "scene-2 · title",

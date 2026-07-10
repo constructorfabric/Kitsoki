@@ -1,0 +1,35 @@
+# never_silent_infra_error — failure class: INFRA-level host failure (missing
+# handler / handler crash — (Result{}, error), not a domain host.Result.Error).
+#
+# decompose_error.yaml pins the domain-error path; this fixture pins that an
+# infrastructure failure in the decomposer agent surfaces exactly the same
+# way: the engine sets world.last_error from the Go error, decompose_error
+# auto-bails to @exit:needs-human, and the exit carries the non-blank reason.
+# A regression that swallows infra errors (leaving last_error blank or
+# looping) fails here.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: configure
+initial_world:
+  base_branch: main
+  main_worktree_path: "."
+  decomposition_path: ".artifacts/deliver/never-silent-infra-error.yaml"
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      decomposer:
+        infra_error: "no handler registered for namespace host.agent.task"
+
+turns:
+  - intent:
+      name: start
+      slots:
+        epic_path: "stories/deliver/testdata/fixture_epic.md"
+    expect_state: __exit__needs-human
+    expect_world:
+      last_error: "no handler registered for namespace host.agent.task"
+
+expect_terminal: true
+expect_no_errors: true

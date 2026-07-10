@@ -8,15 +8,16 @@
 import * as vscode from 'vscode';
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as net from 'node:net';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { resolveBinary, binaryEnv, spawnErrorHint, resolveStoriesDir } from './backend-resolve';
+export { resolveBinary, binaryEnv, spawnErrorHint, resolveStoriesDir } from './backend-resolve';
 
 export interface BackendConfig {
   binaryPath: string; // "" => "kitsoki" on PATH
   flow: string;
   hostCassette: string;
   storiesDir: string;
+  mode: string; // "" => backend default (staged); "one-shot" auto-advances synthetic gates
+  ticketRepo: string; // "" => local issues/bugs/*.md filing; owner/repo => GitHub issues (needs GH_TOKEN)
 }
 
 /**
@@ -40,6 +41,8 @@ export function readConfig(): BackendConfig {
     flow: (cfg.get<string>('flow') ?? '').trim(),
     hostCassette: (cfg.get<string>('hostCassette') ?? '').trim(),
     storiesDir: (cfg.get<string>('storiesDir') ?? '').trim(),
+    mode: (cfg.get<string>('mode') ?? '').trim(),
+    ticketRepo: (cfg.get<string>('ticketRepo') ?? '').trim(),
   };
 }
 
@@ -61,46 +64,6 @@ export function allocatePort(): Promise<number> {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-/**
- * Resolve the kitsoki binary to spawn. An explicit `binaryPath` setting always
- * wins. Otherwise, when the workspace is a kitsoki checkout, prefer its freshly
- * built `bin/kitsoki` — that's both the dev-correct (newest) binary AND an
- * absolute path, so it works regardless of the spawner's PATH. Only when neither
- * applies do we fall back to bare `kitsoki` (resolved against {@link binaryEnv}'s
- * augmented PATH).
- */
-export function resolveBinary(binaryPath: string, cwd: string | undefined): string {
-  if (binaryPath) return binaryPath;
-  if (cwd) {
-    const local = path.join(cwd, 'bin', 'kitsoki');
-    try {
-      if (fs.existsSync(local)) return local;
-    } catch {
-      /* fall through to PATH */
-    }
-  }
-  return 'kitsoki';
-}
-
-/**
- * Build the child's environment with a PATH that GUI-launched editors lack. On
- * macOS a Dock/Finder-launched VS Code inherits only the minimal system PATH
- * (`/usr/bin:/bin:...`), so a `kitsoki` in `~/.local/bin` (or Homebrew) is
- * invisible and `spawn('kitsoki')` ENOENTs. Append the usual install dirs so a
- * PATH-installed binary still resolves. A no-op when they're already present.
- */
-export function binaryEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const extra = [
-    path.join(os.homedir(), '.local', 'bin'),
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    '/usr/local/go/bin',
-  ];
-  const parts = (base.PATH ?? '').split(path.delimiter).filter(Boolean);
-  for (const dir of extra) if (!parts.includes(dir)) parts.push(dir);
-  return { ...base, PATH: parts.join(path.delimiter) };
-}
 
 /**
  * Manages the lifecycle of one `kitsoki web` backend. `start()` is idempotent
@@ -183,7 +146,20 @@ export class Backend {
     const args = ['web', '--addr', `127.0.0.1:${port}`];
     if (cfg.flow) args.push('--flow', cfg.flow);
     if (cfg.hostCassette) args.push('--host-cassette', cfg.hostCassette);
-    if (cfg.storiesDir) args.push('--stories-dir', cfg.storiesDir);
+    const storiesDir = resolveStoriesDir(cfg.storiesDir, this.cwd);
+    if (storiesDir) {
+      if (!cfg.storiesDir) this.out.appendLine(`[backend] auto-discovered stories dir: ${storiesDir}`);
+      args.push('--stories-dir', storiesDir);
+    }
+    if (cfg.mode) args.push('--mode', cfg.mode);
+    // `kitsoki web`'s own --ticket-repo default is "constructorfabric/Kitsoki"
+    // (kitsoki's OWN dogfood repo — see cmd/kitsoki/web.go) — wrong for an
+    // arbitrary project opened in this extension, and it silently requires
+    // GH_TOKEN/GITHUB_TOKEN the operator likely hasn't set. Always pass the
+    // flag explicitly so the extension's own default is LOCAL filing
+    // (issues/bugs/*.md under the workspace) unless the operator opts into a
+    // real repo via kitsoki.ticketRepo.
+    args.push('--ticket-repo', cfg.ticketRepo);
 
     // When the extension's IDE-MCP server is up, seed CLAUDE_CODE_SSE_PORT so the
     // backend's IDE link discovers our lock and dials this window outright (the
@@ -221,11 +197,9 @@ export class Backend {
     // promise that rejects on 'error' with an actionable message instead.
     const spawnFailed = new Promise<never>((_, reject) => {
       child.once('error', (err) => {
-        const hint =
-          (err as NodeJS.ErrnoException).code === 'ENOENT'
-            ? ` — '${bin}' not found. Build it (\`make build\`) or set the kitsoki.binaryPath setting to an absolute path.`
-            : '';
+        const hint = spawnErrorHint(bin, err as NodeJS.ErrnoException);
         this.out.appendLine(`[backend] spawn error: ${err.message}${hint}`);
+        void vscode.window.showErrorMessage(`Kitsoki: could not launch the backend${hint || `: ${err.message}`}`);
         reject(new Error(`could not launch kitsoki backend: ${err.message}${hint}`));
       });
     });

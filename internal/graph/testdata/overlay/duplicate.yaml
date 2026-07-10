@@ -1,0 +1,7 @@
+nodes:
+  - schema: graph/requirement/v0
+    id: req-one
+    title: Requirement one, redeclared
+    status: draft
+    visibility: public
+    statement: Redeclares the base fixture's req-one id — must be rejected.

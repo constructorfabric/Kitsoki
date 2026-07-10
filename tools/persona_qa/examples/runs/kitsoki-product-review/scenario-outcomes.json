@@ -1,0 +1,37 @@
+{
+  "run_id": "persona-qa-kitsoki-product-review",
+  "items": [
+    {
+      "scenario": "explain-delivery-loop",
+      "outcome": "needs_evidence",
+      "present_evidence_count": 2,
+      "required_evidence_count": 3,
+      "finding_counts": {
+        "strength": 1,
+        "weakness": 0,
+        "issue": 0,
+        "fix": 0,
+        "blocked": 0
+      }
+    },
+    {
+      "scenario": "verify-ui-evidence",
+      "outcome": "needs_evidence",
+      "present_evidence_count": 1,
+      "required_evidence_count": 2,
+      "finding_counts": {
+        "strength": 1,
+        "weakness": 1,
+        "issue": 0,
+        "fix": 1,
+        "blocked": 0
+      }
+    }
+  ],
+  "summary": {
+    "validated": 0,
+    "captured": 0,
+    "planned": 2,
+    "blocked": 0
+  }
+}

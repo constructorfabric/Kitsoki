@@ -10,12 +10,19 @@ import (
 // status-comment beat instead of loading a story app.yaml.
 const StoryPRBeat = "pr-beat"
 
+// StoryPRRebase is the sentinel story value for autonomous PR rebase/conflict
+// resolution requests.
+const StoryPRRebase = "pr-rebase"
+
 // Route is one label->story mapping: the story app.yaml path (or the StoryPRBeat
 // sentinel) plus world seed keys merged into the spawned session's
 // initial_world.
 type Route struct {
-	Story string
-	World map[string]any
+	Story       string
+	World       map[string]any
+	AppPath     string
+	ProjectRoot string
+	BeatFixture string
 }
 
 // LabelStoryMap is the configured router (epic: "configured, not hard-coded").
@@ -25,12 +32,14 @@ type LabelStoryMap map[string]Route
 //
 //	bug     -> stories/bugfix    (judge_mode: llm_then_human)
 //	feature -> stories/dev-story  (ticket_type: feature)
-//	pr      -> the minimal pr-autopilot beat
+//	pr        -> the minimal pr-autopilot beat
+//	pr_rebase -> the hosted PR rebase/conflict-resolution beat
 func DefaultLabelStoryMap() LabelStoryMap {
 	return LabelStoryMap{
-		"bug":     {Story: "stories/bugfix", World: map[string]any{"judge_mode": "llm_then_human"}},
-		"feature": {Story: "stories/dev-story", World: map[string]any{"ticket_type": "feature"}},
-		"pr":      {Story: StoryPRBeat, World: map[string]any{}},
+		"bug":       {Story: "stories/bugfix", World: map[string]any{"judge_mode": "llm_then_human"}},
+		"feature":   {Story: "stories/dev-story", World: map[string]any{"ticket_type": "feature"}},
+		"pr":        {Story: StoryPRBeat, World: map[string]any{}},
+		"pr_rebase": {Story: StoryPRRebase, World: map[string]any{}},
 	}
 }
 
@@ -41,6 +50,11 @@ func DefaultLabelStoryMap() LabelStoryMap {
 // should ask for guidance rather than guess.
 func (m LabelStoryMap) Classify(mention Mention, labels []string) (Route, bool) {
 	if mention.Item.Kind == "pr" {
+		if wantsPRRebase(mention.Item.Title) {
+			if r, ok := m["pr_rebase"]; ok {
+				return r, true
+			}
+		}
 		r, ok := m["pr"]
 		return r, ok
 	}
@@ -50,6 +64,19 @@ func (m LabelStoryMap) Classify(mention Mention, labels []string) (Route, bool) 
 	}
 	r, ok := m[class]
 	return r, ok
+}
+
+func wantsPRRebase(text string) bool {
+	t := strings.ToLower(strings.TrimSpace(text))
+	if t == "" {
+		return false
+	}
+	if strings.Contains(t, "rebase") {
+		return true
+	}
+	hasConflict := strings.Contains(t, "conflict")
+	hasResolve := strings.Contains(t, "resolve") || strings.Contains(t, "fix")
+	return hasConflict && hasResolve
 }
 
 func classifyMentionIssue(labels []string, title string) string {

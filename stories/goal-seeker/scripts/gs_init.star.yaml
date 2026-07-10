@@ -1,0 +1,6 @@
+inputs:
+  work_dir: { type: string, required: true }   # .artifacts/goal/<slug>/ — where log.jsonl + derived artifacts live
+  goal_dir: { type: string }                   # optional immutable fixture/source dir for seed log inputs
+  reset:    { type: bool }                      # true ⇒ TEST-FIXTURE-ONLY destructive reset of log + derived artifacts
+outputs:
+  log_path: { type: string }   # the ensured log path

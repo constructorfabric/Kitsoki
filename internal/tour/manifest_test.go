@@ -104,7 +104,7 @@ func TestDriveAction_Validate(t *testing.T) {
 		{Type: "nope"},           // unknown
 	}
 	for _, a := range bad {
-		if err := a.validate(); err == nil {
+		if err := a.Validate(); err == nil {
 			t.Errorf("expected %q to be invalid", a.Type)
 		}
 	}
@@ -116,7 +116,7 @@ func TestDriveAction_Validate(t *testing.T) {
 		{Type: DriveRevealTurn},
 	}
 	for _, a := range good {
-		if err := a.validate(); err != nil {
+		if err := a.Validate(); err != nil {
 			t.Errorf("expected %q to be valid: %v", a.Type, err)
 		}
 	}

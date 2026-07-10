@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -115,6 +116,46 @@ func TestSession_ContinueDirectIntent(t *testing.T) {
 	assert.Equal(t, "cloakroom", shown["state"])
 }
 
+func TestSession_ContinueAutoDrivesBackgroundOperation(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "sessions.db")
+	appPath := writeSessionOperationDriveApp(t)
+
+	_, err := runKitsoki(t, "session", "create",
+		"--app", appPath,
+		"--db", dbPath,
+		"--key", "jira:OP-1",
+	)
+	require.NoError(t, err)
+
+	stdout, err := runKitsoki(t, "session", "continue",
+		"--app", appPath,
+		"--db", dbPath,
+		"--key", "jira:OP-1",
+		"--intent", "begin",
+	)
+	require.NoError(t, err)
+	var outcome map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &outcome))
+	assert.Equal(t, "completed", outcome["mode"])
+	assert.Equal(t, "done", outcome["new_state"])
+	op, ok := outcome["operation_drive"].(map[string]any)
+	require.True(t, ok, "operation_drive summary should be present: %#v", outcome["operation_drive"])
+	assert.Equal(t, float64(1), op["turns"])
+	assert.Equal(t, "operation-completed", op["stop_reason"])
+	assert.Equal(t, "accept", op["last_intent"])
+
+	stdout, err = runKitsoki(t, "session", "show",
+		"--app", appPath,
+		"--db", dbPath,
+		"--key", "jira:OP-1",
+	)
+	require.NoError(t, err)
+	var shown map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &shown))
+	assert.Equal(t, "done", shown["state"])
+}
+
 // TestSession_List filters by transport and returns only matching sessions.
 func TestSession_List(t *testing.T) {
 	dir := t.TempDir()
@@ -148,6 +189,61 @@ func TestSession_List(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &listed))
 	rows, _ = listed["sessions"].([]any)
 	assert.Len(t, rows, 3)
+}
+
+func writeSessionOperationDriveApp(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	appPath := filepath.Join(dir, "app.yaml")
+	const body = `app:
+  id: session-operation-drive-test
+  version: 0.1.0
+  title: "Session Operation Drive Test"
+
+operations:
+  demo_run:
+    title: "Demo Run"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    terminal_artifact: done_artifact
+
+world:
+  done_artifact: { type: any, default: null }
+
+intents:
+  begin:
+    title: "Begin"
+  accept:
+    title: "Accept"
+
+root: idle
+
+states:
+  idle:
+    view: "Idle."
+    on:
+      begin:
+        - target: work
+          operation: demo_run
+
+  work:
+    view: "Working."
+    on:
+      accept:
+        - target: done
+
+  done:
+    terminal: true
+    view: "Done."
+    on_enter:
+      - set:
+          done_artifact:
+            summary_title: "Done"
+            summary_markdown: "Operation finished."
+`
+	require.NoError(t, os.WriteFile(appPath, []byte(body), 0o644))
+	return appPath
 }
 
 // TestSession_BindKey adds a second external key to an existing session.

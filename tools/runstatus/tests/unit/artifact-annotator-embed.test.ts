@@ -74,7 +74,7 @@ describe("ArtifactAnnotator live-embed (slidey)", () => {
       plugin: "slidey",
       ref: "9/src", // the exact element the operator pointed at
       label: "image",
-      bbox: [10, 70, 600, 400],
+      bbox: { x: 10, y: 70, width: 600, height: 400 },
     });
   });
 });

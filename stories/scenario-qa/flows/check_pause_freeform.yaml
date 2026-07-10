@@ -1,0 +1,92 @@
+# check_pause_freeform — pause=each-leg also works as a free-text qualifier
+# parsed by scripts/parse_request.star (not just the structured `check`
+# intent's `pause:` slot — see check_all_transports.yaml for that path).
+# Every OTHER check_request/preview_request fixture in this story stubs
+# host.starlark.run entirely by invoke id, which never exercises
+# parse_request.star's real key=value extraction for `pause=`; leaving
+# host.starlark.run OUT of host_handlers here (same pattern as
+# preview_transport_suite.yaml) lets parse_check_request AND
+# summarize_transport_suite run for real, so a regression in the `pause`
+# qualifier's parsing shows up as a wrong `world.pause`, not a green test
+# over a stub that ignores the input entirely. `preview_request` is a much
+# shorter real-script pipeline than `check_request` (no execute/judge/
+# recording loop to also stub), so it is the narrow surface for this.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      preview_transport_suite:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            schema: kitsoki/persona-qa-transport-suite/v1
+            status: ready
+            summary:
+              scenario_count: 1
+              requested_transports: [tui, web]
+              transport_count: 2
+              leg_count: 2
+              skipped_count: 0
+            scenarios:
+              - scenario: bugfix
+                label: Bug fix workflow
+                task: Reproduce a reported product bug, capture evidence, and verify whether the fix path is clear.
+                applicable_transports: [tui, web]
+                skipped_transports: []
+            legs:
+              - leg_id: "bugfix::tui"
+                scenario: bugfix
+                transport: tui
+                transport_label: TUI
+                visual_surface: tui
+                evidence_contract: { evidence_kind: rendered_tui_frame, level: frame-level, primary_tool: render.tui_png }
+              - leg_id: "bugfix::web"
+                scenario: bugfix
+                transport: web
+                transport_label: Web
+                visual_surface: web
+                evidence_contract: { evidence_kind: browser_screenshot, level: frame-level, primary_tool: visual.snapshot }
+
+turns:
+  # The free-text `pause=each-leg` qualifier (parsed for REAL by
+  # parse_request.star, not stubbed) overrides the "auto" default.
+  - intent:
+      name: preview_request
+      slots:
+        request: "scenario=bugfix transport=tui,web pause=each-leg"
+    expect_state: idle
+    expect_world:
+      mode: catalog
+      scenario_ref: bugfix
+      transport_arg: tui,web
+      pause: each-leg
+      suite_status: ready
+      suite_leg_count: 2
+      status: preview_ready
+    expect_host_calls:
+      - handler: host.run
+        args: { call: preview_transport_suite }
+      - handler: host.starlark.run
+        args: { call: parse_check_request }
+      - handler: host.starlark.run
+        args: { call: summarize_transport_suite }
+    expect_no_host_calls: [host.agent.task]
+
+  # A second request with no `pause=` qualifier is STICKY — pause stays at
+  # "each-leg", exactly like every other qualifier (transport, persona,
+  # target, seed, profile) that defaults to `world.<field>` when omitted
+  # rather than resetting to the story's baseline default.
+  - intent:
+      name: preview_request
+      slots:
+        request: "scenario=bugfix transport=tui,web"
+    expect_state: idle
+    expect_world:
+      pause: each-leg
+
+expect_no_errors: true

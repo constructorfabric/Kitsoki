@@ -1,0 +1,59 @@
+# preflight_triage_already_fixed_short_circuits — auto_triage pre-flight
+# (default ON) catches an already-fixed bug BEFORE any maker budget is spent.
+#
+# A fresh full-mode autostart (here via the work_ticket NL re-entry idiom —
+# seeding initial_state: idle bypasses on_enter, see idle.yaml) provisions the
+# worktree, then Step 3 emits the internal `preflight_triage` instead of
+# `start`: the read-only triager runs once against the fresh worktree and
+# verdicts ALREADY-FIXED. Because judge_mode is non-human, triaging auto-fires
+# `accept`, and the accept arc's ALREADY-FIXED arm SHORT-CIRCUITS to
+# @exit:triaged — host.agent.task (the reproducer) is deliberately NOT stubbed
+# here, proving the reproducer/judge/maker chain never runs for a bug that no
+# longer exists. bugfix_mode stays "full" throughout: this is the pipeline's
+# pre-flight, not triage-only mode.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  judge_mode: "llm_then_human"
+
+host_handlers:
+  host.append_to_file: { data: { ok: true, message_id: "msg-1" } }
+  host.inbox.add:       { data: { ok: true, id: "ib-1" } }
+  host.git_worktree:    { data: { ok: true, log: "created" } }
+  host.agent.codeact:
+    data:
+      ok: true
+      terminated: "done"
+      payload:
+        verdict:          "ALREADY-FIXED"
+        confidence:       0.93
+        summary_title:    "ALREADY-FIXED — guard landed with a regression test"
+        evidence:         "internal/widget/render.go:42 now clamps the index; TestRenderClampsIndex pins the fixed behavior."
+        summary_markdown: "The cited off-by-one no longer exists; a regression test asserts the fixed behavior. Recommend closing as fixed."
+        suggested_action: "close as fixed"
+        fixed_in_ref:     "internal/widget/render.go:42"
+        involved_components:
+          - { name: "internal/widget/render.go", reason: "clamp applied" }
+      steps: []
+
+turns:
+  # work_ticket seeds the ticket and re-fires idle.on_enter for real →
+  # worktree provisioned → preflight_triage → triaging binds ALREADY-FIXED →
+  # non-human judge auto-accepts → @exit:triaged. All in one turn; the fix
+  # pipeline never starts.
+  - intent:
+      name: work_ticket
+      slots:
+        ticket_id:    "TKT-PREFLIGHT-1"
+        ticket_title: "Off-by-one in widget render (fixed upstream last week)"
+    expect_state: __exit__triaged
+    expect_world:
+      bugfix_mode: "full"
+      status:      "triaged"
+    expect_world_final:
+      status: "triaged"
+
+expect_terminal: true
+expect_no_errors: true

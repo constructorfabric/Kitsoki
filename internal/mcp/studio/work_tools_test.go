@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -134,17 +136,8 @@ func TestGitHubInboxSyncFeedsStudioWork(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, res.IsError, "session.new: %s", contentText(res))
 
-	fr := &studioFakeRunner{responses: map[string]studioFakeResp{
-		"gh --version": {stdout: "gh version 2.x\n"},
-		"gh issue list --repo acme/repo --state open --assignee @me --limit 10 --json number,title,assignees,url": {
-			stdout: `[{"number":7,"title":"Assigned issue","url":"https://github.com/acme/repo/issues/7","assignees":[{"login":"brad"}]}]`,
-		},
-		"gh pr list --repo acme/repo --state open --search review-requested:@me --limit 10 --json number,title,author,url": {
-			stdout: `[{"number":42,"title":"Review this","url":"https://github.com/acme/repo/pull/42","author":{"login":"alice"}}]`,
-		},
-	}}
-	restore := host.SetExecRunnerForTest(fr.run)
-	defer restore()
+	restoreAPI := stubStudioGitHubInboxAPI(t, "10")
+	defer restoreAPI()
 
 	res, err = callTool(ctx, cs, "inbox.sync_github", map[string]any{
 		"handle": "github-sync",
@@ -220,6 +213,46 @@ func TestGitHubInboxSyncFeedsStudioWork(t *testing.T) {
 	for _, it := range withSkipped.Items {
 		assert.False(t, it.Inserted)
 	}
+}
+
+func stubStudioGitHubInboxAPI(t *testing.T, wantLimit string) func() {
+	t.Helper()
+	t.Setenv("GH_TOKEN", "test-token")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodGet, r.Method)
+		require.Equal(t, "/search/issues", r.URL.Path)
+		assert.Equal(t, wantLimit, r.URL.Query().Get("per_page"))
+		q := r.URL.Query().Get("q")
+		switch {
+		case strings.Contains(q, "is:issue"):
+			writeStudioJSON(t, w, map[string]any{"items": []map[string]any{{
+				"number":    7,
+				"title":     "Assigned issue",
+				"html_url":  "https://github.com/acme/repo/issues/7",
+				"assignees": []map[string]any{{"login": "brad"}},
+			}}})
+		case strings.Contains(q, "is:pr"):
+			writeStudioJSON(t, w, map[string]any{"items": []map[string]any{{
+				"number":   42,
+				"title":    "Review this",
+				"html_url": "https://github.com/acme/repo/pull/42",
+				"user":     map[string]any{"login": "alice"},
+			}}})
+		default:
+			t.Fatalf("unexpected search query: %q", q)
+		}
+	}))
+	restore := host.SetGitHubAPIForTest(srv.URL, srv.Client())
+	return func() {
+		restore()
+		srv.Close()
+	}
+}
+
+func writeStudioJSON(t *testing.T, w http.ResponseWriter, v any) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	require.NoError(t, json.NewEncoder(w).Encode(v))
 }
 
 // TestChatShowLastNPaginatesTranscript verifies chat.show returns only the last

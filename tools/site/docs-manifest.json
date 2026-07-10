@@ -4,17 +4,118 @@
   "branch": "main",
   "sections": [
     {
-      "title": "Start here",
+      "title": "Evaluate and install",
       "items": [
         { "from": "docs/evaluate-kitsoki.md", "to": "guide/evaluate-kitsoki.md" },
-        { "from": "docs/start-here.md", "to": "guide/start-here.md" },
         { "from": "docs/getting-started.md", "to": "guide/getting-started.md" }
+      ]
+    },
+    {
+      "title": "Architecture",
+      "groups": [
+        {
+          "title": "Start here",
+          "collapsed": false,
+          "items": [
+            { "from": "docs/architecture/README.md", "to": "guide/architecture/index.md", "title": "Architecture" },
+            { "from": "docs/architecture/concept.md", "to": "guide/architecture/concept.md", "title": "Concept" },
+            { "from": "docs/architecture/overview.md", "to": "guide/architecture/overview.md", "title": "System map" },
+            { "from": "docs/architecture/prior-art.md", "to": "guide/architecture/prior-art.md", "title": "Prior art" }
+          ]
+        },
+        {
+          "title": "Runtime core",
+          "items": [
+            { "from": "docs/architecture/hosts.md", "to": "guide/architecture/hosts.md", "title": "Host boundary" },
+            { "from": "docs/architecture/hosts/README.md", "to": "guide/architecture/hosts/index.md", "title": "Host handlers" },
+            { "from": "docs/architecture/hosts/local.md", "to": "guide/architecture/hosts/local.md", "title": "Local hosts" },
+            { "from": "docs/architecture/hosts/agent.md", "to": "guide/architecture/hosts/agent.md", "title": "Agent hosts" },
+            { "from": "docs/architecture/hosts/operator.md", "to": "guide/architecture/hosts/operator.md", "title": "Operator hosts" },
+            { "from": "docs/architecture/hosts/transports-artifacts.md", "to": "guide/architecture/hosts/transports-artifacts.md", "title": "Transport and artifact hosts" },
+            { "from": "docs/architecture/starlark.md", "to": "guide/architecture/starlark.md", "title": "Starlark" },
+            { "from": "docs/architecture/semantic-routing.md", "to": "guide/architecture/semantic-routing.md", "title": "Semantic routing" },
+            { "from": "docs/architecture/system-prompt.md", "to": "guide/architecture/system-prompt.md", "title": "System prompt" },
+            { "from": "docs/architecture/room-workbench.md", "to": "guide/architecture/room-workbench.md", "title": "Room workbench" },
+            { "from": "docs/architecture/prompt-intercept.md", "to": "guide/architecture/prompt-intercept.md", "title": "Prompt interception" },
+            { "from": "docs/architecture/ambient-mining.md", "to": "guide/architecture/ambient-mining.md", "title": "Ambient mining" }
+          ]
+        },
+        {
+          "title": "Agents and studio",
+          "items": [
+            { "from": "docs/architecture/mcp-studio.md", "to": "guide/architecture/mcp-studio.md", "title": "MCP Studio" },
+            { "from": "docs/architecture/agent-plugin.md", "to": "guide/architecture/agent-plugin.md", "title": "Agent plugin contract" },
+            { "from": "docs/architecture/operator-ask.md", "to": "guide/architecture/operator-ask.md", "title": "Operator ask" }
+          ]
+        },
+        {
+          "title": "Integrations and surfaces",
+          "items": [
+            { "from": "docs/architecture/transports.md", "to": "guide/architecture/transports.md", "title": "Transports" },
+            { "from": "docs/architecture/github-agent.md", "to": "guide/architecture/github-agent.md", "title": "GitHub agent" },
+            { "from": "docs/architecture/artifact-annotation.md", "to": "guide/architecture/artifact-annotation.md", "title": "Artifact annotation" },
+            { "from": "docs/architecture/visual-ambient.md", "to": "guide/architecture/visual-ambient.md", "title": "Visual ambient input" }
+          ]
+        },
+        {
+          "title": "Project infrastructure",
+          "items": [
+            { "from": "docs/architecture/embeddings.md", "to": "guide/architecture/embeddings.md", "title": "Embeddings" },
+            { "from": "docs/architecture/decomposition-graph.md", "to": "guide/architecture/decomposition-graph.md", "title": "Decomposition graph" },
+            { "from": "docs/architecture/graph-grouping-taxonomy.md", "to": "guide/architecture/graph-grouping-taxonomy.md", "title": "Graph grouping" },
+            { "from": "docs/architecture/repo-history-training.md", "to": "guide/architecture/repo-history-training.md", "title": "Repo-history training" }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Guide",
+      "groups": [
+        {
+          "title": "Agents and harnesses",
+          "collapsed": false,
+          "items": [
+            { "from": "docs/guide/agents/README.md", "to": "guide/agents/index.md", "title": "Agent guide" },
+            { "from": "docs/guide/agents/mcp.md", "to": "guide/agents/mcp.md", "title": "Use Kitsoki through MCP" },
+            { "from": "docs/guide/agents/launch.md", "to": "guide/agents/launch.md", "title": "Agent launch" },
+            { "from": "docs/guide/agents/launch-policy.md", "to": "guide/agents/launch-policy.md", "title": "Launch policy" },
+            { "from": "docs/guide/agents/harness-profiles.md", "to": "guide/agents/harness-profiles.md", "title": "Harness profiles" },
+            { "from": "docs/guide/agents/backends.md", "to": "guide/agents/backends.md", "title": "Agent backends" },
+            { "from": "docs/guide/agents/providers.md", "to": "guide/agents/providers.md", "title": "Agent providers" },
+            { "from": "docs/guide/agents/cli.md", "to": "guide/agents/cli.md", "title": "Agent CLI" }
+          ]
+        },
+        {
+          "title": "Development and local operations",
+          "items": [
+            { "from": "docs/guide/development/README.md", "to": "guide/development/index.md", "title": "Development guide" },
+            { "from": "docs/guide/development/developer-guide.md", "to": "guide/development/developer-guide.md", "title": "Developer guide" },
+            { "from": "docs/guide/development/capsules.md", "to": "guide/development/capsules.md", "title": "Hermetic capsules" },
+            { "from": "docs/guide/development/credentials.md", "to": "guide/development/credentials.md", "title": "Credentials" }
+          ]
+        },
+        {
+          "title": "Integrations",
+          "items": [
+            { "from": "docs/guide/integrations/README.md", "to": "guide/integrations/index.md", "title": "Integration guide" },
+            { "from": "docs/guide/integrations/github-app-setup.md", "to": "guide/integrations/github-app-setup.md", "title": "GitHub App setup" }
+          ]
+        }
       ]
     },
     {
       "title": "Authoring stories",
       "items": [
-        { "from": "docs/stories/*.md", "to": "guide/stories/" }
+        { "from": "docs/stories/*.md", "to": "guide/stories/" },
+        { "from": "docs/stories/background-jobs/*.md", "to": "guide/stories/background-jobs/" }
+      ]
+    },
+    {
+      "title": "Testing and replay",
+      "items": [
+        { "from": "docs/persona-qa.md", "to": "guide/testing/persona-qa.md", "title": "Persona QA" },
+        { "from": "docs/tracing/*.md", "to": "guide/tracing/" },
+        { "from": "docs/testing/*.md", "to": "guide/testing/" }
       ]
     },
     {
@@ -24,22 +125,11 @@
       ]
     },
     {
-      "title": "Architecture",
-      "items": [
-        { "from": "docs/architecture/*.md", "to": "guide/architecture/" }
-      ]
-    },
-    {
-      "title": "Testing and replay",
-      "items": [
-        { "from": "docs/tracing/*.md", "to": "guide/tracing/" },
-        { "from": "docs/testing/*.md", "to": "guide/testing/" }
-      ]
-    },
-    {
       "title": "User interfaces",
       "items": [
         { "from": "docs/web/README.md", "to": "guide/web/index.md" },
+        { "from": "docs/web/tour.md", "to": "guide/web/tour.md" },
+        { "from": "docs/web/session-media-workbench.md", "to": "guide/web/session-media-workbench.md" },
         { "from": "docs/tui/*.md", "to": "guide/tui/" }
       ]
     },

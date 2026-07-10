@@ -17,6 +17,15 @@ human (`uncertain`).
 
 {{ args.artifact_body }}
 
+## Evidence is authoritative
+
+The evidence embedded in this artifact was produced mechanically — the
+deterministic GREEN→RED gate and the validator run the test suite before you
+are consulted. You have no workspace tools: do not re-run tests or commands.
+Judge the QUALITY and APPLICABILITY of the evidence as presented; if the
+evidence is missing or self-contradictory, that is grounds for **refine** or
+**uncertain**, not for re-verification.
+
 ## Decision criteria
 
 - **accept** — `bug_verified` is true, evidence is concrete (test, script,

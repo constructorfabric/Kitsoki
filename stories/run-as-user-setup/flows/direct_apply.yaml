@@ -1,0 +1,32 @@
+test_kind: flow
+app: ../app.yaml
+use_orchestrator: true
+initial_state: lobby
+initial_world:
+  operator_user: Brad.Smith
+  protected_root: /Users/Brad.Smith/code/kitsoki
+
+host_handlers:
+  host.run:
+    data:
+      ok: true
+      exit_code: 0
+      stdout: "ok: delegated account, wrappers, sudoers, capsule permissions, and write-deny probe passed"
+
+turns:
+  - intent:
+      name: apply
+      slots: {}
+    expect_state: ready
+    expect_world:
+      status: applied successfully
+      apply_ok: true
+      setup_summary: "This setup creates or reuses a Standard macOS account named kitsoki-agent as the delegated coding-agent user.\nKitsoki still owns the deterministic harness and merge/integration operations.\nThe backend CLIs run through root-owned wrappers as kitsoki-agent, so OS permissions can deny writes to /Users/Brad.Smith/code/kitsoki."
+    expect_host_calls:
+      - handler: host.starlark.run
+        args: { call: plan_run_as_user_setup_before_apply }
+      - handler: host.run
+        args: { call: apply_run_as_user_setup }
+    expect_view_matches: "Setup complete[\\s\\S]*Installed and verified[\\s\\S]*Use wrappers[\\s\\S]*Command transcript[\\s\\S]*ok: delegated account"
+
+expect_no_errors: true

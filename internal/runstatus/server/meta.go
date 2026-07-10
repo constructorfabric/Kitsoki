@@ -16,8 +16,8 @@ import "context"
 // MetaDriver is the per-session (or per-self) meta-mode seam. One MetaDriver is
 // bound to one chat scope: a live session's current state for the story.* modes,
 // or the cross-app SelfAppID for the kitsoki.* modes. The mode key
-// ("story.edit", "story.ask", "kitsoki.ask", …) selects the agent within that
-// scope.
+// ("story.edit", "story.ask", "story.improve", "kitsoki.ask", …) selects
+// the agent within that scope.
 type MetaDriver interface {
 	// Modes lists the meta modes available in this scope (from the bound
 	// AppDef's injected meta_modes), so the SPA can build its dropdown.

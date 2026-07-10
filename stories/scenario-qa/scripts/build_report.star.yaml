@@ -1,0 +1,10 @@
+inputs:
+  run_id:               { type: string, required: false }
+  run_dir:              { type: string, required: false }
+  scenario_ref:         { type: string, required: false }
+  scenario_description: { type: string, required: false }
+  leg_results:          { type: object, required: false }
+
+outputs:
+  report_path:    { type: string }
+  report_summary: { type: string }

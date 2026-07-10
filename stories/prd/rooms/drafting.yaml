@@ -216,35 +216,61 @@ states:
       accept:
         - target: "@exit:done"
           effects:
+            # Re-pin prd_artifact (already bound on_enter) purely so the
+            # static exit-requires gate sees an explicit `set:` in this arc's
+            # effects — see the comment above. This is NOT conditioned on the
+            # publish below succeeding: it's re-affirming the SAME draft
+            # object already in world, unrelated to whether the durable write
+            # lands. Positioned BEFORE the fallible invoke, and deliberately
+            # NOT joined by a `status:`/`last_error:` clear here — see the
+            # invoke's own comment for why those must be dispatch-time binds
+            # instead of a trailing unconditional `set:`.
+            - set:
+                prd_artifact: "{{ world.prd_artifact }}"
             # Publish the accepted PRD out of the gitignored per-PRD workspace
-            # into its durable docs home (prd_publish.py moves 004-prd.md to
+            # into its durable docs home (prd_publish.star copies 004-prd.md to
             # <publish_durable_path>/<slug>.md, collision-safe; on the amend
             # path it reuses prd_change_target in place). Binds prd_file = the
             # durable path so the run ends with the deliverable OUT of
             # .artifacts/. NOT once-guarded — a single accept fires it once.
             # on_error: drafting holds the operator here (with last_error) so a
             # publish failure is visible rather than silently exiting "done".
-            - invoke: host.run
+            #
+            # status is bound from the script's OWN publish_status output, not
+            # a trailing unconditional `set:`, on purpose: a transition arc's
+            # `set:` effects apply synchronously at machine-time, BEFORE this
+            # invoke is even dispatched (invokes only queue here; the
+            # orchestrator dispatches — and resolves on_error — afterwards).
+            # A plain `set: status: "done"` positioned after this invoke would
+            # therefore always fire, even when the write below fails and
+            # on_error redirects the room back to drafting — the exact silent
+            # "publish succeeded" false-positive product-journey QA finding O1
+            # caught (world.status flipped to "done", last_error blanked, with
+            # prd_file left empty, while the operator was actually parked back
+            # in drafting). `bind:` runs at dispatch time and only ever applies
+            # from a call's returned Data, which is nil on a domain error (a
+            # failing Starlark script never reaches its return statement) — so
+            # status only ever becomes "done" on an ACTUAL successful publish.
+            - invoke: host.starlark.run
               id: publish
               with:
-                cmd: python3
-                args:
-                  - "stories/prd/scripts/prd_publish.py"
-                  - "{{ world.prd_workspace }}"
-                  - "{{ world.prd_slug }}"
-                  - "{{ world.prd_artifact.file_path }}"
-                  - "{{ world.workdir }}"
-                  - "{{ world.publish_durable_path }}"
-                  - "{{ world.prd_change_target }}"
-                  - "{{ world.prd_doc_filename }}"
+                script: scripts/prd_publish.star
+                capabilities:
+                  fs:
+                    read: ["**"]
+                    write: ["**"]
+                inputs:
+                  workspace: "{{ world.prd_workspace }}"
+                  slug: "{{ world.prd_slug }}"
+                  draft_path: "{{ world.prd_artifact.file_path ?? '' }}"
+                  workdir: "{{ world.workdir }}"
+                  durable: "{{ world.publish_durable_path }}"
+                  change_target: "{{ world.prd_change_target }}"
+                  doc_filename: "{{ world.prd_doc_filename }}"
               bind:
-                prd_file: stdout_json.prd_file
+                prd_file: prd_file
+                status:   publish_status
               on_error: drafting
-            - set:
-                status:        "done"
-                prd_artifact:  "{{ world.prd_artifact }}"
-                refine_message: ""
-                last_error:    ""
 
       # Same inputs, revise the prose. Budget gate → @exit:abandoned.
       refine:

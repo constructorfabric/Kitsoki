@@ -1,0 +1,32 @@
+{
+  "overall": "fail",
+  "strict": false,
+  "server": {"cmd": "bin/kitsoki web --stories-dir stories --flow flows/onboarding.json", "base": "http://127.0.0.1:7746"},
+  "summary": {"error": 0, "warn": 2, "info": 0, "blocking": 0, "by_source": {"geometry": 1, "a11y": 0, "vision": 1}},
+  "findings": [
+    {
+      "source": "geometry",
+      "check": "layout:overlap",
+      "severity": "warn",
+      "surface": "home-welcome",
+      "viewport": "tablet",
+      "frame": "01-home-welcome@tablet.png",
+      "count": 1,
+      "frames": ["01-home-welcome@tablet.png"],
+      "detail": "Two chips overlap by 4px at tablet width.",
+      "recommendation": "Add a gap of 8px between filter chips."
+    },
+    {
+      "source": "vision",
+      "check": "layout:crowding",
+      "severity": "warn",
+      "surface": "home-welcome",
+      "viewport": "mobile",
+      "frame": "01-home-welcome@mobile.png",
+      "count": 1,
+      "frames": ["01-home-welcome@mobile.png"],
+      "detail": "Filter chips wrap awkwardly on narrow viewports.",
+      "recommendation": "Stack the chips vertically below 420px."
+    }
+  ]
+}

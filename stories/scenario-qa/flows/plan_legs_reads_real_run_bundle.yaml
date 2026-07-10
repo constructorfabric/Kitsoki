@@ -1,0 +1,104 @@
+# plan_legs_reads_real_run_bundle — regression coverage for a live bug: driving
+# `check` through a real studio MCP session bounced plan → on_error → idle
+# because scripts/plan_legs.star's ctx.fs.read of the run bundle's
+# driver-plan.json resolved against the WRONG root (the story's own directory,
+# stories/scenario-qa/, instead of the repo root where host.run's run.py
+# actually wrote .artifacts/product-journey/<run_id>/driver-plan.json).
+#
+# Every other flow fixture in this story stubs host.starlark.run entirely by
+# invoke id (see check_single_transport.yaml's header comment), so
+# plan_legs.star's REAL ctx.fs.read path was never exercised by any fixture —
+# a fully-stubbed plan_legs call can't catch a path-resolution regression in
+# the script it replaces. This fixture leaves host.starlark.run UNSTUBBED (no
+# by_call entry for it at all) so plan_legs / pick_leg / record_leg_result run
+# for real; only the run bundle's ctx.fs.read is served, via
+# starlark_inspect_cassette, from a driver-plan.json fixture whose contents
+# mirror tools/product-journey/run.py's real --transport output shape. A
+# resolution-root regression makes the real script ask the inspector for the
+# WRONG target string, which the cassette's exact-match replay reports as a
+# loud miss instead of silently succeeding.
+#
+# transport=all (2 legs) with pause=each-leg so the loop pauses at `recording`
+# after leg 0 without ever reaching build_report/host.run's deck step —
+# record_leg_result and pick_leg touch only world state (no ctx.fs), so no
+# further cassette interactions are needed to prove the fix. (pause=each-leg
+# is an explicit opt-out here, not the default: this fixture only wants to
+# prove plan_legs's real ctx.fs.read path, not exercise the auto-drive loop —
+# see check_all_transports_auto.yaml for that.)
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+starlark_inspect_cassette: ../cassettes/plan_legs_reads_real_run_bundle.inspect.yaml
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-real-fs-run
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-real-fs-run
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-real-fs-run/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-real-fs-run/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-real-fs-run/agent-brief.md
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["render_tui_png:frame-1"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+            blockers: []
+            summary: "Captured a render.tui_png frame showing the fixed state."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "TUI frame confirms the fix state."
+            cited_frames: ["frame-1.png"]
+            frames_dir: "evidence/gears-rust--core-maintainer/bugfix"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: bugfix
+        transport: all
+        persona: core-maintainer
+        target: gears-rust
+        seed: story-flow
+        pause: each-leg
+    expect_state: recording
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-real-fs-run
+      leg_count: 2
+      leg_index: 0
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 0
+      last_error: ""
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      - handler: host.agent.task
+        args: { call: drive_leg }
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+    expect_view_matches: "recording[\\s\\S]*next transport"
+
+expect_no_errors: true

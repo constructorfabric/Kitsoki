@@ -1,0 +1,58 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      autonomous_product_journey_marathon_smoke:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: passed
+            summary: core use-case autonomous product-QA marathon persona sweep passed
+            exit_code: 0
+            project: gears-rust
+            cycle_count: 1
+            persona_count: 5
+            scenario_count: 3
+            run_count: 5
+            expected_issue_count: 15
+            filed_issue_count: 15
+            gh_agent_done_count: 15
+            gh_agent_integration_landing_count: 15
+            flawless_run_count: 5
+            success_rate: "5/5"
+            report_path: .artifacts/product-journey/marathon-smokes/fixture/autonomous-marathon-smoke.json
+            report_markdown_path: .artifacts/product-journey/marathon-smokes/fixture/autonomous-marathon-smoke.md
+            output: "ok: core-maintainer: run targets gears-rust with requested persona\nok: dependency-debugger: persona lens is preserved in driver and brief contracts\nok: docs-minded-contributor: credible issues were filed\nok: ide-first-engineer: gh-agent fixes drained with independent verification\nok: hobbyist-contributor: mechanical stats count found/filed/fixed\nok: sweep filed and fixed every core scenario issue\nok: sweep recorded integration landing proof for every fix\nok: sweep has a flawless ledger entry for every persona\nSUMMARY_JSON: {\"cycle_count\": 1, \"expected_issue_count\": 15, \"filed_issue_count\": 15, \"flawless_run_count\": 5, \"gh_agent_done_count\": 15, \"gh_agent_integration_landing_count\": 15, \"persona_count\": 5, \"project\": \"gears-rust\", \"report_markdown_path\": \".artifacts/product-journey/marathon-smokes/fixture/autonomous-marathon-smoke.md\", \"report_path\": \".artifacts/product-journey/marathon-smokes/fixture/autonomous-marathon-smoke.json\", \"run_count\": 5, \"scenario_count\": 3, \"success_rate\": \"5/5\"}\nPASS"
+
+turns:
+  - intent:
+      name: autonomous_marathon_smoke
+      slots: {}
+    expect_state: idle
+    expect_world:
+      status: autonomous_marathon_smoke_checked
+      autonomous_marathon_smoke_status: passed
+      autonomous_marathon_smoke_summary: core use-case autonomous product-QA marathon persona sweep passed
+      autonomous_marathon_smoke_exit_code: 0
+      autonomous_marathon_smoke_project: gears-rust
+      autonomous_marathon_smoke_cycle_count: 1
+      autonomous_marathon_smoke_persona_count: 5
+      autonomous_marathon_smoke_scenario_count: 3
+      autonomous_marathon_smoke_run_count: 5
+      autonomous_marathon_smoke_filed_issue_count: 15
+      autonomous_marathon_smoke_done_count: 15
+      autonomous_marathon_smoke_landing_count: 15
+      autonomous_marathon_smoke_flawless_count: 5
+      autonomous_marathon_smoke_success_rate: "5/5"
+      autonomous_marathon_smoke_report_path: .artifacts/product-journey/marathon-smokes/fixture/autonomous-marathon-smoke.json
+      autonomous_marathon_smoke_report_markdown_path: .artifacts/product-journey/marathon-smokes/fixture/autonomous-marathon-smoke.md
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_marathon_smoke }
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Autonomous marathon smoke[\\s\\S]*passed[\\s\\S]*Marathon smoke coverage[\\s\\S]*gears-rust; cycles=1[\\s\\S]*personas=5[\\s\\S]*scenarios=3[\\s\\S]*runs=5[\\s\\S]*filed=15[\\s\\S]*fixed=15[\\s\\S]*landed=15[\\s\\S]*flawless=5/5[\\s\\S]*Marathon smoke ledger[\\s\\S]*autonomous-marathon-smoke.md[\\s\\S]*Status[\\s\\S]*autonomous_marathon_smoke_checked"
+
+expect_no_errors: true

@@ -127,6 +127,51 @@ func TestConvertTraceToFlow_MapsTransitionsAndResponses(t *testing.T) {
 	}
 }
 
+func TestConvertTraceToFlow_SkipsSyntheticAndBackgroundTransitions(t *testing.T) {
+	t.Parallel()
+
+	const trace = `{"kind":"session.header","schema_version":1,"written_at":"2026-07-06T00:00:00Z"}
+{"turn":1,"seq":0,"kind":"turn.input","state_path":"idle","payload":{"input":"","intent":"start"}}
+{"turn":1,"seq":1,"kind":"machine.transition","state_path":"idle","payload":{"from":"idle","to":"load","intent":"start","slots":{}}}
+{"turn":2,"seq":0,"kind":"turn.input","state_path":"load","payload":{"input":"","intent":"next_item"}}
+{"turn":2,"seq":1,"kind":"machine.transition","state_path":"load","payload":{"from":"load","to":"board","intent":"next_item","slots":{}}}
+{"turn":3,"seq":0,"kind":"turn.input","state_path":"board","payload":{"input":"","intent":"next_item"}}
+{"turn":3,"seq":1,"kind":"machine.transition","state_path":"board","payload":{"from":"board","to":"policy_check","intent":"next_item","slots":{}}}
+{"turn":3,"seq":2,"kind":"machine.transition","state_path":"board","payload":{"from":"policy_check","to":"drive","intent":"policy_ok","slots":{},"synthetic":true}}
+{"turn":4,"seq":0,"kind":"machine.transition","payload":{"from":"drive","to":"needs_human","intent":"__on_complete_target__","slots":{}}}
+`
+	lines, err := parseTraceLines([]byte(trace))
+	if err != nil {
+		t.Fatalf("parseTraceLines: %v", err)
+	}
+	res, err := convertTraceLines(lines, ConvertOptions{
+		AppPath: "../app.yaml",
+	})
+	if err != nil {
+		t.Fatalf("convertTraceLines: %v", err)
+	}
+
+	var flow flowFixtureDoc
+	if err := goyaml.Unmarshal(res.FlowYAML, &flow); err != nil {
+		t.Fatalf("unmarshal flow: %v\n%s", err, res.FlowYAML)
+	}
+	if res.NumTurns != 3 {
+		t.Fatalf("NumTurns = %d, want 3; flow:\n%s", res.NumTurns, res.FlowYAML)
+	}
+	got := []string{}
+	for _, turn := range flow.Turns {
+		got = append(got, turn.Intent.Name)
+	}
+	want := []string{"start", "next_item", "next_item"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("turn intents = %v, want %v", got, want)
+	}
+	body := stripComments(res.FlowYAML)
+	if strings.Contains(body, "policy_ok") || strings.Contains(body, "__on_complete_target__") {
+		t.Fatalf("flow must not emit internal transitions; got:\n%s", res.FlowYAML)
+	}
+}
+
 // stripComments removes whole-line YAML comments so body assertions don't trip
 // on words that legitimately appear in the generated header.
 func stripComments(b []byte) string {

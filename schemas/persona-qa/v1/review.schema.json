@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://kitsoki.dev/schemas/persona-qa/v1/review.schema.json",
+  "title": "Persona QA Review",
+  "type": "object",
+  "required": ["summary"],
+  "additionalProperties": true,
+  "properties": {
+    "status": { "type": "string", "enum": ["not_reviewed", "needs_evidence", "ready"] },
+    "review_status": { "type": "string", "enum": ["not_reviewed", "needs_evidence", "ready"] },
+    "summary": { "type": "string" },
+    "summary_counts": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "passed": { "type": "integer" },
+        "warned": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "total": { "type": "integer" }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "summary"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string", "enum": ["pass", "warn", "fail"] },
+          "summary": { "type": "string" }
+        }
+      }
+    }
+  }
+}

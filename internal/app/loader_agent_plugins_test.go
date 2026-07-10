@@ -473,3 +473,34 @@ agent_plugins:
 		t.Errorf("literal ${ was re-expanded or stripped; got: %q", plug.Env["API_KEY"])
 	}
 }
+
+// TestAgentPlugins_LocalLLMAPIKeyAndJSONSchema verifies that the
+// api_key_env / json_schema knobs parse on a builtin.local_llm plugin and are
+// threaded onto the decl. Neither is required (the endpoint-only plugin in
+// TestAgentPlugins_LocalLLMEndpointAccepted omits both without error).
+func TestAgentPlugins_LocalLLMAPIKeyAndJSONSchema(t *testing.T) {
+	t.Parallel()
+	yaml := minimalApp + `
+agent_plugins:
+  agent.glm:
+    plugin: builtin.local_llm
+    endpoint: "https://open.bigmodel.cn/api/paas/v4"
+    model: glm-4.6
+    api_key_env: GLM_API_KEY
+    json_schema: true
+`
+	def, err := app.LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	plug, ok := def.AgentPlugins["agent.glm"]
+	if !ok {
+		t.Fatal("agent.glm not found in AgentPlugins")
+	}
+	if plug.APIKeyEnv != "GLM_API_KEY" {
+		t.Errorf("APIKeyEnv: got %q, want GLM_API_KEY", plug.APIKeyEnv)
+	}
+	if !plug.JSONSchema {
+		t.Error("JSONSchema: got false, want true")
+	}
+}

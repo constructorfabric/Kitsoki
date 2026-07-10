@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.1.0",
+  "check_type": "replay",
+  "verdict": "solved",
+  "health": "model:result",
+  "metrics": {
+    "cost_usd": 1.0627647,
+    "wall_time_s": 90
+  },
+  "evidence_refs": [
+    "stories/bugfix/flows/triage_gears_rust.yaml",
+    "stories/bugfix/flows/triage_gears_rust.cassette.yaml"
+  ],
+  "summary": "kitsoki test flows stories/bugfix/app.yaml --flows stories/bugfix/flows/triage_gears_rust.yaml replays the recorded gears-rust triage (idle -> triaging autostart -> host.agent.codeact triager -> auto-fired accept -> @exit:triaged) green, no-LLM, from a committed local flow+cassette. The A2 external ticket-repo passthrough is proven again on a real GitHub issue: ticket_source_mode=remote, ticket_repo=constructorfabric/gears-rust, ticket_source_ref=github:constructorfabric/gears-rust#4115, with the ticket body supplied inline (no host.gh.ticket.get fetch needed).",
+  "notes": "Proves the fix-bug workflow's TRIAGE leg only on gears-rust: a real GitHub-issue-sourced bug (#4115, env-var override silently dropped for kebab-case gear names under Kubernetes' C_IDENTIFIER env-name restriction) triaged read-only (bugfix_mode=triage, no worktree) to a STILL-LIVE verdict with cited file/line evidence, posted to the transport. It does NOT prove an end-to-end fix/PR on gears-rust — no worktree was created and no maker/implementer/reviewer/validator rooms were exercised (those still require WS-A A2's ticket-repo passthrough to be driven through the FULL bugfix pipeline, not just triage). Recorded live (one real subscription-backed Claude host.agent.codeact call, no repo checkout touched); converted via `kitsoki trace to-flow`, hand-patched per the `codeact_live_proof_triage.yaml` precedent: initial_world seeded from the trace's session.new InitialWorld (the converter does not capture that seed — a known tool gap), workdir rewritten from the recording's scratchpad clone path to \".\" (triage never touches the checkout when the ticket body is supplied inline), and the second recorded transition (`accept`, the room's own same-turn internal auto-fire since judge_mode != human) dropped rather than replayed as a distinct turn — replaying it hits the same INTENT_NOT_ALLOWED_IN_STATE the live recording's stray tail turn also hit.",
+  "job_type": "dev-workflow-matrix",
+  "target_id": "gears-rust",
+  "axis": { "workflow": "fix-bug", "surface": "tui" },
+  "trace_ref": "fixbug-gears.jsonl (dwf4-gears-cell recording; not committed — see stories/bugfix/flows/triage_gears_rust.yaml header)"
+}

@@ -20,7 +20,7 @@ or open
 | Term | Meaning |
 |---|---|
 | **App** | One YAML manifest plus optional includes. The unit kitsoki loads. |
-| **State** | A node in the graph. Has an optional `view:` template, an `on:` map of intents → transitions, and an `on_enter:` effect list. |
+| **State** | A node in the graph. Has an optional `view:` template, an `on:` map of intents → transitions, an `on_enter:` effect list, and optionally `operation:` for abandonable task-local world. |
 | **Room** | A user-facing name for a state — usually a compound (parent) state grouping a few atomic children. The TUI's location indicator displays the room name. |
 | **Phase** | A repeated room. The same template instantiated multiple times in a pipeline (e.g. `phase_a`, `phase_b`, `phase_c`). |
 | **Compound state** | A state whose `type: compound` and whose `states:` map defines children. Has an `initial:` child. |
@@ -28,8 +28,8 @@ or open
 | **Intent** | A named action the user can take. The atom of free-text translation. |
 | **Slot** | A typed parameter on an intent. |
 | **Transition** | An edge: `{intent, when, target, effects}`. The first guarded edge for an intent that matches wins. |
-| **Effect** | A small declarative mutation: `set`, `increment`, `say`, `invoke`, `emit`. |
-| **World** | The persisted, typed key-value bag. Read by guards and templates; written by effects. |
+| **Effect** | A small declarative mutation: `set`, `increment`, `say`, `invoke`, `emit`, or an operation commit/draft/discard. |
+| **World** | The typed key-value bag. Guards and templates read one overlaid view; operation-local writes become durable only when committed. |
 | **Guard** | The `when:` expression on a transition. Pure, evaluated against `world` and `slots`. |
 | **Off-path** | A global escape hatch that suspends the current state, runs a free-form sub-conversation, and returns. |
 
@@ -443,6 +443,9 @@ effects:
 | `on_complete` | Effects fired when the background job terminates. |
 | `emit` | Broadcast a named event to parallel siblings. |
 | `emit_intent` | Dispatch a synthetic intent against the current state as part of the same turn. Used to auto-advance from `on_enter` (e.g. an LLM judge → `accept` shape). Optional `slots:` map carries values into the dispatched intent. Depth-capped at `machine.EmitIntentMaxDepth` (= 8). Mutually exclusive with `target:` on the same effect. |
+| `commit_operation` | Inside an `operation:` state, copy selected overlaid values into durable world and close the operation. Shape: `{world: {key: "{{ expr }}"}, clear?: bool}`. Empty `world:` commits the whole overlay. |
+| `persist_draft` | Inside an `operation:` state, save selected overlaid values under `world.operation_drafts[id]` and close the operation. Shape: `{id, title?, world?: [keys]}`. |
+| `discard_operation` | Inside an `operation:` state, explicitly abandon the overlay. Exiting an operation state without commit or draft also abandons it. |
 
 Templates inside effects use the same `{{ … }}` syntax as views. Inside
 `with:` and `bind:`, **arguments and results are typed** —
@@ -530,6 +533,22 @@ returning success idempotently over erroring, so the redirect never
 forms. See [`testing.md` §1.9](../tracing/testing.md#19-integration-tests-for-host-failure-paths)
 for how to test these paths.
 
+**Never-silent invariant.** Every `on_error:` redirect renders a message
+distinguishable from a normal state view before the turn ends — enforced
+once, in the shared redirect-application seam both of the orchestrator's
+host-dispatch entry points converge on (`applyErrorBannerSeam`,
+`internal/orchestrator/host_dispatch.go`), not re-implemented per call
+site (`Turn`, `submitDirect`, `ContinueTurn`, `OneShot`,
+`RunInitialOnEnter` all route through it). The seam appends
+`⚠ Action failed: <message>` to the redirect target's rendered view
+whenever `world.last_error` is a non-empty string the view doesn't
+already contain — so a room that renders `{{ world.last_error }}`
+itself is left alone. `kitsoki test flows` enforces this as the
+**G-FLOW gate**: any flow turn whose events show an `on_error:`-driven
+`TransitionApplied` must render either the banner or the raw
+`last_error` message, or the fixture fails automatically (no opt-in
+field required).
+
 ---
 
 ## 6. The world
@@ -554,6 +573,106 @@ transition list. This makes templates inside `say:` and downstream
 `with:` predictable — by the time they render, every preceding `set:`
 and `increment:` has already landed.
 
+### Operation-scoped world
+
+Durable world is for committed story facts. A state can mark an
+abandonable task boundary with `operation:`:
+
+```yaml
+states:
+  sync_main:
+    operation:
+      scope: gitops.sync_main
+    on:
+      accept:
+        - target: main_ops
+          effects:
+            - commit_operation:
+                world:
+                  sync_result: "{{ world.sync_result }}"
+      save_draft:
+        - target: main_ops
+          effects:
+            - persist_draft:
+                id: "sync_main:{{ world.sync_result.branch }}"
+                title: "sync_main {{ world.sync_remote }}/{{ world.sync_remote_branch }}"
+                world: [sync_result, sync_remote, sync_remote_branch]
+      back:
+        - target: main_ops
+```
+
+While an operation is active, `set`, `increment`, and host `bind` write to an
+engine-owned overlay. Guards, views, and host `with:` templates still read
+`world.*`; the readable world is the committed base plus the overlay, so story
+authors do not need parallel `operation.foo` references.
+
+The overlay becomes durable only through `commit_operation`. If the operator
+leaves the operation state through `back`, `quit`, an error arc, a guard
+fallback, or any other uncommitted transition, the engine emits an abandon event
+and restores the committed base. Use `persist_draft` only when continuation is a
+product requirement; drafts are explicit records under the reserved
+`world.operation_drafts` key, not invisible scratch residue. `discard_operation`
+exists for explicit abandon buttons, but ordinary exits do not need hand-authored
+cleanup effects.
+
+Load-time validation rejects `commit_operation`, `persist_draft`, and
+`discard_operation` outside an operation state. It also rejects background jobs
+inside operation states until the story declares a policy for completions that
+could outlive the overlay.
+
+### Session operation policies
+
+State-local `operation:` is about an abandonable world overlay. Top-level
+`operations:` is the separate session-run model for workflow-shaped work that
+should be driven and surfaced as one operation:
+
+```yaml
+operations:
+  bugfix_full:
+    title: "Fix bug"
+    mode: autonomous
+    execution_mode: one-shot
+    run_in_background: true
+    stop_on: [needs-human, host-error, gate-failed]
+    pause_on: [operator-ask]
+    terminal_artifact: done_artifact
+    phase_summary:
+      from: [triage_artifact, done_artifact]
+
+states:
+  idle:
+    on:
+      start:
+        - target: reproducing
+          operation: bugfix_full
+```
+
+When a transition with `operation:` fires, the machine emits an
+`operation.run_started` trace event carrying the selected policy, entry intent,
+and source/target states, and writes the engine-owned `world.operation_run`
+handle with `status: running`. When the run later reaches any terminal state,
+including on a later user turn, the machine emits `operation.completed` with
+the terminal state and configured terminal artifact key, then updates
+`world.operation_run` to `status: completed`. Imported child policies are
+lifted and referenced under the import alias (`bf__bugfix_full`, for example).
+These rows and the replayable handle are for operation drivers and UI surfaces;
+they do not replace background host jobs. When `run_in_background: true` is set,
+normal live write surfaces (`session.drive`, web turn/submit/continue,
+`kitsoki drive`, and `kitsoki session continue`) automatically invoke the safe
+operation driver after the accepted turn. The driver advances only through
+slot-complete, non-destructive menu actions and stops at terminal/waiting
+handles, clarification/rejection, manual-only policies, or no safe next intent.
+Without `run_in_background`, the operator can still explicitly invoke the
+operation driver from the surface's drive-operation command/tool.
+
+When a session operation enters a state-local `operation:` overlay with the same
+id, the overlay close-out also stops the session handle: `commit_operation` and
+`persist_draft` complete it at the settled target state, while abandoning the
+overlay marks it failed with the abandon reason. This lets command-room flows
+such as protected-main sync have both operation-local scratch/drafts and a
+visible session-level progress handle without leaving stale running rows after
+the operator accepts, saves, or backs out.
+
 Two scopes live alongside `world`:
 
 - **slots** — the typed bag from the intent that triggered this
@@ -561,15 +680,18 @@ Two scopes live alongside `world`:
 - **`$host_error`** — set by the orchestrator when an `on_error:`
   transition fires; readable in the *target* state's first guard.
 
-Two reserved, engine-managed `world` keys carry agent spend so a story can
-budget against cost without any host wiring (both seeded to `0` by
-`WorldFromSchema`, so a guard reads a number even before the first agent call):
+Reserved, engine-managed `world` keys carry runtime metadata:
 
+- **`world.operation_drafts`** — explicit draft handles created by
+  `persist_draft`. The engine owns the top-level map; story views may display or
+  route on the handles when resumable work is part of the product.
 - **`world.turn_cost_usd`** — `total_cost_usd` of the most recent host-dispatch
   batch (reset to `0` on a batch with no agent spend, e.g. `host.run`-only).
 - **`world.session_cost_usd`** — cumulative agent spend across the session.
 
-The orchestrator overwrites these each turn from the agent transport's reported
+The cost keys are seeded to `0` by `WorldFromSchema`, so a guard reads a number
+even before the first agent call. The orchestrator overwrites them each turn
+from the agent transport's reported
 cost (`foldAgentCost`, journaled as `EffectApplied` so replay reconstructs the
 same totals). Cassette episodes carry `cost_usd`, so cost-budget guards are
 deterministic in flow tests. Typical use — stop a loop on goal-met *or*
@@ -661,6 +783,14 @@ stateDiagram-v2
     state persist: Store.AppendEvents
     state render: render view; post to transports
 ```
+
+`acquire` reads the session's event log exactly once per turn:
+`loadJourney` replays the log into `store.JourneyState` (via
+`store.BuildJourney`, both the SQLite/dual-write and pure-JSONL branches),
+and `RecentTurns` is sliced from that same replayed `JourneyState.History`
+rather than a second `LoadHistory` query — a prior duplicate-read tax was
+removed at `internal/orchestrator/orchestrator.go`'s `Turn()`/`loadJourney`
+(`RecentTurnsLimit` truncation semantics unchanged).
 
 Asynchronous off-ramps — also run by the orchestrator, also serialized
 through the same lock:
@@ -1089,6 +1219,38 @@ the declarative `agents:` block — see [`meta-mode.md`](meta-mode.md).
 Meta mode is what most authors should reach for today; off-path remains
 the simple banner-only escape hatch.
 
+### Agent toolboxes
+
+Stories may declare reusable tool grants with top-level `toolboxes:` and
+reference them from `agents:`:
+
+```yaml
+toolboxes:
+  read_only: { tools: [Read, Grep, Glob], effect: read }
+  repo_writer: { tools: [Read, Grep, Glob, Edit, Write, Bash], effect: write }
+
+agents:
+  reviewer:
+    system_prompt: "Review the current state."
+    toolbox: read_only
+  implementer:
+    system_prompt: "Make the requested change."
+    toolbox: repo_writer
+    tools_remove: [Bash]
+```
+
+`toolbox:` and inline `tools:` are mutually exclusive on an agent. Use
+`tools_add:` and `tools_remove:` to specialize a named box. The loader resolves
+the final tool surface before effect classification, checks an asserted toolbox
+`effect:` against the joined tools, and records the resolved toolbox/effect plus
+allowed/denied tool sets on agent-call trace events.
+
+Toolboxes describe the agent tool surface. `sandbox:` describes the runtime
+subprocess boundary for a specific `host.agent.task` / write-capable
+`host.agent.converse` effect. Use both on risky write-agent paths: toolbox/effect
+sets what the model may ask for; sandbox records and applies the process/env
+policy around the backend CLI.
+
 ### The agent off-ramp — the automatic no-match door
 
 One voice, two entrances. Off-path is reached through a *typed-trigger*
@@ -1120,6 +1282,46 @@ the usual `OffPathQuestion` / `OffPathAnswer`; there is no
 `TurnEnded(rejected)` and no transition. First adopter: the dev-story hub
 (`stories/dev-story/rooms/main.yaml`). Full design narrative:
 [`architecture.md` §9](architecture.md#9-agent-rooms-meta-and-off-path).
+
+Off-ramp conversations are **per-room and persistent**: each room resolves
+its own chat thread (resumed across turns within the session), and every
+converse call carries an engine-composed `room_context` block — the room's
+purpose, its available commands, its `relevant_world` values — so the agent
+is oriented without any story-side plumbing. Adding
+`capture_free_text: true` to the block upgrades the off-ramp into the
+room's deterministic free-text sink: the loader synthesizes a
+`<room>_discuss` default intent and the orchestrator diverts it to the
+conversation BEFORE the machine runs — no transition, no re-render.
+Authoritative narrative:
+[`room-workbench.md` §"The conversational lane"](../architecture/room-workbench.md#the-conversational-lane-agent_off_rampcapture_free_text).
+
+### Room workbenches — one block instead of four hand-rolled primitives
+
+A room that wants the full "governed free-form floor" — `write_mode:
+read_only` + `agent_off_ramp:` + an `on_enter host.agent.task` dispatch + a
+free-text capture intent, all four wired together — can declare a single
+`workbench:` block instead of hand-authoring each one:
+
+```yaml
+states:
+  bench:
+    workbench:
+      agent: builder                       # must resolve to WS effect write|external
+      prompt: prompts/bench.md
+      acceptance_schema: schemas/bench-note.json
+```
+
+The loader **desugars** this at load time into exactly those four
+primitives — already-shipped mechanisms, not new ones — before the
+write-mode / off-ramp / effect-taxonomy validation passes run, so those
+existing checks validate the desugared shape for free. A route-out to
+another authored pipeline stays a hand-authored `on:` arc's
+`set:`/`emit_intent:` effects; the workbench agent never constructs a
+transition or a target room's `initial_world` itself. dev-story's `landing`
+room is the reference consumer — see
+[dev-story's README](../../stories/dev-story/README.md#the-free-form-workbench-landing).
+Full model, desugaring contract, invariants, and the deterministic-seam
+rule: [`room-workbench.md`](../architecture/room-workbench.md).
 
 ### Contextual routing — a routing tier, not a transition
 

@@ -167,9 +167,10 @@ prompt-and-pray).
   new engine concept. It injects (DI) the slice-1 scorer, the slice-2 analyzer,
   the `agent.task` runner, and the flow-fixture runner; tests supply
   deterministic fakes/cassettes for all four.
-- **The `train` story operates in a sandbox.** Candidate edits are applied to a
-  worktree/copy of the target story (reuse the existing task FS-sandbox pattern),
-  validated there, and only committed on accept — never edited in place mid-loop.
+- **The `train` story operates through the secure agent runtime.** Candidate
+  edits are applied to a worktree/copy of the target story (reuse the
+  `task-fs-sandbox.md` runtime pattern), validated there, and only committed on
+  accept — never edited in place mid-loop.
 - **Load-time invariant:** a candidate edit that fails the target story's load
   (the same invariants every story is held to) is auto-discarded before it even
   reaches the reward replay — a malformed optimizer step costs one load, not a

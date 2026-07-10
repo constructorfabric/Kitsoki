@@ -1,0 +1,57 @@
+name: slidey-edit-kitsoki-pitch
+source:
+  synthetic: true
+  default_branch: main
+  steps:
+    - action: write
+      path: .kitsoki-root
+      content: |
+        slidey-edit-kitsoki-pitch
+    - action: write
+      path: docs/decks/kitsoki-pitch.slidey.json
+      content: |
+        {
+          "meta": {
+            "title": "Kitsoki Pitch",
+            "resolution": { "width": 1920, "height": 1080 },
+            "theme": "rose-pine-moon"
+          },
+          "scenes": [
+            {
+              "type": "title",
+              "title": "Kitsoki",
+              "subtitle": "Conversational workflows for real software work"
+            },
+            {
+              "type": "narrative",
+              "eyebrow": "El Nombre Es",
+              "lede": "The metaphor fits a conversational workflow engine that hosts many surfaces as connected rooms under one architecture.",
+              "body": "Kitsoki is a name for a living settlement: houses, chambers, and public plazas arranged into one whole."
+            },
+            {
+              "type": "cards",
+              "title": "Why it works",
+              "cards": [
+                { "label": "Stateful", "sub": "Stories carry context across turns." },
+                { "label": "Inspectable", "sub": "Every host call and artifact is traceable." },
+                { "label": "Reusable", "sub": "Capsules and flows keep regressions alive." }
+              ]
+            }
+          ]
+        }
+    - action: commit
+      message: seed kitsoki-pitch deck
+network: none
+verify:
+  probes:
+    - name: pinned-head
+      run: test "$(git rev-parse HEAD)" = "0ffa68881b5943e255c47ef190cf411acf851461"
+      expect: zero
+    - name: bad-title-present
+      run: jq -e '.scenes[1].eyebrow == "El Nombre Es"' docs/decks/kitsoki-pitch.slidey.json >/dev/null
+      expect: zero
+    - name: clean-tree
+      run: git diff --quiet && git diff --cached --quiet
+      expect: zero
+scenario:
+  kind: slidey-edit

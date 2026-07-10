@@ -1,5 +1,7 @@
 # dirty_tree_stash_merge — merge_into_main when target tree is dirty.
-# Single-script merge_exec handles stash + merge.
+# Regression: git-ops must refuse the merge instead of using the shared stash
+# stack. Linked worktrees share refs/stash; auto-stashing here can interleave
+# unrelated operator WIP and lose work.
 
 test_kind: flow
 app: ../app.yaml
@@ -34,19 +36,20 @@ host_handlers:
           ok:        true
           exit_code: 0
           stdout_json:
-            outcome:           merged
+            outcome:           dirty_target
             descendant_ok:     true
             merge_in_progress: false
-            last_op_ok:        true
-            last_op_output:    "Merge successful (stash applied)"
-            stash_ref:         "stash@{0}"
+            last_op_ok:        false
+            last_op_output:    " M docs/notes.md"
+            stash_ref:         ""
             rebase_done:       false
 
 turns:
   - intent: { name: merge_into_main, slots: {} }
     expect_state: merge_into_main
     expect_world:
-      last_op_outcome: merged
-      stash_ref:       "stash@{0}"
+      last_op_outcome: dirty_target
+      last_op_ok:      false
+      stash_ref:       ""
 
 expect_no_errors: true

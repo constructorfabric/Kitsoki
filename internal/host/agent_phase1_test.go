@@ -54,6 +54,62 @@ func TestAgentAsk_AgentTools_ForwardedAsAllowedTools(t *testing.T) {
 	}
 }
 
+func TestAgentAsk_ContractMCPAndPermissionsForwarded(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(promptPath, []byte("inspect"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var captured []string
+	runner := func(_ context.Context, args []string, _, _ string) (host.ClaudeRun, error) {
+		captured = append([]string(nil), args...)
+		return host.ClaudeRun{Stdout: "ok"}, nil
+	}
+	ctx := host.WithClaudeRunner(
+		host.WithAgents(context.Background(), map[string]host.Agent{
+			"inspector": {
+				SystemPrompt: "inspect mode",
+				Tools:        []string{"host.Read"},
+				MCPTools:     []string{"mcp__fs__read_file"},
+				MCPServers: map[string]any{
+					"fs": map[string]any{"command": "node", "args": []any{"server.js"}},
+				},
+				Permissions: host.AgentPermissions{
+					Mode:            "ask",
+					DisallowedTools: []string{"WebFetch"},
+				},
+			},
+		}),
+		runner,
+	)
+
+	res, err := host.AgentAskHandler(ctx, map[string]any{
+		"prompt_path": promptPath,
+		"agent":       "inspector",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Error != "" {
+		t.Fatalf("unexpected Result.Error: %s", res.Error)
+	}
+	joined := strings.Join(captured, " ")
+	if !strings.Contains(joined, "--permission-mode default") {
+		t.Fatalf("permissions.mode ask must map to CLI default; args=%v", captured)
+	}
+	if !strings.Contains(joined, "mcp__fs__read_file") {
+		t.Fatalf("MCP tool was not forwarded in --allowedTools; args=%v", captured)
+	}
+	if !strings.Contains(joined, "--mcp-config") {
+		t.Fatalf("MCP server config was not attached; args=%v", captured)
+	}
+	if !strings.Contains(joined, "WebFetch") {
+		t.Fatalf("permissions.disallowed_tools was not forwarded; args=%v", captured)
+	}
+}
+
 // TestAgentAsk_PerCallTools_WinsOverAgentTools verifies D5: when the effect
 // sets `tools:` and the agent also declares Tools, the per-call list wins.
 func TestAgentAsk_PerCallTools_WinsOverAgentTools(t *testing.T) {

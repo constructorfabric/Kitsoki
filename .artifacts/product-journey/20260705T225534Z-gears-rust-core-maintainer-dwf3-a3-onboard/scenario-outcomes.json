@@ -1,0 +1,36 @@
+{
+  "items": [
+    {
+      "demo_evidence_count": 0,
+      "evidence_status": "captured",
+      "finding_counts": {
+        "blocked": 0,
+        "fix": 0,
+        "issue": 0,
+        "strength": 0,
+        "weakness": 0
+      },
+      "findings": [],
+      "label": "Project onboarding",
+      "outcome": "evidence_captured",
+      "present_evidence_count": 2,
+      "primary_story": "stories/dev-story/app.yaml",
+      "proof_evidence_count": 2,
+      "rejected_evidence_count": 0,
+      "required_evidence_count": 6,
+      "scenario": "project-onboarding",
+      "stage": "onboard_project",
+      "validated_evidence_count": 0
+    }
+  ],
+  "run_id": "20260705T225534Z-gears-rust-core-maintainer-dwf3-a3-onboard",
+  "summary": {
+    "blocked": 0,
+    "fully_validated": 0,
+    "scenarios": 1,
+    "started": 1,
+    "with_findings": 0,
+    "with_fixes": 0,
+    "with_issues": 0
+  }
+}

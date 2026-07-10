@@ -1,0 +1,24 @@
+{
+  "_comment": "fixture tour: step 'a' matches deck scene A's chapter; step 'extra' has no matching chapter and keeps its authored dwell.",
+  "target": { "launch": "true", "addr": "127.0.0.1:7799", "readyPath": "/mockup.html", "cwd": ".", "timeoutMs": 5000 },
+  "startPath": "/mockup.html",
+  "viewport": { "width": 800, "height": 600 },
+  "deviceScaleFactor": 1,
+  "pace": 1,
+  "steps": [
+    {
+      "id": "a",
+      "label": "State A",
+      "before": [{ "eval": "window.storyboard.setStep('a')" }],
+      "dwellMs": 5000,
+      "kind": "explain"
+    },
+    {
+      "id": "extra",
+      "label": "Extra beat with no narration cue",
+      "before": [{ "eval": "window.storyboard.setStep('a')" }],
+      "dwellMs": 3000,
+      "kind": "explain"
+    }
+  ]
+}

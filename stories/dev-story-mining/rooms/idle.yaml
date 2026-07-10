@@ -9,38 +9,61 @@
 states:
 
   idle:
-    description: "dev-story-mining — parked. Type `start` to mine recent transcripts."
-    relevant_world: [job, project_dir, stories_dir, judge_mode]
+    description: "dev-story-mining — parked. Type `start` to plan transcript mining."
+    relevant_world: [job, transcript_sources, project_dir, codex_sessions_dir, stories_dir, target_artifacts, judge_mode]
     view:
       - banner:
           text:     "DEV-STORY-MINING"
-          subtitle: "transcripts → dev-story gates  ·  parked"
+          subtitle: "transcripts → Kitsoki improvements  ·  parked"
           color:    "#6366F1"   # indigo — the resting hub color
-      - prose: "Mine recent Claude Code transcripts for the decisions you actually make, then install the ones dev-story is missing as named gates."
+      - prose: "Mine recent Claude Code and Codex transcripts for the work that should have gone through Kitsoki, then install the missing rooms, stories, Starlark scripts, flow fixtures, or hub routes."
       - kv:
           pairs:
             Job:           "{{ world.job }}"
-            "Transcripts": '{{ world.project_dir|default:"(current repo)" }}'
+            Sources:       "{{ world.transcript_sources }}"
+            "Claude transcripts": '{{ world.project_dir|default:"(current repo slug)" }}'
+            "Codex transcripts": "{{ world.codex_sessions_dir }}"
             "Target tree": "{{ world.stories_dir }}"
+            "Target artifacts": "{{ world.target_artifacts }}"
             "Judge mode":  "{{ world.judge_mode }}"
       - choice:
           mode: single
           prompt: "Actions"
           items:
             - label:  "start"
-              hint:   "mine recent transcripts and enter the loop"
+              hint:   "prepare sources and enter the mining loop"
               intent: start
             - label:  "look"
               hint:   "re-render"
               intent: look
     on:
       start:
-        - target: mine
+        - target: prepare
           effects:
             - set:
                 mining_started: true
                 cycle:          0
                 status:         "open"
+                source_plan_artifact: {}
+                source_summary_markdown: ""
+            - invoke: host.starlark.run
+              id: plan_sources
+              with:
+                script: scripts/plan_sources.star
+                inputs:
+                  job: "{{ world.job }}"
+                  transcript_sources: "{{ world.transcript_sources }}"
+                  project_dir: "{{ world.project_dir }}"
+                  codex_sessions_dir: "{{ world.codex_sessions_dir }}"
+                  stories_dir: "{{ world.stories_dir }}"
+                  target_artifacts: "{{ world.target_artifacts }}"
+                  automation_goal: "{{ world.automation_goal }}"
+                  determinism_doc: "{{ world.determinism_doc }}"
+                  prompt_intercept_doc: "{{ world.prompt_intercept_doc }}"
+                  refine_feedback: ""
+              bind:
+                source_plan_artifact: source_plan
+                source_summary_markdown: summary_markdown
       look:
         - target: .
       quit:

@@ -36,7 +36,7 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import { spawn, type ChildProcess } from "child_process";
-import { saveVideoAsMp4, ChapterRecorder, writeChapters, demoAddr } from "./_helpers/server.js";
+import { saveVideoAsMp4, ChapterRecorder, writeChapters, demoAddr, maybeInstallAutoRrwebCapture } from "./_helpers/server.js";
 import { cameraContext } from "./_helpers/camera.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -240,6 +240,7 @@ test.describe("meta mode (live, no-LLM)", () => {
       // ── Scene 1: home meta (no session) ────────────────────────────────────
       await page.goto(`${BASE}/#/`);
       await expect(page.getByTestId("home-view")).toBeVisible({ timeout: 15000 });
+      await maybeInstallAutoRrwebCapture(page);
       await expect(page.getByTestId("meta-button")).toBeVisible();
       await page.waitForTimeout(OPEN_DWELL);
 

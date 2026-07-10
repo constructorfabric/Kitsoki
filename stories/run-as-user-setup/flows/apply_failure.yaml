@@ -1,0 +1,32 @@
+test_kind: flow
+app: ../app.yaml
+use_orchestrator: true
+initial_state: details
+initial_world:
+  operator_user: Brad.Smith
+  protected_root: /Users/Brad.Smith/code/kitsoki
+  setup_summary: "ready to apply"
+
+host_handlers:
+  host.run:
+    data:
+      ok: false
+      exit_code: 2
+      stdout: "ERROR: wrapper install failed"
+
+turns:
+  - intent:
+      name: apply
+      slots: {}
+    expect_state: apply_failed
+    expect_world:
+      apply_ok: false
+      apply_exit_code: 2
+      status: "apply failed"
+      last_error: "run-as-user setup apply failed with exit 2\nERROR: wrapper install failed"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: apply_run_as_user_setup }
+    expect_view_matches: "wrapper install failed"
+
+expect_no_errors: true

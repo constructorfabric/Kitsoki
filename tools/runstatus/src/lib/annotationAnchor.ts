@@ -93,18 +93,25 @@ export interface FrameTarget {
 /**
  * A sidecar-declared semantic element. `ref` is the opaque element reference the
  * producer declared (kitsoki round-trips it verbatim — it never interprets it);
- * `plugin` names the producer; `bbox` is the element's box. `id` and `label` are
- * UI-only conveniences (the marker's key + display) and do NOT ride the wire.
+ * `plugin` names the producer; `bbox` is the element's box. `label`/selector/
+ * text/value/data are preserved for oracle context. `id` and `point` are UI-only
+ * conveniences and do NOT ride the wire.
  */
 export interface SemanticElementTarget {
   kind: "semantic_element";
   plugin: string;
   ref: string;
   bbox?: Box;
+  /** Optional producer/DOM hints preserved for oracle context. */
+  semantic_kind?: string;
+  label?: string;
+  description?: string;
+  selector?: string;
+  text?: string;
+  value?: string;
+  data?: Record<string, unknown>;
   /** UI-only: the marker's stable key (defaults to `ref`). */
   id?: string;
-  /** UI-only: the formatted display label. */
-  label?: string;
   /** UI-only: the box's anchor point. */
   point?: Point;
 }
@@ -144,7 +151,18 @@ export interface AnchorWire {
   frame?: { frame_handle: string; t_ms?: number };
   dom_node?: { selector: string; role: string; text: string; bbox: [number, number, number, number] };
   region?: { shape: RegionShape; path: [number, number][]; bbox: [number, number, number, number] };
-  semantic_element?: { plugin: string; ref: string; bbox?: [number, number, number, number] };
+  semantic_element?: {
+    plugin: string;
+    ref: string;
+    bbox?: [number, number, number, number];
+    label?: string;
+    semantic_kind?: string;
+    description?: string;
+    selector?: string;
+    text?: string;
+    value?: string;
+    data?: Record<string, unknown>;
+  };
 }
 
 function bboxTuple(b: Box): [number, number, number, number] {
@@ -198,6 +216,13 @@ export function serializeAnchor(anchor: AnnotationAnchor): AnchorWire | null {
           plugin: t.plugin,
           ref: t.ref,
           ...(t.bbox ? { bbox: bboxTuple(t.bbox) } : {}),
+          ...(t.semantic_kind ? { semantic_kind: t.semantic_kind } : {}),
+          ...(t.label ? { label: t.label } : {}),
+          ...(t.description ? { description: t.description } : {}),
+          ...(t.selector ? { selector: t.selector } : {}),
+          ...(t.text ? { text: t.text } : {}),
+          ...(t.value ? { value: t.value } : {}),
+          ...(t.data ? { data: t.data } : {}),
         },
       };
   }

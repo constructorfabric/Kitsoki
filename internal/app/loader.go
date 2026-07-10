@@ -15,9 +15,11 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"kitsoki/internal/agent/grammar"
 	"kitsoki/internal/agents"
+	"kitsoki/internal/effect"
 	starlarkhost "kitsoki/internal/host/starlark"
 
 	goyaml "github.com/goccy/go-yaml"
@@ -165,6 +167,22 @@ func runLoadPipeline(merged *AppDef, path, baseDir string, ifaceOverrides map[st
 		return nil, errors.Join(expandErrs...)
 	}
 
+	// Expand `workbench:` blocks into write_mode/agent_off_ramp/on_enter/
+	// default_intent before the roomDispatchesAgent / write-mode
+	// precondition pass (inside validateDef below) and agent
+	// effect-taxonomy resolution see them — see workbench.go.
+	if workbenchErrs := expandWorkbenches(merged, path); len(workbenchErrs) > 0 {
+		return nil, errors.Join(workbenchErrs...)
+	}
+
+	// Expand agent_off_ramp capture_free_text declarations into the
+	// synthesized <room>_discuss intent + default_intent — after
+	// expandWorkbenches so workbench-synthesized off-ramps (which never set
+	// capture) are already in place. See offramp_capture.go.
+	if captureErrs := expandOffRampCaptures(merged, path); len(captureErrs) > 0 {
+		return nil, errors.Join(captureErrs...)
+	}
+
 	// Inject builtin meta_modes (`self`, `bug`) that the app didn't
 	// declare itself. Done before validation so trigger collisions and
 	// missing-env-var diagnostics fire the same way as for app-declared
@@ -194,6 +212,8 @@ func runLoadPipeline(merged *AppDef, path, baseDir string, ifaceOverrides map[st
 	if ifaceErrs := resolveAllInterfaces(merged, path); len(ifaceErrs) > 0 {
 		return nil, errors.Join(ifaceErrs...)
 	}
+
+	injectBuiltinStoryAuthoringRoom(merged, path, baseDir)
 
 	// Rewrite any remaining @exit:<name> targets in the top-level app. For
 	// the root manifest these are terminal sentinels — the app is loaded
@@ -506,6 +526,16 @@ func mergeInto(dst, src *AppDef, srcFile string) []error {
 		}
 		dst.Providers[k] = v
 	}
+	for k, v := range src.Toolboxes {
+		if _, exists := dst.Toolboxes[k]; exists {
+			addErr(fmt.Sprintf("include: toolbox %q is already declared", k))
+			continue
+		}
+		if dst.Toolboxes == nil {
+			dst.Toolboxes = make(map[string]*ToolboxDecl)
+		}
+		dst.Toolboxes[k] = v
+	}
 
 	return errs
 }
@@ -521,12 +551,19 @@ func mergeInto(dst, src *AppDef, srcFile string) []error {
 // A nil or empty Agents map is a no-op. The function reports all problems
 // it finds rather than stopping at the first.
 func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
-	if def == nil || len(def.Agents) == 0 {
+	if def == nil {
 		return nil
 	}
 	var errs []error
 	addErr := func(msg string) {
 		errs = append(errs, &ValidationError{File: file, Message: msg})
+	}
+
+	if boxErrs := resolveToolboxes(def, file); len(boxErrs) > 0 {
+		errs = append(errs, boxErrs...)
+	}
+	if len(def.Agents) == 0 {
+		return errs
 	}
 
 	// Set of agents referenced by a read-only agent verb (ask/decide), where
@@ -587,6 +624,27 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 			addErr(msg)
 			continue
 		}
+		if decl.Permissions != nil {
+			switch decl.Permissions.Mode {
+			case "", "ask", "denyAll", "default", "bypassPermissions", "acceptEdits", "auto", "dontAsk", "plan":
+			default:
+				addErr(fmt.Sprintf("agent %q: permissions.mode %q is not valid", name, decl.Permissions.Mode))
+				continue
+			}
+		}
+
+		if decl.TokenBudget != nil {
+			if decl.TokenBudget.WarnTokens <= 0 || decl.TokenBudget.RefuseTokens < decl.TokenBudget.WarnTokens {
+				addErr(fmt.Sprintf("agent %q: token_budget must set warn_tokens > 0 and refuse_tokens >= warn_tokens (got warn_tokens=%d refuse_tokens=%d)",
+					name, decl.TokenBudget.WarnTokens, decl.TokenBudget.RefuseTokens))
+				continue
+			}
+		}
+
+		if decl.Toolbox != "" && len(decl.Tools) > 0 {
+			addErr(fmt.Sprintf("agent %q: toolbox and tools are mutually exclusive; use toolbox with tools_add/tools_remove or inline tools, not both", name))
+			continue
+		}
 
 		// Normalise tools to fully-qualified form. Logic duplicates
 		// metamode.NormaliseToolName here because internal/metamode imports
@@ -597,6 +655,35 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 				out[i] = normaliseAgentTool(t)
 			}
 			decl.Tools = out
+		}
+		if len(decl.ToolsAdd) > 0 {
+			out := make([]string, len(decl.ToolsAdd))
+			for i, t := range decl.ToolsAdd {
+				out[i] = normaliseAgentTool(t)
+			}
+			decl.ToolsAdd = out
+		}
+		if len(decl.ToolsRemove) > 0 {
+			out := make([]string, len(decl.ToolsRemove))
+			for i, t := range decl.ToolsRemove {
+				out[i] = normaliseAgentTool(t)
+			}
+			decl.ToolsRemove = out
+		}
+		if decl.Toolbox != "" {
+			box := def.Toolboxes[decl.Toolbox]
+			if box == nil {
+				addErr(fmt.Sprintf("agent %q: toolbox %q is not declared in toolboxes", name, decl.Toolbox))
+				continue
+			}
+			decl.Tools = applyToolboxSpecialization(box.Tools, decl.ToolsAdd, decl.ToolsRemove)
+		}
+		if decl.MCP != nil && len(decl.MCP.Tools) > 0 {
+			out := make([]string, len(decl.MCP.Tools))
+			for i, t := range decl.MCP.Tools {
+				out[i] = normaliseAgentTool(t)
+			}
+			decl.MCP.Tools = out
 		}
 
 		// bash_profile validation: Bash in the tool surface requires a
@@ -610,20 +697,78 @@ func resolveAgentDecls(def *AppDef, file, baseDir string) []error {
 			addErr(fmt.Sprintf("agent %q declares Bash but no bash_profile; required when the agent is referenced by host.agent.ask or host.agent.decide (those verbs run every Bash command through a profile allowlist)", name))
 		}
 
-		// external_side_effect inference: infer from the tool surface when
-		// the field is absent, and warn when declared value disagrees with
-		// the inferred value.
-		inferred := inferExternalSideEffect(decl.Tools)
-		if decl.ExternalSideEffect == nil {
-			// No explicit declaration — store the inferred value.
-			decl.ExternalSideEffect = &inferred
-		} else if *decl.ExternalSideEffect != inferred {
-			slog.Warn("agent external_side_effect declaration disagrees with inferred value from tool surface",
-				"agent", name, "file", file,
-				"declared", *decl.ExternalSideEffect, "inferred", inferred)
+		// Effect taxonomy resolution (effect-taxonomy.md): resolve the
+		// agent's effect class from its declared `effect:` (or the
+		// deprecated `external_side_effect:` alias) against the JOIN
+		// computed over its tool surface, enforcing the taxonomy's
+		// invariants. See resolveAgentEffect.
+		if msg := resolveAgentEffect(name, decl); msg != "" {
+			addErr(msg)
+			continue
 		}
 	}
 	return errs
+}
+
+func resolveToolboxes(def *AppDef, file string) []error {
+	if def == nil || len(def.Toolboxes) == 0 {
+		return nil
+	}
+	var errs []error
+	for _, name := range sortedKeys(def.Toolboxes) {
+		box := def.Toolboxes[name]
+		if box == nil {
+			errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("toolbox %q: empty definition", name)})
+			continue
+		}
+		out := make([]string, len(box.Tools))
+		for i, t := range box.Tools {
+			out[i] = normaliseAgentTool(t)
+		}
+		box.Tools = out
+		if box.Effect != "" {
+			if !box.Effect.Valid() {
+				errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("toolbox %q: effect %q is not one of pure|read|write|external", name, box.Effect)})
+				continue
+			}
+			joined := effect.FromTools(box.Tools)
+			if box.Effect != joined {
+				errs = append(errs, &ValidationError{File: file, Message: fmt.Sprintf("toolbox %q: declares effect %q but tools %v join to %q", name, box.Effect, box.Tools, joined)})
+			}
+		}
+	}
+	return errs
+}
+
+func applyToolboxSpecialization(base, add, remove []string) []string {
+	removed := make(map[string]bool, len(remove))
+	for _, t := range remove {
+		removed[t] = true
+	}
+	var out []string
+	for _, t := range base {
+		if !removed[t] {
+			out = append(out, t)
+		}
+	}
+	out = append(out, add...)
+	return dedupeAgentTools(out)
+}
+
+func dedupeAgentTools(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, t := range in {
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	return out
 }
 
 // hasTool reports whether tools contains name (exact match after normalisation).
@@ -636,20 +781,83 @@ func hasTool(tools []string, name string) bool {
 	return false
 }
 
-// inferExternalSideEffect returns true when the tool surface includes
-// WebFetch, WebSearch, or any MCP server that isn't known to be read-only.
-// The MCP read_only check is best-effort here — full cross-checking against
-// declared mcp_servers blocks requires the effect graph and is deferred to
-// later phases. For now: any tool named "host.WebFetch" or "host.WebSearch"
-// in the tool list implies external side effects.
-func inferExternalSideEffect(tools []string) bool {
-	for _, t := range tools {
-		switch t {
-		case "host.WebFetch", "host.WebSearch":
-			return true
-		}
+// resolveAgentEffect resolves decl's effect class in place (mirroring the
+// pattern resolveAgentDecls already uses for tools/bash_profile), enforcing
+// effect-taxonomy.md's invariants:
+//
+//   - `effect:` must be one of pure|read|write|external when set.
+//   - `effect:` and the deprecated `external_side_effect:` are mutually
+//     exclusive — declaring both is a load error.
+//   - A declared value (via effect: or, mapped through
+//     effect.FromLegacyBool, via external_side_effect:) that is <= read
+//     while the tool-surface join is > read is a HARD ERROR: the agent
+//     claims a posture its own tools contradict (the teeth the old
+//     boolean never had — it would have caught the dead proposal_author
+//     declaration).
+//   - Any other declared/joined disagreement is a warn-line, not an error
+//     (over-declaring privilege is a safe, if noisy, author mistake).
+//   - No declaration resolves silently to the tool-surface join.
+//
+// After resolution decl.Effect is always populated with a valid class, and
+// decl.ExternalSideEffect is mirrored from it (true iff Effect == external)
+// so pre-taxonomy consumers that still read the boolean directly (the
+// write_mode: read_only contradiction check in validateWriteMode) keep
+// working unchanged for both old- and new-style declarations.
+//
+// Returns a non-empty error message on a hard-fail; decl is left unmodified
+// in that case (the caller aborts the whole load).
+func resolveAgentEffect(name string, decl *AgentDecl) string {
+	if decl.Effect != "" && !decl.Effect.Valid() {
+		return fmt.Sprintf("agent %q: effect %q is not one of pure|read|write|external", name, decl.Effect)
 	}
-	return false
+	if decl.Effect != "" && decl.ExternalSideEffect != nil {
+		return fmt.Sprintf("agent %q: declares both effect: and the deprecated external_side_effect: — remove external_side_effect (use effect: only)", name)
+	}
+
+	toolSurface := agentToolSurface(decl)
+	joined := effect.FromTools(toolSurface)
+
+	var declared effect.Effect
+	switch {
+	case decl.Effect != "":
+		declared = decl.Effect
+	case decl.ExternalSideEffect != nil:
+		declared = effect.FromLegacyBool(*decl.ExternalSideEffect, toolSurface)
+		slog.Warn("agent external_side_effect: is deprecated; use effect: instead",
+			"agent", name)
+	}
+
+	if declared != "" {
+		if declared.LessEqual(effect.Read) && !joined.LessEqual(effect.Read) {
+			return fmt.Sprintf(
+				"agent %q: declares effect %q but its tool surface %v joins to %q (includes a write/external-tier tool) — "+
+					"these contradict each other; an agent with that tool surface cannot be %s. "+
+					"Remove the declaration or the tool.",
+				name, declared, toolSurface, joined, declared)
+		}
+		if declared != joined {
+			slog.Warn("agent effect declaration disagrees with inferred value from tool surface",
+				"agent", name, "declared", declared, "inferred", joined)
+		}
+		decl.Effect = declared
+	} else {
+		decl.Effect = joined
+	}
+
+	mirrored := decl.Effect == effect.External
+	decl.ExternalSideEffect = &mirrored
+	return ""
+}
+
+func agentToolSurface(decl *AgentDecl) []string {
+	if decl == nil {
+		return nil
+	}
+	out := append([]string(nil), decl.Tools...)
+	if decl.MCP != nil {
+		out = append(out, decl.MCP.Tools...)
+	}
+	return out
 }
 
 // collectAskDecideAgents walks the full effect graph and returns the set of
@@ -705,7 +913,7 @@ func normaliseAgentTool(name string) string {
 	if name == "" {
 		return name
 	}
-	if strings.HasPrefix(name, "host.") {
+	if strings.HasPrefix(name, "host.") || strings.HasPrefix(name, "mcp__") {
 		return name
 	}
 	return "host." + name
@@ -738,10 +946,6 @@ func loadAndValidate(b []byte, file string) (*AppDef, []error) {
 		return nil, []error{ve}
 	}
 
-	// LoadBytes skips parseAndMerge, so inject builtin meta_modes here
-	// before validation. Same rationale as the Load() path.
-	injectBuiltinMetaModes(&def)
-
 	// Resolve agent declarations (tools normalisation, external_side_effect
 	// inference, bash_profile checks). baseDir is "" in the LoadBytes path —
 	// system_prompt_path resolution is intentionally not supported here;
@@ -749,6 +953,25 @@ func loadAndValidate(b []byte, file string) (*AppDef, []error) {
 	if agentErrs := resolveAgentDecls(&def, file, ""); len(agentErrs) > 0 {
 		return nil, agentErrs
 	}
+
+	// LoadBytes skips runLoadPipeline, so run the same local macro expansions
+	// here before validation. Import folding and file-backed path resolution
+	// remain Load-only concerns.
+	if expandErrs := expandPhases(&def, file); len(expandErrs) > 0 {
+		return nil, expandErrs
+	}
+	if workbenchErrs := expandWorkbenches(&def, file); len(workbenchErrs) > 0 {
+		return nil, workbenchErrs
+	}
+	if captureErrs := expandOffRampCaptures(&def, file); len(captureErrs) > 0 {
+		return nil, captureErrs
+	}
+
+	injectBuiltinStoryAuthoringRoom(&def, file, "")
+
+	// LoadBytes skips parseAndMerge/runLoadPipeline, so inject builtin
+	// meta_modes here before validation. Same rationale as the Load() path.
+	injectBuiltinMetaModes(&def)
 
 	// Resolve agent plugin declarations from agent_plugins: block.
 	if pluginErrs := resolveAgentPlugins(&def, file); len(pluginErrs) > 0 {
@@ -862,6 +1085,8 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// scope (it needs AgentDef.ExternalSideEffect, which validateStates does not
 	// carry).
 	validateWriteMode(file, def, &errs)
+	validateOperations(file, def, &errs)
+	validateOperationPolicies(file, def, &errs)
 
 	// intercept_drive: multi-turn drive flag (conflict-capable intercept). The
 	// only valid value is "rest"; only meaningful on a top-level room.
@@ -875,6 +1100,12 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// validate_exprs.go.
 	validateExprs(file, def, &errs)
 
+	// Workbench owns its synthesized request/note world keys and capture intent,
+	// but author-provided context_args can still point at arbitrary world keys.
+	// Validate those references after import/workbench expansion so namespace
+	// drift is caught at load time.
+	validateWorkbenchContextArgs(file, def, worldKeys, &errs)
+
 	// ── 7a''. view ↔ on_enter bind-target fallback advisory ───────────────────
 	// Emit a NON-FATAL warning when a state's inline view reads a world key that
 	// is only filled by an on_enter invoke/bind host call without an explicit
@@ -883,6 +1114,17 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// but a fallback-less template is still fragile — this restores the
 	// authoring-time signal. Does NOT append to errs. See validate_exprs.go.
 	validateViewBindFallbacks(file, def, &errs)
+
+	// ── 7a'''. unknown template-namespace advisory ────────────────────────────
+	// Emit a NON-FATAL warning when an inline view template or a `with:
+	// {prompt: "..."}` agent-prompt file references a `{{ }}`/`{% %}`
+	// top-level namespace render.ToContext never populates (e.g. the
+	// historical `{{ context.* }}` — see .context/scenario-qa-prd-transports-
+	// kinks.md). pongo2 renders an unknown namespace as an empty string with
+	// no error, so this is otherwise only discoverable live, after an agent
+	// receives a blank handoff. Does NOT append to errs. See
+	// validate_template_namespaces.go.
+	validateTemplateNamespaces(file, def, &errs)
 
 	// Validate the engine-driven decider config (execution-modes proposal).
 	if d := def.Decider; d != nil {
@@ -943,6 +1185,12 @@ func validateDef(def *AppDef, file string) (*AppDef, []error) {
 	// Enforces: ask/decide/extract → no mutation tools; task → acceptance.schema
 	// required; task + external_side_effect:false + WebFetch/WebSearch → error.
 	validateAgentVerbCrossChecks(file, def, &errs)
+
+	// ── 9d'. host_interfaces op effect: override validation (effect-taxonomy.md).
+	// A declared `effect:` must be one of pure|read|write|external; the
+	// builtin classification table (internal/effect.ClassifyVerb) is the
+	// default for every op that doesn't set this override.
+	validateHostInterfaceEffects(file, def, &errs)
 
 	// ── 9e. grammar-subset check for builtin.local_llm grammar:true effects.
 	// Every decide effect whose `agent:` alias resolves to a builtin.local_llm
@@ -1302,6 +1550,42 @@ func validateStates(
 		for _, wk := range s.RelevantWorld {
 			if _, ok := worldKeys[wk]; !ok {
 				addErr(fmt.Sprintf("state %q: relevant_world key %q is not declared in world schema", statePath, wk))
+			}
+		}
+
+		// Validate room prerequisites. Expressions are compiled again by
+		// validateExprs for full expression diagnostics; this pass handles the
+		// structural contract and intent cross-reference.
+		seenPrereqIDs := map[string]struct{}{}
+		for i, pr := range s.Prerequisites {
+			loc := fmt.Sprintf("state %q prerequisites[%d]", statePath, i)
+			if strings.TrimSpace(pr.ID) == "" {
+				addErr(fmt.Sprintf("%s: id is required", loc))
+			} else {
+				if _, exists := seenPrereqIDs[pr.ID]; exists {
+					addErr(fmt.Sprintf("%s: duplicate id %q", loc, pr.ID))
+				}
+				seenPrereqIDs[pr.ID] = struct{}{}
+			}
+			if strings.TrimSpace(pr.Title) == "" {
+				addErr(fmt.Sprintf("%s: title is required", loc))
+			}
+			switch pr.Severity {
+			case "", "info", "warning", "warn", "error":
+				// ok
+			default:
+				addErr(fmt.Sprintf("%s: severity %q is not one of info, warning, warn, error", loc, pr.Severity))
+			}
+			if strings.TrimSpace(pr.SatisfiedWhen) == "" {
+				addErr(fmt.Sprintf("%s: satisfied_when is required", loc))
+			}
+			if pr.Action != nil && strings.TrimSpace(pr.Action.Intent) != "" {
+				intentName := pr.Action.Intent
+				_, inScope := inScopeIntents[intentName]
+				_, inGlobal := globalIntentDefs[intentName]
+				if !inScope && !inGlobal {
+					addErr(fmt.Sprintf("%s: action.intent %q is not a declared intent", loc, intentName))
+				}
 			}
 		}
 
@@ -1701,6 +1985,148 @@ func validateBackgroundEffectAware(file, location, originStatePath string, eff E
 	}
 }
 
+func validateOperations(file string, def *AppDef, errs *[]error) {
+	var walkEffects func(location, statePath string, inOperation bool, effects []Effect)
+	walkEffects = func(location, statePath string, inOperation bool, effects []Effect) {
+		for i, eff := range effects {
+			loc := fmt.Sprintf("%s[%d]", location, i)
+			if inOperation && eff.Background {
+				*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("%s: background jobs inside operation states need an explicit policy", loc)})
+			}
+			if eff.CommitOperation != nil && !inOperation {
+				*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("%s: commit_operation is only valid inside a state with operation:", loc)})
+			}
+			if eff.PersistDraft != nil {
+				if !inOperation {
+					*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("%s: persist_draft is only valid inside a state with operation:", loc)})
+				}
+				if strings.TrimSpace(eff.PersistDraft.ID) == "" {
+					*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("%s: persist_draft requires id:", loc)})
+				}
+			}
+			if eff.DiscardOperation != nil && !inOperation {
+				*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("%s: discard_operation is only valid inside a state with operation:", loc)})
+			}
+			if len(eff.OnComplete) > 0 {
+				walkEffects(loc+" on_complete", statePath, inOperation, eff.OnComplete)
+			}
+			if len(eff.Effects) > 0 {
+				walkEffects(loc+" effects", statePath, inOperation, eff.Effects)
+			}
+		}
+	}
+	var walkStates func(prefix string, states map[string]*State, inheritedOperation bool)
+	walkStates = func(prefix string, states map[string]*State, inheritedOperation bool) {
+		for name, s := range states {
+			if s == nil {
+				continue
+			}
+			statePath := joinPath(prefix, name)
+			inOperation := inheritedOperation || s.Operation != nil
+			if s.Operation != nil {
+				scope := strings.TrimSpace(s.Operation.Scope)
+				if strings.Contains(scope, "{{") || strings.Contains(scope, "{%") {
+					*errs = append(*errs, &ValidationError{File: file, Message: fmt.Sprintf("state %q: operation.scope must be a stable literal, got %q", statePath, scope)})
+				}
+			}
+			walkEffects(fmt.Sprintf("state %q on_enter", statePath), statePath, inOperation, s.OnEnter)
+			for intentName, transitions := range s.On {
+				for ti, tr := range transitions {
+					walkEffects(fmt.Sprintf("state %q intent %q transitions[%d] effects", statePath, intentName, ti), statePath, inOperation, tr.Effects)
+				}
+			}
+			if len(s.States) > 0 {
+				walkStates(statePath, s.States, inOperation)
+			}
+		}
+	}
+	walkStates("", def.States, false)
+}
+
+func validateOperationPolicies(file string, def *AppDef, errs *[]error) {
+	addErr := func(msg string) {
+		*errs = append(*errs, &ValidationError{File: file, Message: msg})
+	}
+
+	validModes := map[string]struct{}{
+		"interactive": {},
+		"autonomous":  {},
+		"supervised":  {},
+	}
+	validExecutionModes := map[string]struct{}{
+		"":         {},
+		"one-shot": {},
+		"staged":   {},
+	}
+	validReasons := map[string]struct{}{
+		"needs-human":               {},
+		"uncertain":                 {},
+		"gate-failed":               {},
+		"host-error":                {},
+		"conflict":                  {},
+		"budget-exhausted":          {},
+		"policy-denied":             {},
+		"operator-ask":              {},
+		"protected-branch-approval": {},
+	}
+
+	for _, id := range sortedKeys(def.Operations) {
+		policy := def.Operations[id]
+		loc := fmt.Sprintf("operations.%s", id)
+		if strings.TrimSpace(id) == "" {
+			addErr("operations: policy id must not be empty")
+			continue
+		}
+		if policy == nil {
+			addErr(fmt.Sprintf("%s: policy must not be null", loc))
+			continue
+		}
+		mode := strings.TrimSpace(policy.Mode)
+		if _, ok := validModes[mode]; !ok {
+			addErr(fmt.Sprintf("%s.mode %q is invalid (want interactive, autonomous, or supervised)", loc, policy.Mode))
+		}
+		execMode := strings.TrimSpace(policy.ExecutionMode)
+		if _, ok := validExecutionModes[execMode]; !ok {
+			addErr(fmt.Sprintf("%s.execution_mode %q is invalid (want \"\", one-shot, or staged)", loc, policy.ExecutionMode))
+		}
+		for _, reason := range policy.StopOn {
+			if _, ok := validReasons[strings.TrimSpace(reason)]; !ok {
+				addErr(fmt.Sprintf("%s.stop_on reason %q is invalid", loc, reason))
+			}
+		}
+		for _, reason := range policy.PauseOn {
+			if _, ok := validReasons[strings.TrimSpace(reason)]; !ok {
+				addErr(fmt.Sprintf("%s.pause_on reason %q is invalid", loc, reason))
+			}
+		}
+	}
+
+	var walkStates func(prefix string, states map[string]*State)
+	walkStates = func(prefix string, states map[string]*State) {
+		for name, s := range states {
+			if s == nil {
+				continue
+			}
+			statePath := joinPath(prefix, name)
+			for intentName, transitions := range s.On {
+				for ti, tr := range transitions {
+					opID := strings.TrimSpace(tr.Operation)
+					if opID == "" {
+						continue
+					}
+					if _, ok := def.Operations[opID]; !ok {
+						addErr(fmt.Sprintf("state %q intent %q transitions[%d]: operation %q is not declared in top-level operations", statePath, intentName, ti, tr.Operation))
+					}
+				}
+			}
+			if len(s.States) > 0 {
+				walkStates(statePath, s.States)
+			}
+		}
+	}
+	walkStates("", def.States)
+}
+
 // validateWriteMode enforces the write_mode: room-posture invariants
 // (agent-write-mode-opt-in proposal). It walks the full state tree (def in
 // scope so it can read AgentDef.ExternalSideEffect, which validateStates does
@@ -1715,7 +2141,7 @@ func validateBackgroundEffectAware(file, location, originStatePath string, eff E
 //     write-capable agent (an effect's agent declaring external_side_effect: true):
 //     the static and runtime postures must agree at the read-only floor;
 //   - on every state, rejects any effect that `set:`s the engine-reserved
-//     write_mode_scope world key (a story must not be able to self-grant write mode).
+//     engine-owned world keys that stories must not forge.
 func validateWriteMode(file string, def *AppDef, errs *[]error) {
 	addErr := func(msg string) {
 		*errs = append(*errs, &ValidationError{File: file, Message: msg})
@@ -1729,15 +2155,15 @@ func validateWriteMode(file string, def *AppDef, errs *[]error) {
 			}
 			statePath := joinPath(prefix, name)
 
-			// The reserved-key `set:` guard applies to EVERY state regardless of
-			// its own write_mode (any room could try to forge a grant).
+			// The engine-reserved `set:` guard applies to EVERY state regardless
+			// of its own write_mode (any room could try to forge runtime state).
 			for _, eff := range s.OnEnter {
-				checkReservedScopeSet(file, fmt.Sprintf("state %q on_enter", statePath), eff, errs)
+				checkEngineReservedSet(file, fmt.Sprintf("state %q on_enter", statePath), eff, errs)
 			}
 			for _, intentName := range sortedKeys(s.On) {
 				for _, tr := range s.On[intentName] {
 					for _, eff := range tr.Effects {
-						checkReservedScopeSet(file, fmt.Sprintf("state %q intent %q", statePath, intentName), eff, errs)
+						checkEngineReservedSet(file, fmt.Sprintf("state %q intent %q", statePath, intentName), eff, errs)
 					}
 				}
 			}
@@ -1814,11 +2240,9 @@ func validateInterceptDrive(file string, def *AppDef, errs *[]error) {
 	walk("", def.States)
 }
 
-// checkReservedScopeSet rejects an effect that `set:`s the engine-reserved
-// write_mode_scope world key. The runtime owns that key (the write-mode gate sets
-// and clears it on grant / turn / session boundary); a story `set:`-ing it would
-// be a self-granted write mode, defeating the gate. location prefixes the error.
-func checkReservedScopeSet(file, location string, eff Effect, errs *[]error) {
+// checkEngineReservedSet rejects effects that `set:` engine-owned world keys.
+// location prefixes the error.
+func checkEngineReservedSet(file, location string, eff Effect, errs *[]error) {
 	if eff.Set == nil {
 		return
 	}
@@ -1827,6 +2251,13 @@ func checkReservedScopeSet(file, location string, eff Effect, errs *[]error) {
 			File: file,
 			Message: fmt.Sprintf("%s: set: %q is engine-reserved — a story may not self-grant write mode by writing the scope key; "+
 				"it is set only by the write-mode gate on an operator grant", location, WriteModeScopeWorldKey),
+		})
+	}
+	if _, ok := eff.Set[OperationRunWorldKey]; ok {
+		*errs = append(*errs, &ValidationError{
+			File: file,
+			Message: fmt.Sprintf("%s: set: %q is engine-reserved — start or update operation runs with transition operation policies instead",
+				location, OperationRunWorldKey),
 		})
 	}
 }
@@ -1894,11 +2325,12 @@ func roomDispatchedAgents(s *State) []string {
 }
 
 // validateAgentRef checks that, when a host.agent.* effect declares
-// `with: { agent: <name> }`, the name resolves to an entry in
-// AppDef.Agents. Effects that omit `agent:` (or whose Invoke is not a
-// host.agent.* handler) are silently ignored — agent: is host-handler-
-// specific metadata, not a global field. Templated values (containing
-// "{{") are skipped because they cannot be resolved statically.
+// `with: { agent: <name> }`, the name resolves to an entry in AppDef.Agents.
+// Task-style handlers may also name builtin agents because they run through
+// the same registry meta modes use. Effects that omit `agent:` (or whose
+// Invoke is not a host.agent.* handler) are silently ignored — agent: is
+// host-handler-specific metadata, not a global field. Templated values
+// (containing "{{") are skipped because they cannot be resolved statically.
 func validateAgentRef(file, location string, eff Effect, declaredAgents map[string]struct{}, errs *[]error) {
 	if eff.With == nil {
 		return
@@ -1925,11 +2357,27 @@ func validateAgentRef(file, location string, eff Effect, declaredAgents map[stri
 		return
 	}
 	if _, found := declaredAgents[name]; !found {
+		if hostAgentInvokeAllowsBuiltin(eff.Invoke) && isBuiltinAgentName(name) {
+			return
+		}
 		*errs = append(*errs, &ValidationError{
 			File:    file,
-			Message: fmt.Sprintf("%s: with.agent %q is not declared in agents", location, name),
+			Message: fmt.Sprintf("%s: with.agent %q is not declared in agents or builtin agents", location, name),
 		})
 	}
+}
+
+func hostAgentInvokeAllowsBuiltin(invoke string) bool {
+	return invoke == "host.agent.task" || invoke == "host.agent.converse"
+}
+
+func isBuiltinAgentName(name string) bool {
+	for _, builtin := range agents.BuiltinNames() {
+		if name == builtin {
+			return true
+		}
+	}
+	return false
 }
 
 // agentMutationTools is the set of tools that are forbidden for
@@ -1970,6 +2418,39 @@ var readOnlyArgv0s = map[string]bool{
 // declare a validator.post_cmd whose argv0 is not on the known-read-only
 // allowlist — the runtime sandbox catches actual mutations, but the warning
 // surfaces the potential problem at app-load.
+// validateHostInterfaceEffects rejects a declared HostInterfaceOp.Effect
+// outside the four recognised taxonomy tiers (effect-taxonomy.md). It does
+// NOT cross-check the override against the eventual bound handler's builtin
+// classification — host_interfaces bindings resolve to a concrete handler
+// only through the import/dev-story synthesis machinery, well after this
+// validation pass, so that check is deferred (see the epic's cross-cutting
+// open question 1: the builtin table is the default, this override is an
+// escape hatch the author is trusted to use correctly).
+func validateHostInterfaceEffects(file string, def *AppDef, errs *[]error) {
+	if def == nil {
+		return
+	}
+	for _, ifaceName := range sortedKeys(def.HostInterfaces) {
+		iface := def.HostInterfaces[ifaceName]
+		if iface == nil {
+			continue
+		}
+		for _, opName := range sortedKeys(iface.Operations) {
+			op := iface.Operations[opName]
+			if op == nil || op.Effect == "" {
+				continue
+			}
+			if !op.Effect.Valid() {
+				*errs = append(*errs, &ValidationError{
+					File: file,
+					Message: fmt.Sprintf("host_interfaces %q op %q: effect %q is not one of pure|read|write|external",
+						ifaceName, opName, op.Effect),
+				})
+			}
+		}
+	}
+}
+
 func validateAgentVerbCrossChecks(file string, def *AppDef, errs *[]error) {
 	if def == nil {
 		return
@@ -2053,8 +2534,30 @@ func checkAgentEffect(file, loc string, eff Effect, agents map[string]*AgentDecl
 	addErr := func(msg string) {
 		*errs = append(*errs, &ValidationError{File: file, Message: msg})
 	}
+	if shortVerb == "task" || shortVerb == "converse" || shortVerb == "decide" {
+		if msg := validateSandboxBlock(loc, eff.With["sandbox"]); msg != "" {
+			addErr(msg)
+		}
+	}
+	if shortVerb == "codeact" {
+		if eff.With["sandbox"] != nil {
+			addErr(fmt.Sprintf(
+				"%s: sandbox: is not valid for host.agent.codeact — sandbox is an external-agent subprocess knob; codeact uses its own bounded-Starlark-loop sandboxing (internal/host/codeact)",
+				loc,
+			))
+		}
+	}
 
 	switch shortVerb {
+	case "codeact":
+		// with.capabilities uses the shared structured Starlark capability
+		// schema, and runtime enforcement comes from the normalized spec rather
+		// than a prompt-only allow-list.
+		if rawCaps, present := eff.With["capabilities"]; present {
+			if _, err := starlarkhost.ParseCapabilities(rawCaps); err != nil {
+				addErr(fmt.Sprintf("%s: with.capabilities is invalid for host.agent.codeact: %v", loc, err))
+			}
+		}
 	case "ask", "decide", "extract":
 		// M6a: reject mutation tools.
 		if decl != nil {
@@ -2112,6 +2615,80 @@ func checkAgentEffect(file, loc string, eff Effect, agents map[string]*AgentDecl
 			}
 		}
 	}
+}
+
+func validateSandboxBlock(loc string, raw any) string {
+	if raw == nil {
+		return ""
+	}
+	if s, ok := raw.(string); ok && strings.Contains(s, "{{") {
+		return ""
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return fmt.Sprintf("%s: sandbox must be a mapping", loc)
+	}
+	if v, _ := m["min_strength"].(string); strings.TrimSpace(v) != "" {
+		switch v {
+		case "none", "supervised", "fs_confined", "os_confined", "vm_confined":
+		default:
+			return fmt.Sprintf("%s: sandbox.min_strength %q is not one of none|supervised|fs_confined|os_confined|vm_confined", loc, v)
+		}
+	}
+	if v, _ := m["repo"].(string); strings.TrimSpace(v) != "" {
+		switch v {
+		case "none", "read_only":
+		default:
+			return fmt.Sprintf("%s: sandbox.repo %q is not one of none|read_only", loc, v)
+		}
+	}
+	if v, _ := m["network"].(string); strings.TrimSpace(v) != "" {
+		switch v {
+		case "inherit", "deny", "model_only", "allowlist":
+		default:
+			return fmt.Sprintf("%s: sandbox.network %q is not one of inherit|deny|model_only|allowlist", loc, v)
+		}
+	}
+	if v, _ := m["degrade"].(string); strings.TrimSpace(v) != "" {
+		switch v {
+		case "fail", "warn":
+		default:
+			return fmt.Sprintf("%s: sandbox.degrade %q is not one of fail|warn", loc, v)
+		}
+	}
+	for _, key := range []string{"rw", "hidden"} {
+		if msg := validateSandboxPathList(loc, key, m[key]); msg != "" {
+			return msg
+		}
+	}
+	if resources, ok := m["resources"].(map[string]any); ok {
+		if timeout, _ := resources["timeout"].(string); strings.TrimSpace(timeout) != "" {
+			if _, err := time.ParseDuration(timeout); err != nil {
+				return fmt.Sprintf("%s: sandbox.resources.timeout: %v", loc, err)
+			}
+		}
+	}
+	return ""
+}
+
+func validateSandboxPathList(loc, key string, raw any) string {
+	if raw == nil {
+		return ""
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return fmt.Sprintf("%s: sandbox.%s must be a list", loc, key)
+	}
+	for _, item := range items {
+		s, ok := item.(string)
+		if !ok {
+			return fmt.Sprintf("%s: sandbox.%s entries must be strings", loc, key)
+		}
+		if strings.TrimSpace(s) == "" {
+			return fmt.Sprintf("%s: sandbox.%s entries must be non-empty", loc, key)
+		}
+	}
+	return ""
 }
 
 // validateLocalLLMGrammarSubset enforces, at load time, that every decide
@@ -2214,23 +2791,27 @@ func validateStarlarkEffects(file string, def *AppDef, errs *[]error) {
 			return
 		}
 
-		// Resolve against the app root and reject any path that escapes it via
-		// `../`. Both story-root and app-level scripts/ dirs are fine — only an
-		// escape outside BaseDir is rejected.
+		// Resolve relative paths against the app root and reject any relative path
+		// that escapes it via `../`. Imported stories have their `script:` values
+		// rebased to absolute child-story paths before folding; those are allowed
+		// because they have already been rooted by the import loader.
 		resolved := rawScript
-		if !filepath.IsAbs(resolved) && def.BaseDir != "" {
+		rawWasAbs := filepath.IsAbs(resolved)
+		if !rawWasAbs && def.BaseDir != "" {
 			resolved = filepath.Join(def.BaseDir, resolved)
 		}
-		if def.BaseDir != "" {
-			rel, relErr := filepath.Rel(def.BaseDir, filepath.Clean(resolved))
-			if relErr != nil || strings.HasPrefix(rel, "..") {
-				addErr(fmt.Sprintf("%s: host.starlark.run script %q resolves outside the app root", loc, rawScript))
-				return
-			}
+		if def.BaseDir != "" && !pathWithinAnyStoryRoot(filepath.Clean(resolved), def) {
+			addErr(fmt.Sprintf("%s: host.starlark.run script %q resolves outside the app root or imported story roots", loc, rawScript))
+			return
 		}
 
 		if _, statErr := os.Stat(resolved); statErr != nil {
 			addErr(fmt.Sprintf("%s: host.starlark.run script %q not found (resolved to %q)", loc, rawScript, resolved))
+			return
+		}
+		source, sourceErr := os.ReadFile(resolved)
+		if sourceErr != nil {
+			addErr(fmt.Sprintf("%s: host.starlark.run script %q could not be read (resolved to %q): %v", loc, rawScript, resolved, sourceErr))
 			return
 		}
 
@@ -2247,6 +2828,12 @@ func validateStarlarkEffects(file string, def *AppDef, errs *[]error) {
 			addErr(fmt.Sprintf("%s: host.starlark.run sidecar %q is malformed: %v", loc, sidecarPath, parseErr))
 			return
 		}
+		capabilities, capErr := starlarkhost.ParseCapabilities(eff.With["capabilities"])
+		if capErr != nil {
+			addErr(fmt.Sprintf("%s: host.starlark.run capabilities are invalid: %v", loc, capErr))
+			return
+		}
+		validateStarlarkScriptCapabilityUse(loc, string(source), capabilities, addErr)
 
 		// Statically vet the wired `inputs:` against how the machine actually
 		// resolves them. host.starlark.run does NOT expr-evaluate inputs — the
@@ -2285,6 +2872,69 @@ func validateStarlarkEffects(file string, def *AppDef, errs *[]error) {
 			}
 		}
 	})
+}
+
+func validateStarlarkScriptCapabilityUse(loc, source string, cap starlarkhost.CapabilitySpec, addErr func(string)) {
+	scan := stripStarlarkLineComments(source)
+	if strings.Contains(scan, "ctx.http") && !cap.NeedsHTTP() {
+		addErr(fmt.Sprintf("%s: script uses ctx.http but with.capabilities does not grant http", loc))
+	}
+	if strings.Contains(scan, "ctx.fs.write") && len(cap.FS.WritePatterns) == 0 {
+		addErr(fmt.Sprintf("%s: script uses ctx.fs.write but with.capabilities.fs.write is empty", loc))
+	}
+	if (strings.Contains(scan, "ctx.fs.read") || strings.Contains(scan, "ctx.fs.exists") || strings.Contains(scan, "ctx.fs.glob")) && len(cap.FS.ReadPatterns) == 0 {
+		addErr(fmt.Sprintf("%s: script uses ctx.fs read/exists/glob but with.capabilities.fs.read is empty", loc))
+	}
+	if strings.Contains(scan, "ctx.probe") && !cap.AllowsProbe() {
+		addErr(fmt.Sprintf("%s: script uses ctx.probe but with.capabilities does not grant probe/vcs/github", loc))
+	}
+	if strings.Contains(scan, "gh.issue.list") && !containsString(cap.Probe.Names, "gh.issue.list") {
+		addErr(fmt.Sprintf("%s: script uses gh.issue.list but with.capabilities.github.issues is not read", loc))
+	}
+	if strings.Contains(scan, "ctx.host") && !cap.AllowsHost() {
+		addErr(fmt.Sprintf("%s: script uses ctx.host but with.capabilities.host.verbs is empty", loc))
+	}
+}
+
+func stripStarlarkLineComments(source string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(source, "\n") {
+		if idx := strings.Index(line, "#"); idx >= 0 {
+			line = line[:idx]
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func containsString(list []string, want string) bool {
+	for _, item := range list {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func pathWithinAnyStoryRoot(path string, def *AppDef) bool {
+	if pathWithinRoot(path, def.BaseDir) {
+		return true
+	}
+	for _, manifest := range def.LoadedManifests {
+		if pathWithinRoot(path, filepath.Dir(manifest)) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathWithinRoot(path, root string) bool {
+	if root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // bareStarlarkInputRootRE matches a value that STARTS WITH a world-root accessor
@@ -2965,7 +3615,22 @@ func (a *appImpl) InitialState() StatePath {
 
 // LookupState resolves a dot-separated state path through the state tree.
 func (a *appImpl) LookupState(p StatePath) (*State, bool) {
-	return lookupStateInMap(string(p), a.def.States)
+	return a.def.LookupState(p)
+}
+
+// LookupState resolves a dot-separated state path (e.g. "core.landing", the
+// shape a compound import wrapper produces) through def's nested state tree.
+// Callers outside this package that hold a bare *AppDef (no appImpl) — e.g.
+// internal/orchestrator's workbench_gate_signal.go, which must resolve a
+// dispatching state that may sit under an imported alias's compound wrapper —
+// need this directly rather than reaching for the flat, single-level
+// def.States[...] index, which only ever resolves a TOP-LEVEL state name and
+// silently misses (nil, false) anything nested under a compound wrapper.
+func (def *AppDef) LookupState(p StatePath) (*State, bool) {
+	if def == nil {
+		return nil, false
+	}
+	return lookupStateInMap(string(p), def.States)
 }
 
 // lookupStateInMap walks a dot-separated path through a nested state map.

@@ -1,0 +1,16 @@
+# gitops_done_main_room - the imported git-ops done screen can return to the
+# surrounding dev-story landing room instead of trapping the operator.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: gitops.done
+initial_world:
+  gitops__integration_branch: main
+  gitops__current_branch:     main
+  gitops__on_integration:     true
+
+turns:
+  - intent: { name: gitops__main_room, slots: {} }
+    expect_state: landing
+
+expect_no_errors: true

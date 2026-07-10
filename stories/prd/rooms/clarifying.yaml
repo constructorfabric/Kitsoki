@@ -100,7 +100,7 @@ states:
       - heading: "Resolved in earlier rounds"
         when:    "world.clarification_log"
       - code: |
-          {{ world.clarification_log }}
+          {{ world.clarification_log|default:"(none)" }}
         when: "world.clarification_log"
       # Verb hints — kept on every turn so the semantic router reliably
       # catches the action verbs typed as free text. There is intentionally

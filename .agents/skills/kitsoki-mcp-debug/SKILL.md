@@ -15,7 +15,7 @@ requiring Claude/Codex to reload its MCP tool list.
 Run from the repo root:
 
 ```sh
-GOCACHE=$PWD/.cache/go-build go run ./cmd/kitsoki mcp-test --stories-dir ./stories --timeout 20s
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" go run ./cmd/kitsoki mcp-test --stories-dir ./stories --timeout 20s
 ```
 
 Expected behavior:
@@ -26,15 +26,44 @@ Expected behavior:
   `session.new`, and render tools
 - `tool_runs` contains successful `studio.ping` and `studio.handles` calls
 
-Use a repo-local `GOCACHE` in sandboxed environments. Remove `.cache/` before
-committing unless it is already ignored.
+Use a writable temp/shared `GOCACHE` in sandboxed or protected checkouts. Do
+not point Go's build cache at `$PWD/.cache/go-build` from the protected primary
+checkout; that directory may be read-only and will fail before the MCP server
+starts.
+
+When the question is "why is an attached client slow or flaky?", separate Go
+build/link latency from MCP server startup before changing server code:
+
+```sh
+/usr/bin/time -p kitsoki mcp-test --stories-dir ./stories --timeout 20s
+/usr/bin/time -p go run ./cmd/kitsoki mcp-test --stories-dir ./stories --timeout 20s
+```
+
+If the binary path is fast but `go run` takes many seconds, the MCP client is
+paying compile/link cost on every attach. Fix the client registration to launch
+an installed/built `kitsoki` binary rather than `go run ./cmd/kitsoki ...`.
+For a precise build-under-test without `go run`, build a temporary binary and
+point `mcp-test` at it:
+
+```sh
+go build -o /tmp/kitsoki-mcp-test ./cmd/kitsoki
+/usr/bin/time -p /tmp/kitsoki-mcp-test mcp-test \
+  --server-command /tmp/kitsoki-mcp-test \
+  --stories-dir ./stories \
+  --timeout 20s
+```
+
+Read `studio.ping` before trusting assumptions about the attached server. Its
+structured content reports `executable`, `working_dir`, `revision`, and
+`modified`; stale PATH installs, wrong worktree cwd, or a temp `go run`
+executable are visible there.
 
 ## Test One Tool
 
 Use `--tool` and a JSON object in `--tool-args`:
 
 ```sh
-GOCACHE=$PWD/.cache/go-build go run ./cmd/kitsoki mcp-test \
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" go run ./cmd/kitsoki mcp-test \
   --stories-dir ./stories \
   --tool story.validate \
   --tool-args '{"dir":"stories/bugfix"}'
@@ -44,10 +73,10 @@ Other useful calls:
 
 ```sh
 # read-only server shape, useful for meta-mode/Q&A surface checks
-GOCACHE=$PWD/.cache/go-build go run ./cmd/kitsoki mcp-test --read-only
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" go run ./cmd/kitsoki mcp-test --read-only
 
 # workspace-bound authoring tools
-GOCACHE=$PWD/.cache/go-build go run ./cmd/kitsoki mcp-test \
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" go run ./cmd/kitsoki mcp-test \
   --workspace stories/bugfix \
   --tool story.graph \
   --tool-args '{}'
@@ -60,6 +89,46 @@ go build -o /tmp/kitsoki-mcp-test ./cmd/kitsoki
 `mcp-test` defaults to spawning its current executable with generated `mcp`
 args. Use repeated `--server-arg` flags only when the default generated server
 args are not appropriate; they replace the generated `mcp` argument list.
+
+## Client Attach Config
+
+The production studio MCP server is the Go binary: `kitsoki mcp`. It is wired in
+`cmd/kitsoki/mcp.go` and `internal/mcp/studio/*`. JavaScript entries in
+`.mcp.json` such as `slidey`, `stagehand`, or `frontend-mockup` are separate MCP
+servers and are not the Kitsoki studio server unless the failing client is
+actually attaching to one of those server names.
+
+Check every config surface the current client may read, not only the repo
+`.mcp.json`:
+
+```sh
+cat .mcp.json
+sed -n '1,220p' ~/.codex/config.toml
+cat tools/mcp-drive/kitsoki-mcp.json
+```
+
+For Codex, a `~/.codex/config.toml` `[mcp_servers.kitsoki]` entry can supersede
+repo-local expectations. If it says:
+
+```toml
+command = "go"
+args = ["run", "./cmd/kitsoki", "mcp", "--stories-dir", "stories"]
+```
+
+then Codex is launching `go run` at attach time. Prefer an installed binary:
+
+```toml
+[mcp_servers.kitsoki]
+command = "kitsoki"
+args = ["mcp", "--stories-dir", "stories"]
+cwd = "/path/to/Kitsoki"
+startup_timeout_sec = 120
+tool_timeout_sec = 1800
+```
+
+If the attached binary must match the checkout exactly, run the project install
+target or build a named binary and set `command` to that absolute path. Verify
+the result with `studio.ping` rather than with `kitsoki version` alone.
 
 ## No-LLM Boundary
 
@@ -76,13 +145,13 @@ The default smoke is no-LLM:
 For changes in the CLI wrapper:
 
 ```sh
-GOCACHE=$PWD/.cache/go-build go test ./cmd/kitsoki -run 'TestMCP|TestRunStudioMCPTest|TestCLI_TopLevelHelp'
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" go test ./cmd/kitsoki -run 'TestMCP|TestRunStudioMCPTest|TestCLI_TopLevelHelp'
 ```
 
 For studio server/tool behavior:
 
 ```sh
-GOCACHE=$PWD/.cache/go-build go test ./internal/mcp/studio
+GOCACHE="${KITSOKI_GOCACHE:-/private/tmp/kitsoki-gocache}" go test ./internal/mcp/studio
 ```
 
 If `go test ./cmd/kitsoki` fails on sandboxed runs with `~/.kitsoki` writes or
@@ -94,6 +163,15 @@ those areas. Keep verification focused and report the sandbox blocker.
 - `mcp-test: connect`: the child process did not initialize as an MCP server.
   Run with a longer `--timeout`, check the child stderr, and verify the server
   args start with `mcp`.
+- `.artifacts/logs/mcp-startup-*.log` containing only `error: context canceled`
+  after a client exits usually means the stdio peer disconnected or the parent
+  canceled the context. Treat it as shutdown noise unless it is paired with a
+  real initialize/list-tools failure or an early nonzero process exit. Do not
+  count those logs as proof that startup itself failed.
+- slow attach with eventual success: inspect the client registration for
+  `go run`, stale `cwd`, or a shared DB path under a slow/locked location; then
+  compare `time kitsoki mcp-test ...` with `time go run ./cmd/kitsoki mcp-test
+  ...`.
 - missing tool in `tools`: inspect registration in `internal/mcp/studio/server.go`
   and the relevant `register*Tools` method.
 - tool call returns `"is_error": true`: read the text/structured content in the

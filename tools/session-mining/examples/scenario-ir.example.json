@@ -1,0 +1,22 @@
+{
+  "_comment": "Documented example of the kind:conversation scenario IR (schema/scenario_ir.schema.json). Hand-written to match docs/proposals/scenario-foundry.md#scenario-ir; a real mined document is produced by scenario_compiler.py from emit.py --outcomes' intents.json + analysis.json and validates against the same schema (see tests/test_scenario_compiler.py).",
+  "schema_version": "1.0",
+  "kind": "conversation",
+  "id": "scn-git-ops-0007",
+  "source": "mined",
+  "provenance": { "corpus": "claude-code", "session_id": "sess-git", "span_idx": 0 },
+  "persona": "core-maintainer",
+  "goal": "rebase a feature branch onto main without losing local commits",
+  "turns": [
+    {
+      "role": "user",
+      "text": "rebase this onto main",
+      "corrected": true,
+      "corrective_ops": ["git rebase --abort"],
+      "followup_text_head": "no wait, stash first"
+    },
+    { "role": "user", "text": "ok stash my changes then rebase" }
+  ],
+  "expected_effects": ["git.rebase completed", "no uncommitted changes lost"],
+  "abandoned": false
+}

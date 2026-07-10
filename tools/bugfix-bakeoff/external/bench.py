@@ -14,7 +14,7 @@ No LLM, no cost. Two subcommands:
       Overlay the hidden oracle on the candidate tree and run it.
       exit 0 ⇔ oracle GREEN (good fix); exit 1 ⇔ RED (bug remains).
 
-  bench.py verify --project <name> [--bug <id>] [--repo-dir <prebuilt clone>]
+  bench.py verify <manifest.yaml>|--project <name> [--bug <id>] [--repo-dir <prebuilt clone>]
       Prove each fixture: RED at baseline_sha, GREEN after the real fix's source.
       exit 0 ⇔ all checked fixtures armed.
 
@@ -39,7 +39,7 @@ manifest.yaml): project.{repo,install,test_cmd,oracle.{target,run}} and
 bugs[].{baseline_sha,fix_sha,fix_source,oracle_test,oracle_match}. To add a new
 repo, drop in a manifest + the isolated oracle test files — no code changes.
 """
-import argparse, json, os, shutil, subprocess, sys, tempfile
+import argparse, json, os, shutil, subprocess, sys, tempfile, urllib.parse, urllib.request
 from pathlib import Path
 
 try:
@@ -49,6 +49,11 @@ except ImportError:
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from tools.completion_state import SCHEMA_VERSION as COMPLETION_STATE_SCHEMA_VERSION
+from tools.completion_state import write_completion_state
 
 
 def load(project):
@@ -101,6 +106,132 @@ def selected_bugs(m, bug_ids=None):
     if missing:
         sys.exit(f"unknown bug(s) {', '.join(sorted(missing))} in {m['project']['id']}")
     return out
+
+
+def _as_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(v) for v in value if str(v).strip()]
+    if isinstance(value, str):
+        return [part.strip() for part in value.replace(",", " ").split() if part.strip()]
+    return [str(value)]
+
+
+def project_repo_envs(proj):
+    """Environment variables accepted as local checkout hints for a project.
+
+    A private/local project can now be driven from either its standalone checkout
+    (BUGFIX_BAKEOFF_REPO=/path/to/checkout) or a meta checkout env
+    (BUGFIX_BAKEOFF_META_REPO=/path/to/meta) when the manifest also declares
+    project.repo_subdir.
+    """
+    envs = _as_list(proj.get("repo_envs"))
+    if not envs:
+        envs.extend(["BUGFIX_BAKEOFF_REPO", "BUGFIX_BAKEOFF_META_REPO"])
+        envs.append(f"{proj['id'].upper().replace('-', '_')}_REPO")
+    seen = set()
+    out = []
+    for env in envs:
+        env = env.strip()
+        if env and env not in seen:
+            out.append(env)
+            seen.add(env)
+    return out
+
+
+def is_git_checkout(path):
+    return sh(["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"],
+              cwd=path if Path(path).exists() else HERE, quiet=True).stdout.strip() == "true"
+
+
+def manifest_commits(m):
+    commits = []
+    for bug in selected_bugs(m):
+        for key in ("baseline_sha", "fix_sha"):
+            value = str(bug.get(key, "") or "").strip()
+            if value:
+                commits.append(value)
+    return commits
+
+
+def has_manifest_commits(repo, m):
+    commits = manifest_commits(m)
+    if not commits:
+        return True
+    for commit in commits:
+        r = sh(["git", "-C", str(repo), "cat-file", "-e", f"{commit}^{{commit}}"],
+               cwd=repo, quiet=True)
+        if r.returncode != 0:
+            return False
+    return True
+
+
+def resolve_repo_dir(m, repo_dir=None):
+    """Resolve the checkout for a manifest.
+
+    Returns a JSON-friendly record. `path` is the git checkout that contains the
+    manifest's baseline/fix commits. When project.repo_subdir is set, callers may
+    pass the meta-repo root; the resolver will use <repo-dir>/<repo_subdir>.
+    """
+    proj = m["project"]
+    errors = []
+    source = ""
+    base = None
+    if repo_dir:
+        base = Path(repo_dir).expanduser()
+        source = "--repo-dir"
+    else:
+        for env in project_repo_envs(proj):
+            value = os.environ.get(env)
+            if value:
+                base = Path(value).expanduser()
+                source = env
+                break
+        if base is None and bool(proj.get("local_only", False)) and str(proj.get("repo", "")) == ".":
+            base = REPO_ROOT
+            source = "repo-root"
+
+    subdir = str(proj.get("repo_subdir", "") or "").strip()
+    path = None
+    if base is not None:
+        if subdir:
+            candidate = base / subdir
+            if candidate.exists() and is_git_checkout(candidate):
+                path = candidate
+            elif candidate.exists():
+                errors.append(f"repo_subdir is not a git checkout: {candidate}")
+            elif base.exists() and is_git_checkout(base):
+                # The caller passed a standalone checkout instead of the meta
+                # repo root. Only accept it when it contains the manifest's
+                # historical commits; otherwise this is probably an
+                # uninitialized meta-repo submodule.
+                if has_manifest_commits(base, m):
+                    path = base
+                else:
+                    errors.append(
+                        f"repo_subdir does not exist under {base}: {subdir}; "
+                        "base checkout does not contain the manifest commits"
+                    )
+            else:
+                errors.append(f"repo_subdir does not exist under {base}: {subdir}")
+        elif base.exists() and is_git_checkout(base):
+            path = base
+        elif base.exists():
+            errors.append(f"repo_dir is not a git checkout: {base}")
+        else:
+            errors.append(f"repo_dir does not exist: {base}")
+
+    return {
+        "ok": path is not None and not errors,
+        "project": proj["id"],
+        "path": str(path) if path is not None else "",
+        "base": str(base) if base is not None else "",
+        "source": source,
+        "repo_subdir": subdir,
+        "repo_envs": project_repo_envs(proj),
+        "errors": errors,
+    }
 
 
 def sh(cmd, cwd, env=None, quiet=False):
@@ -324,6 +455,160 @@ def classify_cell(trace):
             "evidence": evidence}
 
 
+# Containment/match calls (Go test / JS-TS test) where a string literal is
+# matched against program OUTPUT. A brittle oracle pins the candidate's exact
+# ERROR PROSE in one of these instead of asserting observable behavior. We match
+# only these call forms — NOT generic "assert"/"expect" — so a t.Fatalf(...)
+# failure-MESSAGE string (which legitimately reads like prose) isn't flagged.
+_MATCH_CALL_HINTS = ("strings.contains(", "strings.hasprefix(", "strings.hassuffix(",
+                     "strings.containsany(", ".contains(", ".includes(",
+                     "tocontain", "tomatch", "assertcontains", "containssubstring")
+_STR_LITERAL = None  # compiled lazily (avoid a module-level import-time cost)
+
+
+def _brittle_prose_literals(text):
+    """Heuristic: flag natural-language string literals used in assertions.
+    A literal of >=3 alphabetic words, >=18 chars, that is mostly letters/spaces
+    is almost certainly a human-readable sentence — pinning it asserts one
+    implementation's PROSE, not behavior, and wrongly fails equivalent fixes
+    (the bug9 oracle pinned "already checked out by session" and failed a fix
+    that said "in use by session"). Returns [(lineno, literal)]."""
+    import re
+    global _STR_LITERAL
+    if _STR_LITERAL is None:
+        _STR_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
+    findings = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        low = line.lower()
+        if not any(h in low for h in _MATCH_CALL_HINTS):
+            continue
+        for mo in _STR_LITERAL.finditer(line):
+            lit = mo.group(1)
+            if "%" in lit:  # printf-format string → a message, not a match target
+                continue
+            words = [w for w in lit.replace("\\n", " ").replace("\\t", " ").split() if w]
+            alpha_words = [w for w in words if any(c.isalpha() for c in w)]
+            if len(alpha_words) < 3 or len(lit) < 18:
+                continue
+            naturalness = sum(c.isalpha() or c.isspace() for c in lit) / max(1, len(lit))
+            if naturalness > 0.7:
+                findings.append((lineno, lit))
+    return findings
+
+
+def lint_oracles(m, bug_ids=None, strict=False):
+    """Scan each bug's oracle test for brittle exact-prose assertions and report
+    them. Advisory by default (exit 0); --strict exits nonzero on any finding.
+    Complements `verify` (RED@baseline / GREEN@fix): RED/GREEN against ONE fix
+    can't reveal that the oracle would reject an EQUIVALENT correct fix."""
+    results = []
+    total = 0
+    for b in selected_bugs(m, bug_ids):
+        if b.get("reference_only"):
+            continue
+        oracle = m["_dir"] / b.get("oracle_test", "")
+        if not oracle.exists():
+            results.append({"bug": b.get("id"), "oracle": str(oracle), "error": "missing"})
+            continue
+        findings = _brittle_prose_literals(oracle.read_text())
+        total += len(findings)
+        results.append({
+            "bug": b.get("id"),
+            "oracle": str(oracle),
+            "brittle_prose": [{"line": ln, "literal": lit} for ln, lit in findings],
+        })
+    out = {
+        "ok": total == 0,
+        "total_brittle": total,
+        "results": results,
+        "guidance": ("Assert observable BEHAVIOR, not one implementation's exact "
+                     "error prose. Accept any equivalent wording (e.g. a set of "
+                     "synonyms) plus the load-bearing identifiers. See ORACLE_GUIDE.md."),
+    }
+    print(json.dumps(out, indent=2))
+    return 1 if (strict and total > 0) else 0
+
+
+def mine_failures(results_dir, traces_dir, markdown=None):
+    """Turn a sweep into a prioritized feedback list. Classifies every scored
+    cell (via its trace) and aggregates the patterns that should flow BACK into
+    the harness and the stories:
+      - infra:* patterns (stalled agents, host-error labels) → fix provisioning
+        / the harness, NOT the model.
+      - model:result + oracle fail → real model misses; the states they reached
+        and the bug they missed are the signal for tightening the story
+        (room gates, ticket guidance) the model wandered in.
+    This is the loop that lets aggressive runs improve the stories instead of
+    just scoring models. Output is advisory (always exit 0)."""
+    results = Path(results_dir)
+    traces = Path(traces_dir)
+    cells_dir = results / "cells" if (results / "cells").is_dir() else results
+    by_class = {}
+    stalled_agents = {}
+    host_labels = {}
+    model_misses = []
+    cells = []
+    for cell_json in sorted(cells_dir.glob("*.json")):
+        try:
+            cell = json.loads(cell_json.read_text())
+        except Exception:
+            continue
+        proj, bug, cand = cell.get("project"), cell.get("bug"), cell.get("candidate")
+        if not (proj and bug and cand):
+            continue
+        trace = traces / f"{proj}-{bug}-{cand}.jsonl"
+        health = classify_cell(str(trace))
+        cls = health["class"]
+        by_class[cls] = by_class.get(cls, 0) + 1
+        ev = health.get("evidence", {})
+        if cls == "infra:stall" and ev.get("stalled_agent"):
+            stalled_agents[ev["stalled_agent"]] = stalled_agents.get(ev["stalled_agent"], 0) + 1
+        if cls == "infra:host-error" and ev.get("error_label"):
+            host_labels[ev["error_label"]] = host_labels.get(ev["error_label"], 0) + 1
+        oracle_pass = (cell.get("outcome", {}) or {}).get("oracle_pass")
+        if cls == "model:result" and oracle_pass is False:
+            model_misses.append({"bug": bug, "candidate": cand,
+                                 "states_reached": ev.get("states_visited", [])})
+        cells.append({"bug": bug, "candidate": cand, "class": cls,
+                      "oracle_pass": oracle_pass})
+
+    actions = []
+    infra_total = sum(v for k, v in by_class.items() if k.startswith("infra"))
+    if infra_total:
+        actions.append(f"{infra_total} cell(s) failed on INFRASTRUCTURE, not the model — "
+                       "these must not be scored against any candidate. Fix the harness/provisioning first.")
+    for label, n in sorted(host_labels.items(), key=lambda x: -x[1]):
+        actions.append(f"host-error '{label}' x{n} → bake the fix into provision_vm.sh / the harness.")
+    for agent, n in sorted(stalled_agents.items(), key=lambda x: -x[1]):
+        actions.append(f"agent '{agent}' stalled x{n} → suspect quota/timeout; check tool_timeout_sec + quota window.")
+    if model_misses:
+        actions.append(f"{len(model_misses)} genuine model miss(es) reached a terminal state — "
+                       "review the ticket's layer/behavior guidance and the room gate the model wandered in "
+                       "(this is the story-training signal). See ORACLE_GUIDE.md + the bugfix story.")
+
+    report = {
+        "ok": True,
+        "cells_scanned": len(cells),
+        "by_class": by_class,
+        "stalled_agents": stalled_agents,
+        "host_error_labels": host_labels,
+        "model_misses": model_misses,
+        "feedback_actions": actions,
+        "cells": cells,
+    }
+    if markdown:
+        lines = ["# Bake-off feedback — mined from a sweep", "",
+                 f"Scanned **{len(cells)}** scored cells.", "",
+                 "## Health breakdown", ""]
+        for cls, n in sorted(by_class.items(), key=lambda x: -x[1]):
+            lines.append(f"- `{cls}`: {n}")
+        lines += ["", "## Feedback actions (highest-leverage first)", ""]
+        lines += [f"{i+1}. {a}" for i, a in enumerate(actions)] or ["- (none — all cells healthy)"]
+        Path(markdown).write_text("\n".join(lines) + "\n")
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 def candidate_meta(candidates_path, key):
     """Look up model/effort/provider for a candidate key from candidates.yaml.
     Returns {} if the file or key is absent (back-compat for ad-hoc scoring)."""
@@ -488,7 +773,12 @@ def build_preflight(m, repo_dir=None, candidate=None, candidates_path=None, bug_
     errors = []
     warnings = []
     local_only = bool(proj.get("local_only", False))
-    repo_path = Path(repo_dir).expanduser() if repo_dir else None
+    repo_info = resolve_repo_dir(m, repo_dir) if (repo_dir or local_only or proj.get("repo_subdir")) else {
+        "ok": False, "path": "", "base": str(Path(repo_dir).expanduser()) if repo_dir else "",
+        "source": "--repo-dir" if repo_dir else "", "repo_subdir": str(proj.get("repo_subdir", "") or ""),
+        "repo_envs": project_repo_envs(proj), "errors": [],
+    }
+    repo_path = Path(repo_info["path"]) if repo_info.get("path") else None
     candidates = split_csv(candidate)
     candidate_infos = []
     bugs = selected_bugs(m, bug_ids)
@@ -532,14 +822,14 @@ def build_preflight(m, repo_dir=None, candidate=None, candidates_path=None, bug_
 
     if local_only:
         if not repo_path:
-            env_name = f"{proj['id'].upper().replace('-', '_')}_REPO"
-            errors.append(f"local_only project needs --repo-dir <checkout> or {env_name}")
-        elif not (repo_path / ".git").exists():
-            errors.append(f"repo_dir is not a git checkout: {repo_path}")
-    elif repo_path and not (repo_path / ".git").exists():
-        errors.append(f"repo_dir is not a git checkout: {repo_path}")
+            env_names = "/".join(project_repo_envs(proj))
+            errors.append(f"local_only project needs --repo-dir <checkout> or one of {env_names}")
+    elif repo_dir and not repo_path and not repo_info.get("errors"):
+        errors.append(f"repo_dir is not a git checkout: {repo_info.get('base', repo_dir)}")
 
-    if repo_path and (repo_path / ".git").exists():
+    errors.extend(repo_info.get("errors", []))
+
+    if repo_path and is_git_checkout(repo_path):
         dirty = git_tracked_dirty(repo_path)
         if dirty is None:
             warnings.append(f"could not inspect git status for {repo_path}")
@@ -569,6 +859,10 @@ def build_preflight(m, repo_dir=None, candidate=None, candidates_path=None, bug_
         "project": proj["id"],
         "local_only": local_only,
         "repo_dir": str(repo_path) if repo_path else "",
+        "repo_base_dir": repo_info.get("base", ""),
+        "repo_dir_source": repo_info.get("source", ""),
+        "repo_subdir": repo_info.get("repo_subdir", ""),
+        "repo_envs": repo_info.get("repo_envs", []),
         "bugs": [b.get("id") for b in bugs],
         "reference_only": [b.get("id") for b in m.get("bugs", []) if b.get("reference_only")],
         "candidates": candidate_infos,
@@ -1273,7 +1567,8 @@ def write_completion_markdown(report, markdown):
     markdown.write_text("\n".join(lines) + "\n")
 
 
-def score(m, bug, tree, out, candidate, treatment, trace=None, candidates_path=None):
+def score(m, bug, tree, out, candidate, treatment, trace=None, candidates_path=None,
+          completion_state=None):
     proj = m["project"]
     # Per-bug `oracle:` overrides the project default (target/run/match/inject).
     # A heterogeneous repo (gears-rust: per-bug crate + cargo features +
@@ -1373,27 +1668,75 @@ def score(m, bug, tree, out, candidate, treatment, trace=None, candidates_path=N
                          "(a correct fix may legitimately update one pre-existing test)",
             }, indent=2))
             sys.stderr.write(f"[bench] wrote {out}\n")
+
+        if completion_state:
+            tm = tm if out else read_trace_metrics(trace)
+            write_completion_state(
+                completion_state,
+                verdict=quality,
+                health="model:result",
+                metrics={
+                    "cost_usd": tm["cost_usd"],
+                    "total_tokens": tm["total_tokens"],
+                    "agent_calls": tm["agent_calls"],
+                },
+                evidence_refs=[trace] if trace else [],
+                cell_id=f"{m['project']['id']}-{bug['id']}-{candidate}",
+                job_type="bugfix",
+                target_id=m["project"]["id"],
+                variant_id=candidate,
+                axis={"bug": bug["id"]},
+                trace_ref=trace or "",
+                notes="external oracle; suite_pass is the SECONDARY signal",
+            )
+            sys.stderr.write(f"[bench] wrote completion-state {completion_state}\n")
         return 0 if oracle_pass else 1
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def verify(m, only_bug, repo_dir):
+def verify(m, only_bug, repo_dir, completion_state=None):
     """Clone (or reuse), and for each fixture assert RED@baseline, GREEN@fix."""
+    if m.get("kind") == "arena_cost_corpus":
+        return verify_arena_corpus(m)
+
     proj = m["project"]
     bugs = selected_bugs(m, only_bug)
+    repo_info = resolve_repo_dir(m, repo_dir) if (repo_dir or proj.get("local_only") or proj.get("repo_subdir")) else {
+        "path": "", "errors": [],
+    }
+    if proj.get("local_only") and not repo_info.get("path"):
+        sys.stderr.write("\n".join(repo_info.get("errors") or [
+            "local_only project needs --repo-dir or a configured repo env",
+        ]) + "\n")
+        if completion_state:
+            write_completion_state(
+                completion_state, verdict="blocked", health="infra:repo-dir-missing",
+                job_type="bugfix", target_id=proj["id"],
+                notes="local_only project needs a resolvable checkout",
+            )
+        return 1
     tmp = None
-    if repo_dir:
+    if repo_info.get("path"):
         # Never operate directly on a caller's checkout. The GREEN proof checks
         # out the real fix's source paths through git; doing that against the
         # source checkout can dirty its index/worktree. A local mirror is cheap
         # and gives the verifier a private git directory to mutate.
-        src = Path(repo_dir)
+        src = Path(repo_info["path"])
         tmp = Path(tempfile.mkdtemp(prefix="bench-repo-"))
         repo = tmp / f"{proj['id']}-mirror"
-        r = sh(["git", "clone", "--local", "--no-checkout", "-q", str(src), str(repo)], cwd=tmp)
+        # --no-hardlinks: repo_dir may be a read-only bind mount (e.g. inside the
+        # paired-task arena container) on a different device than tmp, so
+        # --local's default hardlinking fails with "Invalid cross-device link".
+        r = sh(["git", "clone", "--local", "--no-hardlinks", "--no-checkout", "-q", str(src), str(repo)], cwd=tmp)
         if r.returncode != 0:
             sys.stderr.write(r.stdout[-2000:] + r.stderr[-2000:])
+            if completion_state:
+                write_completion_state(
+                    completion_state, verdict="blocked", health="infra:clone-failed",
+                    job_type="bugfix", target_id=proj["id"],
+                    notes=(r.stdout[-500:] + r.stderr[-500:]).strip(),
+                )
             return 1
     else:
         tmp = Path(tempfile.mkdtemp(prefix="bench-repo-"))
@@ -1404,7 +1747,7 @@ def verify(m, only_bug, repo_dir):
     ok = True
     try:
         # fetch all needed commits + install once
-        if not repo_dir:
+        if not repo_info.get("path"):
             for b in bugs:
                 sh(["git", "fetch", "-q", "--depth", "1", "origin", b["baseline_sha"]], cwd=repo)
                 sh(["git", "fetch", "-q", "--depth", "1", "origin", b["fix_sha"]], cwd=repo)
@@ -1440,7 +1783,212 @@ def verify(m, only_bug, repo_dir):
     finally:
         if tmp:
             shutil.rmtree(tmp, ignore_errors=True)
+    if completion_state:
+        write_completion_state(
+            completion_state,
+            verdict="armed" if ok else "failed",
+            health="model:result",
+            job_type="bugfix",
+            target_id=proj["id"],
+            axis={"bug": ",".join(b["id"] for b in bugs)},
+            notes="RED@baseline/GREEN@fix arming proof" if ok else
+                  "one or more fixtures failed to arm (see stdout for per-bug OK/BAD)",
+        )
     return 0 if ok else 1
+
+
+def verify_arena_corpus(m):
+    """Verify the frozen arena corpus manifest.
+
+    The corpus can mix heavyweight external-bakeoff bug fixtures with cheap
+    repo-history content oracles. Keep this in bench.py because WB.1's replay
+    gate calls this verifier directly.
+    """
+    tasks = m.get("tasks") or []
+    ok = True
+    for task in tasks:
+        task_id = task.get("id", "<missing-id>")
+        oracle = task.get("oracle") or {}
+        kind = oracle.get("kind")
+        if kind == "github_content":
+            armed = verify_github_content_task(task, oracle)
+        elif kind == "external_bakeoff":
+            project = oracle.get("project")
+            bug = oracle.get("bug")
+            if not project or not bug:
+                print(f"BAD {task_id}: external_bakeoff oracle needs project and bug")
+                armed = False
+            else:
+                pm = load(project)
+                armed = verify(pm, bug, None) == 0
+        else:
+            print(f"BAD {task_id}: unknown oracle kind {kind!r}")
+            armed = False
+        ok = ok and armed
+    return 0 if ok else 1
+
+
+def verify_github_content_task(task, oracle):
+    task_id = task.get("id", "<missing-id>")
+    repo = oracle.get("repo")
+    file_path = oracle.get("file")
+    required = oracle.get("required_text")
+    baseline_sha = task.get("baseline_sha")
+    fix_sha = task.get("fix_sha")
+    if not all([repo, file_path, required, baseline_sha, fix_sha]):
+        print(f"BAD {task_id}: github_content oracle needs repo, file, required_text, baseline_sha, fix_sha")
+        return False
+    baseline = fetch_github_raw(repo, baseline_sha, file_path)
+    fixed = fetch_github_raw(repo, fix_sha, file_path)
+    red = baseline is None or required not in baseline
+    green = fixed is not None and required in fixed
+    armed = red and green
+    print(f"{'OK ' if armed else 'BAD'} {task_id}: "
+          f"baseline={'RED' if red else 'GREEN'} (want RED), "
+          f"real-fix={'GREEN' if green else 'RED'} (want GREEN)")
+    return armed
+
+
+def fetch_github_raw(repo, sha, file_path):
+    quoted = urllib.parse.quote(str(file_path))
+    url = f"https://raw.githubusercontent.com/{repo}/{sha}/{quoted}"
+    req = urllib.request.Request(url, headers={"User-Agent": "kitsoki-bench-corpus"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
+
+def load_project_manifests(project_ids=None):
+    ids = split_csv(project_ids)
+    if ids:
+        return [load(project_id) for project_id in ids]
+    manifests = sorted((HERE / "projects").glob("*/manifest.yaml"))
+    return [load(str(path)) for path in manifests]
+
+
+def repo_history_capsule_record(m, bug):
+    proj = m["project"]
+    oracle_cfg = {**proj.get("oracle", {}), **bug.get("oracle", {})}
+    local_only = bool(proj.get("local_only", False))
+    repo_subdir = str(proj.get("repo_subdir", "") or "")
+    capsule_ref = f"repo-history/{proj['id']}/{bug['id']}"
+    verify_cmd = f"python3 tools/bugfix-bakeoff/external/bench.py verify --project {proj['id']} --bug {bug['id']}"
+    readiness_cmd = (
+        "python3 tools/bugfix-bakeoff/external/bench.py readiness "
+        f"--project {proj['id']} --bug {bug['id']} --candidate <candidate> --armed"
+    )
+    if local_only:
+        repo_hint = f"${project_repo_envs(proj)[0]}" if project_repo_envs(proj) else "<repo>"
+        verify_cmd += f" --repo-dir {repo_hint}"
+        readiness_cmd += f" --repo-dir {repo_hint}"
+    repo_modes = ["single-repo"]
+    if repo_subdir:
+        repo_modes.append("meta-repo")
+    return {
+        "id": f"{proj['id']}/{bug['id']}",
+        "capsule_ref": capsule_ref,
+        "kind": "repo-history",
+        "materializer": "bugfix-bakeoff",
+        "project": proj["id"],
+        "bug": bug["id"],
+        "title": bug.get("title", bug["id"]),
+        "ticket": bug.get("issue_url") or bug.get("pr_url") or bug.get("ticket_ref") or "",
+        "baseline_sha": bug.get("baseline_sha", ""),
+        "fix_sha": bug.get("fix_sha", ""),
+        "fix_source": bug.get("fix_source", ""),
+        "oracle_test": bug.get("oracle_test", ""),
+        "oracle_target": oracle_cfg.get("target", ""),
+        "oracle_run": oracle_cfg.get("run", ""),
+        "oracle_match": bug.get("oracle_match", ""),
+        "suite_enabled": bool(proj.get("test_cmd") and proj.get("suite", True)),
+        "local_only": local_only,
+        "repo": proj.get("repo", "."),
+        "repo_envs": project_repo_envs(proj),
+        "repo_subdir": repo_subdir,
+        "repo_modes": repo_modes,
+        "source_manifest": str(Path(m.get("_dir", "")) / "manifest.yaml") if m.get("_dir") else "",
+        "verify_command": verify_cmd,
+        "readiness_command": readiness_cmd,
+        "green_red_green": [
+            "GREEN: project checkout and ordinary suite/deps are ready",
+            "RED: overlay hidden oracle at baseline_sha and require failure",
+            "GREEN: overlay the real fix source from fix_sha and require pass",
+            "GREEN: score a candidate worktree with the same hidden oracle",
+        ],
+    }
+
+
+def repo_history_capsules(project_ids=None, markdown=False):
+    manifests = load_project_manifests(project_ids)
+    capsules = []
+    projects = {}
+    for m in manifests:
+        proj = m["project"]
+        project_capsules = [
+            repo_history_capsule_record(m, bug)
+            for bug in selected_bugs(m)
+        ]
+        capsules.extend(project_capsules)
+        projects[proj["id"]] = {
+            "id": proj["id"],
+            "title": proj.get("title", ""),
+            "local_only": bool(proj.get("local_only", False)),
+            "repo": proj.get("repo", "."),
+            "repo_envs": project_repo_envs(proj),
+            "repo_subdir": str(proj.get("repo_subdir", "") or ""),
+            "capsules": len(project_capsules),
+        }
+    out = {
+        "ok": True,
+        "count": len(capsules),
+        "projects": projects,
+        "capsules": capsules,
+        "commands": {
+            "list": "python3 tools/bugfix-bakeoff/external/bench.py capsules",
+            "verify_project": "python3 tools/bugfix-bakeoff/external/bench.py verify --project <project> [--repo-dir <checkout-or-meta-root>]",
+            "readiness": "make history-smoke HISTORY_PROJECT=<project> HISTORY_REPO_DIR=<checkout-or-meta-root> HISTORY_BUGS=<ids> HISTORY_CANDIDATES=<candidate>",
+        },
+    }
+    if markdown:
+        lines = [
+            "# Repo History Capsules",
+            "",
+            f"Promoted capsules: **{len(capsules)}**",
+            "",
+            "| Capsule | Ticket / PR | Baseline | Real fix | Executor | Repo modes |",
+            "|---|---|---|---|---|---|",
+        ]
+        for c in capsules:
+            ticket = c["ticket"] or "(manifest)"
+            modes = ", ".join(c["repo_modes"])
+            lines.append(
+                f"| `{c['capsule_ref']}` | {ticket} | `{c['baseline_sha'][:12]}` | "
+                f"`{c['fix_sha'][:12]}` | {c['materializer']} | {modes} |"
+            )
+        lines.extend([
+            "",
+            "These are capsules in the shared Kitsoki sense: named, reusable, "
+            "deterministically verified repository states. They currently use "
+            "the repo-history harness materializer because core `kitsoki capsule "
+            "open` is still limited to local synthetic fixtures.",
+            "",
+            "Every repo-history capsule uses the same GREEN/RED/GREEN discipline: "
+            "ordinary repo setup is ready, the hidden oracle fails at the bug "
+            "baseline, the real maintainer fix passes it, and candidate fixes are "
+            "scored with that same oracle.",
+        ])
+        print("\n".join(lines))
+    else:
+        print(json.dumps(out, indent=2))
+    return 0
+
+
+# Compatibility for older harness callers. New code should use
+# repo_history_capsule_record/repo_history_capsules and the `capsules` command.
+oracle_capsule_record = repo_history_capsule_record
+oracle_capsules = repo_history_capsules
 
 
 def summarize(m, results_dir, deck=None, markdown=None, allow_empty=False):
@@ -1639,11 +2187,20 @@ def main():
     s.add_argument("--trace", help="live trace to read worker cost/tokens from (for the cell metrics)")
     s.add_argument("--candidates", default=str(HERE / "candidates.yaml"),
                    help="candidates.yaml for model/effort/provider lookup by --candidate")
+    s.add_argument("--completion-state",
+                   help="write a schema-conformant completion-state JSON here "
+                        "(schemas/completion-state.schema.json) for arena's bugfix plugin to read")
     v = sub.add_parser("verify")
-    v.add_argument("--project", required=True)
+    v.add_argument("manifest", nargs="?",
+                   help="direct project or arena corpus manifest path")
+    v.add_argument("--project",
+                   help="project id under projects/<id>/, or direct manifest path")
     v.add_argument("--bug", action="append",
                    help="bug id to verify; repeat or pass comma-separated ids to scope the matrix")
     v.add_argument("--repo-dir", help="prebuilt clone with node_modules to reuse")
+    v.add_argument("--completion-state",
+                   help="write a schema-conformant completion-state JSON here "
+                        "(schemas/completion-state.schema.json) for arena's bugfix plugin to read")
     pf = sub.add_parser("preflight")
     pf.add_argument("--project", required=True)
     pf.add_argument("--bug", action="append",
@@ -1710,6 +2267,29 @@ def main():
     pc.add_argument("--treatment", default="kitsoki")
     pc.add_argument("--candidates", default=str(HERE / "candidates.yaml"),
                     help="candidates.yaml for model/effort/provider lookup by --candidate")
+    mf = sub.add_parser("mine-failures")  # classify a sweep + emit feedback actions
+    mf.add_argument("--results", default="../../../.artifacts/external-bakeoff/results",
+                    help="results dir (cells/ under it)")
+    mf.add_argument("--traces", default="../../../.artifacts/external-bakeoff/traces",
+                    help="traces dir holding <project>-<bug>-<candidate>.jsonl")
+    mf.add_argument("--markdown", help="optional Markdown feedback report")
+    cap = sub.add_parser("capsules")
+    cap.add_argument("--project", action="append",
+                     help="project id to list; repeat or comma-separate; default all promoted projects")
+    cap.add_argument("--markdown", action="store_true",
+                     help="render a Markdown catalog instead of JSON")
+    oc = sub.add_parser("oracle-capsules")
+    oc.add_argument("--project", action="append",
+                    help="deprecated alias for capsules; repeat or comma-separate project ids")
+    oc.add_argument("--markdown", action="store_true",
+                    help="render a Markdown catalog instead of JSON")
+    rp = sub.add_parser("repo-path")
+    rp.add_argument("--project", required=True)
+    rp.add_argument("--repo-dir", help="standalone checkout or meta-repo root")
+    lo = sub.add_parser("lint-oracles")  # flag brittle exact-prose oracle assertions
+    lo.add_argument("--project", required=True)
+    lo.add_argument("--bug", action="append", help="bug id to lint; repeat or comma-separate; default all")
+    lo.add_argument("--strict", action="store_true", help="exit nonzero on any brittle-prose finding")
     mt = sub.add_parser("meta")  # machine-readable project facts (for the Go runner)
     mt.add_argument("--project", required=True)
     mt.add_argument("--bug")     # optional: emit one bug's drive facts
@@ -1731,11 +2311,24 @@ def main():
     if a.cmd == "classify":
         print(json.dumps(classify_cell(a.trace)))
         sys.exit(0)
+    if a.cmd == "mine-failures":
+        sys.exit(mine_failures(a.results, a.traces, markdown=a.markdown))
+    if a.cmd in {"capsules", "oracle-capsules"}:
+        sys.exit(repo_history_capsules(project_ids=a.project, markdown=a.markdown))
     if a.cmd == "summarize":
         sys.exit(summarize(load(a.project), a.results, a.deck, a.markdown,
                            allow_empty=a.allow_empty))
 
-    m = load(a.project)
+    project_ref = getattr(a, "project", None) or getattr(a, "manifest", None)
+    if not project_ref:
+        sys.exit(f"{a.cmd} needs --project or a manifest path")
+    m = load(project_ref)
+    if a.cmd == "repo-path":
+        out = resolve_repo_dir(m, a.repo_dir)
+        print(json.dumps(out, indent=2))
+        sys.exit(0 if out["ok"] else 1)
+    if a.cmd == "lint-oracles":
+        sys.exit(lint_oracles(m, bug_ids=a.bug, strict=a.strict))
     if a.cmd == "preflight":
         sys.exit(preflight(m, repo_dir=a.repo_dir, candidate=a.candidate,
                            candidates_path=a.candidates, bug_ids=a.bug))
@@ -1772,7 +2365,8 @@ def main():
         # score. The verdict still lives in score()'s return for in-process
         # callers like verify().
         score(m, bug_of(m, a.bug), a.tree, a.out, a.candidate, a.treatment,
-              trace=a.trace, candidates_path=a.candidates)
+              trace=a.trace, candidates_path=a.candidates,
+              completion_state=a.completion_state)
         sys.exit(0)
     elif a.cmd == "meta":
         p = m["project"]
@@ -1781,6 +2375,7 @@ def main():
             print(json.dumps({
                 "id": p["id"], "repo": p.get("repo", "."), "install": p.get("install", ""),
                 "test_cmd": p.get("test_cmd", ""), "local_only": bool(p.get("local_only", False)),
+                "repo_envs": project_repo_envs(p), "repo_subdir": str(p.get("repo_subdir", "") or ""),
                 "bug": b["id"], "baseline_sha": b["baseline_sha"], "fix_sha": b.get("fix_sha", ""),
                 "title": b.get("title", b["id"]), "ticket": b.get("ticket", b.get("title", b["id"])),
             }))
@@ -1789,12 +2384,14 @@ def main():
                 "id": p["id"], "repo": p.get("repo", "."),
                 "onboard_app": p.get("onboard_app", "@kitsoki/dev-story"),
                 "local_only": bool(p.get("local_only", False)),
+                "repo_envs": project_repo_envs(p),
+                "repo_subdir": str(p.get("repo_subdir", "") or ""),
                 "baselines": [b["baseline_sha"] for b in m["bugs"]],
                 "bugs": [b["id"] for b in m["bugs"]],
             }))
         sys.exit(0)
     else:
-        sys.exit(verify(m, a.bug, a.repo_dir))
+        sys.exit(verify(m, a.bug, a.repo_dir, completion_state=a.completion_state))
 
 
 if __name__ == "__main__":

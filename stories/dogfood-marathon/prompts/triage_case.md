@@ -5,10 +5,10 @@ triage-only mode.
 Case:
 
 ```
-{{ context.case }}
+{{ args.case_json }}
 ```
 
-Inner pipeline being dogfooded: `{{ context.inner_pipeline }}`
+Inner pipeline being dogfooded: `{{ args.inner_pipeline }}`
 
 Inspect the current working tree for this case — the cited files/functions, any
 Suggested-fix section, and any regression test — and decide whether the defect

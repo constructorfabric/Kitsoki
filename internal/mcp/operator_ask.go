@@ -18,7 +18,7 @@
 // framing as agent-serve):
 //
 //	→ {"questions":[{"question":…,"header":…,"options":[{"label":…,"description":…}],"multiSelect":…}]}
-//	← {"answers":{"<question text>":"<label>"|["<label>",…]}}            // success
+//	← {"answers":{"<question text>":"<label-or-custom-answer>"|["<label>",…]}} // success
 //	← {"error":"operator did not answer"}                                // surfaced to the model
 package mcp
 
@@ -99,8 +99,9 @@ type OperatorAskRequest struct {
 
 // OperatorAskResponse is the JSON frame returned by the host listener. Exactly
 // one of Answers / Error is populated. Answers is keyed by each question's text;
-// each value is the chosen label (string) or, for a multiSelect question, the
-// chosen labels ([]string) — the AskUserQuestion answer shape.
+// each value is the chosen label or custom single-select answer (string) or,
+// for a multiSelect question, the chosen labels ([]string) — the AskUserQuestion
+// answer shape.
 type OperatorAskResponse struct {
 	Answers map[string]any `json:"answers,omitempty"`
 	Error   string         `json:"error,omitempty"`
@@ -142,7 +143,7 @@ func NewOperatorAskServer(cfg OperatorAskConfig) (*OperatorAskServer, error) {
 	if desc == "" {
 		desc = "Ask the kitsoki operator a multiple-choice question and receive their answer. " +
 			"Use this whenever you need a decision or clarification from the human running this session. " +
-			"The call blocks until the operator answers; their selected option label(s) are returned to you."
+			"The call blocks until the operator answers; their selected option label(s), or a custom single-select answer when the operator provides one, are returned to you."
 	}
 	dialTimeout := cfg.DialTimeout
 	if dialTimeout == 0 {

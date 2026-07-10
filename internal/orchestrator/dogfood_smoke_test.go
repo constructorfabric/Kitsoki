@@ -54,6 +54,9 @@ import (
 // the pipeline.
 func setupDogfoodRepo(t *testing.T) (repoRoot string, ticketID string) {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("dogfood smoke tests use real git repos/worktrees; skipped under -short")
+	}
 
 	repoRoot = t.TempDir()
 
@@ -125,7 +128,11 @@ func copyTree(src, dst string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode().Perm())
+		mode := info.Mode().Perm()
+		if mode&0o200 == 0 {
+			mode |= 0o200
+		}
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 		if err != nil {
 			return err
 		}
@@ -206,6 +213,37 @@ func newDogfoodRegistry(agentCalls *int) *host.Registry {
 	} {
 		reg.Replace(verb, stub)
 	}
+	// kitsoki-dev rebinds the `ticket` iface to host.gh.ticket (bug 44 fix:
+	// the base-name rebind now cascades onto the transitively-lifted
+	// bf__ticket / impl__ticket). So iface.ticket.get in the impl pipeline's
+	// review_task.on_enter resolves to the real gh CLI, which isn't available
+	// under test and would fail the on_enter → park the pipeline at idle.
+	// Stub host.gh.ticket.get to resolve any GitHub-issue-shaped numeric id to
+	// a canned issue so the pipeline advances deterministically without a live
+	// gh call. Only `get` is stubbed; search/comment/transition still fall
+	// through to the real host.gh.ticket handler (exact-name match wins over
+	// the longest-prefix fallback — see Registry.Get).
+	reg.Replace("host.gh.ticket.get", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		id, _ := args["id"].(string)
+		return host.Result{Data: map[string]any{
+			"id":       id,
+			"number":   id,
+			"title":    "integration smoke — bug picked up by dogfood",
+			"body":     "Stubbed GitHub issue body for the dogfood smoke tests.",
+			"url":      "https://github.com/constructorfabric/Kitsoki/issues/" + id,
+			"state":    "open",
+			"comments": []any{},
+		}}, nil
+	})
+	reg.Replace("host.gh.ticket.comment", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		return host.Result{Data: map[string]any{
+			"ok":         true,
+			"comment_id": "https://github.com/constructorfabric/Kitsoki/issues/1#issuecomment-smoke",
+		}}, nil
+	})
+	reg.Replace("host.gh.ticket.transition", func(ctx context.Context, args map[string]any) (host.Result, error) {
+		return host.Result{Data: map[string]any{"ok": true}}, nil
+	})
 	return reg
 }
 
@@ -270,6 +308,15 @@ func seedDogfoodWorld(ticketID string) map[string]any {
 		"core__bf__base_branch":            "main",
 		"core__bf__bf_autostart_attempted": false,
 		"core__bf__bugfix_mode":            "full",
+
+		// Opt out of bf's auto_triage pre-flight: these smokes pin the
+		// pipeline mechanics (autostart → reproducing → …) with a hand-picked
+		// host subset that has no host.agent.codeact handler, and a human
+		// judge would dwell at triaging anyway. Parent-level key — the bf
+		// import wrapper re-seeds bf__auto_triage from dev-story's world_in
+		// projection on every entry. Pre-flight coverage lives in
+		// stories/bugfix/flows/preflight_triage_*.yaml.
+		"core__auto_triage": false,
 	}
 }
 
@@ -407,7 +454,9 @@ func TestDogfoodSmoke_TicketSearchFreeTextRoutesToWorkbench(t *testing.T) {
 	// Boot the session the way every real surface does (see
 	// DriveToRest → RunInitialOnEnter). This fires the `core` compound's
 	// on_enter chain, including the kitsoki-dev world_in projection that
-	// sets core__ticket_repo from the instance-level ticket_repo default.
+	// sets core__ticket_repo from the instance-level ticket_repo default
+	// (the symbolic `origin` — host.gh.ticket resolves it against
+	// `git remote get-url origin` at dispatch time).
 	// Without it the child keeps its own "" default and every
 	// host.gh.ticket.* call resolves repo via ambient gh (the bug).
 	require.NoError(t, orch.RunInitialOnEnter(c, sid))
@@ -424,7 +473,7 @@ func TestDogfoodSmoke_TicketSearchFreeTextRoutesToWorkbench(t *testing.T) {
 
 	history, err := s.LoadHistory(sid)
 	require.NoError(t, err)
-	requireDogfoodHostArg(t, history, "host.gh.ticket.search", "repo", "constructorfabric/Kitsoki")
+	requireDogfoodHostArg(t, history, "host.gh.ticket.search", "repo", "origin")
 
 	// 2. In the strict ticket-search menu the operator does NOT pick a row —
 	//    they describe a piece of ad-hoc work in their own words (the exact
@@ -864,7 +913,7 @@ func TestDogfoodSmoke_FullBugfixPipeline(t *testing.T) {
 // This closes the gap the flow fixtures can't: they stub the dirty result, so
 // they prove the guard ROUTES correctly but not that host.run DETECTS dirt in
 // the live folded-story path. If world.workdir were empty here (the guard's
-// on-enter check is guarded on workdir != ''), the file injection would have no
+// on-enter check is guarded on workdir != ”), the file injection would have no
 // effect and the test would land at core.pr.* — failing loudly. So this also
 // asserts the guard is actually wired in the dogfood path, not silently dead.
 func TestDogfoodSmoke_DoneRefusesUncommittedWork(t *testing.T) {
@@ -976,7 +1025,12 @@ func TestDogfoodSmoke_FullImplementationPipeline(t *testing.T) {
 	// dev-story drive arc, but here we use go_implementation directly
 	// which only checks ticket_id != ''). Reusing the bug ticket is
 	// fine for transition exercise.
-	ticketID := "2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood"
+	//
+	// Bug 44: kitsoki-dev rebinds ticket → host.gh.ticket, so the id must be
+	// a GitHub-issue-shaped bare numeric id that the host.gh.ticket.get smoke
+	// stub (newDogfoodRegistry) can resolve; the old ISO-timestamp id is not a
+	// valid gh issue number and the on_enter fetch would fail.
+	ticketID := "44"
 	orch, _, sid, _ := newSmokeOrchestratorWithCIStub(t, repoRoot)
 
 	ctx := context.Background()
@@ -1010,8 +1064,11 @@ func TestDogfoodSmoke_FullImplementationPipeline(t *testing.T) {
 		cancel()
 	}
 
-	step("kickoff", "core__go_implementation", "core.impl.idle")
-	step("idle → review_task", "core__impl__start", "core.impl.review_task_executing")
+	// idle.on_enter now auto-starts once ticket_id is set (goal-seeker/
+	// punch-list headless drivers only reliably get one prompt turn), so
+	// kickoff lands straight at review_task_executing instead of parking
+	// at idle for a separate explicit `start`.
+	step("kickoff", "core__go_implementation", "core.impl.review_task_executing")
 	step("review_task → wait", "core__impl__proceed", "core.impl.review_task_awaiting_reply")
 	step("review_task → write", "core__impl__accept", "core.impl.write_code_executing")
 	step("write → wait", "core__impl__proceed", "core.impl.write_code_awaiting_reply")
@@ -1043,7 +1100,11 @@ func TestDogfoodSmoke_FullImplementationPipeline(t *testing.T) {
 // live folded-story path.
 func TestDogfoodSmoke_ImplHandoffRefusesUncommittedWork(t *testing.T) {
 	repoRoot, _ := setupDogfoodRepo(t)
-	ticketID := "2026-05-17T111838Z-integration-smoke-bug-picked-up-by-dogfood"
+	// Bug 44: ticket → host.gh.ticket rebind means review_task.on_enter fetches
+	// via the gh CLI; use a GitHub-issue-shaped bare numeric id the
+	// host.gh.ticket.get smoke stub resolves (the ISO-timestamp id is not a
+	// valid gh issue number and would fail the fetch → park at idle).
+	ticketID := "44"
 	orch, _, sid, _ := newSmokeOrchestratorWithCIStub(t, repoRoot)
 
 	ctx := context.Background()
@@ -1077,9 +1138,10 @@ func TestDogfoodSmoke_ImplHandoffRefusesUncommittedWork(t *testing.T) {
 	}
 
 	// Drive to handoff (worktree is clean here — the stage_all commits in
-	// write_code + test swept the stubbed maker work).
-	step("kickoff", "core__go_implementation", "core.impl.idle")
-	step("idle → review_task", "core__impl__start", "core.impl.review_task_executing")
+	// write_code + test swept the stubbed maker work). idle.on_enter now
+	// auto-starts once ticket_id is set, so kickoff lands straight at
+	// review_task_executing instead of parking at idle.
+	step("kickoff", "core__go_implementation", "core.impl.review_task_executing")
 	step("review_task → wait", "core__impl__proceed", "core.impl.review_task_awaiting_reply")
 	step("review_task → write", "core__impl__accept", "core.impl.write_code_executing")
 	step("write → wait", "core__impl__proceed", "core.impl.write_code_awaiting_reply")
@@ -1193,14 +1255,17 @@ func TestDogfoodSmoke_ImplIdleProvisionsWorktree(t *testing.T) {
 		cancel()
 	}
 
-	// drive a feature → impl.idle, whose on_enter must provision.
+	// drive a feature → impl.idle, whose on_enter must provision. idle now
+	// auto-starts once ticket_id is set (see stories/implementation/rooms/
+	// idle.yaml's Step 3), so the provisioning side effects land but the
+	// final state is review_task_executing, not idle itself.
 	c, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	out, err := orch.SubmitDirect(c, sid, "core__drive", nil)
 	require.NoError(t, err, "core__drive(feature) from main")
 	require.NotNil(t, out)
-	require.Equal(t, app.StatePath("core.impl.idle"), out.NewState,
-		"drive on a feature ticket must route to impl.idle; got %q", out.NewState)
+	require.Equal(t, app.StatePath("core.impl.review_task_executing"), out.NewState,
+		"drive on a feature ticket must auto-start into review_task_executing; got %q", out.NewState)
 
 	journey, err := orch.LoadJourney(sid)
 	require.NoError(t, err)
@@ -1747,6 +1812,8 @@ func TestDogfoodSmoke_TestingFailedRoutesToImplementing(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), worldInt64(journey.World.Vars, "core__bf__implementing_cycle"),
 		"implementing_cycle must increment when testing-failed re-routes")
+	require.Empty(t, journey.World.Vars["core__bf__implement_review_artifact"],
+		"testing.accept on status=failed must clear the stale testing artifact before re-entering implementing")
 }
 
 // TestDogfoodSmoke_AgentAlwaysReceivesWorkingDir locks in the second

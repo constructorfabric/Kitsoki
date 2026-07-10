@@ -1,0 +1,103 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      autonomous_product_journey_marathon_advance_due:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: autonomous_marathon_advanced
+            run_id: campaign-run-due
+            run_dir: .artifacts/product-journey/campaign-run-due
+            deck_path: .artifacts/product-journey/campaign-run-due/deck.slidey.json
+            autonomous_marathon_status: autonomous_marathon_valid
+            autonomous_marathon_summary: "Advanced one due campaign cycle."
+            autonomous_marathon_report_path: .artifacts/product-journey/campaign-run-due/autonomous-marathon-control.md
+            autonomous_due_status: advanced
+            autonomous_due_summary: "Advanced campaign-run-due."
+            autonomous_due_root: .artifacts/product-journey
+            autonomous_due_count: 1
+            autonomous_due_upcoming_count: 0
+            autonomous_due_blocked_count: 0
+            autonomous_due_ignored_count: 0
+            autonomous_due_total_count: 1
+            autonomous_due_next_run_id: ""
+            autonomous_due_next_run_dir: ""
+            autonomous_due_next_command: ""
+            autonomous_due_next_story_intent: ""
+            autonomous_due_next_minutes_overdue: 0
+            autonomous_due_advance_status: advanced
+            autonomous_due_advance_summary: "Advanced one due campaign cycle."
+            source_run_id: campaign-run-due
+            source_run_dir: .artifacts/product-journey/campaign-run-due
+            autonomous_driver_mode: replay
+            autonomous_driver_status: complete
+            autonomous_driver_summary: "Replay driver completed."
+            autonomous_driver_evidence_count: 4
+            autonomous_driver_issue_count: 1
+            autonomous_control_path: .artifacts/product-journey/campaign-run-due/autonomous-marathon-control.json
+            autonomous_control_markdown_path: .artifacts/product-journey/campaign-run-due/autonomous-marathon-control.md
+            autonomous_control_status: active
+            autonomous_control_summary: "Next cycle scheduled."
+            autonomous_watchdog_status: autonomous_watchdog_ok
+            autonomous_watchdog_summary: "heartbeat age 3m within watchdog=45m"
+            autonomous_watchdog_path: .artifacts/product-journey/campaign-run-due/autonomous-marathon-watchdog.json
+            autonomous_watchdog_markdown_path: .artifacts/product-journey/campaign-run-due/autonomous-marathon-watchdog.md
+            autonomous_watchdog_age_minutes: 3
+            autonomous_fix_status: autonomous_fix_valid
+            autonomous_fix_report_path: .artifacts/product-journey/campaign-run-due/autonomous-fix-report.md
+            autonomous_gate_summary: "filing=pass, gh_agent=pass, independent_verify=pass, review=pass, validation=pass"
+            independent_verify_status: pass
+            independent_verify_summary: "verified=1/1"
+            issue_closeout_status: closed
+            issue_closeout_count: 1
+            issue_closeout_summary: "Closed 1 fixed issue."
+            filing_status: findings_filed
+            filing_summary: "Filed 1 campaign finding."
+            findings_filed_count: 1
+            gh_agent_drain_status: drained
+            gh_agent_done_count: 1
+            gh_agent_failed_count: 0
+            review_status: ready
+            review_summary: "ready: 24/24 checks passed, 0 warnings, 0 failures"
+            review_failed_count: 0
+            validation_status: valid
+            validation_errors: 0
+            validation_issue_summary: ""
+            stats_status: stats_derived
+            stats_root: .artifacts/product-journey
+            stats_output: .artifacts/product-journey/campaign-run-due/campaign-stats.json
+            stats_summary: "Derived product-journey stats: 1 found, 1 filed, 1 fixed."
+            stats_gate_status: pass
+            stats_gate_summary: "current run scanned"
+            stats_current_run_scanned: "yes"
+            stats_runs_scanned: 1
+            stats_found_count: 1
+            stats_filed_count: 1
+            stats_fixed_count: 1
+
+turns:
+  - intent:
+      name: campaign_tick
+      slots:
+        stats_root: .artifacts/product-journey
+    expect_state: idle
+    expect_world:
+      status: autonomous_marathon_advanced
+      campaign_status: ticking
+      campaign_summary: "Advancing the next due standing campaign control artifact."
+      autonomous_due_advance_status: advanced
+      autonomous_due_source_run_id: campaign-run-due
+      autonomous_driver_status: complete
+      autonomous_fix_status: autonomous_fix_valid
+      stats_status: stats_derived
+    expect_view_matches: "PRODUCT JOURNEY QA[\\s\\S]*Campaign[\\s\\S]*ticking[\\s\\S]*Due advance[\\s\\S]*advanced[\\s\\S]*Due source[\\s\\S]*campaign-run-due"
+    expect_host_calls:
+      - handler: host.run
+        args: { call: autonomous_product_journey_marathon_advance_due }
+
+expect_no_errors: true

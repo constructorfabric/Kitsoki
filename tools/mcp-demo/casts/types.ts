@@ -40,6 +40,14 @@ export interface Termcast {
   agent: string;
   /** Terminal window titlebar text. */
   title: string;
+  /** Optional title curtain text. Defaults to title. */
+  curtainTitle?: string;
+  /** Optional footer text under the terminal stage. */
+  footer?: string;
+  /** Optional titlebar badge. */
+  badge?: string;
+  /** Text fragments the recorder asserts after replay. Defaults to ["kitsoki"]. */
+  assertText?: string[];
   cols: number;
   rows: number;
   beats: TermBeat[];

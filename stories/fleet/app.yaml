@@ -33,6 +33,7 @@ app:
 
 hosts:
   - host.run
+  - host.starlark.run
   - host.agent.task
   - host.agent.decide
   - host.git_worktree

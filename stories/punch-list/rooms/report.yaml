@@ -15,17 +15,20 @@ states:
             - { label: "done", intent: report }
             - { label: "look", intent: look }
     on_enter:
-      - invoke: host.run
+      - invoke: host.starlark.run
         id: punch_report
         once: true
         with:
-          cmd: python3
-          args:
-            - "stories/punch-list/scripts/punch_report.py"
-            - "{{ world.state_path }}"
+          script: scripts/punch_report.star
+          capabilities:
+            fs:
+              read: ["**"]
+              write: ["**"]
+          inputs:
+            state_path: "{{ world.state_path }}"
         bind:
-          report_path: "stdout_json.report_path"
-          report_summary: "stdout_json.summary"
+          report_path: "report_path"
+          report_summary: "summary"
         on_error: needs_human
     on:
       report:

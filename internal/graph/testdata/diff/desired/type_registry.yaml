@@ -1,0 +1,11 @@
+- id: core-node
+  schema: graph-type/v1
+  required_fields: [id, schema, title, status, visibility]
+- id: change
+  schema: graph-type/v1
+  extends: core-node
+  edge_fields:
+    - id: depends_on
+      target_type: change
+      cardinality: many
+      storage: top_level

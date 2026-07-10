@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kitsoki Dynamic Workflows"
+  short_description: "Drive Kitsoki workflow fan-out through MCP"
+  default_prompt: "Use $kitsoki-dynamic-workflows to turn this goal into a Kitsoki dynamic workflow and drive the worker fan-out through Studio MCP."

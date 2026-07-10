@@ -359,9 +359,9 @@ episodes:
 	}
 }
 
-// ─── Miss with fallback ───────────────────────────────────────────────────────
+// ─── Replay miss with fallback still fails closed ─────────────────────────────
 
-func TestCassette_MissWithFallback(t *testing.T) {
+func TestCassette_ReplayMissWithFallbackFailsClosed(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	p := writeCassetteFile(t, dir, "cas.yaml", `
@@ -386,16 +386,18 @@ episodes:
 		return host.Result{Data: map[string]any{"fallback": true}}, nil
 	})
 
-	// Call without matching args — should hit fallback.
+	// Call without matching args. Even though a fallback exists, replay mode must
+	// fail closed instead of calling the live handler.
 	res, err := invokeDispatcher(t, cas, "host.run", map[string]any{"special": "no"}, "", fallback, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatalf("expected ErrCassetteMiss, got nil result=%v", res)
 	}
-	if !fallbackCalled {
-		t.Error("fallback was not called")
+	var miss *ErrCassetteMiss
+	if !errors.As(err, &miss) {
+		t.Fatalf("expected *ErrCassetteMiss, got %T: %v", err, err)
 	}
-	if res.Data["fallback"] != true {
-		t.Errorf("expected fallback result, got %v", res.Data)
+	if fallbackCalled {
+		t.Error("fallback was called on replay miss")
 	}
 }
 

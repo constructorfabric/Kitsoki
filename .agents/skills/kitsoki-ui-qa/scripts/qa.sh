@@ -8,9 +8,9 @@
 # 0 = pass, 1 = a blocking scenario failed, 2 = pipeline error.
 #
 # Usage: qa.sh <video> --feature <file> --scenarios <file>
-#          [--frames <dir>] [--out <dir>] [--model M]
+#          [--frames <dir>] [--out <dir>] [--model M] [--reviewer auto|codex|claude|agy|ORDER]
 #          [--max-frames N] [--scene TH] [--blank-min-coverage F]
-#          [--no-adversary] [--strict] [--blank-strict]
+#          [--no-adversary] [--strict] [--blank-strict] [--edge-strict]
 #
 #   --frames <dir>  use existing labeled frames (e.g. the kitsoki-ui-demo skill's
 #                   NN-<scene>.png) as ground truth instead of extracting. Highest
@@ -29,6 +29,7 @@
 #                   auto-detect <video>.chapters.json next to the MP4)
 #   --pacing-min N  minimum readable on-screen window per chapter, ms (default 1500)
 #   --pacing-strict promote pacing flags from advisory to a blocking gate
+#   --edge-strict   promote edge-clipping flags from advisory to a blocking gate
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,9 +38,9 @@ demo_scripts="$here/../../kitsoki-ui-demo/scripts"   # reuse the recorder's cont
 video="${1:?usage: qa.sh <video> --feature <f> --scenarios <f> [opts]}"
 shift || true
 
-feature="" scenarios="" frames="" outdir="" model="" max=48 chapters="" pacing_min="" scene="" blank_min_cov=""
+feature="" scenarios="" frames="" outdir="" model="" reviewer="" max=48 chapters="" pacing_min="" scene="" blank_min_cov=""
 rrweb="" rrweb_min_dwell=""
-adv_flag="" strict_flag="" blank_strict_flag="" pacing_strict_flag="" rrweb_strict_flag="" scroll_strict_flag=""
+adv_flag="" strict_flag="" blank_strict_flag="" edge_strict_flag="" pacing_strict_flag="" rrweb_strict_flag="" scroll_strict_flag=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --feature)     feature="$2"; shift 2 ;;
@@ -47,6 +48,7 @@ while [ $# -gt 0 ]; do
     --frames)      frames="$2"; shift 2 ;;
     --out)         outdir="$2"; shift 2 ;;
     --model)       model="$2"; shift 2 ;;
+    --reviewer)    reviewer="$2"; shift 2 ;;
     --max-frames)  max="$2"; shift 2 ;;
     --chapters)    chapters="$2"; shift 2 ;;
     --pacing-min)  pacing_min="$2"; shift 2 ;;
@@ -55,6 +57,7 @@ while [ $# -gt 0 ]; do
     --no-adversary) adv_flag="--no-adversary"; shift ;;
     --strict)      strict_flag="--strict"; shift ;;
     --blank-strict) blank_strict_flag="--blank-strict"; shift ;;
+    --edge-strict) edge_strict_flag="--edge-strict"; shift ;;
     --pacing-strict) pacing_strict_flag="--pacing-strict"; shift ;;
     --rrweb)         rrweb="$2"; shift 2 ;;
     --rrweb-min-dwell) rrweb_min_dwell="$2"; shift 2 ;;
@@ -156,18 +159,26 @@ verdict="$outdir/verdict.json"
 review_args=( --frames "$frames_dir" --feature "$feature" \
               --scenarios "$scenarios" --out "$verdict" )
 [ -n "$model" ]    && review_args+=( --model "$model" )
+[ -n "$reviewer" ] && review_args+=( --reviewer "$reviewer" )
 [ -n "$adv_flag" ] && review_args+=( "$adv_flag" )
 "$here/qa-review.sh" "${review_args[@]}"
 
 # 4. Gated report — exit code propagates as the QA gate.
 echo
 report_args=( "$verdict" --out "$outdir/qa-report.md" $strict_flag \
-  --blank-scan "$blank_scan" $blank_strict_flag --edge-scan "$edge_scan" )
+  --blank-scan "$blank_scan" $blank_strict_flag --edge-scan "$edge_scan" $edge_strict_flag )
 [ -n "$pacing_scan" ] && report_args+=( --pacing-scan "$pacing_scan" $pacing_strict_flag )
 [ -n "$rrweb_scan" ] && report_args+=( --rrweb-scan "$rrweb_scan" $rrweb_strict_flag )
 [ -n "$scroll_scan" ] && report_args+=( --scroll-scan "$scroll_scan" $scroll_strict_flag )
 "$here/report.sh" "${report_args[@]}"
 rc=$?
 echo
-echo "QA artifacts in $outdir/ : verdict.json, qa-report.md, contact-sheet.png, frames/"
+artifacts="verdict.json, qa-report.md"
+[ -f "$outdir/contact-sheet.png" ] && artifacts="$artifacts, contact-sheet.png"
+if [ "$frames_dir" = "$outdir/frames" ]; then
+  artifacts="$artifacts, frames/"
+else
+  artifacts="$artifacts, frames: $frames_dir"
+fi
+echo "QA artifacts in $outdir/ : $artifacts"
 exit $rc

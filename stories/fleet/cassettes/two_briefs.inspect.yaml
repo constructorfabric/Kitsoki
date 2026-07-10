@@ -1,0 +1,12 @@
+kind: inspect_cassette
+interactions:
+  - op: read
+    target: stories/fleet/testdata/two_briefs.yaml
+    out: |
+      briefs:
+        - id: brief-one
+          brief: Implement slice one
+          gate_command: go test ./internal/one/
+        - id: brief-two
+          brief: Implement slice two
+          gate_command: go test ./internal/two/

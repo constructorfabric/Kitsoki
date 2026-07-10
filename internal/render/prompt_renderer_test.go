@@ -368,6 +368,33 @@ func TestMigratedOregonSwap_RendersViaImportExtend(t *testing.T) {
 	}
 }
 
+// TestPromptRenderer_DevStoryLandingInline guards the host-agent runtime path:
+// prompt files are read into memory and rendered through AppRenderer.Render.
+// That path uses pongo2's generated inline name ("template<hex>"), so it can
+// fail differently from ValidatePrompt / RenderPrompt, which load by filename.
+func TestPromptRenderer_DevStoryLandingInline(t *testing.T) {
+	story, _ := filepath.Abs(filepath.Join("..", "..", "stories", "dev-story"))
+	prompt := filepath.Join(story, "prompts", "landing.md")
+	if !fileExists(prompt) {
+		t.Skip("dev-story landing prompt not present")
+	}
+	src, err := os.ReadFile(prompt)
+	if err != nil {
+		t.Fatalf("read landing prompt: %v", err)
+	}
+	r, err := NewPromptRenderer(PromptPath{Story: story}, true)
+	if err != nil {
+		t.Fatalf("NewPromptRenderer: %v", err)
+	}
+	out, err := r.Render(string(src), expr.Env{Args: map[string]any{"request": "check status"}})
+	if err != nil {
+		t.Fatalf("render landing prompt inline: %v", err)
+	}
+	if !strings.Contains(out, "check status") {
+		t.Fatalf("rendered prompt missing request:\n%s", out)
+	}
+}
+
 // TestPromptRenderer_ValidatePrompt: ValidatePrompt parses without executing
 // and catches a missing file and an unresolved {% extends %} target.
 func TestPromptRenderer_ValidatePrompt(t *testing.T) {

@@ -1,0 +1,121 @@
+# drive_failed_parks_and_advances — the OTHER park-and-advance escape, sibling of
+# flows/gate_not_red_parks_and_advances.yaml. That fixture proves a change whose gate
+# is already GREEN (not RED) parks and advances instead of dead-ending. This fixture
+# proves the complementary case: a change that IS genuinely RED (redcheck confirms
+# it), gets dispatched into the punch-list/pipeline, but the maker drive CANNOT green
+# the gate — punch-list itself terminates via `abandoned` (or `needs-human`) instead
+# of `done`. Before this fix, both of those punch-list exits routed straight to the
+# outer needs_human room, and needs_human's ONLY escape (quit) exits the whole
+# session while retry just re-folds the SAME ready_id forever (nothing in the log
+# says the change couldn't be driven) — a genuine dead end (see a live driver
+# burning two full ~15-min drives stuck on change 2.7 in the generalized-usage goal).
+#
+# Fix: `punchlist:` exits.needs-human / exits.abandoned now route to `park_failed`
+# (rooms/dispatch.yaml, sibling of `park`) instead of `needs_human`. park_failed logs
+# a `parked`/`drive_failed` entry (never a completion — surfaced for later triage)
+# and loops back to evaluate, so the fold excludes the change from ready_id and the
+# loop advances to the NEXT ready change instead of re-dispatching the undrivable
+# one forever.
+#
+# Reuses the two-ready fixture (disjoint C1/C2, both ready at intake — see
+# gate_not_red_parks_and_advances.yaml's header). C1's RED-first check reports the
+# gate as genuinely RED (exit 1, unlike the gate_not_red fixture's exit 0), so
+# dispatch proceeds into punch-list. Driving punch-list's full internal
+# board→drive→verify→record loop to a real needs-human/quit is a documented
+# limitation shared with flows/loop.yaml (real punch-list host.starlark.run scripts
+# can't be stubbed while gs_* run real); the simplest deterministic stand-in for "the
+# maker could not land this change" is punch-list's own `idle`/`load` `quit` intent,
+# which fires punch-list's `@exit:abandoned` directly — semantically identical, from
+# the goal-seeker's point of view, to punch-list exhausting its own retries and the
+# driver quitting from ITS needs-human room (both are "not done" terminals; both now
+# route to the same park_failed state).
+
+test_kind: flow
+app: ../app.yaml
+initial_state: start
+initial_world:
+  goal_slug: goal-seeker-drive-failed
+  goal_dir:  stories/goal-seeker/testdata/two-ready
+  work_dir:  .artifacts/goal/flow-drive-failed
+  reset_log: true
+
+host_handlers:
+  # The evaluate decide-gate is ADVISORY only; its (stale, always-C1) advice is
+  # rejected once C1 is parked and ready_id has moved to C2 (deciding_gate falls back
+  # to ready_id whenever the advice doesn't name it) — same pattern as
+  # gate_not_red_parks_and_advances.yaml.
+  host.agent.decide:
+    by_call:
+      evaluate:
+        data:
+          ok: true
+          submitted:
+            verdict: not_done
+            summary: "dispatch the ledger's ready change."
+            next_instruction:
+              change_id: "C1"
+              action: "implement the ready change"
+              pipeline: "implementation"
+              gate: { class: "G-FLOW", cmd: "true" }
+  # C1's gate is genuinely RED (exit 1, bug present) — unlike the gate_not_red
+  # fixture, this change DESERVES to be driven; the failure comes from the maker
+  # drive, not from a weak/already-passing gate.
+  host.run:
+    by_call:
+      redcheck: { data: { ok: false, exit_code: 1, stdout: "FAIL: not implemented" } }
+
+turns:
+  - intent: { name: look, slots: {} }
+    expect_state: start
+  - intent: { name: advance, slots: {} }        # start → bootstrap (reset log)
+    expect_state: bootstrap
+  - intent: { name: advance, slots: {} }        # bootstrap → lint_check
+    expect_state: lint_check
+  - intent: { name: advance, slots: {} }        # lint ok → evaluate (fold: both ready, C1 first)
+    expect_state: evaluate
+    expect_world: { remaining: 2, ready_id: "C1" }
+  - intent: { name: advance, slots: {} }        # evaluate → deciding
+    expect_state: deciding
+  - intent: { name: advance, slots: {} }        # decide (advisory not_done) → dispatch C1
+    expect_state: dispatch
+    expect_world: { next_change_id: "C1" }
+  - intent: { name: advance, slots: {} }        # gs_manifest → RED-first check
+    expect_state: redcheck
+  - intent: { name: advance, slots: {} }        # gate is RED → enter punch-list
+    expect_state: punchlist.load
+    expect_world:
+      red_exit: 1
+      punchlist__item_count: "1"
+      punchlist__load_error: ""
+  # Simulate "the maker drive could not land this change": punch-list's own
+  # idle/load `quit` fires its `@exit:abandoned` — a not-done punch-list terminal.
+  # Before the fix this bubbled straight to the outer needs_human dead end; now it
+  # PARKS (drive_failed) and re-evaluates. Never needs_human.
+  - intent: { name: quit, slots: {} }
+    expect_state: park_failed
+    expect_not_state: needs_human
+    expect_world: { next_change_id: "C1" }
+  - intent: { name: look, slots: {} }
+    expect_view_matches: "drive_failed"
+  # gs_append settles → re-fold: C1 is now parked (excluded from ready), so C2 —
+  # a DIFFERENT change — becomes the ledger's ready_id. Still not needs_human.
+  - intent: { name: advance, slots: {} }
+    expect_state: evaluate
+    expect_not_state: needs_human
+    expect_world: { remaining: 2, ready_id: "C2" }
+  - intent: { name: advance, slots: {} }        # evaluate → deciding (second pass)
+    expect_state: deciding
+  # decide's advice is still the stale "C1" — deciding_gate rejects it (doesn't match
+  # ready_id) and falls back to the ledger's ready_id: C2 is dispatched next, never
+  # C1 again.
+  - intent: { name: advance, slots: {} }
+    expect_state: dispatch
+    expect_world: { next_change_id: "C2" }
+
+# The log reflects the park: C1 parked with park_reason=drive_failed (never
+# integrated — a failed drive here is a triage signal, not a verified completion).
+expect_files:
+  - path: ../../../.artifacts/goal/flow-drive-failed/log.jsonl
+    content_matches: '"change_id":"C1".*"park_reason":"drive_failed".*"state":"parked"'
+
+expect_no_errors: true

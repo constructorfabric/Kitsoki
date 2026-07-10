@@ -1,0 +1,21 @@
+app:
+  id: wb-agent-legacy-vocabulary
+  version: 0.1.0
+hosts:
+  - host.agent.task
+intents:
+  go:
+    title: Go
+root: bench
+states:
+  bench:
+    workbench:
+      agent: builder
+      prompt: prompts/bench.md
+      acceptance_schema: schemas/out.json
+agents:
+  builder:
+    system_prompt: "build things"
+    tools: [Read, Grep, Glob, Edit, Write, Bash]
+    bash_profile: read-only
+    external_side_effect: true

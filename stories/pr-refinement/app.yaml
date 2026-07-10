@@ -3,7 +3,7 @@
 # PR-refinement pipeline (see docs/case-studies/bug-fix.md —
 # pr-refinement is a story, not a library). The six visible rooms
 # (open_pr → ci_monitoring → diagnose → resolve_comments → re_push →
-# merge) collapse cyber-repo's `tools/loopy/pr-refine.py` and the
+# merge) collapse focused-engineering's `tools/loopy/pr-refine.py` and the
 # autonomous merge-monitor loop into one provider-neutral state machine.
 #
 # # Standalone-runnable.

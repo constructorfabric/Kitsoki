@@ -35,20 +35,66 @@ states:
           text:     "TESTING"
           subtitle: "Phase 4 / 7  ·  run + review tests against the applied fix"
           color:    "#F59E0B"   # amber — caution
+      - banner:
+          text:     "ACTION NEEDED: TESTING FAILED"
+          subtitle: "The testing artifact reports failed. Continue or refine returns to implementing; this does not advance."
+          color:    "#DC2626"
+        when: "world.implement_review_artifact.status == 'failed'"
+      - banner:
+          text:     "ACTION NEEDED: TESTING BLOCKED"
+          subtitle: "The testing artifact reports blocked. Continue or refine returns to implementing with this diagnostic."
+          color:    "#F59E0B"
+        when: "world.implement_review_artifact.status == 'blocked'"
+      - banner:
+          text:     "TESTING PASSED"
+          subtitle: "Structured artifact reports status=passed; continue advances the pipeline."
+          color:    "#16A34A"
+        when: "world.implement_review_artifact.status == 'passed'"
       - prose: "{{ world.ticket_id|default:'(no ticket)' }} · cycle {{ world.cycle }} · {{ world.bugfix_mode }} bugfix · judge {{ world.judge_mode }}"
       - kv:
           pairs:
             Ticket:  "{{ world.ticket_id }} — {{ world.ticket_title }}"
             Summary: '{{ world.implement_review_artifact.summary_title|default:"(pending)" }}'
             Status:  '{{ world.implement_review_artifact.status|default:"(pending)" }}'
-      - heading: "Artifact"
-      - code: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
+            "Continue does": '{% if world.implement_review_artifact.status == "failed" or world.implement_review_artifact.status == "blocked" %}return to implementing{% elif world.bugfix_mode == "quick" %}post and advance to done{% else %}post and advance to reviewing{% endif %}'
+      - heading: "Action needed"
+        when: "world.implement_review_artifact.status == 'failed' || world.implement_review_artifact.status == 'blocked' || world.implement_review_artifact.blockers"
+      - prose: "The fix is not ready to advance. The next implementation cycle receives this artifact as refinement feedback."
+        when: "world.implement_review_artifact.status == 'failed'"
+      - prose: "The test reviewer could not make a reliable pass/fail decision. The next implementation cycle receives this diagnostic as refinement feedback."
+        when: "world.implement_review_artifact.status == 'blocked'"
+      - heading: "Blockers"
+        when: "world.implement_review_artifact.blockers"
+      - code: |
+          {% for b in world.implement_review_artifact.blockers %}- {{ b.severity|default:"blocker" }}{% if b.file %} · {{ b.file }}{% endif %}{% if b.description %}: {{ b.description }}{% else %}: {{ b }}{% endif %}
+          {% endfor %}
+        when: "world.implement_review_artifact.blockers"
+      - heading: "Tests run"
+        when: "world.implement_review_artifact.tests_run"
+      - kv:
+          pairs:
+            Passed:  '{{ world.implement_review_artifact.tests_run.passed|default:"0" }}'
+            Failed:  '{{ world.implement_review_artifact.tests_run.failed|default:"0" }}'
+            Skipped: '{{ world.implement_review_artifact.tests_run.skipped|default:"0" }}'
+        when: "world.implement_review_artifact.tests_run"
+      - heading: "Test log"
+        when: "world.implement_review_artifact.tests_run.log"
+      - code: '{{ world.implement_review_artifact.tests_run.log }}'
+        when: "world.implement_review_artifact.tests_run.log"
+      - heading: "Tests added"
+        when: "world.implement_review_artifact.tests_added"
+      - code: |
+          {% for t in world.implement_review_artifact.tests_added %}- {{ t }}
+          {% endfor %}
+        when: "world.implement_review_artifact.tests_added"
+      - heading: "Summary"
+      - template: '{{ world.implement_review_artifact.summary_markdown|default:"(pending — agent has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
           items:
-            - label:  "continue"
-              hint:   "post and advance to reviewing (or done in quick mode)"
+            - label:  "{% if world.implement_review_artifact.status == 'failed' %}failed: fix code{% elif world.implement_review_artifact.status == 'blocked' %}blocked: fix tests{% else %}continue{% endif %}"
+              hint:   "{% if world.implement_review_artifact.status == 'failed' or world.implement_review_artifact.status == 'blocked' %}ACTION NEEDED: return to implementing with this diagnostic{% elif world.bugfix_mode == 'quick' %}post and advance to done{% else %}post and advance to reviewing{% endif %}"
               intent: accept
             - label:  "refine"
               hint:   "re-run tests with feedback"
@@ -139,22 +185,26 @@ states:
             - |
               set -e
               export NO_COLOR=1 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat
-              WT="{{ world.workdir }}"
+              # host.run already chdirs the child into cwd (world.workdir); do NOT
+              # re-apply world.workdir — it is a RELATIVE path in production and a
+              # second git -C would nest it under the already-chdir'd cwd. Derive
+              # the scratch worktree as an ABSOLUTE sibling of the current dir so
+              # `git worktree add` doesn't place it inside this worktree.
               GATE='{{ world.gate_command }}'
               # The pre-fix snapshot: the commit before the fix tip.
-              PREFIX_SHA=$(git -C "$WT" rev-parse 'HEAD~1' 2>/dev/null || echo "")
+              PREFIX_SHA=$(git rev-parse 'HEAD~1' 2>/dev/null || echo "")
               if [ -z "$PREFIX_SHA" ]; then
                 jq -n '{red:false,checked:false,log:"no pre-fix snapshot (HEAD~1 missing — fix not committed as a discrete tip?)"}'
                 exit 0
               fi
-              SCRATCH="$WT-prefix-gate"
-              git -C "$WT" worktree add --detach "$SCRATCH" "$PREFIX_SHA" >/dev/null 2>&1 || {
+              SCRATCH="$(pwd)-prefix-gate"
+              git worktree add --detach "$SCRATCH" "$PREFIX_SHA" >/dev/null 2>&1 || {
                 jq -n '{red:false,checked:false,log:"could not materialise pre-fix snapshot worktree"}'
                 exit 0
               }
               GATE_EXIT=0
               GATE_OUT=$( (cd "$SCRATCH" && bash -c "$GATE") 2>&1 ) || GATE_EXIT=$?
-              git -C "$WT" worktree remove --force "$SCRATCH" >/dev/null 2>&1 || true
+              git worktree remove --force "$SCRATCH" >/dev/null 2>&1 || true
               if [ "$GATE_EXIT" -ne 0 ]; then
                 jq -n --arg log "$GATE_OUT" '{red:true,checked:true,log:$log}'
               else
@@ -238,7 +288,8 @@ states:
 
       - when: |
           world.judge_mode != 'human' &&
-          world.llm_verdict.confidence >= world.judge_confidence_threshold &&
+          (world.llm_verdict.verdict ?? '') != '' &&
+          (world.llm_verdict.confidence ?? 0) >= world.judge_confidence_threshold &&
           world.llm_verdict.verdict != 'uncertain' &&
           world.llm_verdict.intent != 'uncertain'
         emit_intent: "{{ world.llm_verdict.intent }}"
@@ -270,28 +321,45 @@ states:
                 implementing_cycle: "{{ world.implementing_cycle + 1 }}"
                 cycle:              "{{ world.cycle + 1 }}"
                 # Re-enter implementing for a fresh re-apply: clear its
-                # once: bind so the implementer agent runs again.
-                implement_artifact: {}
+                # once: bind so the implementer agent runs again. Also clear
+                # the failed/blocked testing artifact; otherwise testing's
+                # once: bind skips the reviewer on the next pass and keeps
+                # routing on stale evidence.
+                implement_artifact:        {}
+                implement_review_artifact: {}
 
         # ── direct-ship (slice 4) — passed AND bugfix_exit=direct-ship ──────
         # The RED→GREEN regression gate's RED half is enforced HERE — but ONLY
         # when a regression gate was actually configured (the ticket carried a
-        # repro_command → gate_command != ""). A configured gate that was never
-        # RED pre-fix is a characterization test, not a regression test, and must
-        # NEVER reach @exit:shipped → @exit:needs-human. When the ticket has NO
-        # repro_command (gate_command == ""), there is no RED-pre-fix fact to
-        # enforce; the fix still LANDS by default, and the tail re-verifies
-        # default_landing_gate (build + suite) on the merged commit so we never
-        # ship blind. The GREEN half (gate green on the MERGED commit) is the
-        # tail's `verify` room either way.
+        # repro_command → gate_command != "") AND the gate actually RAN
+        # (regression_gate_checked == true). A configured gate that RAN and was
+        # GREEN pre-fix is a characterization test, not a regression test, and
+        # must NEVER reach @exit:shipped → @exit:needs-human.
+        #
+        # The `regression_gate_checked` guard is load-bearing: `!regression_red_pre_fix`
+        # is ALSO false when the gate never RAN (checked == false) — e.g. HEAD~1
+        # missing, the scratch-worktree add failed, or the host-effect executor
+        # skipped the gate (studio host.run/worktree race, gh39). Without the
+        # `checked` guard the trap conflated "gate ran GREEN (characterization)"
+        # with "gate never established RED (unknown)", mislabelled the unknown
+        # case a characterization test, and HARD-EXITED a genuinely-RED fix to
+        # @exit:needs-human with an empty "Pre-fix gate output:" (gh40). When the
+        # gate could not run we have no RED-pre-fix fact to enforce — the SAME
+        # epistemic state as an empty gate_command — so we DEGRADE GRACEFULLY:
+        # fall through to the direct-ship arc, land the fix, and let the tail
+        # re-verify the landing gate GREEN on the merged commit so we never ship
+        # blind. Only a gate that RAN and was GREEN is a proven characterization
+        # test worth blocking. The GREEN half (gate green on the MERGED commit)
+        # is the tail's `verify` room either way.
         - when: |
             world.bugfix_exit == 'direct-ship' &&
             world.gate_command != '' &&
+            world.regression_gate_checked &&
             !world.regression_red_pre_fix
           target: "@exit:needs-human"
           effects:
             - set:
-                last_error: "regression gate was never RED on the pre-fix snapshot (a characterization test, not a regression test) — refusing to ship. Pre-fix gate output: {{ world.regression_pre_fix_log }}"
+                last_error: "regression gate ran GREEN on the pre-fix snapshot (a characterization test, not a regression test) — refusing to ship. Pre-fix gate output: {{ world.regression_pre_fix_log }}"
                 status:     "needs-human"
         - when: "world.bugfix_exit == 'direct-ship'"
           target: tail
@@ -299,9 +367,23 @@ states:
             - invoke: iface.transport.post
               with:
                 thread:   "{{ world.thread }}"
+                workdir:  "{{ world.workdir }}"
                 title:    "Test review: {{ world.ticket_id }}"
                 body:     "{{ world.implement_review_artifact.summary_markdown }}"
                 phase_id: "testing_{{ world.ticket_id }}_{{ world.cycle }}"
+            # Direct-ship hands the maker worktree straight to ship-it, whose
+            # integrate room refuses any uncommitted work. The local-file
+            # transport writes the checkpoint into issues/bugs/<id>.md inside
+            # this worktree, so commit that mirror before the tail's clean-tree
+            # guard runs. Keep it path-scoped so unrelated operator WIP still
+            # trips the lost-work guard instead of being swept into the branch.
+            - invoke: iface.vcs.commit
+              when: "world.thread != '' && hasPrefix(world.thread, 'issues/bugs/')"
+              with:
+                workdir: "{{ world.workdir }}"
+                message: "chore: record bugfix transport mirror for {{ world.ticket_id }}"
+                files:
+                  - "{{ world.thread }}"
             - set:
                 last_reply_author: "{{ slots.author ?? 'human' }}"
                 refine_feedback:   ""
@@ -323,6 +405,7 @@ states:
             - invoke: iface.transport.post
               with:
                 thread:   "{{ world.thread }}"
+                workdir:  "{{ world.workdir }}"
                 title:    "Test review: {{ world.ticket_id }}"
                 body:     "{{ world.implement_review_artifact.summary_markdown }}"
                 phase_id: "testing_{{ world.ticket_id }}_{{ world.cycle }}"
@@ -335,6 +418,7 @@ states:
             - invoke: iface.transport.post
               with:
                 thread:   "{{ world.thread }}"
+                workdir:  "{{ world.workdir }}"
                 title:    "Test review: {{ world.ticket_id }}"
                 body:     "{{ world.implement_review_artifact.summary_markdown }}"
                 phase_id: "testing_{{ world.ticket_id }}_{{ world.cycle }}"
@@ -343,7 +427,43 @@ states:
                 refine_feedback:   ""
                 cycle:             0
 
+      # refine mirrors accept's status-awareness (see file header): a
+      # failed/blocked review means the IMPLEMENTATION is broken, not the
+      # review, so it must route back to implementing like accept does —
+      # a bare self-loop here only re-ran test_author, burning
+      # testing_budget re-reviewing the same unfixed code while
+      # implement_artifact's once: bind stayed set and the implementer
+      # never ran again.
       refine:
+        - when: |
+            (world.implement_review_artifact.status == 'failed' ||
+             world.implement_review_artifact.status == 'blocked') &&
+            world.implementing_cycle >= world.implementing_budget
+          target: "@exit:abandoned"
+          effects:
+            - set:
+                abandon_reason: "implementing_cycle_budget_exhausted_after_testing_refine"
+                status:         "abandoned"
+        - when: |
+            world.implement_review_artifact.status == 'failed' ||
+            world.implement_review_artifact.status == 'blocked'
+          target: implementing
+          effects:
+            - set:
+                refine_feedback:    "{{ slots.feedback ?? world.llm_verdict.reason ?? world.implement_review_artifact.summary_markdown }}"
+                implementing_cycle: "{{ world.implementing_cycle + 1 }}"
+                cycle:              "{{ world.cycle + 1 }}"
+                # Re-enter implementing for a fresh re-apply: clear its
+                # once: bind so the implementer agent runs again. Also clear
+                # the failed/blocked testing artifact; otherwise testing's
+                # once: bind skips the reviewer on the next pass and keeps
+                # routing on stale evidence.
+                implement_artifact:        {}
+                implement_review_artifact: {}
+
+        # passed (or legacy/missing status) — the implementation itself
+        # is fine; the review/tests need another pass (e.g. more
+        # coverage), so self-loop and re-run only the reviewer.
         - when: "world.testing_cycle >= world.testing_budget"
           target: "@exit:abandoned"
           effects:
@@ -389,7 +509,8 @@ states:
                 implementing_cycle:  0
                 cycle:               0
                 # Clear implementing's once: bind so it re-applies fresh.
-                implement_artifact:  {}
+                implement_artifact:        {}
+                implement_review_artifact: {}
         - target: proposing
           effects:
             - set:

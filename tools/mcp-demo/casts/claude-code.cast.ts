@@ -29,6 +29,10 @@ function say(line: string): string {
 export const cast: Termcast = {
   agent: "claude-code",
   title: "claude — kitsoki mcp",
+  curtainTitle: "Claude Code  ·  kitsoki mcp",
+  footer: "kitsoki · mcp studio · driven by Claude Code over MCP",
+  badge: "MCP",
+  assertText: ["kitsoki", "confirm"],
   cols: 116,
   rows: 26,
   beats: [

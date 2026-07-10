@@ -32,6 +32,8 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
   host.git_worktree:
     data: { ok: true, log: "synced", path: "testdata/projects/cake" }
   host.git:
@@ -148,35 +150,22 @@ host_handlers:
         reason:           "Stub artifact passes."
 
 turns:
-  # main → impl.idle.
+  # main → impl.review_task_awaiting_reply. impl.idle auto-starts when a ticket is
+  # already projected, so the ticket fetch happens in the same turn.
   - intent: { name: go_implementation, slots: {} }
-    expect_state: impl.idle
+    expect_state: impl.review_task_awaiting_reply
     expect_world:
       impl__ticket_id: "F-2026-05-18-export-csv"
-
-  # impl.idle → impl.review_task_executing. impl's `start` lifts via
-  # dev-story's imports.bf.intents.import: [start] — start is shared
-  # across imports as bare.
-  - intent: { name: impl__start, slots: {} }
-    expect_state: impl.review_task_executing
     expect_host_calls:
       - handler: host.local_files.ticket.get
         args: { id: "F-2026-05-18-export-csv" }
         times: 1
 
-  - intent: { name: impl__proceed, slots: {} }
-    expect_state: impl.review_task_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
-    expect_state: impl.write_code_executing
-  - intent: { name: impl__proceed, slots: {} }
     expect_state: impl.write_code_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
-    expect_state: impl.test_executing
-  - intent: { name: impl__proceed, slots: {} }
     expect_state: impl.test_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
-    expect_state: impl.review_executing
-  - intent: { name: impl__proceed, slots: {} }
     expect_state: impl.review_awaiting_reply
   - intent: { name: impl__accept, slots: {} }
     expect_state: impl.handoff

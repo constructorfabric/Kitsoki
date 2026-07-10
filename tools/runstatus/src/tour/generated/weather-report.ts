@@ -22,7 +22,6 @@ export const WEATHER_REPORT_TOUR_STEPS: readonly TourStep[] = [
     id: "wr-intro-story",
     route: "home",
     target: "story-card",
-    targetText: "weather",
     title: "Weather & Climate",
     body: "This story takes a city and a mode, then runs ONE deterministic Starlark script that geocodes the place and fetches its dataset over ctx.http. No LLM, no hand-written Go — just a small typed glue script whose every HTTP call is captured and replayed from a cassette.",
     placement: "right",

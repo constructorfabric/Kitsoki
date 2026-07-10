@@ -1,0 +1,56 @@
+# Paired-task arena runtime. It intentionally reuses the broad repo-runtime
+# surface because pilot tasks span JS/TS, Go, Python, Rust, and docs repos.
+FROM golang:1.25-bookworm
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      git \
+      bash \
+      make \
+      build-essential \
+      python3 \
+      python3-yaml \
+      python3-pip \
+      docker.io \
+      jq \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends nodejs \
+ && corepack enable \
+ && corepack prepare pnpm@11.3.0 --activate \
+ && npm install -g @openai/codex @anthropic-ai/claude-code \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path \
+ && ln -s /root/.cargo/bin/cargo /usr/local/bin/cargo \
+ && ln -s /root/.cargo/bin/rustup /usr/local/bin/rustup \
+ && ln -s /root/.cargo/bin/rustc /usr/local/bin/rustc \
+ && rm -rf /root/.rustup/settings.toml
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PATH="/root/.cargo/bin:${PATH}" \
+    KITSOKI_ROOT="/workspace/kitsoki" \
+    CARGO_HOME="/root/.cargo" \
+    CARGO_TARGET_DIR="/workspace/.cache/cargo-target" \
+    PNPM_STORE_DIR="/workspace/.cache/pnpm"
+
+# Docker `ENV PATH` only reaches non-login shells. The live worker's host.Bash
+# tool runs commands via `bash -lc`, which re-sources /etc/profile — Debian's
+# default there unconditionally OVERWRITES the inherited PATH with a bare
+# .../usr/bin:/bin, dropping go/cargo. Verified live: a real kitsoki-native
+# bugfix cell (kitsoki-bug9/bug12 training tasks) self-reported "done" after
+# reading "go not on PATH" and skipping its own `go test` verification, then
+# failed the arena's independent oracle — the agent never actually confirmed
+# its own fix. A profile.d script IS sourced by login shells, so re-declare
+# the toolchain PATH there too.
+RUN printf 'export PATH="/root/.cargo/bin:/go/bin:/usr/local/go/bin:$PATH"\n' \
+      > /etc/profile.d/00-kitsoki-toolchain-path.sh \
+ && chmod +x /etc/profile.d/00-kitsoki-toolchain-path.sh
+
+WORKDIR /workspace

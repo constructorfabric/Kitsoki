@@ -1,7 +1,7 @@
-# author — phase 4/5. Author the selected gate + a flow fixture; prove green.
+# author — phase 5/6. Author the selected improvement + coverage; prove green.
 #
-# The `author` persona edits the named room YAML, writes a cassette-free
-# flow fixture, and runs `kitsoki test flows` — binding `author_artifact`
+# The `author` persona edits the named story/script/route/skill surface, writes
+# no-LLM coverage, and runs focused validation — binding `author_artifact`
 # with `flows_green`. The accept arc REFUSES to advance while the flow is
 # red (guard on world.author_artifact.flows_green): a gate without a green
 # fixture is unverified, so the operator is bounced back to refine.
@@ -9,25 +9,30 @@
 states:
 
   author:
-    description: "Author the selected gate and its flow fixture; verify flows green."
+    description: "Author the selected Kitsoki improvement and verify coverage."
     view:
       - banner:
           text:     "AUTHOR"
-          subtitle: "Phase 4 / 5  ·  gate + flow fixture, must be green"
+          subtitle: "Phase 5 / 6  -  improvement + no-LLM coverage, must be green"
           color:    "#F59E0B"
-      - prose: "{{ world.job }} · cycle {{ world.cycle }} · judge {{ world.judge_mode }} · gate {{ world.selected_theme }}"
+      - prose: "{{ world.job }} - judge {{ world.judge_mode }} - {{ world.selected_artifact_kind }} - {{ world.selected_theme }}"
       - kv:
           pairs:
             "Flows green": '{{ world.author_artifact.flows_green|default:"(pending)" }}'
-            Files:         '{{ world.author_artifact.files_changed|default:"(pending)" }}'
+            "Files changed": '{{ world.author_artifact.files_changed_display|default:"(pending)" }}'
+            Diff: '{{ world.author_artifact.diff_path|default:"(pending)" }}'
+      - prose: "Validation gate: GREEN - {{ world.author_artifact.validation|default:\"focused flow validation passed\" }}"
+        when: "world.author_artifact.flows_green == true"
+      - prose: "Validation gate: NOT GREEN - {{ world.author_artifact.validation|default:\"focused flow validation has not passed yet\" }}"
+        when: "world.author_artifact.flows_green != true"
       - heading: "Author summary"
-      - code: '{{ world.author_artifact.summary_markdown|default:"(pending — author has not returned yet)" }}'
+      - template: '{{ world.author_artifact.summary_markdown|default:"(pending - author has not returned yet)" }}'
       - choice:
           mode: single
           prompt: "Actions"
           items:
             - label:  "continue"
-              hint:   "accept the gate (only if flows are green) and review the ladder"
+              hint:   "accept the improvement (only if validation is green) and review the ladder"
               intent: accept
             - label:  "refine"
               hint:   "re-author with feedback (required if flows are red)"
@@ -43,7 +48,7 @@ states:
             - label:  "look"
               hint:   "re-render"
               intent: look
-    relevant_world: [job, stories_dir, selected_theme, judge_mode, judge_confidence_threshold, decide_artifact, author_artifact, llm_verdict, refine_feedback, cycle]
+    relevant_world: [job, stories_dir, selected_theme, selected_artifact_kind, judge_mode, judge_confidence_threshold, source_plan_artifact, decide_artifact, author_artifact, llm_verdict, refine_feedback, cycle]
     on_enter:
       - invoke: host.agent.task
         once: true
@@ -55,6 +60,7 @@ states:
             prompt: prompts/author_executing.md
             args:
               selected:        "{{ world.decide_artifact.selected }}"
+              source_plan:     "{{ world.source_plan_artifact }}"
               stories_dir:     "{{ world.stories_dir }}"
               refine_feedback: "{{ world.refine_feedback }}"
         bind:
@@ -70,7 +76,7 @@ states:
             phase:          "author"
             artifact_title: "gate: {{ world.selected_theme }}"
             artifact_body:  "{{ world.author_artifact.summary_markdown }}"
-            criterion:      "The gate is wired with the brief's validator as a deterministic re-check, a flow fixture covers each branch, and `kitsoki test flows` is green (flows_green=true)."
+            criterion:      "The improvement matches the selected artifact_kind, includes no-LLM flow/cassette coverage or an explicit local ticket when it cannot be automated yet, and focused validation is green (flows_green=true)."
             threshold:      "{{ world.judge_confidence_threshold }}"
         bind:
           llm_verdict: submitted
@@ -90,10 +96,10 @@ states:
         - when: "!world.author_artifact.flows_green"
           target: author
           effects:
-            - say: "Flows are not green yet — refine the gate/fixture before accepting."
+            - say: "Validation is not green yet — refine the improvement/fixture before accepting."
         - target: record
           effects:
-            - say: "Gate authored and flows green — reviewing the determinism ladder."
+            - say: "Improvement authored and validation green. Recording the final summary report and determinism-ladder review now."
             - set: { refine_feedback: "", status: "authored" }
       refine:
         - when: "world.author_cycle >= world.author_budget"
@@ -110,7 +116,7 @@ states:
       restart_from:
         - target: decide
           effects:
-            - set: { refine_feedback: "", author_cycle: 0, decide_artifact: {}, author_artifact: {}, selected_theme: "" }
+            - set: { refine_feedback: "", author_cycle: 0, decide_artifact: {}, author_artifact: {}, selected_theme: "", selected_artifact_kind: "" }
       quit:
         - target: "@exit:abandoned"
           effects:

@@ -1,0 +1,10 @@
+goal_slug: report-events-test
+changes:
+  - id: "C1"
+    wall: WS
+    title: "Seed reporting event"
+    pipeline: implementation
+    scope: ["stories/goal-seeker/**"]
+    depends_on: []
+    acceptance: ["report includes the plan-evolution event"]
+    gate: { class: G-FLOW, cmd: "true" }

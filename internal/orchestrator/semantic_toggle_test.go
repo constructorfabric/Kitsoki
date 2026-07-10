@@ -104,3 +104,23 @@ func TestSemanticRouting_EnabledResolvesSynonymDeterministically(t *testing.T) {
 	require.EqualValues(t, 0, h.calls.Load(),
 		"with the semantic stack on, a declared synonym must resolve without the harness")
 }
+
+// TestSemanticRouting_NoOverrideDefersToAppConfig is the regression for the
+// WS-D D1 bug (see .context/dwf2-d1-findings.md): when the CALLER passes NO
+// WithSemanticRouting option at all (the shape every non-CLI caller of
+// orchestrator.New uses, and what the CLI itself must now do once
+// semanticRoutingOptions stops force-appending a default-off option),
+// Turn must fall through to the per-app routing.enabled config rather than
+// silently behaving as if the stack were disabled. toggleAppYAML declares no
+// routing: block, so app.DefaultRoutingConfig's Enabled: true applies.
+func TestSemanticRouting_NoOverrideDefersToAppConfig(t *testing.T) {
+	orch, h := newToggleOrch(t) // no options at all — the bug's exact shape
+	ctx := context.Background()
+	sid, err := orch.NewSession(ctx)
+	require.NoError(t, err)
+
+	_, err = orch.Turn(ctx, sid, "wade")
+	require.NoError(t, err)
+	require.EqualValues(t, 0, h.calls.Load(),
+		"with no WithSemanticRouting override, the app's default-enabled routing.enabled must resolve a declared synonym without the harness")
+}

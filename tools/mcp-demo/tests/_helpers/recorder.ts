@@ -35,6 +35,14 @@ export function dwell(page: Page, ms: number): Promise<void> {
 
 /** Wipe + recreate the per-spec video dir so a stale `.webm` can't be picked up. */
 export function prepareVideoDir(videoDir: string): void {
+  const artifactDir = path.dirname(videoDir);
+  if (fs.existsSync(artifactDir)) {
+    for (const name of fs.readdirSync(artifactDir)) {
+      if (/^\d{2}-.+\.png$/.test(name) || name === "ERROR.txt") {
+        fs.rmSync(path.join(artifactDir, name), { force: true });
+      }
+    }
+  }
   fs.rmSync(videoDir, { recursive: true, force: true });
   fs.mkdirSync(videoDir, { recursive: true });
 }

@@ -1,0 +1,8 @@
+kind: inspect_cassette
+interactions:
+  - op: exists
+    target: docs/proposals/.workspace/working-folder
+    out: "false"
+  - op: exists
+    target: docs/proposals/working-folder.md
+    out: "false"

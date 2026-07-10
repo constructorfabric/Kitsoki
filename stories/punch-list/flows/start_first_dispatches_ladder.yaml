@@ -1,0 +1,132 @@
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  manifest_path: "stories/punch-list/testdata/glm_ladder.yaml"
+
+host_handlers:
+  host.run:
+    by_call:
+      punch_load:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            state_path: ".artifacts/punch-list/glm_ladder.state.json"
+            item_count: "1"
+            error: ""
+            items:
+              - &ladder_item
+                id: measure-coverage
+                title: "Measure current coverage"
+                story: "stories/punch-list/app.yaml"
+                mode: drive
+                harness: ladder
+                profile: synthetic-claude
+                model: hf:zai-org/GLM-5.2
+                implementation_story: "stories/punch-list/app.yaml"
+                implementation_prompt: "Add deterministic coverage proof without live LLM calls."
+                require_trace_model: false
+                verify: [ { kind: story_validate, story: "stories/punch-list/app.yaml" } ]
+                trace_path: ".artifacts/punch-list/traces/deterministic/measure-coverage.jsonl"
+                implementation_trace_path: ".artifacts/punch-list/traces/deterministic/measure-coverage-implementation.jsonl"
+                harness_ladder: &glm_ladder
+                  models:
+                    - { backend: claude, provider: synthetic-claude, model: hf:zai-org/GLM-5.2 }
+                    - { backend: codex, provider: codex-native, model: gpt-5.5 }
+                  efforts: [low, medium, high, xhigh, max]
+      punch_board-0-:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            items: []
+            results: { items: [] }
+            next_item: *ladder_item
+            next_item_id: measure-coverage
+            route: dispatch
+            has_pending: true
+            processed_count: 0
+            passed_count: 0
+            partial_count: 0
+            failed_count: 0
+            skipped_count: 0
+            pending_count: 1
+            count_summary: "Processed 0 | Passed 0 | Partial 0 | Failed 0 | Skipped 0 | Pending 1"
+      punch_policy-measure-coverage:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            policy_result: { status: ok, message: "profile/model/verifier policy passed" }
+            error: ""
+  host.starlark.run:
+    by_call:
+      punch_load:
+        data:
+          manifest_path: "stories/punch-list/testdata/glm_ladder.yaml"
+          state_path: ".artifacts/punch-list/glm_ladder.state.json"
+          item_count: "1"
+          error: ""
+          items:
+            - *ladder_item
+      punch_board-0-:
+        data:
+          items: []
+          results: { items: [] }
+          next_item: *ladder_item
+          next_item_id: measure-coverage
+          route: dispatch
+          has_pending: true
+          processed_count: 0
+          passed_count: 0
+          partial_count: 0
+          failed_count: 0
+          skipped_count: 0
+          pending_count: 1
+          count_summary: "Processed 0 | Passed 0 | Partial 0 | Failed 0 | Skipped 0 | Pending 1"
+      punch_policy-measure-coverage:
+        data:
+          policy_result: { status: ok, message: "profile/model/verifier policy passed" }
+          error: ""
+  host.agent.task:
+    by_call:
+      punch_drive-measure-coverage:
+        delay: "20ms"
+        data:
+          ok: true
+          submitted:
+            status: passed
+            story: "stories/punch-list/app.yaml"
+            trace_path: ".artifacts/punch-list/traces/deterministic/measure-coverage.jsonl"
+            model: hf:zai-org/GLM-5.2
+            profile: synthetic-claude
+            findings: []
+            summary: "loaded and observed"
+      punch_implementation-measure-coverage:
+        delay: "20ms"
+        data:
+          ok: true
+          submitted:
+            status: passed
+            story: "stories/punch-list/app.yaml"
+            trace_path: ".artifacts/punch-list/traces/deterministic/measure-coverage-implementation.jsonl"
+            model: hf:zai-org/GLM-5.2
+            profile: synthetic-claude
+            findings: []
+            summary: "implemented deterministic coverage proof"
+
+turns:
+  - intent: { name: start, slots: {} }
+    expect_state: load
+  - intent: { name: start_first, slots: {} }
+    expect_state: drive
+    expect_world:
+      current_item_id: measure-coverage
+      auto_start_next: false
+  - intent: { name: look, slots: {} }
+    advance_clock: "2s"
+    expect_state: verify
+
+expect_terminal: false
+expect_no_errors: true

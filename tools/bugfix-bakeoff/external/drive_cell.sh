@@ -6,7 +6,7 @@
 # hand-assembled prompt. COST-BEARING (real LLM) — operator-run, never in CI.
 #
 #   drive_cell.sh --project <name> --bug <id> --candidate <key> [--score] [--no-drive] [--no-docker-score]
-#                 [--repo-dir <local-checkout>]
+#                 [--repo-dir <local-checkout>] [--completion-state <path>]
 #
 #   --score      after the drive, grade the worktree with bench.py + extract cost
 #   --no-drive   only prepare the worktree + print the prompt (free; for inspection)
@@ -26,13 +26,14 @@ MAX_ATTEMPTS="${MCP_DRIVE_MAX_ATTEMPTS:-12}"
 BACKOFF_BASE="${MCP_DRIVE_BACKOFF_BASE:-10}"
 BACKOFF_MAX="${MCP_DRIVE_BACKOFF_MAX:-600}"
 
-project=""; bug=""; cand=""; repo_dir=""; do_score=0; no_drive=0; orch="${MCP_DRIVE_MODEL:-gpt-5.5}"; use_docker_score="${EXTERNAL_BAKEOFF_USE_DOCKER_SCORE:-1}"
+project=""; bug=""; cand=""; repo_dir=""; completion_state=""; do_score=0; no_drive=0; orch="${MCP_DRIVE_MODEL:-gpt-5.5}"; use_docker_score="${EXTERNAL_BAKEOFF_USE_DOCKER_SCORE:-1}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --project) project="$2"; shift 2;;
     --bug) bug="$2"; shift 2;;
     --candidate) cand="$2"; shift 2;;
     --repo-dir) repo_dir="$2"; shift 2;;
+    --completion-state) completion_state="$2"; shift 2;;
     --orchestrator) orch="$2"; shift 2;;
     --no-docker-score) use_docker_score=0; shift;;
     --score) do_score=1; shift;;
@@ -41,7 +42,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -n "$project" && -n "$bug" && -n "$cand" ]] || {
-  echo "usage: drive_cell.sh --project <name> --bug <id> --candidate <key> [--repo-dir <local-checkout>] [--score] [--no-drive] [--no-docker-score]" >&2; exit 2; }
+  echo "usage: drive_cell.sh --project <name> --bug <id> --candidate <key> [--repo-dir <local-checkout>] [--score] [--no-drive] [--no-docker-score] [--completion-state <path>]" >&2; exit 2; }
 
 is_retryable_error() {
   local payload="$1"
@@ -138,8 +139,8 @@ cellkey="$project-$bug-$cand"
 
 # --- fail fast (before any clone/spend) ---------------------------------------
 # local_only projects drive against an explicit local checkout. kitsoki-self can
-# default to this repository; external/private repos such as gears-rust must use
-# --repo-dir or <PROJECT>_REPO / GEARS_RUST_REPO.
+# default to this repository; external/private repos must use --repo-dir or one
+# of the manifest's generic repo_envs.
 local_only=""
 [[ "$(jget local_only)" == "True" || "$(jget local_only)" == "true" ]] && local_only=1
 
@@ -149,19 +150,16 @@ desc="$(printf '%s — %s' "$title" "$(printf '%s' "$ticket" | tr '\n' ' ' | sed
 
 # --- source repo: clone (remote) or the local checkout (local_only) -----------
 if [[ -n "$local_only" ]]; then
-  env_name="$(printf '%s_REPO' "$project" | tr '[:lower:]-' '[:upper:]_')"
-  src="${repo_dir:-${!env_name:-${GEARS_RUST_REPO:-}}}"
-  if [[ -z "$src" && "$project" == "kitsoki" ]]; then
-    src="$REPO_ROOT"
+  repo_path_args=(repo-path --project "$project")
+  [[ -n "$repo_dir" ]] && repo_path_args+=(--repo-dir "$repo_dir")
+  repo_path_json="$CACHE/preflight/$cellkey-repo-path.json"; repo_path_err="$repo_path_json.err"; mkdir -p "$(dirname "$repo_path_json")"
+  if ! python3 "$HERE/bench.py" "${repo_path_args[@]}" >"$repo_path_json" 2>"$repo_path_err"; then
+    echo "[cell] project '$project' is local_only; pass --repo-dir <checkout-or-meta-root> or set one of the manifest repo_envs." >&2
+    cat "$repo_path_json" >&2 2>/dev/null || true
+    cat "$repo_path_err" >&2 2>/dev/null || true
+    exit 2
   fi
-  [[ -n "$src" ]] || {
-    echo "[cell] project '$project' is local_only; pass --repo-dir <checkout> or set $env_name." >&2
-    exit 2
-  }
-  [[ -d "$src/.git" ]] || {
-    echo "[cell] local repo '$src' is not a git checkout." >&2
-    exit 2
-  }
+  src="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("path",""))' "$repo_path_json")"
   # Drive against a worktree of the target checkout; the baseline must be a real
   # commit there. No clone, no install — language toolchains are cached locally;
   # a nested package install can still run at score time via oracle.setup.
@@ -213,6 +211,23 @@ git -C "$cell" checkout -q -B "$branch"
 # Link a prebuilt node_modules only for cloned JS repos; local_only repos have
 # their toolchain in place (and a root node_modules symlink would be wrong here).
 [[ -z "$local_only" && -d "$src/node_modules" ]] && ln -sfn "$src/node_modules" "$cell/node_modules"
+if [[ "${BAKEOFF_CLAUDE_ALLOW_VALIDATOR:-0}" == "1" ]]; then
+  mkdir -p "$cell/.claude"
+  cat >"$cell/.claude/settings.local.json" <<'JSON'
+{
+  "permissions": {
+    "allow": [
+      "mcp__kitsoki__session_status",
+      "mcp__kitsoki__session_world",
+      "mcp__kitsoki__session_inspect",
+      "mcp__kitsoki__session_trace",
+      "mcp__validator__submit",
+      "mcp__operator__ask"
+    ]
+  }
+}
+JSON
+fi
 
 trace="$CACHE/traces/$cellkey.jsonl"; rm -f "$trace"
 thread_file="$CACHE/threads/$cellkey.md"
@@ -248,9 +263,17 @@ The fix MUST be generated by the live worker model inside the session (profile
    confirm/proceed) and answer ask-gates affirmatively ("looks correct, proceed").
    Do NOT re-drive start — the LLM judge auto-emits accept/refine. Give each
    on_enter step time ($cand does the real work there).
-4. STOP at a terminal state, ~25 forward turns, or a repeated stuck state. If a
+4. IMPORTANT — async turns are not stuck: session_submit returns a \`running\`
+   handle and the story executes INSIDE that one turn for many minutes. While
+   session_status shows a \`running\` field, the reported state stays at the
+   resting state (e.g. bf.idle) the whole time — that is NORMAL and is NOT a
+   stuck state. Keep polling (~60s apart, patiently, dozens of polls if needed)
+   until \`running\` clears or the state advances. Never stop, re-drive, or
+   close the session while \`running\` is present.
+5. STOP at a terminal state, ~25 forward turns, or a repeated stuck state
+   (same resting state, NO \`running\` field, across several polls). If a
    host_error bounces you to idle, read world.last_error, report it verbatim, STOP.
-5. Then inspect the session status/world/trace through MCP. Do not use shell,
+6. Then inspect the session status/world/trace through MCP. Do not use shell,
    filesystem, git, GitHub, or non-kitsoki tools during the delegated drive.
 Report: final state; trace path; source modified (y/n) + fix SHA; 1-line fix; reproduction bug_verified (t/f); forward turns; last_error if any.
 EOF
@@ -277,13 +300,20 @@ if [[ "$no_drive" == 1 ]]; then echo "[cell] --no-drive: prompt at $pf"; echo "[
 # --- drive (COST) -------------------------------------------------------------
 log="$CACHE/drive-logs/$cellkey.json"
 err="${log%.json}.err"
-echo "[cell] driving (orchestrator=$orch, worker=$cand)…" >&2
-if drive_with_retry "$log" "$err"; then
-  echo "[cell] drive done -> $log" >&2
+if [[ "${EXTERNAL_BAKEOFF_FAKE_DRIVE_SUCCESS:-0}" == 1 ]]; then
+  echo "[cell] fake drive enabled by EXTERNAL_BAKEOFF_FAKE_DRIVE_SUCCESS=1" >&2
+  printf '{"status":"fake-drive-success"}\n' >"$log"
+  : >"$err"
   drive_exit=0
 else
-  drive_exit=$?
-  echo "[cell] drive failed with exit $drive_exit -> $err" >&2
+  echo "[cell] driving (orchestrator=$orch, worker=$cand)…" >&2
+  if drive_with_retry "$log" "$err"; then
+    echo "[cell] drive done -> $log" >&2
+    drive_exit=0
+  else
+    drive_exit=$?
+    echo "[cell] drive failed with exit $drive_exit -> $err" >&2
+  fi
 fi
 
 # Cell-health classification from the trace: separate an INFRA failure (worker
@@ -342,6 +372,9 @@ if [[ "$do_score" == 1 ]]; then
     --trace "$trace"
     --candidates "$HERE/candidates.yaml"
   )
+  if [[ -n "$completion_state" ]]; then
+    bench_host+=(--completion-state "$completion_state")
+  fi
   host_score_log="$CACHE/score-logs/$cellkey-host.log"
   host_score_err="$CACHE/score-logs/$cellkey-host.err"
   if [[ "$use_docker_score" == 1 ]] && command -v docker >/dev/null 2>&1; then
@@ -351,15 +384,32 @@ if [[ "$do_score" == 1 ]]; then
       docker_bench_tree="$(to_docker_path "$cell")"
       docker_bench_out="$(to_docker_path "$out")"
       docker_bench_trace="$(to_docker_path "$trace")"
+      docker_completion_state=""
+      docker_bench_completion_state=""
+      if [[ -n "$completion_state" ]]; then
+        docker_completion_state="$CACHE/completion-state/$cellkey.json"
+        mkdir -p "$(dirname "$docker_completion_state")"
+        rm -f "$docker_completion_state"
+        docker_bench_completion_state="$(to_docker_path "$docker_completion_state")"
+      fi
       docker_score_log="$CACHE/score-logs/$cellkey-docker.log"
       docker_score_err="$CACHE/score-logs/$cellkey-docker.err"
+      docker_bench_args=(
+        python3 /workspace/kitsoki/tools/bugfix-bakeoff/external/bench.py score
+        --project "$project" --bug "$bug" --tree "$docker_bench_tree"
+        --candidate "$cand" --treatment kitsoki --out "$docker_bench_out"
+        --trace "$docker_bench_trace" --candidates /workspace/kitsoki/tools/bugfix-bakeoff/external/candidates.yaml
+      )
+      if [[ -n "$docker_bench_completion_state" ]]; then
+        docker_bench_args+=(--completion-state "$docker_bench_completion_state")
+      fi
       if run_with_retry "docker score --project $project --bug $bug --candidate $cand" "$docker_score_log" "$docker_score_err" \
         "$HERE/run_repo_docker.sh" --project "$project" --repo-dir "$src" -- \
-        python3 /workspace/kitsoki/tools/bugfix-bakeoff/external/bench.py score \
-          --project "$project" --bug "$bug" --tree "$docker_bench_tree" \
-          --candidate "$cand" --treatment kitsoki --out "$docker_bench_out" \
-          --trace "$docker_bench_trace" --candidates /workspace/kitsoki/tools/bugfix-bakeoff/external/candidates.yaml; then
-        :
+        "${docker_bench_args[@]}"; then
+        if [[ -n "$completion_state" && -f "$docker_completion_state" ]]; then
+          mkdir -p "$(dirname "$completion_state")"
+          cp "$docker_completion_state" "$completion_state"
+        fi
       else
         echo "[cell] docker score failed; falling back to host scoring" >&2
         run_with_retry "host score --project $project --bug $bug --candidate $cand" "$host_score_log" "$host_score_err" "${bench_host[@]}" || true

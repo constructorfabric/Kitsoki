@@ -1,0 +1,97 @@
+# design_to_decompose_to_impl — the publish → decompose bridge (proposal
+# deliver-canonical-decomposition.md, task B3).
+#
+# Sibling to design_to_implementation.yaml: that flow proves the DIRECT path
+# (design_done → go_implementation → impl); this one proves the DECOMPOSE
+# path (design_done → go_deliver → deliver's own decompose → lint → review →
+# fleet fan-out over a 2-brief fixture → back to landing). Both start from
+# the same design_done post-publish room and are offered as sibling labelled
+# arcs — decompose-vs-direct is always an operator choice (proposal Open
+# Question 3), never a size heuristic.
+#
+# Starts at design_done with ONLY the keys the accept arc leaves behind
+# (design_file — deliver's world_in: reads epic_path from exactly this key).
+# Reuses deliver's own rich_schema_happy fixture verbatim (same cassette,
+# same mocked decomposer/reviewer calls) so the manifest shape is proven
+# once, in one place, and just re-driven through the dev-story front door.
+#
+# Full path: design_done → go_deliver → deliver.configure → deliver__start
+#   → decompose (agent mocked) → lint (Starlark, real) → review (agent
+#   mocked, accept) → fleet.load (Starlark, real) → fleet__start → board
+#   dispatches health-model → ship.configure → ship__integrate_existing →
+#   board dispatches health-handler → ship.configure →
+#   ship__integrate_existing → fleet summary → @exit:done → landing
+#   (status="delivered").
+
+test_kind: flow
+app: ../app.yaml
+initial_state: design_done
+initial_world:
+  design_file:        "docs/proposals/per-session-working-folder.md"
+  design_ticket_path: ""
+  ticket_id:      ""
+  ticket_type:    ""
+  base_branch:    "main"
+
+starlark_inspect_cassette: ../cassettes/design_to_decompose_to_impl.inspect.yaml
+
+host_handlers:
+  host.agent.task:
+    by_call:
+      decomposer:
+        data:
+          submitted:
+            briefs:
+              - id: health-model
+                brief: "Add HealthStatus struct in internal/health/ with Status and Version fields. Gate: go test ./internal/health/..."
+                gate_command: "go test ./internal/health/..."
+                deps: []
+              - id: health-handler
+                brief: "Add GET /health handler serialising HealthStatus to JSON. Gate: go test ./internal/handler/..."
+                gate_command: "go test ./internal/handler/..."
+                deps: [health-model]
+  host.agent.decide:
+    by_call:
+      review:
+        data:
+          submitted:
+            verdict: accept
+            reason: "Rich-schema fields (scope, acceptance) are consistent with the two briefs and coverage_note."
+            questions: []
+  host.run:
+    by_call:
+      integrate_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: integrated, integrated_sha: "deadbee", last_op_ok: true, last_error: "" } }
+      verify-rerun: { data: { ok: true, exit_code: 0, stdout: "ok" } }
+      cleanup_exec:
+        data: { ok: true, exit_code: 0, stdout_json: { outcome: cleaned, last_op_ok: true, last_error: "" } }
+
+turns:
+  - intent: { name: go_deliver, slots: {} }
+    expect_state: deliver.configure
+    expect_world:
+      deliver__epic_path: "docs/proposals/per-session-working-folder.md"
+
+  - intent: { name: deliver__start, slots: {} }
+    expect_state: deliver.fleet.load
+    expect_world:
+      deliver__decomposition_path: ".artifacts/deliver/decomposition.yaml"
+      deliver__lint_route:        "ok"
+
+  - intent: { name: deliver__fleet__start, slots: {} }
+    expect_state: deliver.fleet.ship.configure
+    expect_world:
+      deliver__fleet__merge_lock_held: true
+
+  - intent: { name: deliver__fleet__ship__integrate_existing, slots: {} }
+    expect_state: deliver.fleet.ship.configure
+    expect_world:
+      deliver__fleet__shipped_count: 1
+      deliver__fleet__merge_lock_held: true
+
+  - intent: { name: deliver__fleet__ship__integrate_existing, slots: {} }
+    expect_state: landing
+    expect_world:
+      status: "delivered"
+
+expect_no_errors: true

@@ -1,4 +1,4 @@
-# refine_at_each_stage — port of cyber-repo's refine.yaml.
+# refine_at_each_stage — port of focused-engineering's refine.yaml.
 #
 # At each merged checkpoint room, `refine: <feedback>` self-transitions
 # back into the same room with refine_feedback set and the per-phase

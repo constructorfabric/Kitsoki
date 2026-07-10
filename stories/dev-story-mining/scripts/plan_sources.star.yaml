@@ -1,0 +1,16 @@
+# Sidecar for plan_sources.star - typed source/ladder planning contract.
+inputs:
+  job:                { type: string, required: true }
+  transcript_sources: { type: string, required: true }
+  project_dir:        { type: string, required: true }
+  codex_sessions_dir: { type: string, required: true }
+  stories_dir:        { type: string, required: true }
+  target_artifacts:   { type: string, required: true }
+  automation_goal:    { type: string, required: true }
+  determinism_doc:    { type: string, required: true }
+  prompt_intercept_doc: { type: string, required: true }
+  refine_feedback:    { type: string, required: true }
+
+outputs:
+  source_plan:      { type: object }
+  summary_markdown: { type: string }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -17,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"kitsoki/internal/capsuletest"
 	studio "kitsoki/internal/mcp/studio"
 )
 
@@ -37,6 +39,7 @@ func TestVisualToolsListed(t *testing.T) {
 	assert.True(t, names["visual.act"])
 	assert.True(t, names["visual.diff"])
 	assert.True(t, names["visual.git_diff"])
+	assert.True(t, names["visual.tui_git_diff"])
 	assert.True(t, names["visual.record"])
 }
 
@@ -121,6 +124,32 @@ func TestVisualObserve_WebUsesCompactSemanticSidecar(t *testing.T) {
 	assert.Equal(t, "chat", got.Regions[0].ID)
 	assert.Equal(t, &studio.VisualBBox{X: 10, Y: 20, Width: 300, Height: 400}, got.Regions[0].BBox)
 	assert.NotContains(t, contentText(res), "nodes", "observe must not leak raw DOM sidecars")
+}
+
+func TestVisualObserve_WebCaptureErrorDisablesImageAvailability(t *testing.T) {
+	ctx := context.Background()
+	srv, _ := newReplayServer(t)
+	srv.SetWebShotResult(func(ctx context.Context, spec studio.WebRenderSpec) (studio.WebShotResult, error) {
+		return studio.WebShotResult{}, errors.New("webshot: capture: exit status 1")
+	})
+	cs := connectInProcess(ctx, t, srv)
+	handle := openCloak(ctx, t, cs)
+	visual := openVisual(ctx, t, cs, handle, "vscode")
+
+	res, err := callTool(ctx, cs, "visual.observe", map[string]any{
+		"visual_handle":    visual,
+		"include_semantic": true,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "visual.observe semantic: %s", contentText(res))
+
+	var got studio.VisualObserveOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.False(t, got.ImageAvailable, "failed web/vscode capture must not advertise an available image")
+	require.NotEmpty(t, got.Errors)
+	assert.Contains(t, got.Errors[0], "webshot: capture: exit status 1")
+	assert.Contains(t, got.Next.Reasons, "web image snapshot capture failed; see errors")
+	assert.Contains(t, got.Next.Reasons, "web image snapshots need a browser-capable webShot seam")
 }
 
 func TestVisualObserve_TUIIncludesTerminalWrapper(t *testing.T) {
@@ -389,19 +418,9 @@ func TestVisualDiff_ComparesRetainedSnapshots(t *testing.T) {
 
 func TestVisualGitDiff_CapturesTwoRevisionsAndDiffsScreenshots(t *testing.T) {
 	ctx := context.Background()
-	repo := t.TempDir()
+	repo := capsuletest.Open(t, "visual-story-two-revisions")
 	storyRel := filepath.Join("stories", "demo", "app.yaml")
-	storyPath := filepath.Join(repo, storyRel)
-	require.NoError(t, os.MkdirAll(filepath.Dir(storyPath), 0o755))
-	gitRun(t, repo, "init")
-	gitRun(t, repo, "config", "user.email", "test@example.com")
-	gitRun(t, repo, "config", "user.name", "Test User")
-	require.NoError(t, os.WriteFile(storyPath, []byte("scene: one\n"), 0o644))
-	gitRun(t, repo, "add", ".")
-	gitRun(t, repo, "commit", "-m", "one")
-	from := strings.TrimSpace(gitRun(t, repo, "rev-parse", "HEAD"))
-	require.NoError(t, os.WriteFile(storyPath, []byte("scene: two\n"), 0o644))
-	gitRun(t, repo, "commit", "-am", "two")
+	from := strings.TrimSpace(gitRun(t, repo, "rev-parse", "HEAD~1"))
 	to := strings.TrimSpace(gitRun(t, repo, "rev-parse", "HEAD"))
 
 	srv, _ := newReplayServer(t)
@@ -449,6 +468,91 @@ func TestVisualGitDiff_CapturesTwoRevisionsAndDiffsScreenshots(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.False(t, res.IsError, "visual.diff after git diff: %s", contentText(res))
+	var diff studio.VisualDiffOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &diff))
+	assert.True(t, diff.Changed)
+	assert.Equal(t, got.ChangedBBox, diff.ChangedBBox)
+}
+
+// TestVisualTUIGitDiff_CapturesTwoRevisionsAndDiffsScreenshots mirrors
+// TestVisualGitDiff_CapturesTwoRevisionsAndDiffsScreenshots for the TUI path:
+// two git revisions of a real story (a one-line prose edit at the same
+// state), rasterised via the in-process ANSI renderer — no webShot seam
+// wired at all, proving visual.tui_git_diff never needs one.
+func TestVisualTUIGitDiff_CapturesTwoRevisionsAndDiffsScreenshots(t *testing.T) {
+	ctx := context.Background()
+	repo := t.TempDir()
+	storyDir := filepath.Join(repo, "story")
+	// The cloak view extends views/base.pongo (resolved relative to the app's
+	// own directory), so the whole app dir — not just app.yaml — must be
+	// archived at each revision for the spec render to find its templates.
+	require.NoError(t, copyTree(filepath.Dir(cloakApp), storyDir))
+	storyRel := filepath.Join("story", "app.yaml")
+	storyPath := filepath.Join(repo, storyRel)
+
+	base, err := os.ReadFile(storyPath)
+	require.NoError(t, err)
+	before := string(base)
+	require.Contains(t, before, "only one remains")
+	after := strings.Replace(before, "only one remains", "only one hook remains, freshly painted", 1)
+	require.NotEqual(t, before, after, "the fixture edit must actually change the rendered prose")
+
+	require.NoError(t, os.WriteFile(storyPath, []byte(before), 0o644))
+	gitRun(t, repo, "init")
+	gitRun(t, repo, "config", "user.email", "test@example.com")
+	gitRun(t, repo, "config", "user.name", "Test User")
+	gitRun(t, repo, "add", ".")
+	gitRun(t, repo, "commit", "-m", "before")
+	from := strings.TrimSpace(gitRun(t, repo, "rev-parse", "HEAD"))
+	require.NoError(t, os.WriteFile(storyPath, []byte(after), 0o644))
+	gitRun(t, repo, "commit", "-am", "after")
+	to := strings.TrimSpace(gitRun(t, repo, "rev-parse", "HEAD"))
+
+	// No SetWebShot/SetWebShotResult wired anywhere — the point of the tool.
+	srv, _ := newReplayServer(t)
+	cs := connectInProcess(ctx, t, srv)
+
+	res, err := callTool(ctx, cs, "visual.tui_git_diff", map[string]any{
+		"dir":        repo,
+		"from":       from,
+		"to":         to,
+		"story_path": storyRel,
+		"state":      "cloakroom",
+		"cols":       80, "rows": 24,
+		"include_images": "both",
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "visual.tui_git_diff: %s", contentText(res))
+	require.Len(t, res.Content, 3, "text plus two requested image blocks")
+
+	var got studio.VisualTUIGitDiffOK
+	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &got))
+	assert.True(t, got.OK)
+	assert.Equal(t, filepath.ToSlash(storyRel), got.StoryPath)
+	assert.Equal(t, from, got.From)
+	assert.Equal(t, to, got.To)
+	assert.Equal(t, "cloakroom", got.State)
+	assert.NotEmpty(t, got.FromImageID)
+	assert.NotEmpty(t, got.ToImageID)
+	assert.True(t, got.Changed, "a prose edit must move visible pixels: %+v", got)
+	assert.False(t, got.Same)
+	assert.NotNil(t, got.ChangedBBox)
+	assert.Contains(t, got.Reasons, "pixels changed")
+
+	for _, c := range res.Content {
+		if ic, ok := c.(*mcpsdk.ImageContent); ok {
+			_, decErr := png.Decode(bytes.NewReader(ic.Data))
+			require.NoError(t, decErr, "visual.tui_git_diff image block must be a decodable PNG")
+		}
+	}
+
+	// The retained image ids stay usable with visual.diff, same as the web path.
+	res, err = callTool(ctx, cs, "visual.diff", map[string]any{
+		"from_image_id": got.FromImageID,
+		"to_image_id":   got.ToImageID,
+	})
+	require.NoError(t, err)
+	require.False(t, res.IsError, "visual.diff after tui git diff: %s", contentText(res))
 	var diff studio.VisualDiffOK
 	require.NoError(t, json.Unmarshal([]byte(contentText(res)), &diff))
 	assert.True(t, diff.Changed)
@@ -824,6 +928,37 @@ func pngOf(t *testing.T, width, height int, pixels map[image.Point]color.RGBA) [
 	var buf bytes.Buffer
 	require.NoError(t, png.Encode(&buf, img))
 	return buf.Bytes()
+}
+
+// copyTree recursively copies src onto dst, used to stage a whole app
+// directory (app.yaml plus its views/flows/intents siblings) into a scratch
+// git repo for a git_diff test — a git-archived scene needs every file its
+// templates resolve relative to the app dir, not just the manifest.
+func copyTree(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, relErr := filepath.Rel(src, path)
+		if relErr != nil {
+			return relErr
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if mkErr := os.MkdirAll(filepath.Dir(target), 0o755); mkErr != nil {
+			return mkErr
+		}
+		return os.WriteFile(target, data, info.Mode().Perm()|0o200)
+	})
 }
 
 func gitRun(t *testing.T, dir string, args ...string) string {

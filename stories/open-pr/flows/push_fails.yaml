@@ -1,0 +1,52 @@
+# push_fails — the native provider push fails (no remote / unauthenticated) →
+# @exit:needs-human carrying the host.git error. Proves a delivery failure
+# never silently "succeeds".
+#
+# MOCKS open_pr_exec (host.git) returning a domain error.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+initial_world:
+  repo:          bsacrobatix/Kitsoki
+  head_branch:   fix/template-object-interp-placeholder
+  branch_kind:   bug
+  base_branch:   main
+  remote:        bsacrobatix
+  worktree_path: .worktrees/bf-template-object-interp-placeholder
+  title:         "fix(render): render non-scalar template values as JSON"
+  feature_description: "Fixes the object-in-string-template silent-data-loss bug."
+  product_site_paths: "features/trace-features.yaml"
+  product_feature_id: trace-features
+  demo_source_path: "tools/runstatus/tests/playwright/trace-features-video.spec.ts"
+
+host_handlers:
+  host.run:
+    by_call:
+      prepare_pr_package:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            outcome: prepared
+            body: "## Summary\n\nFixes the object-in-string-template silent-data-loss bug.\n"
+            package_path: ".context/open-pr/fix-template-object-interp-placeholder.md"
+            demo_video_path: ".artifacts/trace-features/trace-features.mp4"
+            last_error: ""
+  host.git:
+    by_call:
+      open_pr_exec:
+        data: {}
+        error: "git.open_pr: push: fatal: 'bsacrobatix' does not appear to be a git repository"
+
+turns:
+  - intent: { name: open, slots: {} }
+    expect_state: __exit__needs-human
+    expect_world:
+      status:       needs-human
+      prepare_outcome: prepared
+      open_outcome: ""
+      pr_url:       ""
+      last_error:   "git.open_pr: push: fatal: 'bsacrobatix' does not appear to be a git repository"
+
+expect_terminal: true

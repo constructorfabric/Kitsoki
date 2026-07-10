@@ -38,9 +38,9 @@ states:
             "Checkpoint": '{{ world.checkpoint_label|default:"(branch name)" }}'
       - heading: "Checkpoint saved"
         when: "world.checkpoint_outcome == 'saved'"
-      - prose: "Saved {{ world.checkpoint_ref }} at {{ world.checkpoint_sha }}{% if world.checkpoint_dirty %} (including dirty tracked changes){% else %} (clean tree){% endif %}. Restore it later with restore label={{ world.checkpoint_label }}."
+      - prose: "Saved {{ world.checkpoint_ref ?? '(pending)' }} at {{ world.checkpoint_sha ?? '(pending)' }}{% if world.checkpoint_dirty ?? false %} (including dirty tracked changes){% else %} (clean tree){% endif %}. Restore it later with restore label={{ world.checkpoint_label ?? '(pending)' }}."
         when: "world.checkpoint_outcome == 'saved'"
-      - prose: "Checkpoint failed: {{ world.last_error }}"
+      - prose: "Checkpoint failed: {{ world.last_error ?? '(pending)' }}"
         when: "world.checkpoint_outcome == 'error'"
       - prose: "Existing checkpoints: {{ world.checkpoint_list.raw|default:'(none)' }}"
       - choice:

@@ -1,8 +1,8 @@
 # happy_llm_then_human — judge_mode=llm_then_human, LLM-judge fires
 # confidently at every checkpoint and emit_intent auto-fires `accept`.
-# The operator types `proceed` at each _executing room, the LLM-judge
-# runs at each _awaiting_reply, and the auto-fire path advances. Same
-# stub shape as bugfix/flows/happy_llm_then_human.yaml.
+# Human-mode runs auto-settle executing rooms, but LLM-assisted modes keep an
+# explicit proceed stop so judge auto-accepts cannot chain the whole pipeline.
+# Same stub shape as bugfix/flows/happy_llm_then_human.yaml.
 #
 # Wave 3 / Phase 6 §W6.6 #1 fix: emit_intent now auto-fires across
 # import compound boundaries — the dispatcher resolves bare intent
@@ -33,6 +33,8 @@ host_handlers:
     data: { ok: true, message_id: "msg-1" }
   host.inbox.add:
     data: { ok: true, id: "ib-1" }
+  host.artifacts_dir:
+    data: { ok: true, path: ".artifacts/implementation-flow-artifact.md", message_id: "artifact-1" }
   # handoff room's lost-work clean-tree check (host.run done_clean_tree_check):
   # report a clean worktree so the open/proceed arcs enter the pr import. A
   # dirty tree would route to @exit:abandoned — see flows/handoff_refuses_dirty_tree.yaml.
@@ -81,7 +83,8 @@ host_handlers:
         reason:     "Confident accept; LLM auto-fires."
 
 turns:
-  # start → review_task_executing.
+  # start → review_task_executing. Because judge_mode is llm_then_human,
+  # the execution room does not auto-settle; `proceed` is the visible stop.
   - intent: { name: start, slots: {} }
     expect_state: review_task_executing
 

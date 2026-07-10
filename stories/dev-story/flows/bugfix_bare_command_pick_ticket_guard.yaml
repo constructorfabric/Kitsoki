@@ -1,0 +1,24 @@
+# bugfix_bare_command_pick_ticket_guard -- bare "fix bug" is handled by the
+# default-intent capture at runtime so semantic routing does not steal richer
+# inline reports like "fix this bug <complaint>".
+
+test_kind: flow
+app: ../app.yaml
+initial_state: landing
+
+turns:
+  - intent:
+      name: landing_capture
+      slots:
+        request: "fix bug"
+    expect_state: landing
+    expect_world:
+      last_error: |
+        No ticket selected — pick one before entering the bugfix pipeline.
+
+        Suggestions:
+        - `tickets` — search and pick a ticket
+        - paste a GitHub issue URL
+        - `fix this bug ...` — paste an inline bug report
+
+expect_no_errors: true

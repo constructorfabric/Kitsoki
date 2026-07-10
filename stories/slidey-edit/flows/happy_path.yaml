@@ -15,6 +15,11 @@ initial_world:
   refine_budget: 6
 
 host_handlers:
+  host.git_worktree:
+    by_call:
+      prepare_workspace:
+        data: { ok: true, path: ".capsules/workspaces/slidey-edit-flow" }
+
   host.agent.task:
     by_call:
       author_deck:

@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"kitsoki/internal/app"
+	"kitsoki/internal/storyauthoring"
 )
 
 // Rooms is one partition of an app's states, viewed three coherent ways. The
@@ -42,6 +43,9 @@ func GroupRooms(def *app.AppDef) *Rooms {
 		RoomOf:  map[string]string{},
 	}
 	walkAllStates(def.States, "", func(path string, _ *app.State) {
+		if storyauthoring.IsFrameworkRoom(path) {
+			return
+		}
 		room := roomOf(def, path)
 		r.RoomOf[path] = room
 		r.Members[room] = append(r.Members[room], path)
@@ -117,7 +121,10 @@ func detectTeleportRooms(def *app.AppDef, rooms *Rooms) map[string]bool {
 			return
 		}
 		from := rooms.RoomOf[path]
-		for _, trs := range s.On {
+		for intent, trs := range s.On {
+			if storyauthoring.IsFrameworkTransition(path, intent) {
+				continue
+			}
 			for _, tr := range trs {
 				target := resolveMermaidTarget(path, tr.Target)
 				if target == "" || strings.Contains(target, "{{") {
@@ -182,6 +189,9 @@ func overviewMermaid(def *app.AppDef, rooms *Rooms, rootRoom string, teleports m
 		}
 		fromRoom := rooms.RoomOf[path]
 		for intent, trs := range s.On {
+			if storyauthoring.IsFrameworkTransition(path, intent) {
+				continue
+			}
 			for _, tr := range trs {
 				target := resolveMermaidTarget(path, tr.Target)
 				if target == "" || strings.Contains(target, "{{") {

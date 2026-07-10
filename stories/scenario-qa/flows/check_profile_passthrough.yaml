@@ -1,0 +1,179 @@
+# check_profile_passthrough — a `check ... profile=<X>` slot MUST reach the
+# per-leg driver dispatch's own session.new authorization: world.live_profile
+# (bound from slots.profile in idle.yaml) has to survive into execute.yaml's
+# host.agent.task `context.args.live_profile`, since that's the only place
+# prompts/drive_leg.md's "session.new harness=live profile={{ args.live_profile
+# }}" instruction gets its value from. A confirmation rerun of `check
+# scenario=prd-design transport=all ... profile=claude-native` found every
+# transport check falling back to harness:replay (missing-cassette blocker on
+# the nested dev-story's host.agent.converse) because nothing asserted this
+# specific pass-through — expect_host_calls previously only checked the
+# `call:` id, never the rendered `context.args` payload. This flow closes that
+# gap: it pins every field of the drive_leg dispatch's `context` block so a
+# regression that drops/empties live_profile fails here instead of only
+# surfacing in a live LLM run.
+#
+# Every host call is stubbed by invoke id (no real run.py / LLM call runs
+# here); this exercises the room-to-room control flow + prompt-arg rendering
+# only.
+
+test_kind: flow
+app: ../app.yaml
+initial_state: idle
+
+host_handlers:
+  host.run:
+    by_call:
+      emit_scenario_qa_run:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            run_id: scenario-qa-profile-run-1
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-profile-run-1
+            driver_plan_path: /repo/.artifacts/product-journey/scenario-qa-profile-run-1/driver-plan.md
+            execution_plan_path: /repo/.artifacts/product-journey/scenario-qa-profile-run-1/execution-plan.md
+            agent_brief_path: /repo/.artifacts/product-journey/scenario-qa-profile-run-1/agent-brief.md
+      build_scenario_qa_deck:
+        data:
+          ok: true
+          exit_code: 0
+          stdout_json:
+            status: scenario_qa_deck_built
+            run_dir: /repo/.artifacts/product-journey/scenario-qa-profile-run-1
+            deck_path: /repo/.artifacts/product-journey/scenario-qa-profile-run-1/deck.slidey.json
+            leg_count: 1
+            pass_count: 1
+            fail_count: 0
+            degraded_count: 0
+            summary: "1 / 1 transport checks passed."
+
+  host.starlark.run:
+    by_call:
+      plan_legs:
+        data:
+          legs:
+            items:
+              - leg_id: "prd-design::tui"
+                scenario: "prd-design"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_dir: "evidence/gears-rust--core-maintainer/prd-design"
+                primary_story: "stories/dev-story/app.yaml"
+                success_criteria: ["A PRD artifact is produced from the discovery flow."]
+                transport_evidence_contract:
+                  primary_tool: "render.tui_png"
+                  evidence_kind: "rendered_tui_frame"
+                  level: "frame-level"
+          leg_count: 1
+          driver_agent: ".agents/agents/product-journey-qa-driver.md"
+          run_dir_rel: ".artifacts/product-journey/scenario-qa-profile-run-1"
+          plan_status: { resolved: true }
+      pick_leg:
+        data:
+          current_leg:
+            leg_id: "prd-design::tui"
+            scenario: "prd-design"
+            transport: "tui"
+            visual_surface: "tui"
+            evidence_dir: "evidence/gears-rust--core-maintainer/prd-design"
+            primary_story: "stories/dev-story/app.yaml"
+          current_leg_id: "prd-design::tui"
+          current_leg_json: '{"leg_id":"prd-design::tui","scenario":"prd-design","transport":"tui","primary_story":"stories/dev-story/app.yaml"}'
+      record_leg_result:
+        data:
+          leg_results:
+            items:
+              - leg_id: "prd-design::tui"
+                scenario: "prd-design"
+                transport: "tui"
+                visual_surface: "tui"
+                evidence_level: "frame-level"
+                driver_status: "captured"
+                evidence_refs: ["render_tui_png:frame-1"]
+                verdict: "pass"
+                verdict_summary: "PRD discovery reached live, profile authorized."
+                frames_dir: "evidence/gears-rust--core-maintainer/prd-design"
+          pass_count: 1
+          fail_count: 0
+          degraded_count: 0
+      build_report:
+        data:
+          report_path: ".artifacts/product-journey/scenario-qa-profile-run-1/report.md"
+          report_summary: "1 / 1 transport checks passed."
+
+  host.agent.task:
+    by_call:
+      drive_leg:
+        data:
+          ok: true
+          submitted:
+            status: "captured"
+            evidence_refs: ["render_tui_png:frame-1"]
+            frames_dir: "evidence/gears-rust--core-maintainer/prd-design"
+            blockers: []
+            summary: "Drove the nested dev-story session live (profile=claude-native) through PRD discovery."
+      judge_leg:
+        data:
+          ok: true
+          submitted:
+            verdict: "pass"
+            summary: "PRD artifact captured; profile-authorized live discovery reached prd.idle."
+            cited_frames: ["frame-1.png"]
+            frames_dir: "evidence/gears-rust--core-maintainer/prd-design"
+
+turns:
+  - intent:
+      name: check
+      slots:
+        scenario: prd-design
+        transport: tui
+        persona: core-maintainer
+        target: gears-rust
+        seed: scenario-qa
+        profile: claude-native
+    expect_state: report
+    expect_world:
+      mode: catalog
+      run_id: scenario-qa-profile-run-1
+      live_profile: claude-native
+      leg_count: 1
+      leg_index: 0
+      pass_count: 1
+      fail_count: 0
+      degraded_count: 0
+    expect_host_calls:
+      - handler: host.run
+        args: { call: emit_scenario_qa_run }
+      - handler: host.starlark.run
+        args: { call: plan_legs }
+      - handler: host.starlark.run
+        args: { call: pick_leg }
+      # This is the assertion that closes the gap: it pins the ENTIRE
+      # rendered `context` block of the drive_leg dispatch (host.agent.task's
+      # invoke args are matched as a full deep-equal per top-level key — see
+      # internal/testrunner/flows.go's countHostDispatchedMatching), so a
+      # regression that drops or empties `live_profile` on its way from
+      # world.live_profile into this prompt's context.args fails HERE instead
+      # of only surfacing as a live-run missing-cassette blocker.
+      - handler: host.agent.task
+        args:
+          call: drive_leg
+          context:
+            prompt: prompts/drive_leg.md
+            args:
+              leg_json: '{"leg_id":"prd-design::tui","scenario":"prd-design","transport":"tui","primary_story":"stories/dev-story/app.yaml"}'
+              run_id: "scenario-qa-profile-run-1"
+              run_dir: "/repo/.artifacts/product-journey/scenario-qa-profile-run-1"
+              transport: "tui"
+              live_profile: "claude-native"
+      - handler: host.agent.task
+        args: { call: judge_leg }
+      - handler: host.starlark.run
+        args: { call: record_leg_result }
+      - handler: host.starlark.run
+        args: { call: build_report }
+      - handler: host.run
+        args: { call: build_scenario_qa_deck }
+
+expect_no_errors: true

@@ -1,0 +1,42 @@
+{
+  "run_id": "persona-qa-slidey-architect-review",
+  "scenarios": [
+    {
+      "scenario": "compose-architecture-deck",
+      "harness": "slidey-preview",
+      "visual_surface": "Slidey viewer",
+      "quality_gate": {
+        "minimum_evidence": [
+          "key_interaction_video",
+          "design_artifact",
+          "review_notes"
+        ],
+        "done_when": "An architect can inspect the deck source, preview, and playback evidence before presenting."
+      }
+    },
+    {
+      "scenario": "reuse-recorded-demo",
+      "harness": "rrweb-replay",
+      "visual_surface": "Slidey video scene",
+      "quality_gate": {
+        "minimum_evidence": [
+          "key_interaction_video",
+          "trace_reference"
+        ],
+        "done_when": "The recorded demo renders as a deck-local playback scene."
+      }
+    },
+    {
+      "scenario": "maintain-deck-as-code",
+      "harness": "slidey-validate",
+      "visual_surface": "Slidey CLI",
+      "quality_gate": {
+        "minimum_evidence": [
+          "review_notes",
+          "key_interaction_video"
+        ],
+        "done_when": "The deck can be regenerated and bundled without hand edits."
+      }
+    }
+  ]
+}

@@ -1,0 +1,263 @@
+# report — fold every recorded leg's driver+judge outcome (world.leg_results)
+# into report.md AND deck.slidey.json under the run dir: the ONE per-transport
+# verdict table (VS Code legs labeled "bridge-level", never editor-level).
+# scripts/build_report.star only computes the summary/path (file-system-free,
+# since a run bundle may live in a managed capsule workspace); the actual
+# report.md AND deck.slidey.json files are both written by
+# tools/product-journey/run.py's --scenario-qa-report subcommand
+# (render_scenario_qa_markdown / render_scenario_qa_deck), which reuses this
+# module's existing Slidey deck-shape validator. Every non-"pass" leg's report
+# row carries a deterministic `cause` (record_leg_result.star), never a bare
+# verdict with no stated reason (issue group B / bug #105). Re-runs on every
+# entry (including the operator-typable "report" intent), so both artifacts
+# always reflect the current session's leg_results, never stale.
+#
+# Deck generation is best-effort: --scenario-qa-report wraps the deck
+# build/validate/write in a try/except and writes report.md UNCONDITIONALLY
+# afterward (with an honest "Deck generation failed: <cause>" line appended
+# when it fails) — see the subcommand's own comment in
+# tools/product-journey/run.py. deck_error mirrors that JSON field so the
+# view below can surface the same failure without waiting for report.md to
+# be re-read (persona-qa productization brief issue group F / P1.6).
+
+states:
+
+  report:
+    description: "Folded the per-transport verdict table into report.md."
+    relevant_world: [run_id, run_dir, scenario_workspace_root, scenario_ref, scenario_description, leg_results, pass_count, fail_count, degraded_count, report_path, report_summary, deck_path, deck_error, last_error, status]
+    default_intent: check_request
+    view:
+      - banner:
+          text: "SCENARIO QA REPORT"
+          subtitle: "{{ world.report_summary }}"
+          color: "#059669"
+      - kv:
+          pairs:
+            Run: "{{ world.run_id }}"
+            Capsule workspace: '{{ world.scenario_workspace_root|default:"(none)" }}'
+            Result: "{{ world.report_summary }}"
+      - kv:
+          pairs:
+            Scenario: "{{ world.scenario_ref }}"
+        when: "world.scenario_ref != ''"
+      - kv:
+          pairs:
+            Scenario: "{{ world.scenario_description }}"
+        when: "world.scenario_ref == '' && world.scenario_description != ''"
+      - heading: "Result"
+      - kv:
+          pairs:
+            Outcome: "{{ world.report_summary }}"
+            Pass: "{{ world.pass_count }}"
+            Fail: "{{ world.fail_count }}"
+            Degraded: "{{ world.degraded_count }}"
+      - heading: "Artifacts"
+      - kv:
+          pairs:
+            Summary report: '{{ world.report_path|default:"(building…)" }}'
+            Review deck: '{% if world.deck_error != "" %}(failed — see below){% else %}{{ world.deck_path|default:"(building…)" }}{% endif %}'
+      - prose: "Deck generation failed: {{ world.deck_error ?? '' }}"
+        when: "world.deck_error != ''"
+      - prose: "A dispatch along the way failed and was recorded honestly rather than silently retried: {{ world.last_error }}"
+        when: "world.last_error != ''"
+      - heading: "Transport verdicts"
+      - code: |
+          {% for leg in world.leg_results.items %}
+          - {{ leg.transport }} [{{ leg.evidence_level }}{% if leg.natural_utterance_count %}; natural_prompts={{ leg.natural_utterance_count }}{% endif %}] verdict={{ leg.verdict }} driver={{ leg.driver_status }}{% if leg.cause %} cause={{ leg.cause }}{% endif %}{% if leg.playback_path %} playback={{ leg.playback_path }}{% endif %}
+          {% endfor %}
+      - choice:
+          mode: single
+          prompt: "Actions"
+          items:
+            - label: "main room"
+              hint: "return to the Scenario QA start screen"
+              intent: main_room
+            - label: "check a new request"
+              hint: "plain prose plus optional qualifiers"
+              intent: check_request
+              param:
+                slot: request
+                type: string
+                placeholder: "e.g. settings validation persists transport=web"
+                required: true
+            - label: "report"
+              hint: "rebuild report.md"
+              intent: report
+            - label: "status"
+              intent: status
+            - label: "look"
+              intent: look
+    on_enter:
+      - invoke: host.starlark.run
+        id: build_report
+        with:
+          script: scripts/build_report.star
+          inputs:
+            run_id: "{{ world.run_id }}"
+            run_dir: "{{ world.run_dir }}"
+            scenario_ref: "{{ world.scenario_ref }}"
+            scenario_description: "{{ world.scenario_description }}"
+            leg_results: "{{ world.leg_results }}"
+        bind:
+          report_path: report_path
+          report_summary: report_summary
+        on_error: idle
+      # Both report.md and deck.slidey.json are written by
+      # tools/product-journey/run.py's --scenario-qa-report subcommand — it
+      # reuses this module's existing Slidey deck-shape validator rather than
+      # reimplementing scene-shape rules here. leg_results is templated
+      # in directly (map -> compact JSON splice, reference.md:255-256) so no
+      # intermediate file/`|json` filter is needed.
+      #
+      # The subcommand's own deck build is best-effort (see its comment in
+      # run.py): it writes report.md UNCONDITIONALLY and only skips
+      # deck.slidey.json/review.json on failure, reporting the cause as JSON
+      # field `deck_error`. report_path/report_summary/deck_path are bound
+      # straight from that JSON (present on every exit, success or deck
+      # failure) so they're authoritative over build_report.star's earlier
+      # (file-system-free) guess above once this invoke completes.
+      #
+      # No `on_error:` here on purpose — fail_on_error is left at its false
+      # default, so an ordinary non-zero exit lands as Data (exit_code/
+      # stdout), never as Result.Error, so `on_error:` would never fire for
+      # it anyway (the `on_error: .` this replaced was dead code against
+      # exactly that failure shape — a redirect to "." only ever mattered for
+      # a Go-level infra failure, e.g. python3 itself missing). deck_error's
+      # bind below covers BOTH cases: the subcommand's own reported cause
+      # when it ran and failed internally (`result.stdout_json.deck_error`),
+      # and a synthesized cause from exit_code/stdout for the rarer case
+      # where the process produced no parottable JSON at all (crashed before
+      # printing, wrong Python, etc.) — computed here, at THIS invoke's own
+      # bind time (tied to its completion), not a later `when:`/`set:` effect
+      # (see delivery-tail/rooms/integrate.yaml's run_exit comment: on_enter
+      # effects can be walked more than once, so a `when:` guard placed right
+      # after an invoke can fire against a stale pre-bind world).
+      - invoke: host.run
+        id: build_scenario_qa_deck
+        with:
+          cmd: python3
+          args:
+            - tools/product-journey/run.py
+            - --scenario-qa-report
+            - --json-output
+            - --run-dir
+            - "{{ world.run_dir }}"
+            - --scenario
+            - "{{ world.scenario_ref }}"
+            - --scenario-description
+            - "{{ world.scenario_description }}"
+            - --leg-results-json
+            - "{{ world.leg_results }}"
+          cwd: "."
+        bind:
+          deck_path: "stdout_json.deck_path"
+          report_path: "stdout_json.report_path"
+          report_summary: "stdout_json.report_summary"
+          deck_error: "{{ (result.stdout_json?.deck_path ?? '') != '' ? '' : ((result.stdout_json?.deck_error ?? '') != '' ? result.stdout_json.deck_error : ('deck build exited ' + string(result.exit_code ?? 0) + ((result.stdout ?? '') != '' ? ': ' + result.stdout : ''))) }}"
+    on:
+      check_request:
+        - when: "(slots.request ?? '') == ''"
+          target: .
+          effects:
+            - set:
+                last_error: "check needs a scenario request."
+        - target: plan
+          effects:
+            - set:
+                last_error: ""
+                suite_summary: ""
+                suite_plan: ""
+                status: "parsing_request"
+            - invoke: host.starlark.run
+              id: parse_check_request
+              with:
+                script: scripts/parse_request.star
+                inputs:
+                  request: "{{ slots.request }}"
+                  default_transport: "{{ world.transport_arg }}"
+                  default_persona: "{{ world.persona }}"
+                  default_target: "{{ world.target }}"
+                  default_seed: "{{ world.seed }}"
+                  default_profile: "{{ world.live_profile }}"
+                  default_live_budget_minutes: "{{ world.live_budget_minutes }}"
+                  default_parallel: "{{ world.parallel }}"
+              bind:
+                scenario_ref: scenario_ref
+                scenario_description: scenario_description
+                transport_arg: transport_arg
+                persona: persona
+                target: target
+                seed: seed
+                live_profile: live_profile
+                live_budget_minutes: live_budget_minutes
+                parallel: parallel
+                mode: mode
+                request_status: request_status
+              on_error: idle
+            - set:
+                status: "planning"
+                leg_index: 0
+                leg_count: 0
+                legs: {}
+                plan_status: {}
+                current_leg: {}
+                current_leg_id: ""
+                drive_result: {}
+                judge_result: {}
+                leg_results: { items: [] }
+                live_authorization_summary: []
+                parallel_records: []
+                record_status: {}
+                pass_count: 0
+                fail_count: 0
+                degraded_count: 0
+      check:
+        - when: "(slots.scenario ?? '') == '' && (slots.description ?? '') == ''"
+          target: .
+          effects:
+            - set:
+                last_error: "check needs a scenario id or a free-text description."
+        - target: plan
+          effects:
+            - set:
+                scenario_ref: "{{ join(split((slots.scenario ?? ''), ' '), '-') }}"
+                scenario_description: "{{ slots.description ?? '' }}"
+                transport_arg: "{{ slots.transport ?? world.transport_arg }}"
+                persona: "{{ join(split((slots.persona ?? world.persona), ' '), '-') }}"
+                target: "{{ join(split((slots.target ?? world.target), ' '), '-') }}"
+                seed: "{{ slots.seed ?? world.seed }}"
+                live_profile: "{{ slots.profile ?? world.live_profile }}"
+                live_budget_minutes: "{{ slots.live_budget_minutes ?? world.live_budget_minutes }}"
+                parallel: "{{ slots.parallel ?? world.parallel }}"
+                mode: "{{ (slots.description ?? '') != '' ? 'adhoc' : 'catalog' }}"
+                last_error: ""
+                suite_summary: ""
+                suite_plan: ""
+                status: "planning"
+                leg_index: 0
+                leg_count: 0
+                legs: {}
+                plan_status: {}
+                current_leg: {}
+                current_leg_id: ""
+                drive_result: {}
+                judge_result: {}
+                leg_results: { items: [] }
+                live_authorization_summary: []
+                parallel_records: []
+                record_status: {}
+                pass_count: 0
+                fail_count: 0
+                degraded_count: 0
+      report:
+        - target: report
+      main_room:
+        - target: idle
+          effects:
+            - set:
+                last_error: ""
+                status: "idle"
+      status:
+        - target: .
+      look:
+        - target: .

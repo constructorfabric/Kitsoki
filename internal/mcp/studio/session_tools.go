@@ -9,6 +9,7 @@ package studio
 //   - session.drive   — free text → orch.Turn (the ONE interpretive seam).
 //   - session.submit  — a chosen intent + slots → orch.SubmitDirect.
 //   - session.continue— missing slots for a pending clarify → orch.ContinueTurn.
+//   - session.drive_operation — drive an active operation handle.
 //   - session.teleport— inbox notification -> orch.Teleport, marking it read.
 //   - session.inspect — state / world / allowed_intents / last_view / jobs / inbox / last_turns.
 //   - session.command — run a safe TUI slash command and return its frame.
@@ -30,9 +31,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
+	"github.com/google/uuid"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"kitsoki/internal/app"
@@ -88,22 +91,27 @@ func (srv *Server) registerSessionTools() {
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.submit",
-		Description: "Submit a chosen intent (a menu pick) directly, with no routing. {handle, intent, slots?, cols?, rows?}. Returns {outcome, frame}. The frame does NOT carry world — read it with session.world (one value or the key list) or session.inspect (full snapshot).",
+		Description: "Submit a chosen intent (a menu pick) directly, with no routing. {handle, intent, slots?, cols?, rows?, async_after_ms?}. Returns {outcome, frame}, {awaiting_operator}, or {running}; when running is returned, poll session.status until running disappears. The frame does NOT carry world — read it with session.world (one value or the key list) or session.inspect (full snapshot).",
 	}, srv.handleSessionSubmit)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
+		Name:        "session.drive_operation",
+		Description: "Drive the active autonomous/supervised operation handle without routing free text. {handle, cols?, rows?, async_after_ms?}. Returns {operation_drive, outcome, frame} when settled, or {running}; when running is returned, poll session.status until running disappears. Stops at terminal/waiting handles, manual-only policies, clarification/rejection, or when no safe driver intent exists.",
+	}, srv.handleSessionDriveOperation)
+
+	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.continue",
-		Description: "Supply missing slots for a pending clarification. {handle, slots, cols?, rows?}. Returns {outcome, frame}. The frame does NOT carry world — read it with session.world (one value or the key list) or session.inspect (full snapshot).",
+		Description: "Supply missing slots for a pending clarification. {handle, slots, cols?, rows?, async_after_ms?}. Returns {outcome, frame}, {awaiting_operator}, or {running}; when running is returned, poll session.status until running disappears. The frame does NOT carry world — read it with session.world (one value or the key list) or session.inspect (full snapshot).",
 	}, srv.handleSessionContinue)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.answer",
-		Description: "Answer a parked operator-ask (the suspend/resume fallback for clients without MCP elicitation). {handle, question_id, answers} where answers is keyed by each question's text → a chosen option label (string) or labels ([]string). Resumes the turn; returns {outcome, frame} or another awaiting_operator.",
+		Description: "Answer a parked operator-ask (the suspend/resume fallback for clients without MCP elicitation). {handle, question_id, answers, async_after_ms?} where answers is keyed by each question's text → a chosen option label or custom answer (string), or labels ([]string). Resumes the turn; returns {outcome, frame}, {running}, or another awaiting_operator.",
 	}, srv.handleSessionAnswer)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
 		Name:        "session.status",
-		Description: "Compact, overflow-proof snapshot of a driving handle: {handle} → {state, allowed_intents, running?, status?, last_error?, exit?}. Never embeds world or rendered views. running repeats an in-flight bounded session.drive until it settles. status/last_error/exit are read from well-known world keys when present.",
+		Description: "Compact, overflow-proof snapshot of a driving handle: {handle} → {state, allowed_intents, running?, status?, last_error?, exit?}. Never embeds world or rendered views. While an async turn runs, running is present and state reports the LIVE in-flight state path (with running.last_event_at_unix_micro advancing as the turn works) — a stable state with running present is normal progress, NOT a stuck run; only treat it as stuck if last_event_at stops advancing for many minutes. status/last_error/exit are read from well-known world keys when present.",
 	}, srv.handleSessionStatus)
 
 	mcpsdk.AddTool(srv.mcpSrv, &mcpsdk.Tool{
@@ -209,19 +217,29 @@ type SessionDriveArgs struct {
 
 // SessionSubmitArgs is the input to session.submit.
 type SessionSubmitArgs struct {
-	Handle string         `json:"handle"`
-	Intent string         `json:"intent"`
-	Slots  map[string]any `json:"slots,omitempty"`
-	Cols   int            `json:"cols,omitempty"`
-	Rows   int            `json:"rows,omitempty"`
+	Handle       string         `json:"handle"`
+	Intent       string         `json:"intent"`
+	Slots        map[string]any `json:"slots,omitempty"`
+	Cols         int            `json:"cols,omitempty"`
+	Rows         int            `json:"rows,omitempty"`
+	AsyncAfterMS int            `json:"async_after_ms,omitempty"`
+}
+
+// SessionDriveOperationArgs is the input to session.drive_operation.
+type SessionDriveOperationArgs struct {
+	Handle       string `json:"handle"`
+	Cols         int    `json:"cols,omitempty"`
+	Rows         int    `json:"rows,omitempty"`
+	AsyncAfterMS int    `json:"async_after_ms,omitempty"`
 }
 
 // SessionContinueArgs is the input to session.continue.
 type SessionContinueArgs struct {
-	Handle string         `json:"handle"`
-	Slots  map[string]any `json:"slots"`
-	Cols   int            `json:"cols,omitempty"`
-	Rows   int            `json:"rows,omitempty"`
+	Handle       string         `json:"handle"`
+	Slots        map[string]any `json:"slots"`
+	Cols         int            `json:"cols,omitempty"`
+	Rows         int            `json:"rows,omitempty"`
+	AsyncAfterMS int            `json:"async_after_ms,omitempty"`
 }
 
 // SessionCommandArgs is the input to session.command.
@@ -288,6 +306,9 @@ type TurnResponse struct {
 	OK      bool        `json:"ok"`
 	Outcome TurnResult  `json:"outcome"`
 	Frame   FrameResult `json:"frame"`
+	// OperationDrive is present only for session.drive_operation and summarizes
+	// the autonomous driver loop that produced Outcome/Frame.
+	OperationDrive *OperationDriveResult `json:"operation_drive,omitempty"`
 	// AwaitingOperator is non-nil when the turn paused on an operator-ask (the
 	// fallback path). Outcome/Frame are zero in that case — the turn has not
 	// settled yet.
@@ -296,6 +317,13 @@ type TurnResponse struct {
 	// Poll session.status/session.inspect or the trace; the session model is
 	// folded as soon as the background turn settles.
 	Running *RunningDrive `json:"running,omitempty"`
+}
+
+// OperationDriveResult is the wire summary for one explicit operation drive.
+type OperationDriveResult struct {
+	Turns      int    `json:"turns"`
+	StopReason string `json:"stop_reason,omitempty"`
+	LastIntent string `json:"last_intent,omitempty"`
 }
 
 // AwaitingOperator is the suspend/resume status carried on a session.drive /
@@ -315,15 +343,30 @@ type RunningDrive struct {
 	Input              string `json:"input,omitempty"`
 	StartedAtUnixMicro int64  `json:"started_at_unix_micro,omitempty"`
 	Poll               string `json:"poll"`
+	// InFlightState is the live state path the running turn is currently
+	// executing in (e.g. "bf.reproducing"), read from the most recent trace
+	// event — NOT the resting state the turn was submitted from. Present
+	// whenever the running turn has written at least one event (never-silent:
+	// a poller must be able to see that work is happening and where).
+	InFlightState string `json:"in_flight_state,omitempty"`
+	// LastEventKind / LastEventAtUnixMicro identify the most recent trace
+	// activity (e.g. "agent.stream"), so a poller can distinguish an actively
+	// working turn from a genuinely wedged one by watching the timestamp move.
+	LastEventKind        string `json:"last_event_kind,omitempty"`
+	LastEventAtUnixMicro int64  `json:"last_event_at_unix_micro,omitempty"`
+	// ActiveAgent is the agent currently dispatched inside the running turn
+	// (empty between dispatches).
+	ActiveAgent string `json:"active_agent,omitempty"`
 }
 
 // SessionAnswerArgs is the input to session.answer (the fallback resume).
 type SessionAnswerArgs struct {
-	Handle     string         `json:"handle"`
-	QuestionID string         `json:"question_id"`
-	Answers    map[string]any `json:"answers"`
-	Cols       int            `json:"cols,omitempty"`
-	Rows       int            `json:"rows,omitempty"`
+	Handle       string         `json:"handle"`
+	QuestionID   string         `json:"question_id"`
+	Answers      map[string]any `json:"answers"`
+	Cols         int            `json:"cols,omitempty"`
+	Rows         int            `json:"rows,omitempty"`
+	AsyncAfterMS int            `json:"async_after_ms,omitempty"`
 }
 
 // SessionTeleportArgs is the input to session.teleport.
@@ -347,10 +390,14 @@ func (srv *Server) handleSessionNew(
 	if args.StoryPath == "" {
 		return buildToolError(ErrBadRequest, "session.new: story_path is required"), nil, nil
 	}
-	tracePath, err := resolveTracePath(args.Trace)
+	tracePath, err := resolveTracePath(args.Trace, args.StoryPath, args.Key)
 	if err != nil {
 		return buildToolError(ErrBadRequest, err.Error()), nil, nil
 	}
+	// Publish KITSOKI_APP_DIR BEFORE the story loads so a relative
+	// host.starlark.run script (or any other ${KITSOKI_APP_DIR}-relative
+	// reference) resolves for this session — see app_dir.go.
+	publishAppDir(args.StoryPath)
 	sh, err := srv.sess.OpenDrivingSession(ctx, OpenDrivingSessionParams{
 		Key:            args.Key,
 		Mode:           HarnessMode(args.Harness),
@@ -392,10 +439,13 @@ func (srv *Server) handleSessionAttach(
 	if args.Key == "" {
 		return buildToolError(ErrBadRequest, "session.attach: key is required"), nil, nil
 	}
-	tracePath, err := resolveTracePath(args.Trace)
+	tracePath, err := resolveTracePath(args.Trace, args.StoryPath, args.Key)
 	if err != nil {
 		return buildToolError(ErrBadRequest, err.Error()), nil, nil
 	}
+	// Publish KITSOKI_APP_DIR BEFORE the story loads — see handleSessionNew /
+	// app_dir.go.
+	publishAppDir(args.StoryPath)
 	sh, err := srv.sess.OpenDrivingSession(ctx, OpenDrivingSessionParams{
 		Key:            args.Key,
 		Mode:           HarnessMode(args.Harness),
@@ -445,6 +495,14 @@ func (srv *Server) handleSessionDrive(
 		prompter := newStudioOperatorPrompter(&elicitTransport{ss: ss})
 		out, frame := rt.driveElicit(ctx, args.Input, cols, rows, prompter)
 		progress.Done(ctx, args.Handle, turnOutcomeState(out))
+		if rt.lastOperationDrive != nil {
+			return nil, operationDriveResponse(turnResult{
+				outcome:        out,
+				frame:          frame,
+				err:            rt.lastTurnErr,
+				operationDrive: rt.lastOperationDrive,
+			}), nil
+		}
 		return nil, turnResponse(out, frame, rt.lastTurnErr), nil
 	}
 
@@ -462,6 +520,9 @@ func (srv *Server) handleSessionDrive(
 		return nil, awaitingResponse(pq), nil
 	}
 	progress.Done(ctx, args.Handle, turnOutcomeState(res.outcome))
+	if res.operationDrive != nil {
+		return nil, operationDriveResponse(res), nil
+	}
 	return nil, turnResponse(res.outcome, res.frame, res.err), nil
 }
 
@@ -498,7 +559,8 @@ func (srv *Server) handleSessionAnswer(
 	if rerr != nil {
 		return rerr, nil, nil
 	}
-	res, pq, turnDone, ok, err := rt.resumeSuspendable(ctx, args.QuestionID, args.Answers)
+	wait := driveAsyncAfter(args.AsyncAfterMS)
+	res, pq, turnDone, running, ok, err := rt.resumeSuspendable(ctx, args.QuestionID, args.Answers, wait)
 	if err != nil {
 		progress.Error(ctx, args.Handle, err)
 		return buildToolError(ErrBadRequest, fmt.Sprintf("session.answer: %v", err)), nil, nil
@@ -506,11 +568,17 @@ func (srv *Server) handleSessionAnswer(
 	if !ok {
 		return buildToolError(ErrBadRequest, fmt.Sprintf("session.answer: no turn awaiting question_id %q on this handle", args.QuestionID)), nil, nil
 	}
+	if running != nil {
+		return nil, runningResponse(args.Handle, "answer:"+args.QuestionID, running), nil
+	}
 	if !turnDone {
 		progress.AwaitingOperator(ctx, args.Handle)
 		return nil, awaitingResponse(pq), nil
 	}
 	progress.Done(ctx, args.Handle, turnOutcomeState(res.outcome))
+	if res.operationDrive != nil {
+		return nil, operationDriveResponse(res), nil
+	}
 	return nil, turnResponse(res.outcome, res.frame, res.err), nil
 }
 
@@ -562,9 +630,56 @@ func (srv *Server) handleSessionSubmit(
 		return rerr, nil, nil
 	}
 	cols, rows := geometry(args.Cols, args.Rows)
-	out, frame := rt.submit(ctx, args.Intent, args.Slots, cols, rows)
-	progress.Done(ctx, args.Handle, turnOutcomeState(out))
-	return nil, turnResponse(out, frame, rt.lastTurnErr), nil
+	wait := driveAsyncAfter(args.AsyncAfterMS)
+	res, pq, turnDone, running, err := rt.submitSuspendable(ctx, args.Intent, args.Slots, cols, rows, wait)
+	if err != nil {
+		progress.Error(ctx, args.Handle, err)
+		return buildToolError(ErrBadRequest, fmt.Sprintf("session.submit: %v", err)), nil, nil
+	}
+	if running != nil {
+		return nil, runningResponse(args.Handle, "intent:"+args.Intent, running), nil
+	}
+	if !turnDone {
+		progress.AwaitingOperator(ctx, args.Handle)
+		return nil, awaitingResponse(pq), nil
+	}
+	progress.Done(ctx, args.Handle, turnOutcomeState(res.outcome))
+	if res.operationDrive != nil {
+		return nil, operationDriveResponse(res), nil
+	}
+	return nil, turnResponse(res.outcome, res.frame, res.err), nil
+}
+
+func (srv *Server) handleSessionDriveOperation(
+	ctx context.Context,
+	req *mcpsdk.CallToolRequest,
+	args SessionDriveOperationArgs,
+) (*mcpsdk.CallToolResult, any, error) {
+	progress := newMCPProgress(req, "session.drive_operation")
+	progress.Start(ctx, args.Handle)
+	if progress != nil {
+		ctx = host.WithStreamSink(ctx, progress)
+	}
+	rt, rerr := srv.resolveRuntime(args.Handle)
+	if rerr != nil {
+		return rerr, nil, nil
+	}
+	cols, rows := geometry(args.Cols, args.Rows)
+	wait := driveAsyncAfter(args.AsyncAfterMS)
+	res, pq, turnDone, running, err := rt.driveOperationSuspendable(ctx, cols, rows, wait)
+	if err != nil {
+		progress.Error(ctx, args.Handle, err)
+		return buildToolError(ErrBadRequest, fmt.Sprintf("session.drive_operation: %v", err)), nil, nil
+	}
+	if running != nil {
+		return nil, runningResponse(args.Handle, "operation", running), nil
+	}
+	if !turnDone {
+		progress.AwaitingOperator(ctx, args.Handle)
+		return nil, awaitingResponse(pq), nil
+	}
+	progress.Done(ctx, args.Handle, turnOutcomeState(res.outcome))
+	return nil, operationDriveResponse(res), nil
 }
 
 func (srv *Server) handleSessionContinue(
@@ -582,9 +697,24 @@ func (srv *Server) handleSessionContinue(
 		return rerr, nil, nil
 	}
 	cols, rows := geometry(args.Cols, args.Rows)
-	out, frame := rt.cont(ctx, args.Slots, cols, rows)
-	progress.Done(ctx, args.Handle, turnOutcomeState(out))
-	return nil, turnResponse(out, frame, rt.lastTurnErr), nil
+	wait := driveAsyncAfter(args.AsyncAfterMS)
+	res, pq, turnDone, running, err := rt.continueSuspendable(ctx, args.Slots, cols, rows, wait)
+	if err != nil {
+		progress.Error(ctx, args.Handle, err)
+		return buildToolError(ErrBadRequest, fmt.Sprintf("session.continue: %v", err)), nil, nil
+	}
+	if running != nil {
+		return nil, runningResponse(args.Handle, "continue", running), nil
+	}
+	if !turnDone {
+		progress.AwaitingOperator(ctx, args.Handle)
+		return nil, awaitingResponse(pq), nil
+	}
+	progress.Done(ctx, args.Handle, turnOutcomeState(res.outcome))
+	if res.operationDrive != nil {
+		return nil, operationDriveResponse(res), nil
+	}
+	return nil, turnResponse(res.outcome, res.frame, res.err), nil
 }
 
 func (srv *Server) handleSessionTeleport(
@@ -1140,13 +1270,13 @@ func (srv *Server) composeRenderFrame(ctx context.Context, args RenderArgs, cols
 // before returning, so a spec render leaves nothing behind and touches no open
 // handle.
 func (srv *Server) specFrame(ctx context.Context, storyPath, state string, world map[string]any, cols, rows int) (tui.Frame, error) {
-	tracePath, err := resolveTracePath("")
+	tracePath, err := ephemeralTracePath()
 	if err != nil {
 		return tui.Frame{}, err
 	}
 	// No harness, no profiles, no seed: a spec render is a pure re-render and
 	// never calls orch.Turn or dispatches an agent.
-	rt, err := newSessionRuntime(ctx, storyPath, tracePath, nil, nil, "", nil, "", srv.importResolver, nil, nil)
+	rt, err := newSessionRuntime(ctx, storyPath, tracePath, nil, nil, "", nil, "", false, srv.importResolver, nil, nil, host.AgentLaunchPolicy{})
 	if err != nil {
 		return tui.Frame{}, err
 	}
@@ -1225,7 +1355,7 @@ func turnResponse(out *orchestrator.TurnOutcome, frame tui.Frame, turnErr error)
 	if out != nil {
 		tr.Mode = out.Mode.String()
 		tr.State = string(out.NewState)
-		tr.AllowedIntents = out.AllowedIntents
+		tr.AllowedIntents = visibleAllowedIntentStrings(string(out.NewState), out.AllowedIntents)
 		tr.PendingIntent = out.PendingIntent
 		tr.ErrorCode = string(out.ErrorCode)
 		tr.ErrorMessage = out.ErrorMessage
@@ -1247,6 +1377,18 @@ func turnResponse(out *orchestrator.TurnOutcome, frame tui.Frame, turnErr error)
 		}
 	}
 	return TurnResponse{OK: turnErr == nil, Outcome: tr, Frame: frameResult(frame)}
+}
+
+func operationDriveResponse(res turnResult) TurnResponse {
+	out := turnResponse(res.outcome, res.frame, res.err)
+	if res.operationDrive != nil {
+		out.OperationDrive = &OperationDriveResult{
+			Turns:      res.operationDrive.Turns,
+			StopReason: res.operationDrive.StopReason,
+			LastIntent: res.operationDrive.LastIntent,
+		}
+	}
+	return out
 }
 
 // frameResult projects a tui.Frame onto the wire shape. The frame NEVER carries
@@ -1275,10 +1417,39 @@ func frameResult(f tui.Frame) FrameResult {
 // resolveTracePath returns the trace path for a driving handle: the caller's
 // override when set, else a fresh temp .jsonl file. Each session gets its own
 // durable trace (the same JSONL `kitsoki turn --trace` writes).
-func resolveTracePath(override string) (string, error) {
+// resolveTracePath picks the JSONL trace path for a driving session. An
+// explicit override always wins. Otherwise the trace lands under the same
+// discoverable ~/.kitsoki/sessions/<app>/<sha8>-<slug>.jsonl location the web
+// transport uses (store.DefaultTracePath), tagged with the "mcp" transport
+// label so `kitsoki trace --app <app> --latest` and cost-mining tools can find
+// and distinguish it — see
+// issues/bugs/2026-06-24T090000Z-mcp-live-sessions-no-discoverable-trace.md.
+// Before this fix the default was an anonymous $TMPDIR/kitsoki-studio-*.jsonl
+// file: real durable events, but unreachable by app/id and eventually
+// temp-reaped, silently losing cost/token/replay evidence for every MCP-driven
+// live session that didn't pass an explicit trace: arg.
+func resolveTracePath(override, storyPath, key string) (string, error) {
 	if override != "" {
 		return override, nil
 	}
+	thread := key
+	if thread == "" {
+		thread = uuid.NewString()
+	}
+	path := store.DefaultTracePath(appSlugFromStoryPath(storyPath), "mcp", thread)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("create trace dir: %v", err)}
+	}
+	return path, nil
+}
+
+// ephemeralTracePath returns a throwaway temp-file trace path for callers that
+// explicitly don't want a discoverable, durable trace — e.g. specFrame's
+// torn-down-before-returning ephemeral runtime. This is the pre-fix behavior
+// of resolveTracePath's default branch, kept for the cases where it was
+// actually correct (not a driving session an operator might want to inspect
+// or replay later).
+func ephemeralTracePath() (string, error) {
 	f, err := os.CreateTemp("", "kitsoki-studio-*.jsonl")
 	if err != nil {
 		return "", &openError{Code: ErrBadRequest, Msg: fmt.Sprintf("create trace file: %v", err)}
@@ -1286,6 +1457,22 @@ func resolveTracePath(override string) (string, error) {
 	name := f.Name()
 	_ = f.Close()
 	return name, nil
+}
+
+// appSlugFromStoryPath derives an app identifier from a story's app.yaml path
+// for trace-path purposes, without requiring the app to be loaded first (trace
+// path is resolved before OpenDrivingSession loads the story). By convention a
+// story's directory name IS its app id (stories/bugfix/app.yaml -> "bugfix"),
+// matching store.DefaultTracePath's appSlug for the web transport
+// (cmd/kitsoki/registry.go, which uses the loaded def.App.ID — same value for
+// every story in this repo). Falls back to "app" for an unparseable path
+// rather than failing the whole session.new call over a cosmetic detail.
+func appSlugFromStoryPath(storyPath string) string {
+	dir := filepath.Base(filepath.Dir(storyPath))
+	if dir == "" || dir == "." || dir == string(filepath.Separator) {
+		return "app"
+	}
+	return dir
 }
 
 // ── inspect on the runtime ────────────────────────────────────────────────────
@@ -1296,10 +1483,18 @@ func resolveTracePath(override string) (string, error) {
 // full world map — so the result stays small regardless of world size.
 func (rt *sessionRuntime) status(ctx context.Context, handle string) (SessionStatusResult, error) {
 	if running, snap := rt.runningDriveSnapshot(handle); running != nil {
+		state := snap.state
+		if running.InFlightState != "" {
+			// Never-silent: while the turn runs, report where it actually is
+			// (e.g. "bf.reproducing"), not the resting state it left. The
+			// resting-state report misled pollers into treating healthy live
+			// runs as stuck.
+			state = running.InFlightState
+		}
 		result := SessionStatusResult{
 			OK:             true,
-			State:          snap.state,
-			AllowedIntents: append([]string(nil), snap.allowedIntents...),
+			State:          state,
+			AllowedIntents: visibleAllowedIntentStrings(state, snap.allowedIntents),
 			Running:        running,
 		}
 		addStatusWorldKeys(&result, snap.world)
@@ -1311,10 +1506,7 @@ func (rt *sessionRuntime) status(ctx context.Context, handle string) (SessionSta
 		return SessionStatusResult{}, fmt.Errorf("session.status: load journey: %w", err)
 	}
 	allowed := rt.orch.AllowedIntents(j.State, j.World)
-	allowedNames := make([]string, 0, len(allowed))
-	for _, ai := range allowed {
-		allowedNames = append(allowedNames, ai.Name)
-	}
+	allowedNames := visibleAllowedIntentNames(string(j.State), allowed)
 	result := SessionStatusResult{
 		OK:             true,
 		State:          string(j.State),
@@ -1395,11 +1587,15 @@ func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int, handle str
 			return InspectResult{}, asyncErr
 		}
 		operatorQuestions := rt.pendingOperatorQuestions()
+		state := snap.state
+		if running.InFlightState != "" {
+			state = running.InFlightState // never-silent: live in-flight state, not the resting state
+		}
 		return InspectResult{
 			OK:                true,
-			State:             snap.state,
+			State:             state,
 			World:             snap.world,
-			AllowedIntents:    append([]string(nil), snap.allowedIntents...),
+			AllowedIntents:    visibleAllowedIntentStrings(state, snap.allowedIntents),
 			LastView:          snap.lastView,
 			Async:             asyncSummaryOrNil(summarizeAsync(jobs, notifications, unreadNotifications, pendingDrives, backgroundedChats, operatorQuestions, nil, running)),
 			Running:           running,
@@ -1418,10 +1614,7 @@ func (rt *sessionRuntime) inspect(ctx context.Context, lastTurns int, handle str
 		return InspectResult{}, fmt.Errorf("session.inspect: load journey: %w", err)
 	}
 	allowed := rt.orch.AllowedIntents(j.State, j.World)
-	allowedNames := make([]string, 0, len(allowed))
-	for _, ai := range allowed {
-		allowedNames = append(allowedNames, ai.Name)
-	}
+	allowedNames := visibleAllowedIntentNames(string(j.State), allowed)
 	view, verr := rt.orch.RenderState(j.State, j.World)
 	if verr != nil {
 		view = fmt.Sprintf("<render error: %v>", verr)
@@ -1765,7 +1958,27 @@ func (rt *sessionRuntime) runningDriveSnapshot(handle string) (*RunningDrive, dr
 	if !ok {
 		return nil, driveSnapshot{}
 	}
+	rt.decorateRunning(running)
 	return running, snap
+}
+
+// decorateRunning fills the live in-flight fields on a RunningDrive from the
+// session's activity tap (never-silent: pollers must see what the running
+// turn is doing, not just the resting state it was submitted from).
+func (rt *sessionRuntime) decorateRunning(running *RunningDrive) {
+	if rt == nil || running == nil {
+		return
+	}
+	act, ok := rt.tap.snapshot()
+	if !ok {
+		return
+	}
+	running.InFlightState = act.statePath
+	running.LastEventKind = act.kind
+	if !act.ts.IsZero() {
+		running.LastEventAtUnixMicro = act.ts.UnixMicro()
+	}
+	running.ActiveAgent = act.agent
 }
 
 func inspectOperatorQuestions(handle string, questions []pendingQuestion) []OperatorQuestionItem {
